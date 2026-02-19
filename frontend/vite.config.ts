@@ -19,4 +19,7 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
+  define: {
+    "import.meta.env.VITE_BUILD_ID": JSON.stringify(Date.now().toString()),
+  },
 })

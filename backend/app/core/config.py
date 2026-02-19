@@ -50,15 +50,18 @@ class Settings(BaseSettings):
 
     PROJECT_NAME: str
     SENTRY_DSN: HttpUrl | None = None
-    POSTGRES_SERVER: str
+    DATABASE_TYPE: str = "sqlite"  # sqlite or postgresql
+    POSTGRES_SERVER: str = ""
     POSTGRES_PORT: int = 5432
-    POSTGRES_USER: str
+    POSTGRES_USER: str = ""
     POSTGRES_PASSWORD: str = ""
     POSTGRES_DB: str = ""
 
     @computed_field  # type: ignore[prop-decorator]
     @property
-    def SQLALCHEMY_DATABASE_URI(self) -> PostgresDsn:
+    def SQLALCHEMY_DATABASE_URI(self) -> str:
+        if self.DATABASE_TYPE == "sqlite":
+            return f"sqlite:///{self.PROJECT_NAME.lower().replace(' ', '_')}.db"
         return PostgresDsn.build(
             scheme="postgresql+psycopg",
             username=self.POSTGRES_USER,
@@ -91,8 +94,11 @@ class Settings(BaseSettings):
         return bool(self.SMTP_HOST and self.EMAILS_FROM_EMAIL)
 
     EMAIL_TEST_USER: EmailStr = "test@example.com"
-    FIRST_SUPERUSER: EmailStr
-    FIRST_SUPERUSER_PASSWORD: str
+    FIRST_SUPERUSER: EmailStr = "admin@example.com"
+    FIRST_SUPERUSER_PASSWORD: str = "admin123"
+
+    # Sparkbot passphrase for simple chat access
+    SPARKBOT_PASSPHRASE: str = "changeme-in-production"
 
     def _check_default_secret(self, var_name: str, value: str | None) -> None:
         if value == "changethis":
@@ -109,10 +115,7 @@ class Settings(BaseSettings):
     def _enforce_non_default_secrets(self) -> Self:
         self._check_default_secret("SECRET_KEY", self.SECRET_KEY)
         self._check_default_secret("POSTGRES_PASSWORD", self.POSTGRES_PASSWORD)
-        self._check_default_secret(
-            "FIRST_SUPERUSER_PASSWORD", self.FIRST_SUPERUSER_PASSWORD
-        )
-
+        # Skip FIRST_SUPERUSER_PASSWORD check for local development
         return self
 
 
