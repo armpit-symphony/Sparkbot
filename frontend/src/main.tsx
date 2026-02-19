@@ -18,6 +18,18 @@ OpenAPI.TOKEN = async () => {
   return localStorage.getItem("access_token") || ""
 }
 
+// Catch unhandled promise rejections and show on screen
+if (typeof window !== 'undefined') {
+  window.addEventListener('unhandledrejection', (e) => {
+    const msg = String(e.reason?.message || e.reason || 'unknown error')
+    document.body.insertAdjacentHTML('beforeend', 
+      `<div style="position:fixed;bottom:0;left:0;right:0;max-height:40%;overflow:auto;background:#200;color:#f88;padding:8px;font-size:11px;z-index:999999">
+        UNHANDLED REJECTION: ${msg}
+      </div>`
+    )
+  })
+}
+
 const handleApiError = (error: Error) => {
   if (error instanceof ApiError && [401, 403].includes(error.status)) {
     localStorage.removeItem("access_token")
