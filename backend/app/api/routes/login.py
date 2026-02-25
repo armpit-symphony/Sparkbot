@@ -1,9 +1,35 @@
+import time
+from collections import defaultdict
 from datetime import timedelta
+from threading import Lock
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.security import OAuth2PasswordRequestForm
+
+# Simple in-memory rate limiter: 5 failed attempts per 15 minutes per IP
+_login_attempts: dict = defaultdict(list)
+_rate_lock = Lock()
+_MAX_ATTEMPTS = 5
+_WINDOW_SECONDS = 15 * 60
+
+
+def _check_rate_limit(ip: str) -> None:
+    now = time.time()
+    with _rate_lock:
+        _login_attempts[ip] = [t for t in _login_attempts[ip] if now - t < _WINDOW_SECONDS]
+        if len(_login_attempts[ip]) >= _MAX_ATTEMPTS:
+            raise HTTPException(
+                status_code=429,
+                detail="Too many login attempts. Try again later.",
+                headers={"Retry-After": str(_WINDOW_SECONDS)},
+            )
+
+
+def _record_failed_attempt(ip: str) -> None:
+    with _rate_lock:
+        _login_attempts[ip].append(time.time())
 
 from app import crud
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
@@ -22,15 +48,20 @@ router = APIRouter(tags=["login"])
 
 @router.post("/login/access-token")
 def login_access_token(
-    session: SessionDep, form_data: Annotated[OAuth2PasswordRequestForm, Depends()]
+    request: Request,
+    session: SessionDep,
+    form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
 ) -> Token:
     """
     OAuth2 compatible token login, get an access token for future requests
     """
+    client_ip = request.client.host if request.client else "unknown"
+    _check_rate_limit(client_ip)
     user = crud.authenticate(
         session=session, email=form_data.username, password=form_data.password
     )
     if not user:
+        _record_failed_attempt(client_ip)
         raise HTTPException(status_code=400, detail="Incorrect email or password")
     elif not user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")

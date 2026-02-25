@@ -115,7 +115,25 @@ class Settings(BaseSettings):
     def _enforce_non_default_secrets(self) -> Self:
         self._check_default_secret("SECRET_KEY", self.SECRET_KEY)
         self._check_default_secret("POSTGRES_PASSWORD", self.POSTGRES_PASSWORD)
-        # Skip FIRST_SUPERUSER_PASSWORD check for local development
+        _weak_defaults = {"admin123", "changethis", "password", "changeme-in-production"}
+        if self.FIRST_SUPERUSER_PASSWORD in _weak_defaults:
+            message = (
+                'FIRST_SUPERUSER_PASSWORD is set to a known weak default. '
+                'Please change it for deployments.'
+            )
+            if self.ENVIRONMENT == "local":
+                warnings.warn(message, stacklevel=1)
+            else:
+                raise ValueError(message)
+        if self.SPARKBOT_PASSPHRASE in _weak_defaults:
+            message = (
+                'SPARKBOT_PASSPHRASE is set to a known weak default. '
+                'Please change it for deployments.'
+            )
+            if self.ENVIRONMENT == "local":
+                warnings.warn(message, stacklevel=1)
+            else:
+                raise ValueError(message)
         return self
 
 

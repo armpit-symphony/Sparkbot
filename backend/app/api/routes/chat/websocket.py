@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from typing import Dict, Optional, Set
 from uuid import UUID
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, HTTPException
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
@@ -37,27 +37,39 @@ ws_router = APIRouter(tags=["websocket"])
 
 
 @ws_router.websocket("/ws")
-async def websocket_main(websocket: WebSocket, token: str = Query(..., description="JWT access token")):
+async def websocket_main(websocket: WebSocket):
     """
     Main WebSocket endpoint for chat.
-    
-    Connect with: ws://host/ws?token={access_token}
-    
+
+    Authentication: send {"type": "auth", "token": "<JWT>"} as the first message.
+
     Client-to-Server Messages:
+    - {"type": "auth", "token": "..."}  (first message, required)
     - {"type": "join_room", "payload": {"room_id": "..."}}
     - {"type": "leave_room", "payload": {"room_id": "..."}}
     - {"type": "message", "payload": {"room_id": "...", "content": "...", ...}}
     - {"type": "typing", "payload": {"room_id": "...", "is_typing": true/false}}
     - {"type": "ping"}
     """
-    # Validate token and get user
+    await websocket.accept()
+
+    # First message must be auth
+    try:
+        auth_data = await asyncio.wait_for(websocket.receive_json(), timeout=10.0)
+    except (asyncio.TimeoutError, Exception):
+        await websocket.close(code=4001, reason="Authentication timeout")
+        return
+
+    if auth_data.get("type") != "auth" or not auth_data.get("token"):
+        await websocket.close(code=4001, reason="First message must be {type: 'auth', token: '...'}")
+        return
+
+    token = auth_data["token"]
     db = next(get_db())
     user = await get_current_chat_user_from_token(token, db)
     if not user:
         await websocket.close(code=4001, reason="Invalid or expired token")
         return
-    
-    await websocket.accept()
     
     try:
         while True:
@@ -312,17 +324,17 @@ async def chat_message_to_dict(
 async def websocket_chat(
     websocket: WebSocket,
     room_id: str,
-    token: str = Query(..., description="JWT access token"),
 ):
     """
     WebSocket endpoint for real-time chat.
-    
-    Connect with: ws://host/ws/rooms/{room_id}?token={access_token}
-    
+
+    Authentication: send {"type": "auth", "token": "<JWT>"} as the first message.
+
     Client-to-Server Messages:
+    - {"type": "auth", "token": "..."}  (first message, required)
     - {"type": "message", "content": "...", "client_msg_id": "...", "reply_to_id": "..."}
     - {"type": "ping"}
-    
+
     Server-to-Client Messages:
     - {"type": "connected", "room_id": "...", "messages": [...], "online_users": [...]}
     - {"type": "message", "message": {...}}
@@ -330,6 +342,21 @@ async def websocket_chat(
     - {"type": "pong"}
     - {"type": "error", "message": "..."}
     """
+    await websocket.accept()
+
+    # First message must be auth
+    try:
+        auth_data = await asyncio.wait_for(websocket.receive_json(), timeout=10.0)
+    except (asyncio.TimeoutError, Exception):
+        await websocket.close(code=4001, reason="Authentication timeout")
+        return
+
+    if auth_data.get("type") != "auth" or not auth_data.get("token"):
+        await websocket.close(code=4001, reason="First message must be {type: 'auth', token: '...'}")
+        return
+
+    token = auth_data["token"]
+
     # Validate room exists
     db = next(get_db())
     room_uuid = None
@@ -338,12 +365,12 @@ async def websocket_chat(
     except ValueError:
         await websocket.close(code=4000, reason="Invalid room ID format")
         return
-    
+
     room = get_chat_room_by_id(db, room_uuid)
     if not room:
         await websocket.close(code=4004, reason="Room not found")
         return
-    
+
     # Validate token and get user
     user = await get_current_chat_user_from_token(token, db)
     if not user:
@@ -358,10 +385,7 @@ async def websocket_chat(
     
     # Check if VIEWERs can connect (they can view but not send)
     can_send = membership.role not in [RoomRole.VIEWER]
-    
-    # Accept connection
-    await websocket.accept()
-    
+
     # Register connection
     await ws_manager.connect(websocket, room_id, str(user.id))
     
