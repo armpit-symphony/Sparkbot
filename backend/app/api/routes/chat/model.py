@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from app.api.deps import CurrentChatUser
 from app.api.routes.chat.llm import AVAILABLE_MODELS, get_model, set_model
+from app.api.routes.chat.agents import AGENTS
 
 router = APIRouter(tags=["chat-model"])
 
@@ -38,6 +39,17 @@ def get_current_model(current_user: CurrentChatUser) -> dict:
 
 class ModelSelect(BaseModel):
     model: str
+
+
+@router.get("/agents")
+def list_agents(current_user: CurrentChatUser) -> dict:
+    """Return all available named agents."""
+    return {
+        "agents": [
+            {"name": name, "emoji": info["emoji"], "description": info["description"]}
+            for name, info in AGENTS.items()
+        ]
+    }
 
 
 @router.post("/model")
