@@ -459,6 +459,12 @@ def get_room_messages(
 
 from typing import Optional, Any, Union
 
+
+class StreamMessageRequest(MessageCreate):
+    """Extended message request with optional confirm_id for write-tool confirmation."""
+    confirm_id: Optional[str] = None
+
+
 class SendMessageResponse(BaseModel):
     human: MessageResponse
     bot: Optional[MessageResponse] = None
@@ -589,7 +595,7 @@ def send_room_message(
 @router.post("/{room_id}/messages/stream")
 async def stream_room_message(
     room_id: UUID,
-    message_in: MessageCreate,
+    message_in: StreamMessageRequest,
     session: SessionDep,
     current_user: CurrentChatUser = None,
 ) -> StreamingResponse:
@@ -609,6 +615,53 @@ async def stream_room_message(
         raise HTTPException(status_code=403, detail="Not a member of this room")
     if membership.role == RoomRole.VIEWER:
         raise HTTPException(status_code=403, detail="VIEWERs cannot send messages")
+
+    # ── Confirmed write-tool execution path ───────────────────────────────────
+    if message_in.confirm_id:
+        from app.api.routes.chat.llm import consume_pending
+        from app.api.routes.chat.tools import execute_tool
+
+        pending = consume_pending(message_in.confirm_id)
+        if not pending:
+            raise HTTPException(status_code=400, detail="Confirmation expired or invalid")
+
+        tool_name = pending["tool"]
+        tool_args = pending["args"]
+        user_id_str = str(current_user.id)
+
+        async def confirmed_stream():
+            try:
+                from app.api.deps import get_db as _get_db
+                db2 = next(_get_db())
+                result = await execute_tool(tool_name, tool_args, user_id=user_id_str, session=db2, room_id=str(room_id))
+                # Save bot reply
+                bot_user2 = db2.exec(select(ChatUser).where(ChatUser.username == "sparkbot")).scalar_one_or_none()
+                if not bot_user2:
+                    bot_user2 = ChatUser(username="sparkbot", user_type=UserType.BOT, passphrase_hash="")
+                    db2.add(bot_user2)
+                    db2.commit()
+                    db2.refresh(bot_user2)
+                bot_reply2 = create_chat_message(
+                    session=db2,
+                    room_id=room_id,
+                    sender_id=bot_user2.id,
+                    content=result,
+                    sender_type="BOT",
+                )
+                done_id = str(bot_reply2.id)
+                db2.close()
+                # Stream result as tokens then done
+                for chunk in [result[i:i+80] for i in range(0, len(result), 80)]:
+                    yield f"data: {json.dumps({'type': 'token', 'token': chunk})}\n\n"
+                yield f"data: {json.dumps({'type': 'done', 'message_id': done_id})}\n\n"
+            except Exception as e:
+                yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+
+        return StreamingResponse(
+            confirmed_stream(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     # Save human message now, before streaming starts
     message = create_chat_message(

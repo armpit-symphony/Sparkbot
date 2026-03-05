@@ -53,24 +53,25 @@ async def websocket_main(websocket: WebSocket):
     """
     await websocket.accept()
 
-    # First message must be auth
-    try:
-        auth_data = await asyncio.wait_for(websocket.receive_json(), timeout=10.0)
-    except (asyncio.TimeoutError, Exception):
-        await websocket.close(code=4001, reason="Authentication timeout")
-        return
+    # Auth: prefer HttpOnly cookie; fall back to first-message auth
+    token = websocket.cookies.get("chat_token")
+    if not token:
+        try:
+            auth_data = await asyncio.wait_for(websocket.receive_json(), timeout=10.0)
+        except (asyncio.TimeoutError, Exception):
+            await websocket.close(code=4001, reason="Authentication timeout")
+            return
+        if auth_data.get("type") != "auth" or not auth_data.get("token"):
+            await websocket.close(code=4001, reason="First message must be {type: 'auth', token: '...'}")
+            return
+        token = auth_data["token"]
 
-    if auth_data.get("type") != "auth" or not auth_data.get("token"):
-        await websocket.close(code=4001, reason="First message must be {type: 'auth', token: '...'}")
-        return
-
-    token = auth_data["token"]
     db = next(get_db())
     user = await get_current_chat_user_from_token(token, db)
     if not user:
         await websocket.close(code=4001, reason="Invalid or expired token")
         return
-    
+
     try:
         while True:
             data = await websocket.receive_json()
@@ -344,18 +345,18 @@ async def websocket_chat(
     """
     await websocket.accept()
 
-    # First message must be auth
-    try:
-        auth_data = await asyncio.wait_for(websocket.receive_json(), timeout=10.0)
-    except (asyncio.TimeoutError, Exception):
-        await websocket.close(code=4001, reason="Authentication timeout")
-        return
-
-    if auth_data.get("type") != "auth" or not auth_data.get("token"):
-        await websocket.close(code=4001, reason="First message must be {type: 'auth', token: '...'}")
-        return
-
-    token = auth_data["token"]
+    # Auth: prefer HttpOnly cookie; fall back to first-message auth
+    token = websocket.cookies.get("chat_token")
+    if not token:
+        try:
+            auth_data = await asyncio.wait_for(websocket.receive_json(), timeout=10.0)
+        except (asyncio.TimeoutError, Exception):
+            await websocket.close(code=4001, reason="Authentication timeout")
+            return
+        if auth_data.get("type") != "auth" or not auth_data.get("token"):
+            await websocket.close(code=4001, reason="First message must be {type: 'auth', token: '...'}")
+            return
+        token = auth_data["token"]
 
     # Validate room exists
     db = next(get_db())

@@ -53,13 +53,12 @@ const useAuth = () => {
     onError: handleError.bind(showErrorToast),
   })
 
-  // Chat login using passphrase
+  // Chat login using passphrase — sets HttpOnly cookie server-side
   const chatLogin = async (data: { passphrase: string }) => {
     const response = await fetch("/api/v1/chat/users/login", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify(data),
     })
 
@@ -68,25 +67,11 @@ const useAuth = () => {
       throw new Error(error.detail || "Invalid passphrase")
     }
 
-    const result = await response.json()
-    localStorage.setItem("access_token", result.access_token)
-    
-    // Hard redirect to /dm - no React routing
+    // Server sets HttpOnly cookie — we only store a presence flag
+    sessionStorage.setItem("chat_auth", "1")
+
+    // Hard redirect to /dm
     window.location.replace("/dm")
-    console.log("[AUTH] Bootstrap fetch for rooms...")
-    fetch("/api/v1/chat/rooms", {
-      headers: {
-        Authorization: `Bearer ${result.access_token}`,
-      },
-    })
-      .then(async (res) => {
-        console.log("[AUTH] Bootstrap rooms status:", res.status)
-        const text = await res.text()
-        console.log("[AUTH] Bootstrap rooms body:", text.slice(0, 200))
-      })
-      .catch((e) => {
-        console.error("[AUTH] Bootstrap rooms error:", e)
-      })
   }
 
   const chatLoginMutation = useMutation({
@@ -101,6 +86,9 @@ const useAuth = () => {
 
   const logout = () => {
     localStorage.removeItem("access_token")
+    sessionStorage.removeItem("chat_auth")
+    // Clear server-side HttpOnly cookie
+    fetch("/api/v1/chat/users/session", { method: "DELETE", credentials: "include" }).catch(() => {})
     navigate({ to: "/login" })
   }
 

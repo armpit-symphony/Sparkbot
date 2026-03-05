@@ -6,6 +6,9 @@ by changing a model string. Per-user model preferences stored in memory.
 """
 import json
 import os
+import re
+import time
+import uuid as _uuid_module
 from typing import AsyncGenerator
 
 import litellm
@@ -35,6 +38,66 @@ AVAILABLE_MODELS: dict[str, str] = {
 # In-memory per-user model preferences  {user_id: model_name}
 # Resets on service restart — good enough until DB persistence is added
 _user_models: dict[str, str] = {}
+
+# ── Write-tool confirmation gate ──────────────────────────────────────────────
+
+WRITE_TOOLS: frozenset[str] = frozenset({
+    "email_send",
+    "slack_send_message",
+    "github_create_issue",
+    "notion_create_page",
+    "confluence_create_page",
+    "calendar_create_event",
+})
+
+# Pending confirmations: confirm_id -> {tool, args, user_id, room_id, created_at}
+_pending: dict[str, dict] = {}
+_PENDING_TTL = 600  # 10 minutes
+
+
+def _pending_ttl_cleanup() -> None:
+    now = time.time()
+    stale = [k for k, v in _pending.items() if now - v["created_at"] > _PENDING_TTL]
+    for k in stale:
+        _pending.pop(k, None)
+
+
+def consume_pending(confirm_id: str) -> dict | None:
+    """Pop and return a pending confirmation entry, or None if not found/expired."""
+    entry = _pending.pop(confirm_id, None)
+    if entry and time.time() - entry["created_at"] > _PENDING_TTL:
+        return None
+    return entry
+
+
+# ── Audit log redaction ───────────────────────────────────────────────────────
+
+_SECRET_KEY_RE = re.compile(
+    r"(password|passwd|secret|token|api_key|apikey|access_key|credential|auth_token|passphrase|private_key)",
+    re.IGNORECASE,
+)
+_SECRET_VALUE_PATTERNS = [
+    re.compile(r"sk-[A-Za-z0-9]{20,}"),
+    re.compile(r"xoxb-[A-Za-z0-9\-]+"),
+    re.compile(r"ghp_[A-Za-z0-9]{36}"),
+    re.compile(r"AKIA[A-Z0-9]{16}"),
+    re.compile(r"secret_[A-Za-z0-9]{40,}"),
+]
+
+
+def _redact_for_audit(tool_input: str, tool_result: str) -> tuple[str, str]:
+    """Redact sensitive values from audit log entries."""
+    try:
+        data = json.loads(tool_input)
+        for key in list(data.keys()):
+            if _SECRET_KEY_RE.search(key):
+                data[key] = "[REDACTED]"
+        tool_input = json.dumps(data)
+    except Exception:
+        pass
+    for pattern in _SECRET_VALUE_PATTERNS:
+        tool_result = pattern.sub("[REDACTED]", tool_result)
+    return tool_input, tool_result
 
 
 def get_model(user_id: str | None = None) -> str:
@@ -77,6 +140,7 @@ async def stream_chat_with_tools(
     db_session=None,
     room_id: str | None = None,
     agent_name: str | None = None,
+    confirmed_ids: set[str] | None = None,
 ) -> AsyncGenerator[dict, None]:
     """
     Tool-aware streaming. Yields typed event dicts:
@@ -117,6 +181,29 @@ async def stream_chat_with_tools(
                 except Exception:
                     tool_args = {}
 
+                # ── Confirmation gate for write tools ─────────────────────────
+                if tool_name in WRITE_TOOLS:
+                    already_confirmed = confirmed_ids and any(
+                        c for c in (confirmed_ids or set()) if c
+                    )
+                    if not already_confirmed:
+                        confirm_id = str(_uuid_module.uuid4())
+                        _pending_ttl_cleanup()
+                        _pending[confirm_id] = {
+                            "tool": tool_name,
+                            "args": tool_args,
+                            "user_id": user_id,
+                            "room_id": room_id,
+                            "created_at": time.time(),
+                        }
+                        yield {
+                            "type": "confirm_required",
+                            "confirm_id": confirm_id,
+                            "tool": tool_name,
+                            "input": tool_args,
+                        }
+                        return
+
                 yield {"type": "tool_start", "tool": tool_name, "input": tool_args}
 
                 result = await execute_tool(tool_name, tool_args, user_id=user_id, session=db_session, room_id=room_id)
@@ -128,11 +215,14 @@ async def stream_chat_with_tools(
                     try:
                         import uuid as _uuid
                         from app.crud import create_audit_log
+                        redacted_input, redacted_result = _redact_for_audit(
+                            tc.function.arguments, result
+                        )
                         create_audit_log(
                             session=db_session,
                             tool_name=tool_name,
-                            tool_input=tc.function.arguments,
-                            tool_result=result,
+                            tool_input=redacted_input,
+                            tool_result=redacted_result,
                             user_id=_uuid.UUID(user_id) if user_id else None,
                             room_id=_uuid.UUID(room_id) if room_id else None,
                             agent_name=agent_name,

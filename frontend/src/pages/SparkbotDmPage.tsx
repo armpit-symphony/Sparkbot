@@ -11,6 +11,59 @@ export const Route = createFileRoute("/dm")({
   component: SparkbotDmPage,
 })
 
+// ─── Confirm modal ────────────────────────────────────────────────────────────
+
+interface PendingConfirm {
+  confirmId: string
+  tool: string
+  input: Record<string, unknown>
+}
+
+function describeAction(tool: string, input: Record<string, unknown>): string {
+  switch (tool) {
+    case "email_send":
+      return `Send email to ${input.to ?? "?"} — subject: ${input.subject ?? "(none)"}`
+    case "slack_send_message":
+      return `Post to Slack #${input.channel ?? "?"}: ${String(input.text ?? "").slice(0, 80)}`
+    case "github_create_issue":
+      return `Create GitHub issue: ${input.title ?? "?"}`
+    case "notion_create_page":
+      return `Create Notion page: ${input.title ?? "?"}`
+    case "confluence_create_page":
+      return `Create Confluence page: ${input.title ?? "?"}`
+    case "calendar_create_event":
+      return `Create calendar event: ${input.title ?? input.summary ?? "?"}`
+    default:
+      return `Execute ${tool}`
+  }
+}
+
+function ConfirmModal({ pending, onConfirm, onCancel }: {
+  pending: PendingConfirm
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-sm rounded-xl border bg-popover p-6 shadow-xl">
+        <div className="mb-1 flex items-center gap-2 text-sm font-semibold">
+          <span>⚠️</span>
+          <span>Confirm action</span>
+        </div>
+        <p className="mb-4 text-sm text-muted-foreground">{describeAction(pending.tool, pending.input)}</p>
+        <div className="flex justify-end gap-2">
+          <button onClick={onCancel} className="rounded-md border px-4 py-1.5 text-sm hover:bg-muted">
+            Cancel
+          </button>
+          <button onClick={onConfirm} className="rounded-md bg-primary px-4 py-1.5 text-sm text-primary-foreground hover:opacity-90">
+            Confirm
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Message {
@@ -230,11 +283,10 @@ function highlight(text: string, query: string): React.ReactNode {
 
 interface SearchPanelProps {
   roomId: string
-  token: string
   onClose: () => void
 }
 
-function SearchPanel({ roomId, token, onClose }: SearchPanelProps) {
+function SearchPanel({ roomId, onClose }: SearchPanelProps) {
   const [query, setQuery] = useState("")
   const [results, setResults] = useState<Message[]>([])
   const [searching, setSearching] = useState(false)
@@ -249,7 +301,7 @@ function SearchPanel({ roomId, token, onClose }: SearchPanelProps) {
     setSearching(true)
     try {
       const res = await fetch(`/api/v1/chat/messages/${roomId}/search?q=${encodeURIComponent(trimmed)}&limit=30`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
       })
       if (res.ok) {
         const data = await res.json()
@@ -259,7 +311,7 @@ function SearchPanel({ roomId, token, onClose }: SearchPanelProps) {
       setSearching(false)
       setSearched(true)
     }
-  }, [roomId, token])
+  }, [roomId])
 
   // Debounce search
   useEffect(() => {
@@ -341,10 +393,10 @@ function SparkbotDmPage() {
   const [showSearch, setShowSearch] = useState(false)
   const [meeting, setMeeting] = useState<MeetingState>(emptyMeeting())
   const [uploading, setUploading] = useState(false)
+  const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const token = localStorage.getItem("access_token") ?? ""
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }) }, [messages])
   useEffect(() => { setShowCommands(inputValue.startsWith("/") && !inputValue.includes(" ")) }, [inputValue])
@@ -352,20 +404,22 @@ function SparkbotDmPage() {
 
   useEffect(() => {
     async function init() {
-      if (!token) { window.location.href = "/login"; return }
+      if (!sessionStorage.getItem("chat_auth") && !localStorage.getItem("access_token")) {
+        window.location.href = "/login"; return
+      }
       try {
-        const res = await fetch("/api/v1/chat/users/bootstrap", { method: "POST", headers: { Authorization: `Bearer ${token}` } })
+        const res = await fetch("/api/v1/chat/users/bootstrap", { method: "POST", credentials: "include" })
         if (!res.ok) { window.location.href = "/login"; return }
         const boot = await res.json()
         setRoomId(boot.room_id)
-        const msgsRes = await fetch(`/api/v1/chat/rooms/${boot.room_id}/messages`, { headers: { Authorization: `Bearer ${token}` } })
+        const msgsRes = await fetch(`/api/v1/chat/rooms/${boot.room_id}/messages`, { credentials: "include" })
         if (msgsRes.ok) {
           const d = await msgsRes.json()
           setMessages(d.messages ?? d.items ?? (Array.isArray(d) ? d : []))
         }
         // Load agent list (falls back to BUILTIN_AGENTS if request fails)
         try {
-          const agentsRes = await fetch("/api/v1/chat/agents", { headers: { Authorization: `Bearer ${token}` } })
+          const agentsRes = await fetch("/api/v1/chat/agents", { credentials: "include" })
           if (agentsRes.ok) { const ag = await agentsRes.json(); setAgents(ag.agents ?? BUILTIN_AGENTS) }
         } catch { /* keep built-ins */ }
       } catch (e) { console.error(e) } finally { setLoading(false) }
@@ -401,7 +455,7 @@ function SparkbotDmPage() {
 
     if (cmd === "/audit") {
       if (!roomId) return true
-      fetch(`/api/v1/chat/audit?limit=10&room_id=${roomId}`, { headers: { Authorization: `Bearer ${token}` } })
+      fetch(`/api/v1/chat/audit?limit=10&room_id=${roomId}`, { credentials: "include" })
         .then(r => r.json())
         .then(data => {
           const items: any[] = data.items ?? []
@@ -468,7 +522,7 @@ function SparkbotDmPage() {
     if (cmd === "/model") {
       if (!args) {
         // List available models
-        fetch("/api/v1/chat/models", { headers: { Authorization: `Bearer ${token}` } })
+        fetch("/api/v1/chat/models", { credentials: "include" })
           .then(r => r.json())
           .then(data => {
             const lines = data.models.map((m: { id: string; description: string; active: boolean }) =>
@@ -482,7 +536,8 @@ function SparkbotDmPage() {
       // Set model
       fetch("/api/v1/chat/model", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ model: args.trim() }),
       })
         .then(async r => {
@@ -500,7 +555,7 @@ function SparkbotDmPage() {
 
     if (cmd === "/memory") {
       if (!args || args === "list") {
-        fetch("/api/v1/chat/memory/", { headers: { Authorization: `Bearer ${token}` } })
+        fetch("/api/v1/chat/memory/", { credentials: "include" })
           .then(r => r.json())
           .then(data => {
             if (!data.memories?.length) {
@@ -516,7 +571,7 @@ function SparkbotDmPage() {
         return true
       }
       if (args === "clear") {
-        fetch("/api/v1/chat/memory/", { method: "DELETE", headers: { Authorization: `Bearer ${token}` } })
+        fetch("/api/v1/chat/memory/", { method: "DELETE", credentials: "include" })
           .then(r => r.json())
           .then(d => setMessages(prev => [...prev, systemMsg(`Cleared ${d.cleared} memories.`)]))
           .catch(() => setMessages(prev => [...prev, systemMsg("⚠️ Could not clear memories.")]))
@@ -529,7 +584,7 @@ function SparkbotDmPage() {
     if (cmd === "/tasks") {
       if (!roomId) { setMessages(prev => [...prev, systemMsg("⚠️ Room not loaded yet.")]); return true }
       const filter = args === "done" ? "done" : args === "all" ? "all" : "open"
-      fetch(`/api/v1/chat/rooms/${roomId}/tasks?filter=${filter}`, { headers: { Authorization: `Bearer ${token}` } })
+      fetch(`/api/v1/chat/rooms/${roomId}/tasks?filter=${filter}`, { credentials: "include" })
         .then(r => r.json())
         .then(data => {
           if (!data.tasks?.length) {
@@ -550,7 +605,7 @@ function SparkbotDmPage() {
 
     if (cmd === "/remind") {
       if (!roomId) { setMessages(prev => [...prev, systemMsg("⚠️ Room not loaded yet.")]); return true }
-      fetch(`/api/v1/chat/rooms/${roomId}/reminders?status=pending`, { headers: { Authorization: `Bearer ${token}` } })
+      fetch(`/api/v1/chat/rooms/${roomId}/reminders?status=pending`, { credentials: "include" })
         .then(r => r.json())
         .then(data => {
           if (!data.reminders?.length) {
@@ -646,7 +701,7 @@ function SparkbotDmPage() {
 
       const res = await fetch(`/api/v1/chat/rooms/${roomId}/upload`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
         body: form,
       })
 
@@ -697,7 +752,7 @@ function SparkbotDmPage() {
     } finally {
       setUploading(false)
     }
-  }, [roomId, uploading, sending, token, inputValue])
+  }, [roomId, uploading, sending, inputValue])
 
   // ── Send ─────────────────────────────────────────────────────────────────────
 
@@ -728,7 +783,8 @@ function SparkbotDmPage() {
     try {
       const res = await fetch(`/api/v1/chat/rooms/${roomId}/messages/stream`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ content }),
       })
 
@@ -763,6 +819,12 @@ function SparkbotDmPage() {
               setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, toolActivity: undefined } : m))
             } else if (ev.type === "token") {
               setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, content: m.content + ev.token } : m))
+            } else if (ev.type === "confirm_required") {
+              // Pause streaming and show confirmation modal
+              setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, content: "", isStreaming: false, toolActivity: undefined } : m))
+              setPendingConfirm({ confirmId: ev.confirm_id, tool: ev.tool, input: ev.input ?? {} })
+              setSending(false)
+              return
             } else if (ev.type === "done") {
               setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, id: ev.message_id, isStreaming: false, toolActivity: undefined, agent: ev.agent } : m))
             } else if (ev.type === "error") {
@@ -776,7 +838,57 @@ function SparkbotDmPage() {
     } finally {
       setSending(false)
     }
-  }, [inputValue, roomId, sending, token, handleCommand, captureMeetingItem, agents])
+  }, [inputValue, roomId, sending, handleCommand, captureMeetingItem, agents])
+
+  // ── Confirmation handlers ────────────────────────────────────────────────────
+
+  const handleConfirm = useCallback(async () => {
+    if (!pendingConfirm || !roomId) return
+    const { confirmId } = pendingConfirm
+    setPendingConfirm(null)
+    setSending(true)
+    const tempBotId = `temp-bot-confirm-${Date.now()}`
+    setMessages(prev => [...prev,
+      { id: tempBotId, content: "", created_at: new Date().toISOString(), sender_type: "BOT", isStreaming: true },
+    ])
+    try {
+      const res = await fetch(`/api/v1/chat/rooms/${roomId}/messages/stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ content: "", confirm_id: confirmId }),
+      })
+      if (!res.ok || !res.body) {
+        setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, content: "⚠️ Confirmation failed.", isStreaming: false } : m))
+        setSending(false); return
+      }
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ""
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split("\n"); buffer = lines.pop() ?? ""
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue
+          try {
+            const ev = JSON.parse(line.slice(6))
+            if (ev.type === "token") setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, content: m.content + ev.token } : m))
+            else if (ev.type === "done") setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, id: ev.message_id, isStreaming: false } : m))
+            else if (ev.type === "error") setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, content: `⚠️ ${ev.error}`, isStreaming: false } : m))
+          } catch { /* ignore */ }
+        }
+      }
+    } catch {
+      setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, content: "⚠️ Connection error.", isStreaming: false } : m))
+    } finally { setSending(false) }
+  }, [pendingConfirm, roomId])
+
+  const handleCancel = useCallback(() => {
+    setPendingConfirm(null)
+    setMessages(prev => [...prev, systemMsg("Action cancelled.")])
+  }, [])
 
   if (loading) {
     return <div className="flex h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
@@ -788,9 +900,14 @@ function SparkbotDmPage() {
 
   return (
     <div className="relative flex h-screen flex-col">
+      {/* Confirmation modal */}
+      {pendingConfirm && (
+        <ConfirmModal pending={pendingConfirm} onConfirm={handleConfirm} onCancel={handleCancel} />
+      )}
+
       {/* Search overlay */}
       {showSearch && roomId && (
-        <SearchPanel roomId={roomId} token={token} onClose={() => setShowSearch(false)} />
+        <SearchPanel roomId={roomId} onClose={() => setShowSearch(false)} />
       )}
 
       {/* Header */}
@@ -814,7 +931,11 @@ function SparkbotDmPage() {
           <button onClick={() => setShowSearch(true)} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Search messages">
             <Search className="size-4" />
           </button>
-          <button onClick={() => { localStorage.removeItem("access_token"); window.location.href = "/login" }} className="text-sm text-muted-foreground hover:text-foreground">
+          <button onClick={() => {
+            localStorage.removeItem("access_token")
+            sessionStorage.removeItem("chat_auth")
+            fetch("/api/v1/chat/users/session", { method: "DELETE", credentials: "include" }).finally(() => { window.location.href = "/login" })
+          }} className="text-sm text-muted-foreground hover:text-foreground">
             Logout
           </button>
         </div>

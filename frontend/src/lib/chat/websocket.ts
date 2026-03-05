@@ -36,15 +36,13 @@ class ChatWebSocket {
     }
   }
 
-  connect(token: string): void {
+  connect(_token?: string): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
       return
     }
 
-    const url = new URL(this.config.url)
-    url.searchParams.set("token", token)
-
-    this.ws = new WebSocket(url.toString())
+    // Token intentionally not sent in URL — browser sends HttpOnly cookie automatically
+    this.ws = new WebSocket(this.config.url)
 
     this.ws.onopen = () => {
       console.log("Chat WebSocket connected")
@@ -111,11 +109,7 @@ class ChatWebSocket {
     this.reconnectTimeout = setTimeout(() => {
       this.reconnectAttempts++
       console.log(`Attempting to reconnect (${this.reconnectAttempts})...`)
-      // Get token from localStorage
-      const token = localStorage.getItem("access_token")
-      if (token) {
-        this.connect(token)
-      }
+      this.connect()
     }, this.config.reconnectInterval)
   }
 

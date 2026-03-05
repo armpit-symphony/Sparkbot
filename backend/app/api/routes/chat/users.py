@@ -7,7 +7,8 @@ from datetime import timedelta
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlmodel import Session
@@ -32,12 +33,13 @@ class ChatLoginResponse(BaseModel):
     token_type: str = "bearer"
 
 
-@router.post("/login", response_model=ChatLoginResponse)
-def chat_login(request: ChatLoginRequest) -> ChatLoginResponse:
+@router.post("/login")
+def chat_login(request: ChatLoginRequest) -> Response:
     """
     Simple passphrase login for Sparkbot chat access.
 
-    Takes a passphrase and returns a JWT token if valid.
+    Sets an HttpOnly cookie with the JWT (XSS-safe).
+    Also returns the token in the body for backward compatibility.
     """
     if not request.passphrase:
         raise HTTPException(
@@ -58,10 +60,25 @@ def chat_login(request: ChatLoginRequest) -> ChatLoginResponse:
         expires_delta=access_token_expires
     )
 
-    return ChatLoginResponse(
-        access_token=access_token,
-        token_type="bearer"
+    max_age = int(access_token_expires.total_seconds())
+    response = JSONResponse({"success": True, "token_type": "cookie"})
+    response.set_cookie(
+        key="chat_token",
+        value=access_token,
+        httponly=True,
+        secure=True,
+        samesite="strict",
+        max_age=max_age,
+        path="/api",
     )
+    return response
+
+
+@router.delete("/session")
+def chat_logout(response: Response) -> dict:
+    """Clear the HttpOnly chat session cookie."""
+    response.delete_cookie(key="chat_token", path="/api")
+    return {"success": True}
 
 
 @router.get("/", response_model=list[ChatUserResponse])

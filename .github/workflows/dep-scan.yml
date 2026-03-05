@@ -1,0 +1,58 @@
+name: Dependency Security Scan
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  schedule:
+    - cron: '0 3 * * 1'  # Weekly Monday 3am UTC
+
+jobs:
+  pip-audit:
+    name: Python (pip-audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pip-audit
+        run: pip install pip-audit
+
+      - name: Audit Python dependencies
+        # || true — advisory mode; findings don't fail the build initially
+        run: |
+          pip-audit \
+            --requirement backend/requirements.txt \
+            --output json \
+            -o pip-audit-results.json || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pip-audit-results
+          path: pip-audit-results.json
+
+  npm-audit:
+    name: Node (npm audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Generate package-lock.json and audit
+        # npm audit needs a lockfile; generate one without touching node_modules
+        # || true — advisory mode; findings don't fail the build initially
+        run: |
+          cd frontend
+          npm install --package-lock-only
+          npm audit --json > npm-audit-results.json || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-results
+          path: frontend/npm-audit-results.json

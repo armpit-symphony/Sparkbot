@@ -1,8 +1,8 @@
 from collections.abc import Generator
-from typing import Annotated
+from typing import Annotated, Optional
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from jwt.exceptions import InvalidTokenError
 from pydantic import ValidationError
@@ -17,6 +17,12 @@ from app.models import TokenPayload, User, ChatUser, UserType
 reusable_oauth2 = OAuth2PasswordBearer(
     tokenUrl=f"{settings.API_V1_STR}/login/access-token"
 )
+
+_chat_oauth2_optional = OAuth2PasswordBearer(
+    tokenUrl=f"{settings.API_V1_STR}/chat/users/login",
+    auto_error=False,
+)
+OptionalChatBearerDep = Annotated[Optional[str], Depends(_chat_oauth2_optional)]
 
 
 def get_db() -> Generator[Session, None, None]:
@@ -50,11 +56,21 @@ def get_current_user(session: SessionDep, token: TokenDep) -> User:
 CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
-def get_current_chat_user(session: SessionDep, token: TokenDep) -> ChatUser:
+def get_current_chat_user(
+    session: SessionDep,
+    request: Request,
+    bearer_token: OptionalChatBearerDep,
+) -> ChatUser:
     """
-    Get the current chat user from JWT token.
+    Get the current chat user. Accepts HttpOnly cookie first, falls back to Bearer token.
     Used for chat routes that authenticate via passphrase login.
     """
+    token = request.cookies.get("chat_token") or bearer_token
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authenticated",
+        )
     try:
         payload = jwt.decode(
             token, settings.SECRET_KEY, algorithms=[security.ALGORITHM]

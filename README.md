@@ -262,7 +262,8 @@ curl https://remote.sparkpitlabs.com/api/v1/utils/health-check/
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | `/api/v1/chat/users/bootstrap` | Auto-create user + DM room, return room_id |
-| `POST` | `/api/v1/chat/users/login` | Login → JWT token |
+| `POST` | `/api/v1/chat/users/login` | Login with passphrase → sets HttpOnly `chat_token` cookie |
+| `DELETE` | `/api/v1/chat/users/session` | Logout → clears session cookie |
 | `GET` | `/api/v1/chat/rooms/{id}/messages` | Room message history |
 | `POST` | `/api/v1/chat/rooms/{id}/messages/stream` | Send message, receive SSE stream |
 | `POST` | `/api/v1/chat/rooms/{id}/upload` | Upload file, receive SSE stream |
@@ -272,6 +273,7 @@ curl https://remote.sparkpitlabs.com/api/v1/utils/health-check/
 | `GET` | `/api/v1/chat/memory/` | List stored user memories |
 | `DELETE` | `/api/v1/chat/memory/{id}` | Delete a specific memory |
 | `DELETE` | `/api/v1/chat/memory/` | Clear all memories |
+| `GET` | `/api/v1/chat/audit` | Recent tool audit log (room-scoped) |
 | `GET` | `/api/v1/utils/health-check/` | Health check → `true` |
 
 Interactive API docs: `http://localhost:8091/docs`
@@ -314,30 +316,47 @@ sparkbot-v2/
 
 ---
 
+## Security
+
+Sparkbot v2 has passed a full security audit (Phases A–E). Key controls:
+
+| Area | Implementation |
+|------|----------------|
+| **Session tokens** | HttpOnly `Secure SameSite=Strict` cookie — never exposed to JavaScript |
+| **Bearer fallback** | Old Bearer sessions still accepted until they expire (backward compat) |
+| **Write-tool gate** | LLM cannot email/Slack/GitHub/Notion/Confluence/Calendar autonomously — user must confirm via modal |
+| **Audit redaction** | Secret-pattern keys and token-format values redacted before audit log write |
+| **Response headers** | HSTS, CSP, X-Frame-Options, X-Content-Type-Options, Permissions-Policy, Referrer-Policy |
+| **Rate limiting** | Passphrase login: 10 attempts / 15 min per IP |
+| **Room authz** | All message/upload/audit endpoints gated by membership; non-members get 403 |
+| **Dep scanning** | `pip-audit` + `npm audit` run on every push and weekly via GitHub Actions |
+| **Secret scanning** | `gitleaks` pre-commit hook + CI gate |
+| **Git history** | `.env` / `backend/.env` purged from all commits via `git filter-repo` |
+
+---
+
 ## Roadmap
 
-See [`/home/sparky/sparkbot/LOGBOOK_handoff.md`](../sparkbot/LOGBOOK_handoff.md) for full session history and detailed roadmap.
-
-### Done
+### Features — all complete ✅
 - ✅ Streaming SSE responses, markdown rendering, conversation context
 - ✅ Slash commands + autocomplete, meeting mode, message search, file uploads
 - ✅ Multi-model support via litellm (7 providers)
-- ✅ Tool calling framework (web search, calculator, datetime)
+- ✅ Tool calling framework (25+ tools across web, calendar, email, GitHub, Notion, Confluence, Slack)
 - ✅ Persistent per-user memory (DB-backed, injected into system prompt)
-- ✅ Web search reliability (Brave → SerpAPI → DuckDuckGo fallback + OpenClaw bridge)
-- ✅ Calendar integration (CalDAV — list events, create events)
-- ✅ Task/todo management (create, list, complete tasks; room-scoped; `/tasks` command)
-- ✅ Document summarisation (PDF/DOCX/TXT/MD/CSV — text extract + LLM summary via upload stream)
-- ✅ Proactive reminders (asyncio scheduler, once/daily/weekly recurrence, WebSocket push on fire)
-- ✅ Email integration (IMAP fetch/search + SMTP send; 3 LLM tools; zero new dependencies)
-- ✅ GitHub integration (list PRs, get PR details + CI checks, create issues; 4 LLM tools via httpx)
-- ✅ Notion integration (search, get page, create page; 3 LLM tools; Notion Blocks API)
-- ✅ Confluence integration (CQL search, get page, create page; 3 LLM tools; Atlassian REST API)
-- ✅ Slack bridge (3 outbound LLM tools + inbound Events API webhook; @mentions → LLM → threaded reply)
-- ✅ Multi-agent rooms (@mention routing; 4 agents: researcher/coder/writer/analyst; agent badge UI; custom agents via env)
-- ✅ Audit log (every tool call recorded; `audit_logs` DB table; `GET /audit` API; `/audit` slash command)
+- ✅ Calendar integration (CalDAV), task management, proactive reminders
+- ✅ Document summarisation (PDF/DOCX/TXT/MD/CSV)
+- ✅ Email integration (IMAP + SMTP), GitHub, Notion, Confluence, Slack
+- ✅ Multi-agent rooms (@researcher / @coder / @writer / @analyst)
+- ✅ Audit log (tool calls recorded, room-scoped, `/audit` command)
 
-### Phase 4 complete ✅
-All planned integrations are done. Remaining polish items:
+### Security audit — all phases complete ✅
+- ✅ Phase A — access control + secret hygiene
+- ✅ Phase B — authentication/session hardening
+- ✅ Phase C — runtime correctness
+- ✅ Phase D — write-tool gate, audit redaction, HttpOnly cookies, security headers
+- ✅ Phase E — dependency scanning CI workflow
+
+### Pending (ops, not blocking)
+- Key rotation — run after active testing window closes (see `ROTATION_RUNBOOK.md`)
 - Message edit UI (backend PATCH endpoint exists, no frontend)
 - Reply threading UI (DB + API ready, no frontend component)

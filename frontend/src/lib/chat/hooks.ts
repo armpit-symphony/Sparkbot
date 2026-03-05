@@ -108,7 +108,7 @@ export function useLeaveRoom() {
 
 export function useChatWebSocket() {
   return {
-    connect: (token: string) => chatWebSocket.connect(token),
+    connect: (_token?: string) => chatWebSocket.connect(),
     disconnect: () => chatWebSocket.disconnect(),
     joinRoom: (roomId: string) => chatWebSocket.joinRoom(roomId),
     leaveRoom: (roomId: string) => chatWebSocket.leaveRoom(roomId),

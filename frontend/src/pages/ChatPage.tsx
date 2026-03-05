@@ -50,13 +50,10 @@ function ChatPage() {
       setActionStatus("clicked")
       console.log("[UI] Join clicked")
       try {
-        const token = localStorage.getItem("access_token")
         const res = await fetch("/api/v1/chat/rooms", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify({ name: roomName.trim() }),
         })
         const text = await res.text()
@@ -74,9 +71,8 @@ function ChatPage() {
             setBootStatus(null)
             // Small delay then re-boot to refresh list
             setTimeout(() => {
-              const token2 = localStorage.getItem("access_token")
               fetch("/api/v1/chat/rooms", {
-                headers: { Authorization: `Bearer ${token2}` }
+                credentials: "include",
               }).then(r => r.json()).then(data => {
                 console.log("[UI] Refreshed rooms:", data)
                 setBootStatus({ status: 200, body: JSON.stringify(data) })
@@ -159,20 +155,9 @@ function ChatPage() {
     
     async function doBoot() {
       try {
-        // Read token directly from localStorage - no module race conditions
-        const token = localStorage.getItem("access_token")
-        console.log("[BOOT] Token from localStorage:", token?.substring?.(0, 30))
-        
-        if (!token) {
-          console.log("[BOOT] No token in localStorage")
-          return
-        }
-        
         console.log("[BOOT] Fetching /api/v1/chat/rooms...")
         const res = await fetch("/api/v1/chat/rooms", {
-          headers: {
-            "Authorization": `Bearer ${token}`,
-          }
+          credentials: "include",
         })
         const text = await res.text()
         console.log("[BOOT] rooms status:", res.status)
@@ -190,10 +175,8 @@ function ChatPage() {
               console.log("[BOOT] Creating Sparkbot DM room...")
               const createRes = await fetch("/api/v1/chat/rooms", {
                 method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "Authorization": `Bearer ${token}`,
-                },
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
                 body: JSON.stringify({ name: "Sparkbot DM" }),
               })
               console.log("[BOOT] Created room:", createRes.status)
@@ -293,13 +276,10 @@ function ChatPage() {
   // Typing users
   const typingUsers = useTypingUsers(selectedRoom?.id || null)
 
-  // Connect to WebSocket on mount
+  // Connect to WebSocket on mount (cookie sent automatically)
   useEffect(() => {
-    const token = localStorage.getItem("access_token")
-    console.log("[CHATPAGE] WS connect token present:", !!token)
-    if (token) {
-      ws.connect(token)
-    }
+    console.log("[CHATPAGE] WS connect")
+    ws.connect()
 
     return () => {
       ws.disconnect()
@@ -338,18 +318,14 @@ function ChatPage() {
     async (content: string) => {
       if (!selectedRoom || !content.trim()) return
 
-      // Use localStorage directly to avoid module race conditions
-      const token = localStorage.getItem("access_token")
-      console.log("[SEND] Sending message, token:", token?.substring(0, 20))
+      console.log("[SEND] Sending message")
       setSendStatus("sending...")
-      
+
       try {
         const res = await fetch(`/api/v1/chat/rooms/${selectedRoom.id}/messages`, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`,
-          },
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify({ content: content.trim() }),
         })
         
@@ -432,7 +408,6 @@ BOOT status={(bootStatus as any).status}
           <div className="absolute inset-0 flex items-center justify-center bg-black/50">
             <pre className="bg-black p-4 text-white text-xs whitespace-pre-wrap max-w-md">
 mounted={mounted ? "true" : "false"}
-localStorage has token: {localStorage.getItem("access_token") ? "yes" : "no"}
 STUCK: rooms request never fired
             </pre>
           </div>
