@@ -35,12 +35,14 @@ next-env.d.ts
 dist/
 dist
 frontend/build/
+frontend/dist/
 
 # Environment files
 *.env
 *.env.*
 *token.json*
 *credentials.json*
+.env.local
 
 # Logs and debug files
 npm-debug.log*
@@ -48,6 +50,7 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 dump.rdb
+backend/uvicorn.log
 
 # System files
 .DS_Store
@@ -58,6 +61,7 @@ __pycache__/
 *pyc*
 venv/
 .venv/
+backend/venv/
 
 # Development tools
 chainlit.md
@@ -70,6 +74,12 @@ chainlit.md
 
 # Data and databases
 agenthub/agents/youtube/db
+backend/sparkbot_chat.db
+backend/*.db
+sparkbot/workspace/sessions/active.json
+
+# Backend runtime
+backend/uploads/
 
 # Archive files and large assets
 **/*.zip
@@ -86,6 +96,6 @@ agenthub/agents/youtube/db
 # Mobile development
 android-sdk/
 
-# Runtime state
-backend/sparkbot_chat.db
-sparkbot/workspace/sessions/active.json
+# Backup files
+*.bak
+*.bak_*

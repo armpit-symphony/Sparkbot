@@ -4,5 +4,8 @@ from app.api.routes.chat.rooms import router as rooms_router
 from app.api.routes.chat.users import router as users_router
 from app.api.routes.chat.websocket import ws_router
 from app.api.routes.chat.bot_integration import router as bot_integration_router
+from app.api.routes.chat.uploads import router as uploads_router
+from app.api.routes.chat.model import router as model_router
+from app.api.routes.chat.memory import router as memory_router
 
-__all__ = ["messages_router", "rooms_router", "users_router", "ws_router", "bot_integration_router"]
+__all__ = ["messages_router", "rooms_router", "users_router", "ws_router", "bot_integration_router", "uploads_router", "model_router", "memory_router"]

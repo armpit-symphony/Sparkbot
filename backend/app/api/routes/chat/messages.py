@@ -3,6 +3,7 @@ API routes for chat messages.
 
 Handles message history retrieval.
 """
+import logging
 from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
@@ -17,7 +18,7 @@ from app.crud import (
     get_chat_message_by_id,
     get_chat_messages,
 )
-from app.models import ChatMessage, ChatRoomMember, ChatUser, RoomRole, UserType
+from app.models import ChatMessage, ChatRoom, ChatRoomMember, ChatUser, RoomRole, UserType
 from app.schemas.chat import (
     MessageCreate,
     MessageListResponse,
@@ -26,6 +27,42 @@ from app.schemas.chat import (
 )
 
 router = APIRouter(prefix="/messages", tags=["chat-messages"])
+
+# Configuration
+SPARKBOT_URL = "http://127.0.0.1:8080"
+logger = logging.getLogger(__name__)
+
+
+async def call_sparkbot_inline(message: str) -> str | None:
+    """
+    Call the npm sparkbot on port 8080 to get a response.
+    
+    Returns bot response text or None if it fails.
+    """
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                f"{SPARKBOT_URL}/chat",
+                json={"message": message},
+            )
+            if response.status_code == 200:
+                data = response.json()
+                return data.get("response", None)
+            else:
+                logger.error(f"Bot returned {response.status_code}: {response.text}")
+                return None
+    except Exception as e:
+        logger.error(f"Bot call failed: {e}")
+        return None
+
+
+def get_sparkbot_user(session: Session) -> ChatUser | None:
+    """Get or create the sparkbot user."""
+    bot = session.exec(
+        select(ChatUser).where(ChatUser.username == "sparkbot")
+    ).scalar_one_or_none()
+    return bot
 
 
 @router.get("/{room_id}", response_model=MessageListResponse)
@@ -84,6 +121,55 @@ def read_chat_messages(
     )
 
 
+@router.get("/{room_id}/search", response_model=MessageListResponse)
+def search_room_messages(
+    room_id: UUID,
+    q: str,
+    session: SessionDep,
+    current_user: CurrentChatUser = None,
+    limit: int = 30,
+) -> Any:
+    """Search messages in a room by content (case-insensitive)."""
+    q = q.strip()
+    if len(q) < 2:
+        raise HTTPException(status_code=400, detail="Query must be at least 2 characters")
+
+    if current_user:
+        membership = session.exec(
+            select(ChatRoomMember)
+            .where(ChatRoomMember.room_id == room_id)
+            .where(ChatRoomMember.user_id == current_user.id)
+        ).first()
+        if not membership:
+            raise HTTPException(status_code=403, detail="Not a member of this room")
+
+    results = session.exec(
+        select(ChatMessage)
+        .where(ChatMessage.room_id == room_id)
+        .where(ChatMessage.content.ilike(f"%{q}%"))
+        .order_by(ChatMessage.created_at.desc())
+        .limit(limit)
+    ).all()
+
+    enriched = []
+    for msg in results:
+        sender = session.get(ChatUser, msg.sender_id)
+        enriched.append(MessageResponse(
+            id=msg.id,
+            room_id=msg.room_id,
+            sender_id=msg.sender_id,
+            sender_type=msg.sender_type,
+            content=msg.content,
+            created_at=msg.created_at,
+            meta_json=msg.meta_json,
+            reply_to_id=msg.reply_to_id,
+            sender_username=sender.username if sender else "unknown",
+            sender_display_name=sender.bot_display_name if sender else None,
+        ))
+
+    return MessageListResponse(messages=enriched, total=len(enriched), has_more=False)
+
+
 @router.get("/{room_id}/message/{message_id}", response_model=MessageResponse)
 def read_chat_message(
     room_id: UUID,
@@ -112,7 +198,7 @@ def read_chat_message(
 
 
 @router.post("/{room_id}", response_model=MessageResponse)
-def create_chat_message(
+async def create_chat_message(
     room_id: UUID,
     message_in: MessageCreate,
     session: SessionDep,
@@ -150,6 +236,26 @@ def create_chat_message(
     
     # Get user type from ChatUser
     chat_user = session.get(ChatUser, current_user.id)
+    
+    # Trigger bot response (inline, non-blocking for response but waits for bot)
+    if message.content and message.content.strip():
+        logger.info(f"Triggering bot for message: {message.content[:50]}")
+        bot_response = await call_sparkbot_inline(message.content)
+        logger.info(f"Bot response: {bot_response}")
+        if bot_response:
+            # Get sparkbot user
+            bot_user = get_sparkbot_user(session)
+            if bot_user:
+                # Create bot response message
+                bot_message = create_chat_message(
+                    session=session,
+                    room_id=room_id,
+                    sender_id=bot_user.id,
+                    content=bot_response,
+                    sender_type=UserType.BOT.value,
+                    reply_to_id=message.id,
+                )
+                logger.info(f"Bot response created: {bot_message.id}")
     
     return MessageResponse(
         id=message.id,

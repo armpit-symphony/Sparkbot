@@ -1,20 +1,254 @@
-// Sparkbot DM Page - Direct message view
+// Sparkbot DM Page — streaming, slash commands, syntax highlighting, search, meeting mode
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { createFileRoute } from "@tanstack/react-router"
-import { Loader2 } from "lucide-react"
+import { Check, Copy, Loader2, Paperclip, Search, Send, X } from "lucide-react"
+import ReactMarkdown from "react-markdown"
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter"
+import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism"
 
 export const Route = createFileRoute("/dm")({
   component: SparkbotDmPage,
 })
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
 interface Message {
   id: string
   content: string
   created_at: string
-  user_id: string
-  username?: string
+  sender_type?: string
+  sender_username?: string
+  isStreaming?: boolean
+  isSystem?: boolean
+  toolActivity?: string   // e.g. "🔍 Searching: climate change 2026"
 }
+
+// ─── Slash commands ───────────────────────────────────────────────────────────
+
+interface SlashCommand {
+  name: string
+  description: string
+}
+
+const COMMANDS: SlashCommand[] = [
+  { name: "/help",    description: "Show available commands" },
+  { name: "/clear",   description: "Clear visible chat history" },
+  { name: "/new",     description: "Start a fresh conversation" },
+  { name: "/export",  description: "Download conversation as Markdown" },
+  { name: "/search",  description: "Search messages — e.g. /search invoice" },
+  { name: "/meeting", description: "Meeting mode — /meeting start | stop | notes" },
+  { name: "/model",   description: "Switch AI model — e.g. /model gpt-4o" },
+  { name: "/memory",  description: "View or clear what Sparkbot remembers about you" },
+]
+
+function systemMsg(content: string): Message {
+  return { id: `sys-${Date.now()}-${Math.random()}`, content, created_at: new Date().toISOString(), sender_type: "SYSTEM", isSystem: true }
+}
+
+// ─── Code block ───────────────────────────────────────────────────────────────
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      onClick={() => navigator.clipboard.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000) })}
+      className="absolute right-2 top-2 z-10 rounded p-1 text-zinc-400 opacity-0 transition-opacity group-hover/code:opacity-100 hover:text-zinc-100"
+      title="Copy code"
+    >
+      {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+    </button>
+  )
+}
+
+function CodeBlock({ language, children }: { language?: string; children: string }) {
+  return (
+    <div className="group/code relative my-2">
+      <CopyButton text={children} />
+      <SyntaxHighlighter language={language || "text"} style={oneDark} customStyle={{ borderRadius: "0.375rem", fontSize: "0.8rem", margin: 0 }} PreTag="div">
+        {children}
+      </SyntaxHighlighter>
+    </div>
+  )
+}
+
+const TOOL_ICONS: Record<string, string> = {
+  web_search:   "🔍",
+  get_datetime: "🕐",
+  calculate:    "🧮",
+}
+
+function ToolChip({ activity }: { activity: string }) {
+  return (
+    <div className="mb-2 flex items-center gap-1.5 rounded-md border border-dashed border-zinc-600 bg-zinc-800/50 px-2 py-1 text-xs text-zinc-400 animate-pulse">
+      <span>{activity}</span>
+    </div>
+  )
+}
+
+function BotMessage({ content, isStreaming, toolActivity }: { content: string; isStreaming?: boolean; toolActivity?: string }) {
+  return (
+    <div className="prose prose-sm dark:prose-invert max-w-none break-words text-sm">
+      {toolActivity && <ToolChip activity={toolActivity} />}
+      <ReactMarkdown
+        components={{
+          code({ className, children }) {
+            const text = String(children).replace(/\n$/, "")
+            const match = /language-(\w+)/.exec(className || "")
+            if (!match && !text.includes("\n")) {
+              return <code className="rounded bg-zinc-800 px-1 py-0.5 font-mono text-xs text-zinc-200">{text}</code>
+            }
+            return <CodeBlock language={match?.[1]}>{text}</CodeBlock>
+          },
+          p({ children }) { return <p className="mb-2 last:mb-0">{children}</p> },
+          ul({ children }) { return <ul className="mb-2 ml-4 list-disc">{children}</ul> },
+          ol({ children }) { return <ol className="mb-2 ml-4 list-decimal">{children}</ol> },
+          h1({ children }) { return <h1 className="mb-2 text-base font-bold">{children}</h1> },
+          h2({ children }) { return <h2 className="mb-2 text-sm font-bold">{children}</h2> },
+          h3({ children }) { return <h3 className="mb-1 text-sm font-semibold">{children}</h3> },
+          blockquote({ children }) { return <blockquote className="mb-2 border-l-2 border-zinc-400 pl-3 italic text-muted-foreground">{children}</blockquote> },
+          img({ src, alt }) { return <img src={src} alt={alt || ""} className="my-2 max-w-full rounded-lg max-h-80 object-contain" /> },
+          a({ href, children }) { return <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline">{children}</a> },
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+      {isStreaming && <span className="inline-block h-4 w-2 animate-pulse bg-current opacity-70" />}
+    </div>
+  )
+}
+
+// ─── Command autocomplete ─────────────────────────────────────────────────────
+
+function CommandPicker({ query, onSelect }: { query: string; onSelect: (cmd: string) => void }) {
+  const matches = COMMANDS.filter(c => c.name.startsWith(query))
+  if (!matches.length) return null
+  return (
+    <div className="absolute bottom-full left-0 mb-1 w-80 rounded-lg border bg-popover shadow-lg overflow-hidden z-20">
+      {matches.map(cmd => (
+        <button key={cmd.name} onMouseDown={e => { e.preventDefault(); onSelect(cmd.name + " ") }}
+          className="flex w-full items-start gap-3 px-3 py-2 text-left hover:bg-muted">
+          <span className="font-mono text-sm font-semibold text-primary shrink-0">{cmd.name}</span>
+          <span className="text-xs text-muted-foreground mt-0.5">{cmd.description}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// ─── Search panel ─────────────────────────────────────────────────────────────
+
+function highlight(text: string, query: string): React.ReactNode {
+  if (!query) return text
+  const idx = text.toLowerCase().indexOf(query.toLowerCase())
+  if (idx === -1) return text
+  const start = Math.max(0, idx - 40)
+  const excerpt = (start > 0 ? "…" : "") + text.slice(start, idx + query.length + 80)
+  const qi = excerpt.toLowerCase().indexOf(query.toLowerCase())
+  if (qi === -1) return excerpt
+  return <>{excerpt.slice(0, qi)}<mark className="bg-yellow-200 dark:bg-yellow-700 rounded px-0.5">{excerpt.slice(qi, qi + query.length)}</mark>{excerpt.slice(qi + query.length)}</>
+}
+
+interface SearchPanelProps {
+  roomId: string
+  token: string
+  onClose: () => void
+}
+
+function SearchPanel({ roomId, token, onClose }: SearchPanelProps) {
+  const [query, setQuery] = useState("")
+  const [results, setResults] = useState<Message[]>([])
+  const [searching, setSearching] = useState(false)
+  const [searched, setSearched] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => { inputRef.current?.focus() }, [])
+
+  const doSearch = useCallback(async (q: string) => {
+    const trimmed = q.trim()
+    if (trimmed.length < 2) { setResults([]); setSearched(false); return }
+    setSearching(true)
+    try {
+      const res = await fetch(`/api/v1/chat/messages/${roomId}/search?q=${encodeURIComponent(trimmed)}&limit=30`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setResults(data.messages ?? [])
+      }
+    } catch { /* ignore */ } finally {
+      setSearching(false)
+      setSearched(true)
+    }
+  }, [roomId, token])
+
+  // Debounce search
+  useEffect(() => {
+    const t = setTimeout(() => doSearch(query), 350)
+    return () => clearTimeout(t)
+  }, [query, doSearch])
+
+  return (
+    <div className="absolute inset-0 z-30 flex flex-col bg-background">
+      {/* Search header */}
+      <div className="flex items-center gap-2 border-b px-4 py-3">
+        <Search className="size-4 text-muted-foreground shrink-0" />
+        <input
+          ref={inputRef}
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          onKeyDown={e => e.key === "Escape" && onClose()}
+          placeholder="Search messages…"
+          className="flex-1 bg-transparent text-sm outline-none"
+        />
+        {searching && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
+        <button onClick={onClose} className="rounded p-1 hover:bg-muted">
+          <X className="size-4" />
+        </button>
+      </div>
+
+      {/* Results */}
+      <div className="flex-1 overflow-auto px-4 py-2 space-y-1">
+        {!searched && query.length < 2 && (
+          <p className="text-center text-sm text-muted-foreground py-8">Type at least 2 characters to search</p>
+        )}
+        {searched && results.length === 0 && (
+          <p className="text-center text-sm text-muted-foreground py-8">No messages found for <strong>"{query}"</strong></p>
+        )}
+        {results.map(msg => {
+          const isBot = String(msg.sender_type ?? "").toUpperCase() === "BOT"
+          return (
+            <div key={msg.id} className="rounded-lg border bg-muted/30 px-3 py-2 text-sm">
+              <div className="flex items-center gap-2 mb-1">
+                <span className={`text-xs font-semibold ${isBot ? "text-primary" : "text-foreground"}`}>
+                  {isBot ? "Sparkbot" : (msg.sender_username ?? "You")}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {new Date(msg.created_at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                </span>
+              </div>
+              <p className="text-muted-foreground leading-snug">{highlight(msg.content, query)}</p>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ─── Meeting mode state ───────────────────────────────────────────────────────
+
+interface MeetingState {
+  active: boolean
+  startedAt: Date | null
+  notes: string[]
+  decisions: string[]
+  actions: string[]
+}
+
+const emptyMeeting = (): MeetingState => ({ active: false, startedAt: null, notes: [], decisions: [], actions: [] })
+
+// ─── Main page ────────────────────────────────────────────────────────────────
 
 function SparkbotDmPage() {
   const [roomId, setRoomId] = useState<string | null>(null)
@@ -22,163 +256,487 @@ function SparkbotDmPage() {
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const [inputValue, setInputValue] = useState("")
+  const [showCommands, setShowCommands] = useState(false)
+  const [showSearch, setShowSearch] = useState(false)
+  const [meeting, setMeeting] = useState<MeetingState>(emptyMeeting())
+  const [uploading, setUploading] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const token = localStorage.getItem("access_token") ?? ""
 
-  // Auto-scroll to bottom when messages change
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages])
+  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }) }, [messages])
+  useEffect(() => { setShowCommands(inputValue.startsWith("/") && !inputValue.includes(" ")) }, [inputValue])
 
-  // Initialize - call bootstrap and load messages
   useEffect(() => {
     async function init() {
-      const token = localStorage.getItem("access_token")
-      if (!token) {
-        window.location.href = "/login"
-        return
-      }
-
+      if (!token) { window.location.href = "/login"; return }
       try {
-        const bootstrapRes = await fetch("/api/v1/chat/users/bootstrap", {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${token}`,
-          },
-        })
-
-        if (!bootstrapRes.ok) {
-          window.location.href = "/login"
-          return
-        }
-
-        const boot = await bootstrapRes.json()
+        const res = await fetch("/api/v1/chat/users/bootstrap", { method: "POST", headers: { Authorization: `Bearer ${token}` } })
+        if (!res.ok) { window.location.href = "/login"; return }
+        const boot = await res.json()
         setRoomId(boot.room_id)
-
-        // Load messages
-        const msgsRes = await fetch(`/api/v1/chat/rooms/${boot.room_id}/messages`, {
-          headers: {
-            "Authorization": `Bearer ${token}`,
-          },
-        })
-
+        const msgsRes = await fetch(`/api/v1/chat/rooms/${boot.room_id}/messages`, { headers: { Authorization: `Bearer ${token}` } })
         if (msgsRes.ok) {
-          const msgsData = await msgsRes.json()
-          const msgs = msgsData.messages || msgsData.items || (Array.isArray(msgsData) ? msgsData : [])
-          setMessages(msgs)
+          const d = await msgsRes.json()
+          setMessages(d.messages ?? d.items ?? (Array.isArray(d) ? d : []))
         }
-      } catch (e) {
-        console.error("Init error:", e)
-      } finally {
-        setLoading(false)
-      }
+      } catch (e) { console.error(e) } finally { setLoading(false) }
     }
-
     init()
   }, [])
 
-  const handleSend = useCallback(async () => {
-    if (!inputValue.trim() || !roomId || sending) return
+  // ── Meeting helpers ──────────────────────────────────────────────────────────
 
-    setSending(true)
-    const token = localStorage.getItem("access_token")
-    const url = `/api/v1/chat/rooms/${roomId}/messages`
-    const payload = JSON.stringify({ content: inputValue.trim() })
+  const formatMeetingNotes = useCallback((m: MeetingState): string => {
+    const dur = m.startedAt ? Math.round((Date.now() - m.startedAt.getTime()) / 60000) : 0
+    return [
+      `## Meeting Notes — ${new Date().toLocaleDateString()}`,
+      `Duration: ~${dur} min`,
+      m.notes.length    ? `\n### Notes\n${m.notes.map(n => `- ${n}`).join("\n")}`       : "",
+      m.decisions.length? `\n### Decisions\n${m.decisions.map(d => `- ${d}`).join("\n")}`: "",
+      m.actions.length  ? `\n### Action Items\n${m.actions.map(a => `- [ ] ${a}`).join("\n")}`: "",
+    ].filter(Boolean).join("\n")
+  }, [])
+
+  // ── Slash command handlers ───────────────────────────────────────────────────
+
+  const handleCommand = useCallback((raw: string): boolean => {
+    const parts = raw.trim().split(/\s+/)
+    const cmd = parts[0]
+    const args = parts.slice(1).join(" ")
+
+    if (cmd === "/help") {
+      const text = COMMANDS.map(c => `**${c.name}** — ${c.description}`).join("\n")
+      setMessages(prev => [...prev, systemMsg(text)])
+      return true
+    }
+
+    if (cmd === "/clear") {
+      setMessages([systemMsg("Chat cleared locally. History still on server.")])
+      return true
+    }
+
+    if (cmd === "/new") {
+      setMessages([systemMsg("Fresh start. Previous history still on server.")])
+      return true
+    }
+
+    if (cmd === "/export") {
+      const lines = messages.filter(m => !m.isSystem).map(m => {
+        const who = String(m.sender_type ?? "").toUpperCase() === "BOT" ? "**Sparkbot**" : "**You**"
+        return `### ${who} — ${new Date(m.created_at).toLocaleString()}\n\n${m.content}`
+      }).join("\n\n---\n\n")
+      const blob = new Blob([`# Sparkbot Conversation\n\n${lines}`], { type: "text/markdown" })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a"); a.href = url; a.download = `sparkbot-${new Date().toISOString().slice(0,10)}.md`; a.click()
+      URL.revokeObjectURL(url)
+      setMessages(prev => [...prev, systemMsg("Exported as Markdown.")])
+      return true
+    }
+
+    if (cmd === "/search") {
+      if (!args) {
+        setMessages(prev => [...prev, systemMsg("Usage: **/search** &lt;query&gt; — or click the 🔍 icon in the header.")])
+        return true
+      }
+      setShowSearch(true)
+      return true
+    }
+
+    if (cmd === "/model") {
+      if (!args) {
+        // List available models
+        fetch("/api/v1/chat/models", { headers: { Authorization: `Bearer ${token}` } })
+          .then(r => r.json())
+          .then(data => {
+            const lines = data.models.map((m: { id: string; description: string; active: boolean }) =>
+              `${m.active ? "✅" : "⬜"} \`${m.id}\` — ${m.description}`
+            ).join("\n")
+            setMessages(prev => [...prev, systemMsg(`**Available models** (✅ = active):\n\n${lines}\n\nUse **/model &lt;id&gt;** to switch.`)])
+          })
+          .catch(() => setMessages(prev => [...prev, systemMsg("⚠️ Could not fetch model list.")]))
+        return true
+      }
+      // Set model
+      fetch("/api/v1/chat/model", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ model: args.trim() }),
+      })
+        .then(async r => {
+          if (!r.ok) {
+            const e = await r.json().catch(() => ({ detail: "Unknown error" }))
+            setMessages(prev => [...prev, systemMsg(`⚠️ ${e.detail ?? "Could not set model."}`)])
+          } else {
+            const d = await r.json()
+            setMessages(prev => [...prev, systemMsg(`Model switched to **${d.model}** — ${d.description}`)])
+          }
+        })
+        .catch(() => setMessages(prev => [...prev, systemMsg("⚠️ Could not switch model.")]))
+      return true
+    }
+
+    if (cmd === "/memory") {
+      if (!args || args === "list") {
+        fetch("/api/v1/chat/memory/", { headers: { Authorization: `Bearer ${token}` } })
+          .then(r => r.json())
+          .then(data => {
+            if (!data.memories?.length) {
+              setMessages(prev => [...prev, systemMsg("No memories stored yet. Sparkbot will remember things as you chat.")])
+              return
+            }
+            const lines = data.memories.map((m: { id: string; fact: string; created_at: string }) =>
+              `- ${m.fact} *(id: \`${m.id.slice(0, 8)}\`)*`
+            ).join("\n")
+            setMessages(prev => [...prev, systemMsg(`**Sparkbot remembers (${data.count}):**\n\n${lines}\n\nTo forget one: tell Sparkbot "forget that I ..." or use **/memory clear** to wipe all.`)])
+          })
+          .catch(() => setMessages(prev => [...prev, systemMsg("⚠️ Could not fetch memories.")]))
+        return true
+      }
+      if (args === "clear") {
+        fetch("/api/v1/chat/memory/", { method: "DELETE", headers: { Authorization: `Bearer ${token}` } })
+          .then(r => r.json())
+          .then(d => setMessages(prev => [...prev, systemMsg(`Cleared ${d.cleared} memories.`)]))
+          .catch(() => setMessages(prev => [...prev, systemMsg("⚠️ Could not clear memories.")]))
+        return true
+      }
+      setMessages(prev => [...prev, systemMsg("**Memory commands:**\n- **/memory** — list what Sparkbot knows about you\n- **/memory clear** — wipe all memories")])
+      return true
+    }
+
+    if (cmd === "/meeting") {
+      const sub = args.toLowerCase()
+
+      if (sub === "start") {
+        setMeeting({ active: true, startedAt: new Date(), notes: [], decisions: [], actions: [] })
+        setMessages(prev => [...prev, systemMsg("**Meeting started.** I'll help capture notes, decisions, and action items.\n\nPrefix messages with:\n- `note:` — add a note\n- `decided:` — record a decision\n- `action:` — add an action item\n\nType **/meeting stop** when done, **/meeting notes** to see the draft.")])
+        return true
+      }
+
+      if (sub === "stop") {
+        if (!meeting.active) { setMessages(prev => [...prev, systemMsg("No meeting is active. Start one with **/meeting start**")]); return true }
+        const notes = formatMeetingNotes(meeting)
+        const blob = new Blob([notes], { type: "text/markdown" })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement("a"); a.href = url; a.download = `meeting-${new Date().toISOString().slice(0,10)}.md`; a.click()
+        URL.revokeObjectURL(url)
+        setMeeting(emptyMeeting())
+        setMessages(prev => [...prev, systemMsg("**Meeting ended.** Notes exported as Markdown.")])
+        return true
+      }
+
+      if (sub === "notes") {
+        if (!meeting.active) { setMessages(prev => [...prev, systemMsg("No meeting is active.")]); return true }
+        setMessages(prev => [...prev, systemMsg(formatMeetingNotes(meeting))])
+        return true
+      }
+
+      setMessages(prev => [...prev, systemMsg("**Meeting commands:**\n- **/meeting start** — begin a meeting\n- **/meeting stop** — end and export notes\n- **/meeting notes** — preview current notes")])
+      return true
+    }
+
+    return false
+  }, [messages, meeting, formatMeetingNotes])
+
+  // ── Capture meeting items from messages ──────────────────────────────────────
+
+  const captureMeetingItem = useCallback((content: string) => {
+    if (!meeting.active) return
+    const lower = content.toLowerCase()
+    if (lower.startsWith("note:")) {
+      setMeeting(prev => ({ ...prev, notes: [...prev.notes, content.slice(5).trim()] }))
+    } else if (lower.startsWith("decided:") || lower.startsWith("decision:")) {
+      const val = content.replace(/^decided?:/i, "").trim()
+      setMeeting(prev => ({ ...prev, decisions: [...prev.decisions, val] }))
+    } else if (lower.startsWith("action:")) {
+      setMeeting(prev => ({ ...prev, actions: [...prev.actions, content.slice(7).trim()] }))
+    }
+  }, [meeting])
+
+  // ── File upload ──────────────────────────────────────────────────────────────
+
+  const handleFileUpload = useCallback(async (file: File) => {
+    if (!roomId || uploading || sending) return
+    setUploading(true)
+
+    const tempHumanId = `temp-human-${Date.now()}`
+    const tempBotId = `temp-bot-${Date.now()}`
+    const isImage = file.type.startsWith("image/")
+    const caption = inputValue.trim()
+    setInputValue("")
+
+    const humanContent = isImage
+      ? `📷 ${file.name}${caption ? ` — ${caption}` : ""}`
+      : `📎 ${file.name}${caption ? ` — ${caption}` : ""}`
+
+    setMessages(prev => [
+      ...prev,
+      { id: tempHumanId, content: humanContent, created_at: new Date().toISOString(), sender_type: "HUMAN" },
+      { id: tempBotId, content: "", created_at: new Date().toISOString(), sender_type: "BOT", isStreaming: true },
+    ])
 
     try {
-      const res = await fetch(url, {
+      const form = new FormData()
+      form.append("file", file)
+      form.append("caption", caption)
+
+      const res = await fetch(`/api/v1/chat/rooms/${roomId}/upload`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
-        },
-        body: payload,
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
       })
 
-      if (res.ok) {
-        const data = await res.json()
-        // Handle {human: {...}, bot: {...}} response
-        const humanMsg = data.human || data
-        const botMsg = data.bot
-        
-        // Add human message
-        setMessages(prev => [...prev, humanMsg])
-        setInputValue("")
-        
-        // Add bot response if available
-        if (botMsg) {
-          setMessages(prev => [...prev, botMsg])
-        }
-      } else {
-        console.error("Send failed:", res.status)
+      if (!res.ok || !res.body) {
+        setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, content: "⚠️ Upload failed.", isStreaming: false } : m))
+        setUploading(false)
+        return
       }
-    } catch (e) {
-      console.error("Send error:", e)
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ""
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split("\n"); buffer = lines.pop() ?? ""
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue
+          try {
+            const ev = JSON.parse(line.slice(6))
+            if (ev.type === "human_message") {
+              // Update human message to show the actual image/file
+              const fileContent = isImage
+                ? `![${file.name}](/api/v1/chat/rooms/${roomId}/uploads/${ev.message_id}/${file.name})\n\n${caption}`
+                : humanContent
+              setMessages(prev => prev.map(m => m.id === tempHumanId ? { ...m, id: ev.message_id, content: fileContent } : m))
+            } else if (ev.type === "token") {
+              setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, content: m.content + ev.token } : m))
+            } else if (ev.type === "done") {
+              setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, id: ev.message_id, isStreaming: false } : m))
+              if (ev.file_url && isImage) {
+                setMessages(prev => prev.map(m =>
+                  m.sender_type === "HUMAN" && m.content.startsWith("📷")
+                    ? { ...m, content: `![${file.name}](${ev.file_url})${caption ? `\n\n${caption}` : ""}` }
+                    : m
+                ))
+              }
+            } else if (ev.type === "error") {
+              setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, content: `⚠️ ${ev.error}`, isStreaming: false } : m))
+            }
+          } catch { /* ignore */ }
+        }
+      }
+    } catch {
+      setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, content: "⚠️ Upload error.", isStreaming: false } : m))
+    } finally {
+      setUploading(false)
+    }
+  }, [roomId, uploading, sending, token, inputValue])
+
+  // ── Send ─────────────────────────────────────────────────────────────────────
+
+  const handleSend = useCallback(async () => {
+    const content = inputValue.trim()
+    if (!content || !roomId || sending) return
+    setInputValue("")
+    setShowCommands(false)
+
+    if (content.startsWith("/")) {
+      if (handleCommand(content)) return
+      setMessages(prev => [...prev, systemMsg(`Unknown command: **${content.split(" ")[0]}**\nType **/help** for available commands.`)])
+      return
+    }
+
+    captureMeetingItem(content)
+    setSending(true)
+
+    const tempHumanId = `temp-human-${Date.now()}`
+    const tempBotId = `temp-bot-${Date.now()}`
+    setMessages(prev => [
+      ...prev,
+      { id: tempHumanId, content, created_at: new Date().toISOString(), sender_type: "HUMAN" },
+      { id: tempBotId, content: "", created_at: new Date().toISOString(), sender_type: "BOT", isStreaming: true },
+    ])
+
+    try {
+      const res = await fetch(`/api/v1/chat/rooms/${roomId}/messages/stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ content }),
+      })
+
+      if (!res.ok || !res.body) {
+        setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, content: "⚠️ Request failed.", isStreaming: false } : m))
+        setSending(false)
+        return
+      }
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ""
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split("\n"); buffer = lines.pop() ?? ""
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue
+          try {
+            const ev = JSON.parse(line.slice(6))
+            if (ev.type === "human_message") {
+              setMessages(prev => prev.map(m => m.id === tempHumanId ? { ...m, id: ev.message_id } : m))
+            } else if (ev.type === "tool_start") {
+              const icon = TOOL_ICONS[ev.tool] ?? "⚙️"
+              const label = ev.input?.query ?? ev.input?.expression ?? ""
+              setMessages(prev => prev.map(m => m.id === tempBotId
+                ? { ...m, toolActivity: `${icon} ${ev.tool.replace("_", " ")}${label ? `: ${label}` : ""}…` }
+                : m))
+            } else if (ev.type === "tool_done") {
+              setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, toolActivity: undefined } : m))
+            } else if (ev.type === "token") {
+              setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, content: m.content + ev.token } : m))
+            } else if (ev.type === "done") {
+              setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, id: ev.message_id, isStreaming: false, toolActivity: undefined } : m))
+            } else if (ev.type === "error") {
+              setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, content: `⚠️ ${ev.error}`, isStreaming: false, toolActivity: undefined } : m))
+            }
+          } catch { /* ignore */ }
+        }
+      }
+    } catch {
+      setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, content: "⚠️ Connection error.", isStreaming: false } : m))
     } finally {
       setSending(false)
     }
-  }, [inputValue, roomId, sending])
+  }, [inputValue, roomId, sending, token, handleCommand, captureMeetingItem])
 
   if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
-          <p className="text-sm text-muted-foreground">Loading...</p>
-        </div>
-      </div>
-    )
+    return <div className="flex h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
   }
 
+  const isBot    = (m: Message) => String(m.sender_type ?? "").toUpperCase() === "BOT"
+  const isSystem = (m: Message) => m.isSystem === true
+  const isOwn    = (m: Message) => !isBot(m) && !isSystem(m)
+
   return (
-    <div className="flex h-screen flex-col">
+    <div className="relative flex h-screen flex-col">
+      {/* Search overlay */}
+      {showSearch && roomId && (
+        <SearchPanel roomId={roomId} token={token} onClose={() => setShowSearch(false)} />
+      )}
+
       {/* Header */}
-      <div className="flex items-center justify-between border-b px-4 py-3">
-        <h1 className="text-lg font-semibold">Sparkbot DM</h1>
-        <button 
-          onClick={() => {
-            localStorage.removeItem("access_token")
-            window.location.href = "/login"
-          }}
-          className="text-sm text-muted-foreground hover:text-foreground"
-        >
-          Logout
-        </button>
+      <div className="flex items-center justify-between border-b px-4 py-3 shrink-0">
+        <div className="flex items-center gap-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-bold select-none">S</div>
+          <div>
+            <h1 className="text-sm font-semibold flex items-center gap-2">
+              Sparkbot
+              {meeting.active && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-semibold text-red-500">
+                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
+                  MEETING
+                </span>
+              )}
+            </h1>
+            <p className="text-xs text-muted-foreground">Sparkpit Labs · type /help for commands</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowSearch(true)} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Search messages">
+            <Search className="size-4" />
+          </button>
+          <button onClick={() => { localStorage.removeItem("access_token"); window.location.href = "/login" }} className="text-sm text-muted-foreground hover:text-foreground">
+            Logout
+          </button>
+        </div>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-auto p-4 space-y-3">
+      <div className="flex-1 overflow-auto px-4 py-4 space-y-2">
         {messages.length === 0 ? (
-          <p className="text-center text-muted-foreground">No messages yet. Say hello!</p>
+          <p className="text-center text-muted-foreground text-sm py-8">
+            No messages yet — say hello, or type <span className="font-mono">/help</span>
+          </p>
         ) : (
-          messages.map(msg => (
-            <div key={msg.id} className="bg-muted p-3 rounded-lg">
-              <p className="text-sm">{msg.content}</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                {msg.created_at ? new Date(msg.created_at).toLocaleTimeString() : ''}
-              </p>
-            </div>
-          ))
+          messages.map(msg => {
+            if (isSystem(msg)) {
+              return (
+                <div key={msg.id} className="flex justify-center">
+                  <div className="max-w-[80%] rounded-lg border border-dashed bg-muted/30 px-4 py-2">
+                    <BotMessage content={msg.content} />
+                  </div>
+                </div>
+              )
+            }
+            const own = isOwn(msg)
+            return (
+              <div key={msg.id} className={`flex ${own ? "justify-end" : "justify-start"}`}>
+                <div className={`max-w-[75%] rounded-2xl px-4 py-2 ${own ? "rounded-br-md bg-primary text-primary-foreground" : "rounded-bl-md bg-muted"}`}>
+                  {isBot(msg)
+                    ? <BotMessage content={msg.content} isStreaming={msg.isStreaming} toolActivity={msg.toolActivity} />
+                    : <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
+                  }
+                  <p className={`text-[10px] mt-1 opacity-70 ${own ? "text-right" : ""}`}>
+                    {new Date(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    {msg.isStreaming && " · typing…"}
+                  </p>
+                </div>
+              </div>
+            )
+          })
         )}
         <div ref={messagesEndRef} />
       </div>
 
       {/* Input */}
-      <div className="border-t p-4">
-        <div className="flex gap-2">
+      <div className="border-t px-4 py-3 shrink-0">
+        <div className="relative flex items-center gap-2">
+          {showCommands && (
+            <CommandPicker query={inputValue} onSelect={cmd => { setInputValue(cmd); inputRef.current?.focus() }} />
+          )}
+
+          {/* Hidden file input */}
           <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,application/pdf,.txt,.md,.csv,.json"
+            className="hidden"
+            onChange={e => { const f = e.target.files?.[0]; if (f) handleFileUpload(f); e.target.value = "" }}
+          />
+
+          {/* Upload button */}
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={sending || uploading}
+            className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-muted disabled:opacity-40"
+            title="Attach file or image"
+          >
+            {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
+          </button>
+
+          <input
+            ref={inputRef}
             value={inputValue}
             onChange={e => setInputValue(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && !e.shiftKey && handleSend()}
-            placeholder="Type a message..."
-            className="flex-1 border rounded-lg px-3 py-2"
-            disabled={sending}
+            onKeyDown={e => {
+              if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend() }
+              if (e.key === "Escape") setShowCommands(false)
+            }}
+            placeholder={meeting.active ? "note: / decided: / action: or ask a question…" : "Message Sparkbot… or / for commands"}
+            className="flex-1 rounded-full border bg-muted/40 px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-ring/30"
+            disabled={sending || uploading}
           />
           <button
             onClick={handleSend}
-            disabled={sending || !inputValue.trim()}
-            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg disabled:opacity-50"
+            disabled={sending || uploading || !inputValue.trim()}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground disabled:opacity-40"
           >
-            {sending ? "..." : "Send"}
+            {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </button>
         </div>
       </div>
