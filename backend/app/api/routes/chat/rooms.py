@@ -630,17 +630,28 @@ async def stream_room_message(
             continue
         role = "assistant" if str(m.sender_type).upper() == "BOT" else "user"
         openai_history.append({"role": role, "content": m.content})
-    openai_history.append({"role": "user", "content": message_in.content})
+    openai_history.append({"role": "user", "content": agent_content})
 
-    # Build personalised system prompt — inject user memories
+    # Detect @agentname routing
+    from app.api.routes.chat.agents import resolve_agent_from_message, get_agent
+    agent_name, agent_content = resolve_agent_from_message(message_in.content)
+
+    # Build personalised system prompt — use agent prompt or default, then inject memories
     from app.api.routes.chat.llm import SYSTEM_PROMPT as LLM_SYSTEM_PROMPT
     from app.crud import get_user_memories
     memories = get_user_memories(session, current_user.id)
+
+    base_prompt = LLM_SYSTEM_PROMPT
+    if agent_name:
+        agent = get_agent(agent_name)
+        if agent and agent.get("system_prompt"):
+            base_prompt = agent["system_prompt"]
+
     if memories:
         mem_block = "\n".join(f"- {m.fact}" for m in memories)
-        system_prompt = LLM_SYSTEM_PROMPT + f"\n\n## What you know about this user:\n{mem_block}"
+        system_prompt = base_prompt + f"\n\n## What you know about this user:\n{mem_block}"
     else:
-        system_prompt = LLM_SYSTEM_PROMPT
+        system_prompt = base_prompt
 
     user_id_str = str(current_user.id)
 
@@ -657,6 +668,8 @@ async def stream_room_message(
                 [{"role": "system", "content": system_prompt}] + openai_history,
                 user_id=user_id_str,
                 db_session=db,
+                room_id=str(room_id),
+                agent_name=agent_name,
             ):
                 if event["type"] == "token":
                     full_text += event["token"]
@@ -687,7 +700,10 @@ async def stream_room_message(
             )
             bot_reply_id = str(bot_reply.id)  # capture before session closes
             db.close()
-            yield f"data: {json.dumps({'type': 'done', 'message_id': bot_reply_id})}\n\n"
+            done_event: dict = {"type": "done", "message_id": bot_reply_id}
+            if agent_name:
+                done_event["agent"] = agent_name
+            yield f"data: {json.dumps(done_event)}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'error': f'Save failed: {e}'})}\n\n"
 

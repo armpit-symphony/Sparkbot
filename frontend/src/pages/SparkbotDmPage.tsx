@@ -22,7 +22,22 @@ interface Message {
   isStreaming?: boolean
   isSystem?: boolean
   toolActivity?: string   // e.g. "🔍 Searching: climate change 2026"
+  agent?: string          // named agent that responded, e.g. "researcher"
 }
+
+interface Agent {
+  name: string
+  emoji: string
+  description: string
+}
+
+// Built-in agents — mirrors backend agents.py (shown before API loads)
+const BUILTIN_AGENTS: Agent[] = [
+  { name: "researcher", emoji: "🔍", description: "Research specialist — finds accurate info, searches the web" },
+  { name: "coder",      emoji: "💻", description: "Software engineer — clean, working code with explanations" },
+  { name: "writer",     emoji: "✍️", description: "Professional writer — drafts, edits, structures content" },
+  { name: "analyst",    emoji: "📊", description: "Data analyst — structured reasoning and actionable insights" },
+]
 
 // ─── Slash commands ───────────────────────────────────────────────────────────
 
@@ -40,6 +55,10 @@ const COMMANDS: SlashCommand[] = [
   { name: "/meeting", description: "Meeting mode — /meeting start | stop | notes" },
   { name: "/model",   description: "Switch AI model — e.g. /model gpt-4o" },
   { name: "/memory",  description: "View or clear what Sparkbot remembers about you" },
+  { name: "/tasks",   description: "List open tasks — /tasks | /tasks done | /tasks all" },
+  { name: "/remind",  description: "List pending reminders for this room" },
+  { name: "/agents",  description: "List available named agents (@researcher, @coder, etc.)" },
+  { name: "/audit",   description: "Show recent bot tool actions" },
 ]
 
 function systemMsg(content: string): Message {
@@ -73,9 +92,33 @@ function CodeBlock({ language, children }: { language?: string; children: string
 }
 
 const TOOL_ICONS: Record<string, string> = {
-  web_search:   "🔍",
-  get_datetime: "🕐",
-  calculate:    "🧮",
+  web_search:            "🔍",
+  get_datetime:          "🕐",
+  calculate:             "🧮",
+  create_task:           "📋",
+  list_tasks:            "📋",
+  complete_task:         "✅",
+  github_list_prs:       "🐙",
+  github_get_pr:         "🐙",
+  github_create_issue:   "🐙",
+  github_get_ci_status:  "🔬",
+  email_fetch_inbox:     "📧",
+  email_search:          "📧",
+  email_send:            "📤",
+  set_reminder:          "⏰",
+  list_reminders:        "⏰",
+  cancel_reminder:       "⏰",
+  calendar_list_events:    "📅",
+  calendar_create_event:   "📅",
+  slack_send_message:      "💬",
+  slack_list_channels:     "💬",
+  slack_get_channel_history: "💬",
+  notion_search:           "📝",
+  notion_get_page:         "📝",
+  notion_create_page:      "📝",
+  confluence_search:       "🏔️",
+  confluence_get_page:     "🏔️",
+  confluence_create_page:  "🏔️",
 }
 
 function ToolChip({ activity }: { activity: string }) {
@@ -86,9 +129,23 @@ function ToolChip({ activity }: { activity: string }) {
   )
 }
 
-function BotMessage({ content, isStreaming, toolActivity }: { content: string; isStreaming?: boolean; toolActivity?: string }) {
+const AGENT_INFO: Record<string, { emoji: string; label: string }> = {
+  researcher: { emoji: "🔍", label: "researcher" },
+  coder:      { emoji: "💻", label: "coder" },
+  writer:     { emoji: "✍️", label: "writer" },
+  analyst:    { emoji: "📊", label: "analyst" },
+}
+
+function BotMessage({ content, isStreaming, toolActivity, agent }: { content: string; isStreaming?: boolean; toolActivity?: string; agent?: string }) {
+  const agentInfo = agent ? AGENT_INFO[agent] : null
   return (
     <div className="prose prose-sm dark:prose-invert max-w-none break-words text-sm">
+      {agentInfo && (
+        <div className="mb-1.5 flex items-center gap-1 text-[10px] font-semibold text-muted-foreground">
+          <span>{agentInfo.emoji}</span>
+          <span className="uppercase tracking-wide">{agentInfo.label}</span>
+        </div>
+      )}
       {toolActivity && <ToolChip activity={toolActivity} />}
       <ReactMarkdown
         components={{
@@ -130,6 +187,28 @@ function CommandPicker({ query, onSelect }: { query: string; onSelect: (cmd: str
           className="flex w-full items-start gap-3 px-3 py-2 text-left hover:bg-muted">
           <span className="font-mono text-sm font-semibold text-primary shrink-0">{cmd.name}</span>
           <span className="text-xs text-muted-foreground mt-0.5">{cmd.description}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// ─── Agent picker ─────────────────────────────────────────────────────────────
+
+function AgentPicker({ query, agents, onSelect }: { query: string; agents: Agent[]; onSelect: (name: string) => void }) {
+  const q = query.slice(1).toLowerCase() // strip leading @
+  const matches = agents.filter(a => a.name.startsWith(q))
+  if (!matches.length) return null
+  return (
+    <div className="absolute bottom-full left-0 mb-1 w-80 rounded-lg border bg-popover shadow-lg overflow-hidden z-20">
+      {matches.map(agent => (
+        <button key={agent.name} onMouseDown={e => { e.preventDefault(); onSelect(agent.name) }}
+          className="flex w-full items-start gap-3 px-3 py-2 text-left hover:bg-muted">
+          <span className="text-base shrink-0">{agent.emoji}</span>
+          <div>
+            <span className="font-mono text-sm font-semibold text-primary">@{agent.name}</span>
+            <p className="text-xs text-muted-foreground mt-0.5">{agent.description}</p>
+          </div>
         </button>
       ))}
     </div>
@@ -257,6 +336,8 @@ function SparkbotDmPage() {
   const [sending, setSending] = useState(false)
   const [inputValue, setInputValue] = useState("")
   const [showCommands, setShowCommands] = useState(false)
+  const [showAgentPicker, setShowAgentPicker] = useState(false)
+  const [agents, setAgents] = useState<Agent[]>(BUILTIN_AGENTS)
   const [showSearch, setShowSearch] = useState(false)
   const [meeting, setMeeting] = useState<MeetingState>(emptyMeeting())
   const [uploading, setUploading] = useState(false)
@@ -267,6 +348,7 @@ function SparkbotDmPage() {
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }) }, [messages])
   useEffect(() => { setShowCommands(inputValue.startsWith("/") && !inputValue.includes(" ")) }, [inputValue])
+  useEffect(() => { setShowAgentPicker(inputValue.startsWith("@") && !inputValue.includes(" ")) }, [inputValue])
 
   useEffect(() => {
     async function init() {
@@ -281,6 +363,11 @@ function SparkbotDmPage() {
           const d = await msgsRes.json()
           setMessages(d.messages ?? d.items ?? (Array.isArray(d) ? d : []))
         }
+        // Load agent list (falls back to BUILTIN_AGENTS if request fails)
+        try {
+          const agentsRes = await fetch("/api/v1/chat/agents", { headers: { Authorization: `Bearer ${token}` } })
+          if (agentsRes.ok) { const ag = await agentsRes.json(); setAgents(ag.agents ?? BUILTIN_AGENTS) }
+        } catch { /* keep built-ins */ }
       } catch (e) { console.error(e) } finally { setLoading(false) }
     }
     init()
@@ -309,6 +396,40 @@ function SparkbotDmPage() {
     if (cmd === "/help") {
       const text = COMMANDS.map(c => `**${c.name}** — ${c.description}`).join("\n")
       setMessages(prev => [...prev, systemMsg(text)])
+      return true
+    }
+
+    if (cmd === "/audit") {
+      if (!roomId) return true
+      fetch(`/api/v1/chat/audit?limit=10&room_id=${roomId}`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.json())
+        .then(data => {
+          const items: any[] = data.items ?? []
+          if (!items.length) {
+            setMessages(prev => [...prev, systemMsg("No audit log entries yet. Tool actions will appear here.")])
+            return
+          }
+          const lines = ["**Recent bot actions:**\n"]
+          items.forEach((e: any) => {
+            const ts = new Date(e.created_at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+            const agent = e.agent_name ? ` [@${e.agent_name}]` : ""
+            const input = typeof e.tool_input === "object"
+              ? Object.entries(e.tool_input).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(", ")
+              : String(e.tool_input)
+            lines.push(`\`${ts}\`${agent} **${e.tool_name}**(${input.slice(0, 80)})`)
+            lines.push(`  ↳ ${e.tool_result.replace(/\n/g, " ").slice(0, 100)}`)
+          })
+          setMessages(prev => [...prev, systemMsg(lines.join("\n"))])
+        })
+        .catch(() => setMessages(prev => [...prev, systemMsg("Failed to load audit log.")]))
+      return true
+    }
+
+    if (cmd === "/agents") {
+      const lines = ["**Available agents** — mention with @name:\n"]
+      agents.forEach(a => lines.push(`${a.emoji} **@${a.name}** — ${a.description}`))
+      lines.push("\nExample: `@researcher what's the latest on quantum computing?`")
+      setMessages(prev => [...prev, systemMsg(lines.join("\n"))])
       return true
     }
 
@@ -405,6 +526,48 @@ function SparkbotDmPage() {
       return true
     }
 
+    if (cmd === "/tasks") {
+      if (!roomId) { setMessages(prev => [...prev, systemMsg("⚠️ Room not loaded yet.")]); return true }
+      const filter = args === "done" ? "done" : args === "all" ? "all" : "open"
+      fetch(`/api/v1/chat/rooms/${roomId}/tasks?filter=${filter}`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.json())
+        .then(data => {
+          if (!data.tasks?.length) {
+            setMessages(prev => [...prev, systemMsg(`No ${filter} tasks in this room.\n\nTo add one, just tell Sparkbot: *"Add a task to review the report"*`)])
+            return
+          }
+          const lines = data.tasks.map((t: { id: string; title: string; status: string; assigned_to: string | null; due_date: string | null }) => {
+            const icon = t.status === "done" ? "✅" : "⬜"
+            const assignee = t.assigned_to ? ` *(${t.assigned_to.slice(0, 8)})*` : ""
+            const due = t.due_date ? ` — due ${t.due_date.slice(0, 10)}` : ""
+            return `${icon} \`${t.id.slice(0, 8)}\` ${t.title}${assignee}${due}`
+          }).join("\n")
+          setMessages(prev => [...prev, systemMsg(`**Tasks (${filter}) — ${data.count}:**\n\n${lines}\n\nTell Sparkbot to *"mark [task] as done"* or *"add a task to ..."*`)])
+        })
+        .catch(() => setMessages(prev => [...prev, systemMsg("⚠️ Could not fetch tasks.")]))
+      return true
+    }
+
+    if (cmd === "/remind") {
+      if (!roomId) { setMessages(prev => [...prev, systemMsg("⚠️ Room not loaded yet.")]); return true }
+      fetch(`/api/v1/chat/rooms/${roomId}/reminders?status=pending`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.json())
+        .then(data => {
+          if (!data.reminders?.length) {
+            setMessages(prev => [...prev, systemMsg("No pending reminders.\n\nTo set one, just tell Sparkbot: *\"Remind us about the standup daily at 9am\"*")])
+            return
+          }
+          const lines = data.reminders.map((r: { id: string; message: string; fire_at: string; recurrence: string }) => {
+            const recTag = r.recurrence !== "once" ? ` [${r.recurrence}]` : ""
+            const fireAt = r.fire_at.slice(0, 16).replace("T", " ") + " UTC"
+            return `⏰ \`${r.id.slice(0, 8)}\` ${fireAt}${recTag} — ${r.message}`
+          }).join("\n")
+          setMessages(prev => [...prev, systemMsg(`**Pending reminders (${data.count}):**\n\n${lines}\n\nTo cancel one, tell Sparkbot: *"Cancel reminder [id]"*`)])
+        })
+        .catch(() => setMessages(prev => [...prev, systemMsg("⚠️ Could not fetch reminders.")]))
+      return true
+    }
+
     if (cmd === "/meeting") {
       const sub = args.toLowerCase()
 
@@ -437,7 +600,7 @@ function SparkbotDmPage() {
     }
 
     return false
-  }, [messages, meeting, formatMeetingNotes])
+  }, [messages, meeting, formatMeetingNotes, agents])
 
   // ── Capture meeting items from messages ──────────────────────────────────────
 
@@ -543,6 +706,7 @@ function SparkbotDmPage() {
     if (!content || !roomId || sending) return
     setInputValue("")
     setShowCommands(false)
+    setShowAgentPicker(false)
 
     if (content.startsWith("/")) {
       if (handleCommand(content)) return
@@ -600,7 +764,7 @@ function SparkbotDmPage() {
             } else if (ev.type === "token") {
               setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, content: m.content + ev.token } : m))
             } else if (ev.type === "done") {
-              setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, id: ev.message_id, isStreaming: false, toolActivity: undefined } : m))
+              setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, id: ev.message_id, isStreaming: false, toolActivity: undefined, agent: ev.agent } : m))
             } else if (ev.type === "error") {
               setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, content: `⚠️ ${ev.error}`, isStreaming: false, toolActivity: undefined } : m))
             }
@@ -612,7 +776,7 @@ function SparkbotDmPage() {
     } finally {
       setSending(false)
     }
-  }, [inputValue, roomId, sending, token, handleCommand, captureMeetingItem])
+  }, [inputValue, roomId, sending, token, handleCommand, captureMeetingItem, agents])
 
   if (loading) {
     return <div className="flex h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
@@ -678,7 +842,7 @@ function SparkbotDmPage() {
               <div key={msg.id} className={`flex ${own ? "justify-end" : "justify-start"}`}>
                 <div className={`max-w-[75%] rounded-2xl px-4 py-2 ${own ? "rounded-br-md bg-primary text-primary-foreground" : "rounded-bl-md bg-muted"}`}>
                   {isBot(msg)
-                    ? <BotMessage content={msg.content} isStreaming={msg.isStreaming} toolActivity={msg.toolActivity} />
+                    ? <BotMessage content={msg.content} isStreaming={msg.isStreaming} toolActivity={msg.toolActivity} agent={msg.agent} />
                     : <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
                   }
                   <p className={`text-[10px] mt-1 opacity-70 ${own ? "text-right" : ""}`}>
@@ -698,6 +862,13 @@ function SparkbotDmPage() {
         <div className="relative flex items-center gap-2">
           {showCommands && (
             <CommandPicker query={inputValue} onSelect={cmd => { setInputValue(cmd); inputRef.current?.focus() }} />
+          )}
+          {showAgentPicker && (
+            <AgentPicker
+              query={inputValue}
+              agents={agents}
+              onSelect={name => { setInputValue(`@${name} `); setShowAgentPicker(false); inputRef.current?.focus() }}
+            />
           )}
 
           {/* Hidden file input */}

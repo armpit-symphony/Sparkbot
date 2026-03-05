@@ -1,6 +1,6 @@
 # Sparkbot v2
 
-**Sparkbot** is a self-hosted AI chat assistant built for Sparkpit Labs. It runs at [remote.sparkpitlabs.com](https://remote.sparkpitlabs.com) and is designed to grow into a full office worker agent — handling chat, file analysis, meeting capture, search, and eventually tool calling into the broader office stack.
+**Sparkbot** is a self-hosted AI chat assistant built for Sparkpit Labs. It runs at [remote.sparkpitlabs.com](https://remote.sparkpitlabs.com) and is designed to be a full office worker agent — handling chat, file analysis, meeting capture, web search, calendar access, and memory across sessions.
 
 ---
 
@@ -15,11 +15,11 @@ Browser
         └── /ws/         → WebSocket (port 8091, upgrade headers)
 ```
 
-| Component           | Path                                  | Port  | Status       |
-|---------------------|---------------------------------------|-------|--------------|
-| FastAPI backend     | `/home/sparky/sparkbot-v2/backend`    | 8091  | ✅ Running    |
-| React frontend      | `/home/sparky/sparkbot-v2/frontend`   | —     | ✅ Built/deployed |
-| PostgreSQL          | system service                        | 5432  | ✅ Running    |
+| Component           | Path                                  | Port  | Status            |
+|---------------------|---------------------------------------|-------|-------------------|
+| FastAPI backend     | `/home/sparky/sparkbot-v2/backend`    | 8091  | ✅ Running         |
+| React frontend      | `/home/sparky/sparkbot-v2/frontend`   | —     | ✅ Built/deployed  |
+| PostgreSQL          | system service                        | 5432  | ✅ Running         |
 | nginx               | `/etc/nginx/sites-available/sparkbot-remote` | 80/443 | ✅ Running |
 
 ---
@@ -30,6 +30,7 @@ Browser
 - [FastAPI](https://fastapi.tiangolo.com) — async Python API framework
 - [SQLModel](https://sqlmodel.tiangolo.com) — ORM (PostgreSQL)
 - [litellm](https://docs.litellm.ai) — unified LLM routing (100+ providers)
+- [caldav](https://github.com/python-caldav/caldav) — CalDAV calendar access
 - JWT authentication
 
 **Frontend**
@@ -49,7 +50,18 @@ Browser
 - **Syntax highlighting** — fenced code blocks with language detection (oneDark theme)
 - **Copy-code button** — one click to clipboard on every code block
 - **Message search** — full-text search across room history (`/search`)
-- **File uploads** — images and documents with AI vision analysis (10 MB max)
+- **File uploads** — images (vision analysis), documents (text extraction + summarisation), other files (10 MB max)
+
+### Document Summarisation
+Upload a PDF, DOCX, TXT, Markdown, or CSV and the bot reads and summarises it. Use the caption field as your prompt — e.g. *"What are the action items?"* or *"Summarise the key findings"*.
+
+| Format | How text is extracted |
+|--------|-----------------------|
+| `.pdf` | pypdf (text-layer PDFs; scanned/image PDFs return no text) |
+| `.docx` | python-docx |
+| `.txt` / `.md` / `.csv` | UTF-8 decode |
+
+Up to 12,000 characters (~3k tokens) are sent to the LLM. Large documents are truncated with a note.
 
 ### Slash Commands (type `/` to autocomplete)
 | Command | Description |
@@ -62,6 +74,13 @@ Browser
 | `/meeting start\|stop\|notes` | Meeting mode — capture notes, decisions, actions |
 | `/model` | List available AI models |
 | `/model <id>` | Switch to a different AI model |
+| `/memory` | List stored facts the bot remembers about you |
+| `/memory clear` | Wipe all stored memories |
+| `/tasks` | List open tasks in this room |
+| `/tasks done` | List completed tasks |
+| `/tasks all` | List all tasks regardless of status |
+| `/remind` | List pending reminders for this room |
+| `/agents` | List available named agents |
 
 ### Meeting Mode
 Activated with `/meeting start`. While active, prefix messages with:
@@ -70,6 +89,72 @@ Activated with `/meeting start`. While active, prefix messages with:
 - `action:` → added as an action item
 
 `/meeting stop` exports the full notes as a dated `.md` file.
+
+### Agent Tools
+The bot calls tools automatically mid-conversation — a chip appears briefly in the UI while the tool runs, then disappears as the response streams in.
+
+| Tool | Trigger emoji | Description |
+|------|--------------|-------------|
+| `web_search` | 🔍 | Search the web (Brave → SerpAPI → DuckDuckGo fallback chain) |
+| `get_datetime` | 🕐 | Current UTC date and time |
+| `calculate` | 🧮 | Safe AST-based math evaluator (no `eval()`) |
+| `create_task` | 📋 | Create a task in the current room (with optional assignee + due date) |
+| `list_tasks` | 📋 | List open/done/all tasks in the current room |
+| `complete_task` | ✅ | Mark a task as done by ID |
+| `calendar_list_events` | 📅 | List upcoming calendar events via CalDAV |
+| `calendar_create_event` | 📅 | Create a calendar event via CalDAV |
+| `set_reminder` | ⏰ | Schedule a reminder (once/daily/weekly) to be sent to this room |
+| `list_reminders` | ⏰ | List pending reminders for this room |
+| `cancel_reminder` | ⏰ | Cancel a reminder by ID |
+| `email_fetch_inbox` | 📧 | Fetch N recent (or unread) emails from IMAP inbox |
+| `email_search` | 📧 | Search inbox by subject or sender keyword |
+| `email_send` | 📤 | Send an email via SMTP |
+| `github_list_prs` | 🐙 | List pull requests (open/closed/all) for a repo |
+| `github_get_pr` | 🐙 | Full PR details — title, body, diff stats, files, CI checks |
+| `github_create_issue` | 🐙 | Create a GitHub issue with title, body, optional labels |
+| `github_get_ci_status` | 🔬 | Latest workflow run results for a branch |
+| `notion_search` | 📝 | Search Notion pages by keyword |
+| `notion_get_page` | 📝 | Read a Notion page (blocks → readable text) |
+| `notion_create_page` | 📝 | Create a Notion page with markdown-aware content |
+| `confluence_search` | 🏔️ | CQL search across Confluence spaces |
+| `confluence_get_page` | 🏔️ | Read a Confluence page (strips storage HTML) |
+| `confluence_create_page` | 🏔️ | Create a Confluence page in any space |
+| `slack_send_message` | 💬 | Post a message to a Slack channel |
+| `slack_list_channels` | 💬 | List public Slack channels |
+| `slack_get_channel_history` | 💬 | Fetch recent messages from a channel |
+| `remember_fact` | — | Store a fact about the user for future sessions |
+| `forget_fact` | — | Remove a stored fact by ID |
+
+Tool calling uses litellm's function-calling API (OpenAI format, compatible with all supported models). Up to 5 tool-calling rounds per message.
+
+### Persistent Memory
+The bot proactively calls `remember_fact` when you reveal your name, role, timezone, preferences, or ongoing projects. Facts are stored in the `user_memories` DB table and injected into every system prompt, so the bot greets you by name and gives context-aware answers across sessions.
+
+- `/memory` — list stored facts (with short IDs)
+- `/memory clear` — wipe all stored facts
+- API: `GET /api/v1/chat/memory/`, `DELETE /api/v1/chat/memory/{id}`, `DELETE /api/v1/chat/memory/`
+
+### Calendar Integration (CalDAV)
+When configured, the bot can read and create calendar events in natural language:
+- *"What's on my calendar this week?"* → calls `calendar_list_events`
+- *"Schedule a standup tomorrow at 9am for 30 minutes"* → calls `calendar_create_event`
+
+Works with any CalDAV-compatible service: Google Calendar, iCloud, Nextcloud, Baikal, Radicale, Fastmail.
+
+### Multi-Agent Rooms
+Prefix any message with `@agentname` to route to a specialist:
+
+| Agent | Emoji | Specialty |
+|-------|-------|-----------|
+| `@researcher` | 🔍 | Finds accurate info; uses web search proactively; cites sources |
+| `@coder` | 💻 | Clean, working code with explanations |
+| `@writer` | ✍️ | Writing, editing, emails, summaries, docs |
+| `@analyst` | 📊 | Structured reasoning, data analysis, calculations |
+
+- Type `@` in the input to get an agent autocomplete picker
+- The bot's response shows an agent badge (e.g. `🔍 RESEARCHER`) above the text
+- `/agents` command lists all available agents
+- Custom agents configurable via `SPARKBOT_AGENTS_JSON` env var
 
 ### Multi-Model Support
 Model preferences are per-user (in-memory, resets on service restart). Switch at any time with `/model <id>`.
@@ -88,7 +173,7 @@ Model preferences are per-user (in-memory, resets on service restart). Switch at
 
 ## Configuration
 
-All configuration is via environment variables. The systemd service file at `/etc/systemd/system/sparkbot-v2.service` is the canonical place to set them.
+All configuration is via environment variables. The systemd service file at `/etc/systemd/system/sparkbot-v2.service` is the canonical place to set them for production. A `.env` file in `backend/` works for local dev.
 
 ### Required
 ```env
@@ -109,6 +194,31 @@ MINIMAX_API_KEY=...
 SPARKBOT_MODEL=gpt-4o-mini   # default model for all users
 ```
 
+### Optional — Web Search
+Sparkbot uses a fallback chain: Brave → SerpAPI → DuckDuckGo (no key required).
+```env
+BRAVE_SEARCH_API_KEY=...       # Brave Search API — free tier 2k req/day, most reliable
+SERPAPI_KEY=...                # SerpAPI (Google) — fallback
+SEARCH_CACHE_TTL_SECONDS=300   # Cache identical queries for N seconds (default 300)
+OPENCLAW_CONFIG_PATH=...       # Optional: path to openclaw.json to reuse its search key
+```
+
+### Optional — Calendar (CalDAV)
+```env
+CALDAV_URL=https://www.google.com/calendar/dav/you@gmail.com/events
+CALDAV_USERNAME=you@gmail.com
+CALDAV_PASSWORD=your-app-password
+```
+
+**Provider setup:**
+| Provider | URL | Password |
+|----------|-----|----------|
+| Google Calendar | `https://www.google.com/calendar/dav/{email}/events` | [App Password](https://myaccount.google.com/apppasswords) |
+| iCloud | `https://caldav.icloud.com` | [App-Specific Password](https://appleid.apple.com) |
+| Nextcloud | `https://your-server/remote.php/dav/` | Account password |
+| Fastmail | `https://caldav.fastmail.com/dav/` | App password |
+| Baikal / Radicale | Your server URL | Account password |
+
 After changing env vars: `sudo systemctl restart sparkbot-v2`
 
 ---
@@ -119,13 +229,13 @@ After changing env vars: `sudo systemctl restart sparkbot-v2`
 # Backend
 cd backend
 python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
+pip install -e .
 uvicorn app.main:app --reload --port 8091
 
 # Frontend (separate terminal)
 cd frontend
-npm install
-npm run dev
+bun install
+bun run dev
 ```
 
 ---
@@ -135,7 +245,7 @@ npm run dev
 ```bash
 # Build frontend
 cd frontend
-npm run build
+bun run build
 sudo cp -r dist/* /var/www/sparkbot-remote/
 
 # Restart backend
@@ -159,6 +269,9 @@ curl https://remote.sparkpitlabs.com/api/v1/utils/health-check/
 | `GET` | `/api/v1/chat/messages/{id}/search?q=` | Full-text message search |
 | `GET` | `/api/v1/chat/models` | List available LLM models |
 | `POST` | `/api/v1/chat/model` | Set model preference `{"model": "gpt-4o"}` |
+| `GET` | `/api/v1/chat/memory/` | List stored user memories |
+| `DELETE` | `/api/v1/chat/memory/{id}` | Delete a specific memory |
+| `DELETE` | `/api/v1/chat/memory/` | Clear all memories |
 | `GET` | `/api/v1/utils/health-check/` | Health check → `true` |
 
 Interactive API docs: `http://localhost:8091/docs`
@@ -175,18 +288,22 @@ sparkbot-v2/
 │   │   │   ├── main.py                   # Router assembly
 │   │   │   └── routes/chat/
 │   │   │       ├── llm.py                # litellm routing, model registry
+│   │   │       ├── tools.py              # LLM tool definitions + executors
 │   │   │       ├── rooms.py              # Room CRUD + streaming message endpoint
 │   │   │       ├── messages.py           # Message CRUD + search
+│   │   │       ├── memory.py             # User memory CRUD endpoints
 │   │   │       ├── uploads.py            # File upload + vision SSE
 │   │   │       ├── model.py              # Model switching endpoints
 │   │   │       ├── users.py              # Chat user management + bootstrap
 │   │   │       └── websocket.py          # WebSocket handler
 │   │   ├── models.py                     # SQLModel DB models
-│   │   └── crud.py                       # DB helper functions
+│   │   ├── crud.py                       # DB helper functions
+│   │   └── alembic/                      # DB migrations
+│   ├── pyproject.toml                    # Python dependencies
 │   └── venv/                             # Python virtualenv
 ├── frontend/
 │   ├── src/
-│   │   ├── pages/SparkbotDmPage.tsx      # Main chat UI (streaming, commands, meeting)
+│   │   ├── pages/SparkbotDmPage.tsx      # Main chat UI (streaming, commands, tools, meeting)
 │   │   ├── components/chat/
 │   │   │   ├── MessageBubble.tsx         # Markdown + syntax highlight + copy button
 │   │   │   └── ChatInput.tsx             # Input bar
@@ -201,9 +318,26 @@ sparkbot-v2/
 
 See [`/home/sparky/sparkbot/LOGBOOK_handoff.md`](../sparkbot/LOGBOOK_handoff.md) for full session history and detailed roadmap.
 
-**Next up:**
-- Tool calling framework (web search, code execution)
-- Persistent per-user memory (injected into system prompt)
-- Calendar integration (Google Calendar / CalDAV)
-- Reply threading UI
-- Email integration (SMTP/IMAP summarisation)
+### Done
+- ✅ Streaming SSE responses, markdown rendering, conversation context
+- ✅ Slash commands + autocomplete, meeting mode, message search, file uploads
+- ✅ Multi-model support via litellm (7 providers)
+- ✅ Tool calling framework (web search, calculator, datetime)
+- ✅ Persistent per-user memory (DB-backed, injected into system prompt)
+- ✅ Web search reliability (Brave → SerpAPI → DuckDuckGo fallback + OpenClaw bridge)
+- ✅ Calendar integration (CalDAV — list events, create events)
+- ✅ Task/todo management (create, list, complete tasks; room-scoped; `/tasks` command)
+- ✅ Document summarisation (PDF/DOCX/TXT/MD/CSV — text extract + LLM summary via upload stream)
+- ✅ Proactive reminders (asyncio scheduler, once/daily/weekly recurrence, WebSocket push on fire)
+- ✅ Email integration (IMAP fetch/search + SMTP send; 3 LLM tools; zero new dependencies)
+- ✅ GitHub integration (list PRs, get PR details + CI checks, create issues; 4 LLM tools via httpx)
+- ✅ Notion integration (search, get page, create page; 3 LLM tools; Notion Blocks API)
+- ✅ Confluence integration (CQL search, get page, create page; 3 LLM tools; Atlassian REST API)
+- ✅ Slack bridge (3 outbound LLM tools + inbound Events API webhook; @mentions → LLM → threaded reply)
+- ✅ Multi-agent rooms (@mention routing; 4 agents: researcher/coder/writer/analyst; agent badge UI; custom agents via env)
+- ✅ Audit log (every tool call recorded; `audit_logs` DB table; `GET /audit` API; `/audit` slash command)
+
+### Phase 4 complete ✅
+All planned integrations are done. Remaining polish items:
+- Message edit UI (backend PATCH endpoint exists, no frontend)
+- Reply threading UI (DB + API ready, no frontend component)

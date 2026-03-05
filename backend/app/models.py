@@ -289,6 +289,66 @@ class ChatMeetingArtifact(SQLModel, table=True):
     room: ChatRoom = Relationship(back_populates="meeting_artifacts")
 
 
+class TaskStatus(str, PyEnum):
+    OPEN = "open"
+    DONE = "done"
+
+
+class ChatTask(SQLModel, table=True):
+    """
+    Room-scoped task/todo item.
+
+    Created from chat (via LLM tools) or the REST API.
+    Tasks are visible to all room members and can be assigned to any member.
+    """
+    __tablename__ = "chat_tasks"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    room_id: uuid.UUID = Field(foreign_key="chat_rooms.id", ondelete="CASCADE", nullable=False, index=True)
+    created_by: uuid.UUID = Field(foreign_key="chat_users.id", nullable=False)
+    assigned_to: Optional[uuid.UUID] = Field(default=None, foreign_key="chat_users.id", nullable=True)
+    title: str = Field(max_length=500)
+    description: Optional[str] = Field(default=None)
+    status: TaskStatus = Field(default=TaskStatus.OPEN)
+    due_date: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    room: "ChatRoom" = Relationship()
+
+
+class ReminderStatus(str, PyEnum):
+    PENDING = "pending"
+    FIRED = "fired"
+    CANCELLED = "cancelled"
+
+
+class ReminderRecurrence(str, PyEnum):
+    ONCE = "once"
+    DAILY = "daily"
+    WEEKLY = "weekly"
+
+
+class Reminder(SQLModel, table=True):
+    """
+    Scheduled bot message for a room.
+
+    The background scheduler polls every 60 s and fires any reminder
+    whose fire_at <= now and status == pending. Recurring reminders are
+    rescheduled automatically after firing.
+    """
+    __tablename__ = "reminders"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    room_id: uuid.UUID = Field(foreign_key="chat_rooms.id", ondelete="CASCADE", nullable=False, index=True)
+    created_by: uuid.UUID = Field(foreign_key="chat_users.id", nullable=False)
+    message: str = Field(max_length=1000)
+    fire_at: datetime = Field(index=True)
+    recurrence: ReminderRecurrence = Field(default=ReminderRecurrence.ONCE)
+    status: ReminderStatus = Field(default=ReminderStatus.PENDING)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class UserMemory(SQLModel, table=True):
     """
     Persistent per-user memory facts.
@@ -303,6 +363,27 @@ class UserMemory(SQLModel, table=True):
     user_id: uuid.UUID = Field(index=True, nullable=False)
     fact: str = Field(max_length=500)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class AuditLog(SQLModel, table=True):
+    """
+    Immutable record of every bot tool call.
+
+    Captures who triggered it (user_id), which room, which tool, the input
+    arguments, the result (truncated), and which agent/model was active.
+    Used for accountability, debugging, and transparency.
+    """
+    __tablename__ = "audit_logs"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), index=True)
+    user_id: Optional[uuid.UUID] = Field(default=None, index=True)
+    room_id: Optional[uuid.UUID] = Field(default=None, index=True)
+    tool_name: str = Field(index=True, max_length=100)
+    tool_input: str = Field(default="{}")       # JSON-encoded args
+    tool_result: str = Field(default="")         # truncated result (≤1000 chars)
+    agent_name: Optional[str] = Field(default=None, max_length=50)
+    model: Optional[str] = Field(default=None, max_length=100)
 
 
 # Re-export chat models for convenience

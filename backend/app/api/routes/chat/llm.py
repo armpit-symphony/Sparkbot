@@ -75,6 +75,8 @@ async def stream_chat_with_tools(
     user_id: str | None = None,
     model: str | None = None,
     db_session=None,
+    room_id: str | None = None,
+    agent_name: str | None = None,
 ) -> AsyncGenerator[dict, None]:
     """
     Tool-aware streaming. Yields typed event dicts:
@@ -117,9 +119,27 @@ async def stream_chat_with_tools(
 
                 yield {"type": "tool_start", "tool": tool_name, "input": tool_args}
 
-                result = await execute_tool(tool_name, tool_args, user_id=user_id, session=db_session)
+                result = await execute_tool(tool_name, tool_args, user_id=user_id, session=db_session, room_id=room_id)
 
                 yield {"type": "tool_done", "tool": tool_name, "result": result[:300]}
+
+                # Audit log — best-effort, never let it break the chat stream
+                if db_session is not None:
+                    try:
+                        import uuid as _uuid
+                        from app.crud import create_audit_log
+                        create_audit_log(
+                            session=db_session,
+                            tool_name=tool_name,
+                            tool_input=tc.function.arguments,
+                            tool_result=result,
+                            user_id=_uuid.UUID(user_id) if user_id else None,
+                            room_id=_uuid.UUID(room_id) if room_id else None,
+                            agent_name=agent_name,
+                            model=chosen,
+                        )
+                    except Exception:
+                        pass  # never fail the stream because of logging
 
                 msgs.append({
                     "role": "tool",

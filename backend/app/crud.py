@@ -12,16 +12,22 @@ from sqlmodel import Session, delete
 
 from app.core.security import get_password_hash, verify_password
 from app.models import (
+    AuditLog,
     ChatMeetingArtifact,
     ChatMessage,
     ChatRoom,
     ChatRoomInvite,
     ChatRoomMember,
+    ChatTask,
     ChatUser,
     Item,
     ItemCreate,
     MeetingArtifactType,
+    Reminder,
+    ReminderRecurrence,
+    ReminderStatus,
     RoomRole,
+    TaskStatus,
     User,
     UserCreate,
     UserMemory,
@@ -488,3 +494,207 @@ def clear_user_memories(session: Session, user_id: uuid.UUID) -> int:
         session.delete(m)
     session.commit()
     return count
+
+
+# ─── Task CRUD ─────────────────────────────────────────────────────────────────
+
+def create_task(
+    session: Session,
+    room_id: uuid.UUID,
+    created_by: uuid.UUID,
+    title: str,
+    description: Optional[str] = None,
+    assigned_to: Optional[uuid.UUID] = None,
+    due_date: Optional[datetime] = None,
+) -> ChatTask:
+    task = ChatTask(
+        room_id=room_id,
+        created_by=created_by,
+        title=title.strip(),
+        description=description.strip() if description else None,
+        assigned_to=assigned_to,
+        due_date=due_date,
+    )
+    session.add(task)
+    session.commit()
+    session.refresh(task)
+    return task
+
+
+def get_tasks(
+    session: Session,
+    room_id: uuid.UUID,
+    status: Optional[TaskStatus] = None,
+) -> list[ChatTask]:
+    q = select(ChatTask).where(ChatTask.room_id == room_id)
+    if status is not None:
+        q = q.where(ChatTask.status == status)
+    q = q.order_by(ChatTask.created_at.asc())
+    return list(session.execute(q).scalars().all())
+
+
+def get_task(session: Session, task_id: uuid.UUID) -> Optional[ChatTask]:
+    return session.get(ChatTask, task_id)
+
+
+def complete_task(session: Session, task_id: uuid.UUID) -> Optional[ChatTask]:
+    task = session.get(ChatTask, task_id)
+    if not task:
+        return None
+    task.status = TaskStatus.DONE
+    task.updated_at = datetime.now(timezone.utc)
+    session.add(task)
+    session.commit()
+    session.refresh(task)
+    return task
+
+
+def assign_task(
+    session: Session, task_id: uuid.UUID, assigned_to: Optional[uuid.UUID]
+) -> Optional[ChatTask]:
+    task = session.get(ChatTask, task_id)
+    if not task:
+        return None
+    task.assigned_to = assigned_to
+    task.updated_at = datetime.now(timezone.utc)
+    session.add(task)
+    session.commit()
+    session.refresh(task)
+    return task
+
+
+def delete_task(session: Session, task_id: uuid.UUID) -> bool:
+    task = session.get(ChatTask, task_id)
+    if not task:
+        return False
+    session.delete(task)
+    session.commit()
+    return True
+
+
+# ─── Reminder CRUD ─────────────────────────────────────────────────────────────
+
+def create_reminder(
+    session: Session,
+    room_id: uuid.UUID,
+    created_by: uuid.UUID,
+    message: str,
+    fire_at: datetime,
+    recurrence: ReminderRecurrence = ReminderRecurrence.ONCE,
+) -> Reminder:
+    reminder = Reminder(
+        room_id=room_id,
+        created_by=created_by,
+        message=message.strip(),
+        fire_at=fire_at,
+        recurrence=recurrence,
+    )
+    session.add(reminder)
+    session.commit()
+    session.refresh(reminder)
+    return reminder
+
+
+def get_room_reminders(
+    session: Session,
+    room_id: uuid.UUID,
+    status: Optional[ReminderStatus] = ReminderStatus.PENDING,
+) -> list[Reminder]:
+    q = select(Reminder).where(Reminder.room_id == room_id)
+    if status is not None:
+        q = q.where(Reminder.status == status)
+    q = q.order_by(Reminder.fire_at.asc())
+    return list(session.execute(q).scalars().all())
+
+
+def get_due_reminders(session: Session, now: datetime) -> list[Reminder]:
+    """Return all pending reminders whose fire_at is at or before now."""
+    return list(
+        session.execute(
+            select(Reminder)
+            .where(Reminder.status == ReminderStatus.PENDING)
+            .where(Reminder.fire_at <= now)
+            .order_by(Reminder.fire_at.asc())
+        ).scalars().all()
+    )
+
+
+def fire_reminder(session: Session, reminder_id: uuid.UUID) -> Optional[Reminder]:
+    """Mark a reminder fired. Reschedule if recurring, else mark done."""
+    from datetime import timedelta
+    reminder = session.get(Reminder, reminder_id)
+    if not reminder:
+        return None
+
+    if reminder.recurrence == ReminderRecurrence.DAILY:
+        reminder.fire_at = reminder.fire_at + timedelta(days=1)
+        # keep status PENDING for next fire
+    elif reminder.recurrence == ReminderRecurrence.WEEKLY:
+        reminder.fire_at = reminder.fire_at + timedelta(weeks=1)
+    else:
+        reminder.status = ReminderStatus.FIRED
+
+    session.add(reminder)
+    session.commit()
+    session.refresh(reminder)
+    return reminder
+
+
+def cancel_reminder(session: Session, reminder_id: uuid.UUID) -> bool:
+    reminder = session.get(Reminder, reminder_id)
+    if not reminder:
+        return False
+    reminder.status = ReminderStatus.CANCELLED
+    session.add(reminder)
+    session.commit()
+    return True
+
+
+# ─── Audit log CRUD ───────────────────────────────────────────────────────────
+
+def create_audit_log(
+    session: Session,
+    tool_name: str,
+    tool_input: str,
+    tool_result: str,
+    user_id: Optional[uuid.UUID] = None,
+    room_id: Optional[uuid.UUID] = None,
+    agent_name: Optional[str] = None,
+    model: Optional[str] = None,
+) -> AuditLog:
+    entry = AuditLog(
+        user_id=user_id,
+        room_id=room_id,
+        tool_name=tool_name,
+        tool_input=tool_input[:2000],
+        tool_result=tool_result[:1000],
+        agent_name=agent_name,
+        model=model,
+    )
+    session.add(entry)
+    session.commit()
+    session.refresh(entry)
+    return entry
+
+
+def get_audit_logs(
+    session: Session,
+    limit: int = 20,
+    offset: int = 0,
+    tool_name: Optional[str] = None,
+    user_id: Optional[uuid.UUID] = None,
+    room_id: Optional[uuid.UUID] = None,
+) -> tuple[list[AuditLog], int]:
+    stmt = select(AuditLog)
+    if tool_name:
+        stmt = stmt.where(AuditLog.tool_name == tool_name)
+    if user_id:
+        stmt = stmt.where(AuditLog.user_id == user_id)
+    if room_id:
+        stmt = stmt.where(AuditLog.room_id == room_id)
+
+    total: int = session.exec(select(func.count()).select_from(stmt.subquery())).scalar_one()
+    rows = session.exec(
+        stmt.order_by(AuditLog.created_at.desc()).offset(offset).limit(limit)
+    ).all()
+    return list(rows), int(total)
