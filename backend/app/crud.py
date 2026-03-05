@@ -24,6 +24,7 @@ from app.models import (
     RoomRole,
     User,
     UserCreate,
+    UserMemory,
     UserUpdate,
     UserType,
 )
@@ -449,3 +450,41 @@ def get_chat_meeting_artifacts(
             .limit(limit)
         ).scalars().all()
     )
+
+
+# ─── User Memory CRUD ─────────────────────────────────────────────────────────
+
+def get_user_memories(session: Session, user_id: uuid.UUID) -> list[UserMemory]:
+    return list(
+        session.execute(
+            select(UserMemory)
+            .where(UserMemory.user_id == user_id)
+            .order_by(UserMemory.created_at.asc())
+        ).scalars().all()
+    )
+
+
+def add_user_memory(session: Session, user_id: uuid.UUID, fact: str) -> UserMemory:
+    mem = UserMemory(user_id=user_id, fact=fact.strip())
+    session.add(mem)
+    session.commit()
+    session.refresh(mem)
+    return mem
+
+
+def delete_user_memory(session: Session, memory_id: uuid.UUID, user_id: uuid.UUID) -> bool:
+    mem = session.get(UserMemory, memory_id)
+    if not mem or mem.user_id != user_id:
+        return False
+    session.delete(mem)
+    session.commit()
+    return True
+
+
+def clear_user_memories(session: Session, user_id: uuid.UUID) -> int:
+    mems = get_user_memories(session, user_id)
+    count = len(mems)
+    for m in mems:
+        session.delete(m)
+    session.commit()
+    return count

@@ -3,11 +3,14 @@ API routes for chat rooms.
 
 Handles room CRUD and membership management.
 """
+import json
+import os
 from datetime import datetime, timezone
 from typing import Any, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlmodel import Session
@@ -496,9 +499,9 @@ def send_room_message(
     
     sender = session.get(ChatUser, current_user.id)
     
-    # Auto-reply from real Sparkbot (call npm bot on port 8080)
+    # Auto-reply from Sparkbot (call npm bot on port 8080 for all rooms)
     bot_response = None
-    if room_id and str(room_id) == "6c1f3e50-7443-407f-bc3b-4a5296b70350":
+    if message.content and message.content.strip():
         try:
             # Find or create bot user
             bot_user = session.exec(select(ChatUser).where(ChatUser.username == "sparkbot")).scalar_one_or_none()
@@ -512,44 +515,59 @@ def send_room_message(
                 session.commit()
                 session.refresh(bot_user)
             
-            # Call npm sparkbot for real response
-            import httpx
+            # Direct LLM call with conversation history
+            import litellm
+            from app.api.routes.chat.llm import SYSTEM_PROMPT as LLM_SYSTEM_PROMPT, get_model
+
             try:
-                bot_res = httpx.post("http://127.0.0.1:8080/chat", json={"message": message.content}, timeout=30.0)
-                if bot_res.status_code == 200:
-                    bot_text = bot_res.text
-                    # Remove JSON wrapper if response is {"response":"..."}
-                    try:
-                        import json
-                        parsed = json.loads(bot_text)
-                        if "response" in parsed:
-                            bot_text = parsed["response"]
-                    except:
-                        pass
-                    # Save bot response
-                    bot_reply = create_chat_message(
-                        session=session,
-                        room_id=room_id,
-                        sender_id=bot_user.id,
-                        content=bot_text,
-                        sender_type="BOT",
-                        reply_to_id=message.id,
-                    )
-                    bot_response = MessageResponse(
-                        id=bot_reply.id,
-                        room_id=bot_reply.room_id,
-                        sender_id=bot_reply.sender_id,
-                        sender_type=bot_reply.sender_type,
-                        content=bot_reply.content,
-                        created_at=bot_reply.created_at,
-                        meta_json=bot_reply.meta_json,
-                        reply_to_id=bot_reply.reply_to_id,
-                        sender_username=bot_user.username,
-                        sender_display_name=bot_user.bot_display_name,
-                    )
+                # Build conversation history (last 20 messages, oldest first)
+                history_msgs, _, _ = get_chat_messages(
+                    session=session, room_id=room_id, limit=20
+                )
+                openai_history = []
+                for m in history_msgs:
+                    if str(m.id) == str(message.id):
+                        continue  # skip the message we just inserted
+                    role = "assistant" if str(m.sender_type).upper() == "BOT" else "user"
+                    openai_history.append({"role": role, "content": m.content})
+                openai_history.append({"role": "user", "content": message.content})
+
+                msgs = [{"role": "system", "content": LLM_SYSTEM_PROMPT}] + openai_history
+                resp = litellm.completion(
+                    model=get_model(str(current_user.id)),
+                    messages=msgs,
+                    temperature=0.2,
+                )
+                bot_text = (resp.choices[0].message.content or "").strip()
+                if not bot_text:
+                    raise RuntimeError("Empty model response")
+
+                bot_reply = create_chat_message(
+                    session=session,
+                    room_id=room_id,
+                    sender_id=bot_user.id,
+                    content=bot_text,
+                    sender_type="BOT",
+                    reply_to_id=message.id,
+                )
+                bot_response = MessageResponse(
+                    id=bot_reply.id,
+                    room_id=bot_reply.room_id,
+                    sender_id=bot_reply.sender_id,
+                    sender_type=bot_reply.sender_type,
+                    content=bot_reply.content,
+                    created_at=bot_reply.created_at,
+                    meta_json=bot_reply.meta_json,
+                    reply_to_id=bot_reply.reply_to_id,
+                    sender_username=bot_user.username,
+                    sender_display_name=bot_user.bot_display_name,
+                )
             except Exception as bot_err:
-                print(f"BOT_CALL_FAILED: {bot_err}")
+                raise HTTPException(status_code=502, detail=f"LLM_CALL_FAILED: {bot_err}")
         except Exception as e:
+            from fastapi import HTTPException
+            if isinstance(e, HTTPException):
+                raise
             print(f"BOT_REPLY_ERROR: {e}")
     
     human_response = MessageResponse(
@@ -566,3 +584,115 @@ def send_room_message(
     )
     
     return SendMessageResponse(human=human_response, bot=bot_response)
+
+
+@router.post("/{room_id}/messages/stream")
+async def stream_room_message(
+    room_id: UUID,
+    message_in: MessageCreate,
+    session: SessionDep,
+    current_user: CurrentChatUser = None,
+) -> StreamingResponse:
+    """Stream bot response as Server-Sent Events (text/event-stream).
+
+    Events emitted:
+      data: {"type": "human_message", "message_id": "..."}
+      data: {"type": "token", "token": "..."}
+      data: {"type": "done", "message_id": "..."}
+      data: {"type": "error", "error": "..."}
+    """
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    membership = get_chat_room_member(session, room_id, current_user.id)
+    if not membership:
+        raise HTTPException(status_code=403, detail="Not a member of this room")
+    if membership.role == RoomRole.VIEWER:
+        raise HTTPException(status_code=403, detail="VIEWERs cannot send messages")
+
+    # Save human message now, before streaming starts
+    message = create_chat_message(
+        session=session,
+        room_id=room_id,
+        sender_id=current_user.id,
+        content=message_in.content,
+        sender_type=current_user.type.value if hasattr(current_user.type, "value") else "HUMAN",
+        reply_to_id=message_in.reply_to_id,
+    )
+    human_msg_id = str(message.id)
+    human_msg_uuid = message.id  # capture before session closes — do NOT use message.id inside the generator
+
+    # Build conversation history (before this message)
+    history_msgs, _, _ = get_chat_messages(session=session, room_id=room_id, limit=20)
+    openai_history = []
+    for m in history_msgs:
+        if str(m.id) == human_msg_id:
+            continue
+        role = "assistant" if str(m.sender_type).upper() == "BOT" else "user"
+        openai_history.append({"role": role, "content": m.content})
+    openai_history.append({"role": "user", "content": message_in.content})
+
+    # Build personalised system prompt — inject user memories
+    from app.api.routes.chat.llm import SYSTEM_PROMPT as LLM_SYSTEM_PROMPT
+    from app.crud import get_user_memories
+    memories = get_user_memories(session, current_user.id)
+    if memories:
+        mem_block = "\n".join(f"- {m.fact}" for m in memories)
+        system_prompt = LLM_SYSTEM_PROMPT + f"\n\n## What you know about this user:\n{mem_block}"
+    else:
+        system_prompt = LLM_SYSTEM_PROMPT
+
+    user_id_str = str(current_user.id)
+
+    async def event_stream():
+        from app.api.deps import get_db
+
+        yield f"data: {json.dumps({'type': 'human_message', 'message_id': human_msg_id})}\n\n"
+
+        full_text = ""
+        try:
+            from app.api.routes.chat.llm import stream_chat_with_tools
+            db = next(get_db())
+            async for event in stream_chat_with_tools(
+                [{"role": "system", "content": system_prompt}] + openai_history,
+                user_id=user_id_str,
+                db_session=db,
+            ):
+                if event["type"] == "token":
+                    full_text += event["token"]
+                    yield f"data: {json.dumps({'type': 'token', 'token': event['token']})}\n\n"
+                elif event["type"] in ("tool_start", "tool_done"):
+                    yield f"data: {json.dumps(event)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+            return
+
+        # Save completed bot message (reuse the db session opened for tool calls)
+        try:
+            bot_user = db.exec(
+                select(ChatUser).where(ChatUser.username == "sparkbot")
+            ).scalar_one_or_none()
+            if not bot_user:
+                bot_user = ChatUser(username="sparkbot", user_type=UserType.BOT, passphrase_hash="")
+                db.add(bot_user)
+                db.commit()
+                db.refresh(bot_user)
+            bot_reply = create_chat_message(
+                session=db,
+                room_id=room_id,
+                sender_id=bot_user.id,
+                content=full_text,
+                sender_type="BOT",
+                reply_to_id=human_msg_uuid,
+            )
+            bot_reply_id = str(bot_reply.id)  # capture before session closes
+            db.close()
+            yield f"data: {json.dumps({'type': 'done', 'message_id': bot_reply_id})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'error': f'Save failed: {e}'})}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

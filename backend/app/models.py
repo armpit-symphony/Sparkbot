@@ -289,6 +289,22 @@ class ChatMeetingArtifact(SQLModel, table=True):
     room: ChatRoom = Relationship(back_populates="meeting_artifacts")
 
 
+class UserMemory(SQLModel, table=True):
+    """
+    Persistent per-user memory facts.
+
+    The bot stores facts it learns about a user (name, timezone, preferences,
+    ongoing projects, etc.) so they survive restarts and are injected into
+    every system prompt for that user.
+    """
+    __tablename__ = "user_memories"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    user_id: uuid.UUID = Field(index=True, nullable=False)
+    fact: str = Field(max_length=500)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 # Re-export chat models for convenience
 ChatUser.update_forward_refs()
 ChatRoom.update_forward_refs()

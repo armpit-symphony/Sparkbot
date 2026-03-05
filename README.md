@@ -1,233 +1,209 @@
-# Full Stack FastAPI Template
+# Sparkbot v2
 
-<a href="https://github.com/fastapi/full-stack-fastapi-template/actions?query=workflow%3A%22Test+Docker+Compose%22" target="_blank"><img src="https://github.com/fastapi/full-stack-fastapi-template/workflows/Test%20Docker%20Compose/badge.svg" alt="Test Docker Compose"></a>
-<a href="https://github.com/fastapi/full-stack-fastapi-template/actions?query=workflow%3A%22Test+Backend%22" target="_blank"><img src="https://github.com/fastapi/full-stack-fastapi-template/workflows/Test%20Backend/badge.svg" alt="Test Backend"></a>
-<a href="https://coverage-badge.samuelcolvin.workers.dev/redirect/fastapi/full-stack-fastapi-template" target="_blank"><img src="https://coverage-badge.samuelcolvin.workers.dev/fastapi/full-stack-fastapi-template.svg" alt="Coverage"></a>
+**Sparkbot** is a self-hosted AI chat assistant built for Sparkpit Labs. It runs at [remote.sparkpitlabs.com](https://remote.sparkpitlabs.com) and is designed to grow into a full office worker agent — handling chat, file analysis, meeting capture, search, and eventually tool calling into the broader office stack.
 
-## Technology Stack and Features
+---
 
-- ⚡ [**FastAPI**](https://fastapi.tiangolo.com) for the Python backend API.
-  - 🧰 [SQLModel](https://sqlmodel.tiangolo.com) for the Python SQL database interactions (ORM).
-  - 🔍 [Pydantic](https://docs.pydantic.dev), used by FastAPI, for the data validation and settings management.
-  - 💾 [PostgreSQL](https://www.postgresql.org) as the SQL database.
-- 🚀 [React](https://react.dev) for the frontend.
-  - 💃 Using TypeScript, hooks, [Vite](https://vitejs.dev), and other parts of a modern frontend stack.
-  - 🎨 [Tailwind CSS](https://tailwindcss.com) and [shadcn/ui](https://ui.shadcn.com) for the frontend components.
-  - 🤖 An automatically generated frontend client.
-  - 🧪 [Playwright](https://playwright.dev) for End-to-End testing.
-  - 🦇 Dark mode support.
-- 🐋 [Docker Compose](https://www.docker.com) for development and production.
-- 🔒 Secure password hashing by default.
-- 🔑 JWT (JSON Web Token) authentication.
-- 📫 Email based password recovery.
-- 📬 [Mailcatcher](https://mailcatcher.me) for local email testing during development.
-- ✅ Tests with [Pytest](https://pytest.org).
-- 📞 [Traefik](https://traefik.io) as a reverse proxy / load balancer.
-- 🚢 Deployment instructions using Docker Compose, including how to set up a frontend Traefik proxy to handle automatic HTTPS certificates.
-- 🏭 CI (continuous integration) and CD (continuous deployment) based on GitHub Actions.
+## Architecture
 
-### Dashboard Login
-
-[![API docs](img/login.png)](https://github.com/fastapi/full-stack-fastapi-template)
-
-### Dashboard - Admin
-
-[![API docs](img/dashboard.png)](https://github.com/fastapi/full-stack-fastapi-template)
-
-### Dashboard - Items
-
-[![API docs](img/dashboard-items.png)](https://github.com/fastapi/full-stack-fastapi-template)
-
-### Dashboard - Dark Mode
-
-[![API docs](img/dashboard-dark.png)](https://github.com/fastapi/full-stack-fastapi-template)
-
-### Interactive API Documentation
-
-[![API docs](img/docs.png)](https://github.com/fastapi/full-stack-fastapi-template)
-
-## How To Use It
-
-You can **just fork or clone** this repository and use it as is.
-
-✨ It just works. ✨
-
-### How to Use a Private Repository
-
-If you want to have a private repository, GitHub won't allow you to simply fork it as it doesn't allow changing the visibility of forks.
-
-But you can do the following:
-
-- Create a new GitHub repo, for example `my-full-stack`.
-- Clone this repository manually, set the name with the name of the project you want to use, for example `my-full-stack`:
-
-```bash
-git clone git@github.com:fastapi/full-stack-fastapi-template.git my-full-stack
+```
+Browser
+  │
+  └── nginx (remote.sparkpitlabs.com)
+        ├── /            → static files (/var/www/sparkbot-remote)
+        ├── /api/        → FastAPI backend (port 8091)
+        └── /ws/         → WebSocket (port 8091, upgrade headers)
 ```
 
-- Enter into the new directory:
+| Component           | Path                                  | Port  | Status       |
+|---------------------|---------------------------------------|-------|--------------|
+| FastAPI backend     | `/home/sparky/sparkbot-v2/backend`    | 8091  | ✅ Running    |
+| React frontend      | `/home/sparky/sparkbot-v2/frontend`   | —     | ✅ Built/deployed |
+| PostgreSQL          | system service                        | 5432  | ✅ Running    |
+| nginx               | `/etc/nginx/sites-available/sparkbot-remote` | 80/443 | ✅ Running |
 
-```bash
-cd my-full-stack
+---
+
+## Tech Stack
+
+**Backend**
+- [FastAPI](https://fastapi.tiangolo.com) — async Python API framework
+- [SQLModel](https://sqlmodel.tiangolo.com) — ORM (PostgreSQL)
+- [litellm](https://docs.litellm.ai) — unified LLM routing (100+ providers)
+- JWT authentication
+
+**Frontend**
+- React + TypeScript + [Vite](https://vitejs.dev)
+- [TanStack Router](https://tanstack.com/router)
+- [shadcn/ui](https://ui.shadcn.com) + Tailwind CSS
+- `react-markdown` + `react-syntax-highlighter` (Prism oneDark)
+
+---
+
+## Features
+
+### Chat
+- **Streaming responses** — token-by-token SSE (`/messages/stream`), typing cursor, no waiting
+- **Conversation context** — last 20 messages passed as history on every LLM call
+- **Markdown rendering** — headings, lists, bold, tables, code blocks in bot replies
+- **Syntax highlighting** — fenced code blocks with language detection (oneDark theme)
+- **Copy-code button** — one click to clipboard on every code block
+- **Message search** — full-text search across room history (`/search`)
+- **File uploads** — images and documents with AI vision analysis (10 MB max)
+
+### Slash Commands (type `/` to autocomplete)
+| Command | Description |
+|---------|-------------|
+| `/help` | List all commands |
+| `/clear` | Clear local view (server history preserved) |
+| `/new` | Fresh start |
+| `/export` | Download conversation as `.md` |
+| `/search <query>` | Search message history with highlighting |
+| `/meeting start\|stop\|notes` | Meeting mode — capture notes, decisions, actions |
+| `/model` | List available AI models |
+| `/model <id>` | Switch to a different AI model |
+
+### Meeting Mode
+Activated with `/meeting start`. While active, prefix messages with:
+- `note:` → captured as a meeting note
+- `decided:` → recorded as a decision
+- `action:` → added as an action item
+
+`/meeting stop` exports the full notes as a dated `.md` file.
+
+### Multi-Model Support
+Model preferences are per-user (in-memory, resets on service restart). Switch at any time with `/model <id>`.
+
+| Model ID | Description |
+|----------|-------------|
+| `gpt-4o-mini` | GPT-4o Mini — fast, cost-effective (default) |
+| `gpt-4o` | GPT-4o — most capable OpenAI model |
+| `claude-3-5-haiku-20241022` | Claude Haiku — fast Anthropic model |
+| `claude-sonnet-4-5` | Claude Sonnet — balanced Anthropic model |
+| `gemini/gemini-2.0-flash` | Gemini Flash — fast Google model |
+| `groq/llama-3.3-70b-versatile` | Llama 3.3 70B via Groq — very fast |
+| `minimax/MiniMax-M2.5` | MiniMax M2.5 — reasoning + tool calling |
+
+---
+
+## Configuration
+
+All configuration is via environment variables. The systemd service file at `/etc/systemd/system/sparkbot-v2.service` is the canonical place to set them.
+
+### Required
+```env
+OPENAI_API_KEY=sk-...
+SECRET_KEY=<random 32+ char string>
+POSTGRES_SERVER=localhost
+POSTGRES_DB=sparkbot
+POSTGRES_USER=sparkbot
+POSTGRES_PASSWORD=...
 ```
 
-- Set the new origin to your new repository, copy it from the GitHub interface, for example:
-
-```bash
-git remote set-url origin git@github.com:octocat/my-full-stack.git
+### Optional — Additional LLM Providers
+```env
+ANTHROPIC_API_KEY=sk-ant-...
+GOOGLE_API_KEY=...
+GROQ_API_KEY=gsk_...
+MINIMAX_API_KEY=...
+SPARKBOT_MODEL=gpt-4o-mini   # default model for all users
 ```
 
-- Add this repo as another "remote" to allow you to get updates later:
+After changing env vars: `sudo systemctl restart sparkbot-v2`
+
+---
+
+## Running Locally
 
 ```bash
-git remote add upstream git@github.com:fastapi/full-stack-fastapi-template.git
+# Backend
+cd backend
+python3 -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8091
+
+# Frontend (separate terminal)
+cd frontend
+npm install
+npm run dev
 ```
 
-- Push the code to your new repository:
+---
+
+## Deployment (Production)
 
 ```bash
-git push -u origin master
+# Build frontend
+cd frontend
+npm run build
+sudo cp -r dist/* /var/www/sparkbot-remote/
+
+# Restart backend
+sudo systemctl restart sparkbot-v2
+
+# Health check
+curl https://remote.sparkpitlabs.com/api/v1/utils/health-check/
 ```
 
-### Update From the Original Template
+---
 
-After cloning the repository, and after doing changes, you might want to get the latest changes from this original template.
+## Key API Endpoints
 
-- Make sure you added the original repository as a remote, you can check it with:
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/v1/chat/users/bootstrap` | Auto-create user + DM room, return room_id |
+| `POST` | `/api/v1/chat/users/login` | Login → JWT token |
+| `GET` | `/api/v1/chat/rooms/{id}/messages` | Room message history |
+| `POST` | `/api/v1/chat/rooms/{id}/messages/stream` | Send message, receive SSE stream |
+| `POST` | `/api/v1/chat/rooms/{id}/upload` | Upload file, receive SSE stream |
+| `GET` | `/api/v1/chat/messages/{id}/search?q=` | Full-text message search |
+| `GET` | `/api/v1/chat/models` | List available LLM models |
+| `POST` | `/api/v1/chat/model` | Set model preference `{"model": "gpt-4o"}` |
+| `GET` | `/api/v1/utils/health-check/` | Health check → `true` |
 
-```bash
-git remote -v
+Interactive API docs: `http://localhost:8091/docs`
 
-origin    git@github.com:octocat/my-full-stack.git (fetch)
-origin    git@github.com:octocat/my-full-stack.git (push)
-upstream    git@github.com:fastapi/full-stack-fastapi-template.git (fetch)
-upstream    git@github.com:fastapi/full-stack-fastapi-template.git (push)
+---
+
+## Project Files
+
+```
+sparkbot-v2/
+├── backend/
+│   ├── app/
+│   │   ├── api/
+│   │   │   ├── main.py                   # Router assembly
+│   │   │   └── routes/chat/
+│   │   │       ├── llm.py                # litellm routing, model registry
+│   │   │       ├── rooms.py              # Room CRUD + streaming message endpoint
+│   │   │       ├── messages.py           # Message CRUD + search
+│   │   │       ├── uploads.py            # File upload + vision SSE
+│   │   │       ├── model.py              # Model switching endpoints
+│   │   │       ├── users.py              # Chat user management + bootstrap
+│   │   │       └── websocket.py          # WebSocket handler
+│   │   ├── models.py                     # SQLModel DB models
+│   │   └── crud.py                       # DB helper functions
+│   └── venv/                             # Python virtualenv
+├── frontend/
+│   ├── src/
+│   │   ├── pages/SparkbotDmPage.tsx      # Main chat UI (streaming, commands, meeting)
+│   │   ├── components/chat/
+│   │   │   ├── MessageBubble.tsx         # Markdown + syntax highlight + copy button
+│   │   │   └── ChatInput.tsx             # Input bar
+│   │   └── lib/chat/types.ts             # Shared TypeScript types
+│   └── dist/                             # Built frontend (deployed to /var/www/sparkbot-remote)
+└── uploads/                              # Uploaded files storage
 ```
 
-- Pull the latest changes without merging:
+---
 
-```bash
-git pull --no-commit upstream master
-```
+## Roadmap
 
-This will download the latest changes from this template without committing them, that way you can check everything is right before committing.
+See [`/home/sparky/sparkbot/LOGBOOK_handoff.md`](../sparkbot/LOGBOOK_handoff.md) for full session history and detailed roadmap.
 
-- If there are conflicts, solve them in your editor.
-
-- Once you are done, commit the changes:
-
-```bash
-git merge --continue
-```
-
-### Configure
-
-You can then update configs in the `.env` files to customize your configurations.
-
-Before deploying it, make sure you change at least the values for:
-
-- `SECRET_KEY`
-- `FIRST_SUPERUSER_PASSWORD`
-- `POSTGRES_PASSWORD`
-
-You can (and should) pass these as environment variables from secrets.
-
-Read the [deployment.md](./deployment.md) docs for more details.
-
-### Generate Secret Keys
-
-Some environment variables in the `.env` file have a default value of `changethis`.
-
-You have to change them with a secret key, to generate secret keys you can run the following command:
-
-```bash
-python -c "import secrets; print(secrets.token_urlsafe(32))"
-```
-
-Copy the content and use that as password / secret key. And run that again to generate another secure key.
-
-## How To Use It - Alternative With Copier
-
-This repository also supports generating a new project using [Copier](https://copier.readthedocs.io).
-
-It will copy all the files, ask you configuration questions, and update the `.env` files with your answers.
-
-### Install Copier
-
-You can install Copier with:
-
-```bash
-pip install copier
-```
-
-Or better, if you have [`pipx`](https://pipx.pypa.io/), you can run it with:
-
-```bash
-pipx install copier
-```
-
-**Note**: If you have `pipx`, installing copier is optional, you could run it directly.
-
-### Generate a Project With Copier
-
-Decide a name for your new project's directory, you will use it below. For example, `my-awesome-project`.
-
-Go to the directory that will be the parent of your project, and run the command with your project's name:
-
-```bash
-copier copy https://github.com/fastapi/full-stack-fastapi-template my-awesome-project --trust
-```
-
-If you have `pipx` and you didn't install `copier`, you can run it directly:
-
-```bash
-pipx run copier copy https://github.com/fastapi/full-stack-fastapi-template my-awesome-project --trust
-```
-
-**Note** the `--trust` option is necessary to be able to execute a [post-creation script](https://github.com/fastapi/full-stack-fastapi-template/blob/master/.copier/update_dotenv.py) that updates your `.env` files.
-
-### Input Variables
-
-Copier will ask you for some data, you might want to have at hand before generating the project.
-
-But don't worry, you can just update any of that in the `.env` files afterwards.
-
-The input variables, with their default values (some auto generated) are:
-
-- `project_name`: (default: `"FastAPI Project"`) The name of the project, shown to API users (in .env).
-- `stack_name`: (default: `"fastapi-project"`) The name of the stack used for Docker Compose labels and project name (no spaces, no periods) (in .env).
-- `secret_key`: (default: `"changethis"`) The secret key for the project, used for security, stored in .env, you can generate one with the method above.
-- `first_superuser`: (default: `"admin@example.com"`) The email of the first superuser (in .env).
-- `first_superuser_password`: (default: `"changethis"`) The password of the first superuser (in .env).
-- `smtp_host`: (default: "") The SMTP server host to send emails, you can set it later in .env.
-- `smtp_user`: (default: "") The SMTP server user to send emails, you can set it later in .env.
-- `smtp_password`: (default: "") The SMTP server password to send emails, you can set it later in .env.
-- `emails_from_email`: (default: `"info@example.com"`) The email account to send emails from, you can set it later in .env.
-- `postgres_password`: (default: `"changethis"`) The password for the PostgreSQL database, stored in .env, you can generate one with the method above.
-- `sentry_dsn`: (default: "") The DSN for Sentry, if you are using it, you can set it later in .env.
-
-## Backend Development
-
-Backend docs: [backend/README.md](./backend/README.md).
-
-## Frontend Development
-
-Frontend docs: [frontend/README.md](./frontend/README.md).
-
-## Deployment
-
-Deployment docs: [deployment.md](./deployment.md).
-
-## Development
-
-General development docs: [development.md](./development.md).
-
-This includes using Docker Compose, custom local domains, `.env` configurations, etc.
-
-## Release Notes
-
-Check the file [release-notes.md](./release-notes.md).
-
-## License
-
-The Full Stack FastAPI Template is licensed under the terms of the MIT license.
+**Next up:**
+- Tool calling framework (web search, code execution)
+- Persistent per-user memory (injected into system prompt)
+- Calendar integration (Google Calendar / CalDAV)
+- Reply threading UI
+- Email integration (SMTP/IMAP summarisation)

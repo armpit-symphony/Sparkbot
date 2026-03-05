@@ -26,6 +26,7 @@ export interface Message {
   id: string
   room_id: string
   user_id: string
+  sender_type?: string
   content: string
   message_type: "text" | "image" | "file" | "system"
   created_at: string
