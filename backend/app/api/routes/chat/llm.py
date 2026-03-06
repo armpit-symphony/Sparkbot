@@ -21,6 +21,10 @@ SYSTEM_PROMPT = (
     "You are Sparkbot, the assistant for Sparkpit Labs. "
     "Do not disclose internal model names/versions. "
     "If asked what model you are, say: 'I'm Sparkbot, your Sparkpit assistant.' "
+    "Use available tools whenever they are relevant. "
+    "Do not claim you lack the ability to access external systems if a matching tool is available. "
+    "For Gmail, Google Drive, email, search, Slack, GitHub, Notion, Confluence, and calendar requests, prefer using the corresponding tool. "
+    "If a requested integration is not configured or a tool returns an error, explain that concrete limitation clearly. "
     "Be concise and professional."
 )
 
@@ -42,12 +46,14 @@ _user_models: dict[str, str] = {}
 # ── Write-tool confirmation gate ──────────────────────────────────────────────
 
 WRITE_TOOLS: frozenset[str] = frozenset({
+    "gmail_send",
     "email_send",
     "slack_send_message",
     "github_create_issue",
     "notion_create_page",
     "confluence_create_page",
     "calendar_create_event",
+    "drive_create_folder",
 })
 
 # Pending confirmations: confirm_id -> {tool, args, user_id, room_id, created_at}
@@ -151,7 +157,12 @@ async def stream_chat_with_tools(
     Handles the tool-calling loop automatically (up to 5 rounds), then
     streams the final LLM response token-by-token.
     """
-    from app.api.routes.chat.tools import TOOL_DEFINITIONS, execute_tool
+    from app.api.routes.chat.tools import (
+        TOOL_DEFINITIONS,
+        execute_tool,
+        _email_configured_smtp,
+        _google_configured,
+    )
 
     chosen = model or get_model(user_id)
     msgs = list(messages)
@@ -183,26 +194,33 @@ async def stream_chat_with_tools(
 
                 # ── Confirmation gate for write tools ─────────────────────────
                 if tool_name in WRITE_TOOLS:
-                    already_confirmed = confirmed_ids and any(
-                        c for c in (confirmed_ids or set()) if c
-                    )
-                    if not already_confirmed:
-                        confirm_id = str(_uuid_module.uuid4())
-                        _pending_ttl_cleanup()
-                        _pending[confirm_id] = {
-                            "tool": tool_name,
-                            "args": tool_args,
-                            "user_id": user_id,
-                            "room_id": room_id,
-                            "created_at": time.time(),
-                        }
-                        yield {
-                            "type": "confirm_required",
-                            "confirm_id": confirm_id,
-                            "tool": tool_name,
-                            "input": tool_args,
-                        }
-                        return
+                    # Don't prompt for confirmation when email sending is unavailable.
+                    # Let the tool return the concrete configuration error instead.
+                    if tool_name == "email_send" and not _email_configured_smtp():
+                        pass
+                    elif tool_name in {"gmail_send", "drive_create_folder"} and not _google_configured():
+                        pass
+                    else:
+                        already_confirmed = confirmed_ids and any(
+                            c for c in (confirmed_ids or set()) if c
+                        )
+                        if not already_confirmed:
+                            confirm_id = str(_uuid_module.uuid4())
+                            _pending_ttl_cleanup()
+                            _pending[confirm_id] = {
+                                "tool": tool_name,
+                                "args": tool_args,
+                                "user_id": user_id,
+                                "room_id": room_id,
+                                "created_at": time.time(),
+                            }
+                            yield {
+                                "type": "confirm_required",
+                                "confirm_id": confirm_id,
+                                "tool": tool_name,
+                                "input": tool_args,
+                            }
+                            return
 
                 yield {"type": "tool_start", "tool": tool_name, "input": tool_args}
 

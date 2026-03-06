@@ -675,6 +675,10 @@ async def stream_room_message(
     human_msg_id = str(message.id)
     human_msg_uuid = message.id  # capture before session closes — do NOT use message.id inside the generator
 
+    # Detect @agentname routing before building the LLM prompt.
+    from app.api.routes.chat.agents import resolve_agent_from_message, get_agent
+    agent_name, agent_content = resolve_agent_from_message(message_in.content)
+
     # Build conversation history (before this message)
     history_msgs, _, _ = get_chat_messages(session=session, room_id=room_id, limit=20)
     openai_history = []
@@ -684,10 +688,6 @@ async def stream_room_message(
         role = "assistant" if str(m.sender_type).upper() == "BOT" else "user"
         openai_history.append({"role": role, "content": m.content})
     openai_history.append({"role": "user", "content": agent_content})
-
-    # Detect @agentname routing
-    from app.api.routes.chat.agents import resolve_agent_from_message, get_agent
-    agent_name, agent_content = resolve_agent_from_message(message_in.content)
 
     # Build personalised system prompt — use agent prompt or default, then inject memories
     from app.api.routes.chat.llm import SYSTEM_PROMPT as LLM_SYSTEM_PROMPT

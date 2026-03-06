@@ -194,6 +194,21 @@ MINIMAX_API_KEY=...
 SPARKBOT_MODEL=gpt-4o-mini   # default model for all users
 ```
 
+### Optional — Google Workspace (Gmail + Drive)
+```env
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+GOOGLE_REFRESH_TOKEN=...
+GOOGLE_GMAIL_USER=me                 # optional, default "me"
+GOOGLE_DRIVE_SHARED_DRIVE_ID=...     # optional, for a shared drive default corpus
+```
+
+Recommended Google OAuth scopes on the refresh token:
+- `https://www.googleapis.com/auth/gmail.readonly`
+- `https://www.googleapis.com/auth/gmail.send`
+- `https://www.googleapis.com/auth/drive.readonly`
+- `https://www.googleapis.com/auth/drive.file`
+
 ### Optional — Web Search
 Sparkbot uses a fallback chain: Brave → SerpAPI → DuckDuckGo (no key required).
 ```env
