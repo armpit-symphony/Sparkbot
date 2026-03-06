@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session
 
 from app.api.deps import CurrentChatUser, SessionDep
-from app.crud import get_audit_logs
+from app.crud import get_audit_logs, get_chat_room_member
 from app.models import AuditLog
 
 router = APIRouter(tags=["audit"])
@@ -42,6 +42,9 @@ def list_audit_logs(
             room_uuid = uuid.UUID(room_id)
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid room_id UUID")
+        membership = get_chat_room_member(session, room_uuid, current_user.id)
+        if not membership:
+            raise HTTPException(status_code=403, detail="Not a member of this room")
 
     rows, total = get_audit_logs(
         session=session,
@@ -69,6 +72,10 @@ def get_audit_entry(
     entry = session.get(AuditLog, entry_id)
     if not entry:
         raise HTTPException(status_code=404, detail="Audit entry not found")
+    if entry.room_id:
+        membership = get_chat_room_member(session, entry.room_id, current_user.id)
+        if not membership:
+            raise HTTPException(status_code=403, detail="Not a member of this room")
     return _format_entry(entry, full=True)
 
 

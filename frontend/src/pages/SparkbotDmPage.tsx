@@ -2,10 +2,17 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { createFileRoute } from "@tanstack/react-router"
-import { Check, Copy, Loader2, Paperclip, Search, Send, X } from "lucide-react"
+import { Check, Copy, Loader2, Paperclip, RefreshCw, Search, Send, Settings2, X } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter"
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
 export const Route = createFileRoute("/dm")({
   component: SparkbotDmPage,
@@ -84,6 +91,41 @@ interface Message {
   isSystem?: boolean
   toolActivity?: string   // e.g. "🔍 Searching: climate change 2026"
   agent?: string          // named agent that responded, e.g. "researcher"
+}
+
+interface RoomInfo {
+  id: string
+  name: string
+  execution_allowed: boolean
+}
+
+interface PolicyEntry {
+  id: string
+  created_at: string
+  tool_result: {
+    action?: string
+    reason?: string
+    resource?: string
+  } | string
+}
+
+interface GuardianTaskRecord {
+  id: string
+  name: string
+  tool_name: string
+  schedule: string
+  enabled: boolean
+  next_run_at?: string | null
+  last_status?: string | null
+  last_message?: string | null
+}
+
+interface GuardianRunRecord {
+  run_id: string
+  task_id: string
+  status: string
+  message: string
+  created_at: string
 }
 
 interface Agent {
@@ -390,6 +432,256 @@ function SearchPanel({ roomId, onClose }: SearchPanelProps) {
   )
 }
 
+interface SparkbotSettingsDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  room: RoomInfo | null
+  loading: boolean
+  savingExecution: boolean
+  policyEntries: PolicyEntry[]
+  guardianTasks: GuardianTaskRecord[]
+  guardianRuns: GuardianRunRecord[]
+  taskName: string
+  taskToolName: string
+  taskSchedule: string
+  taskArgs: string
+  taskSaving: boolean
+  error: string
+  onRefresh: () => void
+  onToggleExecution: (enabled: boolean) => void
+  onTaskNameChange: (value: string) => void
+  onTaskToolChange: (value: string) => void
+  onTaskScheduleChange: (value: string) => void
+  onTaskArgsChange: (value: string) => void
+  onCreateTask: () => void
+  onToggleTask: (taskId: string, enabled: boolean) => void
+  onRunTask: (taskId: string) => void
+}
+
+const TASK_TOOL_OPTIONS = [
+  "gmail_fetch_inbox",
+  "gmail_search",
+  "github_list_prs",
+  "github_get_ci_status",
+  "calendar_list_events",
+  "drive_search",
+  "web_search",
+  "server_read_command",
+  "ssh_read_command",
+  "list_tasks",
+  "list_reminders",
+]
+
+function SparkbotSettingsDialog({
+  open,
+  onOpenChange,
+  room,
+  loading,
+  savingExecution,
+  policyEntries,
+  guardianTasks,
+  guardianRuns,
+  taskName,
+  taskToolName,
+  taskSchedule,
+  taskArgs,
+  taskSaving,
+  error,
+  onRefresh,
+  onToggleExecution,
+  onTaskNameChange,
+  onTaskToolChange,
+  onTaskScheduleChange,
+  onTaskArgsChange,
+  onCreateTask,
+  onToggleTask,
+  onRunTask,
+}: SparkbotSettingsDialogProps) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] overflow-auto sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Sparkbot Controls</DialogTitle>
+          <DialogDescription>
+            Room execution gate, approval visibility, and Task Guardian schedules.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-6">
+          <section className="rounded-xl border p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold">Execution Gate</h2>
+                <p className="text-xs text-muted-foreground">
+                  Server and SSH tools fail closed unless this room is explicitly allowed to execute them.
+                </p>
+              </div>
+              <button
+                onClick={onRefresh}
+                className="rounded-md border px-2 py-1 text-xs hover:bg-muted"
+                type="button"
+              >
+                <span className="inline-flex items-center gap-1">
+                  <RefreshCw className="size-3.5" />
+                  Refresh
+                </span>
+              </button>
+            </div>
+            <label className="flex items-center justify-between gap-3 rounded-lg bg-muted/40 px-3 py-3">
+              <div>
+                <div className="text-sm font-medium">Allow machine operations in this room</div>
+                <div className="text-xs text-muted-foreground">
+                  Required for `server_read_command`, `ssh_read_command`, and `server_manage_service`.
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                className="h-4 w-4"
+                checked={Boolean(room?.execution_allowed)}
+                disabled={savingExecution || !room}
+                onChange={(e) => onToggleExecution(e.target.checked)}
+              />
+            </label>
+          </section>
+
+          <section className="rounded-xl border p-4">
+            <div className="mb-3">
+              <h2 className="text-sm font-semibold">Task Guardian</h2>
+              <p className="text-xs text-muted-foreground">
+                Schedule approved read-only routines and post results back into this room.
+              </p>
+            </div>
+
+            <div className="grid gap-3 rounded-lg bg-muted/40 p-3 md:grid-cols-2">
+              <input
+                value={taskName}
+                onChange={(e) => onTaskNameChange(e.target.value)}
+                placeholder="Task name"
+                className="rounded-md border bg-background px-3 py-2 text-sm outline-none"
+              />
+              <select
+                value={taskToolName}
+                onChange={(e) => onTaskToolChange(e.target.value)}
+                className="rounded-md border bg-background px-3 py-2 text-sm outline-none"
+              >
+                {TASK_TOOL_OPTIONS.map((tool) => (
+                  <option key={tool} value={tool}>{tool}</option>
+                ))}
+              </select>
+              <input
+                value={taskSchedule}
+                onChange={(e) => onTaskScheduleChange(e.target.value)}
+                placeholder="every:3600 or at:2026-03-07T14:00:00Z"
+                className="rounded-md border bg-background px-3 py-2 text-sm outline-none md:col-span-2"
+              />
+              <textarea
+                value={taskArgs}
+                onChange={(e) => onTaskArgsChange(e.target.value)}
+                placeholder='{"max_emails": 5, "unread_only": true}'
+                rows={4}
+                className="rounded-md border bg-background px-3 py-2 text-sm font-mono outline-none md:col-span-2"
+              />
+              <div className="md:col-span-2 flex justify-end">
+                <button
+                  type="button"
+                  onClick={onCreateTask}
+                  disabled={taskSaving}
+                  className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50"
+                >
+                  {taskSaving ? "Saving..." : "Create scheduled job"}
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-4 space-y-2">
+              {guardianTasks.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No scheduled jobs yet.</p>
+              ) : guardianTasks.map((task) => (
+                <div key={task.id} className="rounded-lg border px-3 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <div className="text-sm font-medium">{task.name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {task.tool_name} · {task.schedule}
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => onRunTask(task.id)}
+                        className="rounded-md border px-2 py-1 text-xs hover:bg-muted"
+                      >
+                        Run now
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onToggleTask(task.id, !task.enabled)}
+                        className="rounded-md border px-2 py-1 text-xs hover:bg-muted"
+                      >
+                        {task.enabled ? "Pause" : "Resume"}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    {task.next_run_at ? `Next run: ${new Date(task.next_run_at).toLocaleString()}` : "No next run scheduled"}
+                    {task.last_status ? ` · Last status: ${task.last_status}` : ""}
+                    {task.last_message ? ` · ${task.last_message}` : ""}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4">
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Recent scheduled runs</h3>
+              <div className="space-y-2">
+                {guardianRuns.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No runs recorded yet.</p>
+                ) : guardianRuns.map((run) => (
+                  <div key={run.run_id} className="rounded-lg border px-3 py-2 text-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium">{run.status.toUpperCase()}</span>
+                      <span className="text-xs text-muted-foreground">{new Date(run.created_at).toLocaleString()}</span>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">{run.message}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-xl border p-4">
+            <h2 className="mb-3 text-sm font-semibold">Recent Approval / Policy Decisions</h2>
+            <div className="space-y-2">
+              {policyEntries.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No policy decisions logged for this room yet.</p>
+              ) : policyEntries.map((entry) => {
+                const decision = typeof entry.tool_result === "string" ? { action: "", reason: entry.tool_result, resource: "" } : entry.tool_result
+                return (
+                  <div key={entry.id} className="rounded-lg border px-3 py-2 text-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium uppercase">{decision.action || "decision"}</span>
+                      <span className="text-xs text-muted-foreground">{new Date(entry.created_at).toLocaleString()}</span>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {decision.resource ? `${decision.resource}: ` : ""}{decision.reason || "No reason recorded."}
+                    </p>
+                  </div>
+                )
+              })}
+            </div>
+          </section>
+
+          {(loading || error) && (
+            <div className="rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground">
+              {loading ? "Loading controls..." : error}
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ─── Meeting mode state ───────────────────────────────────────────────────────
 
 interface MeetingState {
@@ -406,6 +698,7 @@ const emptyMeeting = (): MeetingState => ({ active: false, startedAt: null, note
 
 function SparkbotDmPage() {
   const [roomId, setRoomId] = useState<string | null>(null)
+  const [roomInfo, setRoomInfo] = useState<RoomInfo | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
@@ -417,6 +710,18 @@ function SparkbotDmPage() {
   const [meeting, setMeeting] = useState<MeetingState>(emptyMeeting())
   const [uploading, setUploading] = useState(false)
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsLoading, setSettingsLoading] = useState(false)
+  const [settingsError, setSettingsError] = useState("")
+  const [savingExecution, setSavingExecution] = useState(false)
+  const [policyEntries, setPolicyEntries] = useState<PolicyEntry[]>([])
+  const [guardianTasks, setGuardianTasks] = useState<GuardianTaskRecord[]>([])
+  const [guardianRuns, setGuardianRuns] = useState<GuardianRunRecord[]>([])
+  const [taskName, setTaskName] = useState("")
+  const [taskToolName, setTaskToolName] = useState("gmail_fetch_inbox")
+  const [taskSchedule, setTaskSchedule] = useState("every:3600")
+  const [taskArgs, setTaskArgs] = useState('{"max_emails": 5, "unread_only": true}')
+  const [taskSaving, setTaskSaving] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -435,6 +740,11 @@ function SparkbotDmPage() {
         if (!res.ok) { window.location.href = "/login"; return }
         const boot = await res.json()
         setRoomId(boot.room_id)
+        const roomRes = await fetch(`/api/v1/chat/rooms/${boot.room_id}`, { credentials: "include" })
+        if (roomRes.ok) {
+          const room = await roomRes.json()
+          setRoomInfo(room)
+        }
         const msgsRes = await fetch(`/api/v1/chat/rooms/${boot.room_id}/messages`, { credentials: "include" })
         if (msgsRes.ok) {
           const d = await msgsRes.json()
@@ -449,6 +759,147 @@ function SparkbotDmPage() {
     }
     init()
   }, [])
+
+  const refreshControls = useCallback(async () => {
+    if (!roomId) return
+    setSettingsLoading(true)
+    setSettingsError("")
+    try {
+      const [roomRes, policyRes, tasksRes, runsRes] = await Promise.all([
+        fetch(`/api/v1/chat/rooms/${roomId}`, { credentials: "include" }),
+        fetch(`/api/v1/chat/audit?limit=10&room_id=${roomId}&tool=policy_decision`, { credentials: "include" }),
+        fetch(`/api/v1/chat/rooms/${roomId}/guardian/tasks?limit=20`, { credentials: "include" }),
+        fetch(`/api/v1/chat/rooms/${roomId}/guardian/runs?limit=10`, { credentials: "include" }),
+      ])
+
+      if (roomRes.ok) {
+        setRoomInfo(await roomRes.json())
+      }
+      if (policyRes.ok) {
+        const data = await policyRes.json()
+        setPolicyEntries(data.items ?? [])
+      }
+      if (tasksRes.ok) {
+        const data = await tasksRes.json()
+        setGuardianTasks(data.items ?? [])
+      }
+      if (runsRes.ok) {
+        const data = await runsRes.json()
+        setGuardianRuns(data.items ?? [])
+      }
+    } catch {
+      setSettingsError("Could not load Sparkbot controls.")
+    } finally {
+      setSettingsLoading(false)
+    }
+  }, [roomId])
+
+  useEffect(() => {
+    if (settingsOpen) {
+      refreshControls()
+    }
+  }, [settingsOpen, refreshControls])
+
+  const toggleExecutionGate = useCallback(async (enabled: boolean) => {
+    if (!roomId) return
+    setSavingExecution(true)
+    setSettingsError("")
+    try {
+      const res = await fetch(`/api/v1/chat/rooms/${roomId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ execution_allowed: enabled }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ detail: "Could not update execution gate." }))
+        setSettingsError(data.detail ?? "Could not update execution gate.")
+      } else {
+        const data = await res.json()
+        setRoomInfo(data)
+      }
+    } catch {
+      setSettingsError("Could not update execution gate.")
+    } finally {
+      setSavingExecution(false)
+    }
+  }, [roomId])
+
+  const createGuardianTask = useCallback(async () => {
+    if (!roomId) return
+    setTaskSaving(true)
+    setSettingsError("")
+    try {
+      const parsedArgs = taskArgs.trim() ? JSON.parse(taskArgs) : {}
+      const res = await fetch(`/api/v1/chat/rooms/${roomId}/guardian/tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          name: taskName.trim(),
+          tool_name: taskToolName,
+          schedule: taskSchedule.trim(),
+          tool_args: parsedArgs,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ detail: "Could not create Task Guardian job." }))
+        setSettingsError(data.detail ?? "Could not create Task Guardian job.")
+      } else {
+        const created = await res.json()
+        setTaskName("")
+        setMessages(prev => [...prev, systemMsg(`Scheduled Task Guardian job **${created.name}**.`)])
+        await refreshControls()
+      }
+    } catch {
+      setSettingsError("Task arguments must be valid JSON.")
+    } finally {
+      setTaskSaving(false)
+    }
+  }, [roomId, taskArgs, taskName, taskSchedule, taskToolName, refreshControls])
+
+  const setGuardianTaskState = useCallback(async (taskId: string, enabled: boolean) => {
+    if (!roomId) return
+    setSettingsError("")
+    try {
+      const res = await fetch(`/api/v1/chat/rooms/${roomId}/guardian/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ enabled }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ detail: "Could not update Task Guardian job." }))
+        setSettingsError(data.detail ?? "Could not update Task Guardian job.")
+      } else {
+        setMessages(prev => [...prev, systemMsg(`Task Guardian job ${enabled ? "**resumed**" : "**paused**"}.`)])
+        await refreshControls()
+      }
+    } catch {
+      setSettingsError("Could not update Task Guardian job.")
+    }
+  }, [roomId, refreshControls])
+
+  const runGuardianTask = useCallback(async (taskId: string) => {
+    if (!roomId) return
+    setSettingsError("")
+    try {
+      const res = await fetch(`/api/v1/chat/rooms/${roomId}/guardian/tasks/${taskId}/run`, {
+        method: "POST",
+        credentials: "include",
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ detail: "Could not run Task Guardian job." }))
+        setSettingsError(data.detail ?? "Could not run Task Guardian job.")
+      } else {
+        const data = await res.json()
+        setMessages(prev => [...prev, systemMsg(`Task Guardian run finished with **${String(data.status ?? "unknown").toUpperCase()}**.\n\n${String(data.output ?? "").slice(0, 400)}`)])
+        await refreshControls()
+      }
+    } catch {
+      setSettingsError("Could not run Task Guardian job.")
+    }
+  }, [roomId, refreshControls])
 
   // ── Meeting helpers ──────────────────────────────────────────────────────────
 
@@ -928,6 +1379,32 @@ function SparkbotDmPage() {
         <ConfirmModal pending={pendingConfirm} onConfirm={handleConfirm} onCancel={handleCancel} />
       )}
 
+      <SparkbotSettingsDialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        room={roomInfo}
+        loading={settingsLoading}
+        savingExecution={savingExecution}
+        policyEntries={policyEntries}
+        guardianTasks={guardianTasks}
+        guardianRuns={guardianRuns}
+        taskName={taskName}
+        taskToolName={taskToolName}
+        taskSchedule={taskSchedule}
+        taskArgs={taskArgs}
+        taskSaving={taskSaving}
+        error={settingsError}
+        onRefresh={refreshControls}
+        onToggleExecution={toggleExecutionGate}
+        onTaskNameChange={setTaskName}
+        onTaskToolChange={setTaskToolName}
+        onTaskScheduleChange={setTaskSchedule}
+        onTaskArgsChange={setTaskArgs}
+        onCreateTask={createGuardianTask}
+        onToggleTask={setGuardianTaskState}
+        onRunTask={runGuardianTask}
+      />
+
       {/* Search overlay */}
       {showSearch && roomId && (
         <SearchPanel roomId={roomId} onClose={() => setShowSearch(false)} />
@@ -951,6 +1428,9 @@ function SparkbotDmPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <button onClick={() => setSettingsOpen(true)} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Sparkbot controls">
+            <Settings2 className="size-4" />
+          </button>
           <button onClick={() => setShowSearch(true)} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Search messages">
             <Search className="size-4" />
           </button>

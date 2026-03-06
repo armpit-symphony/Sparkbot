@@ -4,6 +4,49 @@
 
 ---
 
+## Session — 2026-03-06 · Consumer readiness controls + reminder regression fix
+
+### What was done
+
+- Fixed the `name 'room' is not defined` regression in `stream_room_message()`:
+  - room state is now loaded before tool-confirmation and tool-execution paths use `room.execution_allowed`
+  - this specifically unblocked reminder / scheduled-action prompts like "schedule a good morning message in 7 hours"
+
+- Added room-scoped Task Guardian REST endpoints:
+  - list jobs
+  - list recent runs
+  - create a job
+  - pause/resume a job
+  - run a job immediately
+
+- Tightened room and audit access:
+  - room detail now requires room membership
+  - room member listing now requires room membership
+  - audit reads scoped by room now require room membership
+  - single audit entry reads now enforce room membership when the entry is room-scoped
+
+- Added a simple Sparkbot controls UI in the DM page:
+  - execution gate toggle
+  - recent policy decisions
+  - Task Guardian job management
+
+- Added a superuser Sparkbot ops tab in `/settings`
+- Added `consumer_readiness_checklist.md`
+
+### Current state
+
+- Sparkbot is materially closer to consumer use:
+  - safer room-scoped execution controls
+  - visible approval/policy decisions
+  - manageable recurring jobs
+  - clearer ops/readiness guidance for admins
+
+### Next actions
+
+1. Add canned templates for common recurring jobs.
+2. Add end-to-end tests for DM controls, reminder creation, and Task Guardian flows.
+3. Add more beginner-friendly onboarding copy and integration setup hints.
+
 ## Session — 2026-03-06 · Gmail + Google Drive integration + stream fix
 
 ### What was done

@@ -192,6 +192,8 @@ Agent Shield / Executive / Task Guardian phase notes:
 - Room-level `execution_allowed` is now enforced for server and SSH operations.
 - High-risk tool calls are wrapped by an Executive Guardian decision journal under `data/guardian/executive/decisions/`.
 - Task Guardian can schedule approved read-only jobs and post their results back into the room.
+- Sparkbot DM now includes a controls panel for execution gate, recent policy decisions, and Task Guardian jobs.
+- Consumer rollout notes live in `consumer_readiness_checklist.md`.
 
 ---
 

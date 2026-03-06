@@ -73,11 +73,18 @@ def read_chat_rooms(
 
 
 @router.get("/{room_id}", response_model=RoomDetailResponse)
-def read_chat_room_by_id(room_id: UUID, session: SessionDep) -> Any:
+def read_chat_room_by_id(
+    room_id: UUID,
+    session: SessionDep,
+    current_user: CurrentChatUser,
+) -> Any:
     """Get a specific room with details."""
     room = get_chat_room_by_id(session, room_id)
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
+    membership = get_chat_room_member(session, room_id, current_user.id)
+    if not membership:
+        raise HTTPException(status_code=403, detail="Not a member of this room")
     
     # Get counts
     member_count = len(get_chat_room_members(session, room_id))
@@ -184,11 +191,18 @@ def delete_chat_room(
 # ============== Membership Endpoints ==============
 
 @router.get("/{room_id}/members", response_model=list[RoomMemberResponse])
-def read_chat_room_members(room_id: UUID, session: SessionDep) -> Any:
+def read_chat_room_members(
+    room_id: UUID,
+    session: SessionDep,
+    current_user: CurrentChatUser,
+) -> Any:
     """Get all members of a room."""
     room = get_chat_room_by_id(session, room_id)
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
+    membership = get_chat_room_member(session, room_id, current_user.id)
+    if not membership:
+        raise HTTPException(status_code=403, detail="Not a member of this room")
     
     members = get_chat_room_members(session, room_id)
     return members
@@ -615,6 +629,9 @@ async def stream_room_message(
         raise HTTPException(status_code=403, detail="Not a member of this room")
     if membership.role == RoomRole.VIEWER:
         raise HTTPException(status_code=403, detail="VIEWERs cannot send messages")
+    room = get_chat_room_by_id(session, room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
 
     # ── Confirmed write-tool execution path ───────────────────────────────────
     if message_in.confirm_id:
