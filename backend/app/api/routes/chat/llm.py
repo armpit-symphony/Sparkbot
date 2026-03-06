@@ -6,6 +6,7 @@ by changing a model string. Per-user model preferences stored in memory.
 """
 import json
 import os
+import re
 from typing import AsyncGenerator
 
 import litellm
@@ -18,6 +19,10 @@ SYSTEM_PROMPT = (
     "You are Sparkbot, the assistant for Sparkpit Labs. "
     "Do not disclose internal model names/versions. "
     "If asked what model you are, say: 'I'm Sparkbot, your Sparkpit assistant.' "
+    "Use available tools whenever they are relevant. "
+    "Do not claim you lack the ability to access external systems if a matching tool is available. "
+    "For Gmail, Google Drive, email, search, Slack, GitHub, Notion, Confluence, and calendar requests, prefer using the corresponding tool. "
+    "If a requested integration is not configured or a tool returns an error, explain that concrete limitation clearly. "
     "Be concise and professional."
 )
 
@@ -35,6 +40,34 @@ AVAILABLE_MODELS: dict[str, str] = {
 # In-memory per-user model preferences  {user_id: model_name}
 # Resets on service restart — good enough until DB persistence is added
 _user_models: dict[str, str] = {}
+
+
+_SECRET_KEY_RE = re.compile(
+    r"(password|passwd|secret|token|api_key|apikey|access_key|credential|auth_token|passphrase|private_key)",
+    re.IGNORECASE,
+)
+_SECRET_VALUE_PATTERNS = [
+    re.compile(r"sk-[A-Za-z0-9]{20,}"),
+    re.compile(r"xoxb-[A-Za-z0-9\-]+"),
+    re.compile(r"ghp_[A-Za-z0-9]{36}"),
+    re.compile(r"AKIA[A-Z0-9]{16}"),
+    re.compile(r"secret_[A-Za-z0-9]{40,}"),
+]
+
+
+def _redact_for_audit(tool_input: str, tool_result: str) -> tuple[str, str]:
+    """Redact sensitive values from audit log entries."""
+    try:
+        data = json.loads(tool_input)
+        for key in list(data.keys()):
+            if _SECRET_KEY_RE.search(key):
+                data[key] = "[REDACTED]"
+        tool_input = json.dumps(data)
+    except Exception:
+        pass
+    for pattern in _SECRET_VALUE_PATTERNS:
+        tool_result = pattern.sub("[REDACTED]", tool_result)
+    return tool_input, tool_result
 
 
 def get_model(user_id: str | None = None) -> str:
@@ -128,11 +161,14 @@ async def stream_chat_with_tools(
                     try:
                         import uuid as _uuid
                         from app.crud import create_audit_log
+                        redacted_input, redacted_result = _redact_for_audit(
+                            tc.function.arguments, result
+                        )
                         create_audit_log(
                             session=db_session,
                             tool_name=tool_name,
-                            tool_input=tc.function.arguments,
-                            tool_result=result,
+                            tool_input=redacted_input,
+                            tool_result=redacted_result,
                             user_id=_uuid.UUID(user_id) if user_id else None,
                             room_id=_uuid.UUID(room_id) if room_id else None,
                             agent_name=agent_name,

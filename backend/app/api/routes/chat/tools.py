@@ -6,6 +6,7 @@ and has a corresponding async executor. Add new tools here — the dispatcher
 and LLM definitions are updated automatically.
 """
 import ast
+import base64
 import asyncio
 import json
 import operator
@@ -42,6 +43,18 @@ _CONFLUENCE_DEFAULT_SPACE = os.getenv("CONFLUENCE_DEFAULT_SPACE", "").strip()
 _GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "").strip()
 _GITHUB_DEFAULT_REPO = os.getenv("GITHUB_DEFAULT_REPO", "").strip()  # "owner/repo"
 _GITHUB_API = "https://api.github.com"
+
+# ─── Google Workspace config ──────────────────────────────────────────────────
+
+_GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+_GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
+_GOOGLE_REFRESH_TOKEN = os.getenv("GOOGLE_REFRESH_TOKEN", "").strip()
+_GOOGLE_GMAIL_USER = os.getenv("GOOGLE_GMAIL_USER", "me").strip() or "me"
+_GOOGLE_DRIVE_SHARED_DRIVE_ID = os.getenv("GOOGLE_DRIVE_SHARED_DRIVE_ID", "").strip()
+_GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token"
+_GMAIL_API = "https://gmail.googleapis.com/gmail/v1"
+_DRIVE_API = "https://www.googleapis.com/drive/v3"
+_GOOGLE_TOKEN_CACHE: dict[str, float | str] = {"access_token": "", "expires_at": 0.0}
 
 # ─── Email config ─────────────────────────────────────────────────────────────
 
@@ -544,6 +557,172 @@ TOOL_DEFINITIONS = [
                     },
                 },
                 "required": ["title", "content"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "gmail_fetch_inbox",
+            "description": (
+                "Fetch recent Gmail messages from the authenticated inbox. "
+                "Use when asked to check Gmail, recent email, or unread messages."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "max_emails": {
+                        "type": "integer",
+                        "description": "How many recent Gmail messages to fetch (default 5, max 20)",
+                    },
+                    "unread_only": {
+                        "type": "boolean",
+                        "description": "If true, only fetch unread Gmail messages (default false)",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "gmail_search",
+            "description": (
+                "Search Gmail using Gmail query syntax. Use for requests like "
+                "'find emails from Alice', 'search Gmail for invoice', or 'show unread finance mail'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Gmail search query, e.g. 'from:alice@example.com is:unread'",
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "Max results to return (default 5, max 20)",
+                    },
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "gmail_get_message",
+            "description": (
+                "Read a specific Gmail message in detail by message ID. "
+                "Use after gmail_fetch_inbox or gmail_search when the user wants the full email."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "message_id": {
+                        "type": "string",
+                        "description": "Gmail message ID returned by gmail_fetch_inbox or gmail_search",
+                    },
+                },
+                "required": ["message_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "gmail_send",
+            "description": (
+                "Send an email through Gmail. Use for drafting and sending emails on behalf of the user."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "to": {
+                        "type": "string",
+                        "description": "Recipient email address",
+                    },
+                    "subject": {
+                        "type": "string",
+                        "description": "Email subject line",
+                    },
+                    "body": {
+                        "type": "string",
+                        "description": "Email body in plain text",
+                    },
+                    "cc": {
+                        "type": "string",
+                        "description": "Optional CC email address",
+                    },
+                },
+                "required": ["to", "subject", "body"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "drive_search",
+            "description": (
+                "Search Google Drive files and folders by name or text. "
+                "Use when asked to find a file, folder, document, sheet, or presentation in Drive."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search text for Drive file names or content",
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "Max results to return (default 10, max 25)",
+                    },
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "drive_get_file",
+            "description": (
+                "Read metadata and, when possible, text content from a Google Drive file by file ID. "
+                "Use after drive_search when the user wants to open a specific file."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_id": {
+                        "type": "string",
+                        "description": "Google Drive file ID returned by drive_search",
+                    },
+                },
+                "required": ["file_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "drive_create_folder",
+            "description": (
+                "Create a Google Drive folder. Use when asked to organize files or set up a folder structure in Drive."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Folder name to create",
+                    },
+                    "parent_id": {
+                        "type": "string",
+                        "description": "Optional parent folder ID; omit to create in the default Drive root",
+                    },
+                },
+                "required": ["name"],
             },
         },
     },
@@ -1708,6 +1887,474 @@ async def _confluence_create_page(
     return f"Confluence page created: **{title}** (ID: {pid})\n{page_url}"
 
 
+# ─── Google Workspace executors ───────────────────────────────────────────────
+
+def _google_configured() -> bool:
+    return bool(_GOOGLE_CLIENT_ID and _GOOGLE_CLIENT_SECRET and _GOOGLE_REFRESH_TOKEN)
+
+
+def _google_not_configured() -> str:
+    return (
+        "Google Workspace not configured. Set GOOGLE_CLIENT_ID, "
+        "GOOGLE_CLIENT_SECRET, and GOOGLE_REFRESH_TOKEN."
+    )
+
+
+def _google_error_text(resp: httpx.Response, service_name: str) -> str:
+    try:
+        data = resp.json()
+    except Exception:
+        data = {}
+    error_obj = data.get("error")
+    if isinstance(error_obj, dict):
+        error_detail = error_obj.get("message") or error_obj.get("status")
+    else:
+        error_detail = error_obj
+    detail = (
+        data.get("error_description")
+        or error_detail
+        or resp.text[:200]
+    )
+    return f"{service_name} error: {detail}"
+
+
+async def _google_access_token() -> tuple[Optional[str], Optional[str]]:
+    if not _google_configured():
+        return None, _google_not_configured()
+
+    cached_token = str(_GOOGLE_TOKEN_CACHE.get("access_token") or "")
+    expires_at = float(_GOOGLE_TOKEN_CACHE.get("expires_at") or 0.0)
+    if cached_token and time.time() < expires_at - 60:
+        return cached_token, None
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                _GOOGLE_OAUTH_TOKEN_URL,
+                data={
+                    "client_id": _GOOGLE_CLIENT_ID,
+                    "client_secret": _GOOGLE_CLIENT_SECRET,
+                    "refresh_token": _GOOGLE_REFRESH_TOKEN,
+                    "grant_type": "refresh_token",
+                },
+            )
+    except Exception as exc:
+        return None, f"Google OAuth error: {exc}"
+
+    if resp.status_code != 200:
+        return None, _google_error_text(resp, "Google OAuth")
+
+    data = resp.json()
+    token = data.get("access_token")
+    if not token:
+        return None, "Google OAuth error: access_token missing in token response."
+
+    _GOOGLE_TOKEN_CACHE["access_token"] = token
+    _GOOGLE_TOKEN_CACHE["expires_at"] = time.time() + int(data.get("expires_in", 3600))
+    return str(token), None
+
+
+def _google_headers(access_token: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {access_token}"}
+
+
+def _gmail_header(headers: list[dict], name: str) -> str:
+    target = name.lower()
+    for header in headers or []:
+        if str(header.get("name", "")).lower() == target:
+            return str(header.get("value", ""))
+    return ""
+
+
+def _gmail_decode_data(data: str) -> str:
+    raw = (data or "").encode("utf-8")
+    raw += b"=" * (-len(raw) % 4)
+    try:
+        return base64.urlsafe_b64decode(raw).decode("utf-8", errors="replace")
+    except Exception:
+        return ""
+
+
+def _gmail_extract_text(payload: Optional[dict]) -> str:
+    import re
+
+    if not payload:
+        return ""
+
+    plain_parts: list[str] = []
+    html_parts: list[str] = []
+
+    def walk(node: dict) -> None:
+        mime_type = str(node.get("mimeType", ""))
+        body = node.get("body") or {}
+        encoded = body.get("data")
+        if encoded:
+            decoded = _gmail_decode_data(str(encoded))
+            if decoded:
+                if mime_type == "text/plain":
+                    plain_parts.append(decoded)
+                elif mime_type == "text/html":
+                    html_parts.append(re.sub(r"<[^>]+>", " ", decoded))
+        for part in node.get("parts") or []:
+            if isinstance(part, dict):
+                walk(part)
+
+    walk(payload)
+
+    for part in plain_parts + html_parts:
+        flattened = " ".join(part.split()).strip()
+        if flattened:
+            return flattened
+    return ""
+
+
+def _gmail_summary(message: dict, include_body: bool = False) -> str:
+    payload = message.get("payload") or {}
+    headers = payload.get("headers") or []
+    body = _gmail_extract_text(payload)
+    lines = [
+        f"ID: {message.get('id', '')}",
+        f"Subject: {_gmail_header(headers, 'Subject') or '(No Subject)'}",
+        f"From: {_gmail_header(headers, 'From') or '(Unknown)'}",
+        f"Date: {_gmail_header(headers, 'Date') or '(Unknown)'}",
+    ]
+    snippet = " ".join((message.get("snippet") or body or "").split()).strip()
+    if include_body:
+        preview = body or snippet or "(No readable body)"
+        lines.extend(["", (preview[:5000] + ("..." if len(preview) > 5000 else ""))])
+    elif snippet:
+        lines.append(f"Snippet: {snippet[:300]}{'...' if len(snippet) > 300 else ''}")
+    return "\n".join(lines)
+
+
+async def _gmail_get_message_by_id(message_id: str) -> tuple[Optional[dict], Optional[str]]:
+    token, err = await _google_access_token()
+    if err:
+        return None, err
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                f"{_GMAIL_API}/users/{_GOOGLE_GMAIL_USER}/messages/{message_id}",
+                headers=_google_headers(token),
+                params={"format": "full"},
+            )
+    except Exception as exc:
+        return None, f"Gmail API error: {exc}"
+
+    if resp.status_code != 200:
+        return None, _google_error_text(resp, "Gmail API")
+    return resp.json(), None
+
+
+async def _gmail_fetch_inbox(max_emails: int = 5, unread_only: bool = False) -> str:
+    token, err = await _google_access_token()
+    if err:
+        return err
+
+    max_emails = max(1, min(max_emails, 20))
+    params: dict[str, object] = {
+        "maxResults": max_emails,
+        "labelIds": ["INBOX"],
+        "includeSpamTrash": "false",
+    }
+    if unread_only:
+        params["q"] = "is:unread"
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                f"{_GMAIL_API}/users/{_GOOGLE_GMAIL_USER}/messages",
+                headers=_google_headers(token),
+                params=params,
+            )
+    except Exception as exc:
+        return f"Gmail API error: {exc}"
+
+    if resp.status_code != 200:
+        return _google_error_text(resp, "Gmail API")
+
+    messages = resp.json().get("messages", [])
+    if not messages:
+        return "No Gmail messages found." if unread_only else "Gmail inbox is empty."
+
+    details = await asyncio.gather(
+        *(_gmail_get_message_by_id(str(msg.get("id", ""))) for msg in messages if msg.get("id")),
+    )
+    summaries = [summary for message, summary in details if not message and summary]
+    summaries += [_gmail_summary(message) for message, summary in details if message]
+    return (
+        f"Gmail inbox ({len(summaries)} message{'s' if len(summaries) != 1 else ''}):\n\n"
+        + "\n\n---\n\n".join(summaries)
+    )
+
+
+async def _gmail_search(query: str, max_results: int = 5) -> str:
+    token, err = await _google_access_token()
+    if err:
+        return err
+
+    q = (query or "").strip()
+    if not q:
+        return "Gmail search failed: empty query."
+    max_results = max(1, min(max_results, 20))
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                f"{_GMAIL_API}/users/{_GOOGLE_GMAIL_USER}/messages",
+                headers=_google_headers(token),
+                params={"q": q, "maxResults": max_results, "includeSpamTrash": "false"},
+            )
+    except Exception as exc:
+        return f"Gmail API error: {exc}"
+
+    if resp.status_code != 200:
+        return _google_error_text(resp, "Gmail API")
+
+    messages = resp.json().get("messages", [])
+    if not messages:
+        return f"No Gmail messages found for '{q}'."
+
+    details = await asyncio.gather(
+        *(_gmail_get_message_by_id(str(msg.get("id", ""))) for msg in messages if msg.get("id")),
+    )
+    summaries = [summary for message, summary in details if not message and summary]
+    summaries += [_gmail_summary(message) for message, summary in details if message]
+    return f"Gmail results for '{q}' ({len(summaries)}):\n\n" + "\n\n---\n\n".join(summaries)
+
+
+async def _gmail_get_message(message_id: str) -> str:
+    message_id = (message_id or "").strip()
+    if not message_id:
+        return "Missing required field: message_id."
+    message, err = await _gmail_get_message_by_id(message_id)
+    if err:
+        return err
+    return _gmail_summary(message or {}, include_body=True)
+
+
+async def _gmail_send(to: str, subject: str, body: str, cc: str = "") -> str:
+    from email.message import EmailMessage
+
+    if not to or not subject or not body:
+        return "Missing required fields: to, subject, body."
+
+    token, err = await _google_access_token()
+    if err:
+        return err
+
+    message = EmailMessage()
+    message["To"] = to
+    message["Subject"] = subject
+    if cc:
+        message["Cc"] = cc
+    message.set_content(body)
+    raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                f"{_GMAIL_API}/users/{_GOOGLE_GMAIL_USER}/messages/send",
+                headers=_google_headers(token),
+                json={"raw": raw_message},
+            )
+    except Exception as exc:
+        return f"Gmail API error: {exc}"
+
+    if resp.status_code not in (200, 202):
+        return _google_error_text(resp, "Gmail API")
+    return f"Gmail message sent to {to}: '{subject}'"
+
+
+def _drive_query_escape(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("'", "\\'")
+
+
+def _drive_list_params(max_results: int) -> dict[str, object]:
+    params: dict[str, object] = {
+        "pageSize": max_results,
+        "fields": "files(id,name,mimeType,modifiedTime,webViewLink,size,owners(displayName))",
+        "supportsAllDrives": "true",
+        "includeItemsFromAllDrives": "true",
+    }
+    if _GOOGLE_DRIVE_SHARED_DRIVE_ID:
+        params["corpora"] = "drive"
+        params["driveId"] = _GOOGLE_DRIVE_SHARED_DRIVE_ID
+    else:
+        params["corpora"] = "user"
+    return params
+
+
+async def _drive_search(query: str, max_results: int = 10) -> str:
+    token, err = await _google_access_token()
+    if err:
+        return err
+
+    q = (query or "").strip()
+    if not q:
+        return "Drive search failed: empty query."
+    max_results = max(1, min(max_results, 25))
+
+    params = _drive_list_params(max_results)
+    safe_q = _drive_query_escape(q)
+    params["q"] = f"trashed = false and (name contains '{safe_q}' or fullText contains '{safe_q}')"
+    params["orderBy"] = "modifiedTime desc"
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                f"{_DRIVE_API}/files",
+                headers=_google_headers(token),
+                params=params,
+            )
+    except Exception as exc:
+        return f"Google Drive API error: {exc}"
+
+    if resp.status_code != 200:
+        return _google_error_text(resp, "Google Drive API")
+
+    files = resp.json().get("files", [])
+    if not files:
+        return f"No Google Drive files found for '{q}'."
+
+    lines = []
+    for file in files:
+        owner = ", ".join(
+            str(owner.get("displayName", ""))
+            for owner in file.get("owners", [])
+            if owner.get("displayName")
+        )
+        meta = [
+            f"ID: {file.get('id', '')}",
+            f"Name: {file.get('name', '(Untitled)')}",
+            f"Type: {file.get('mimeType', '(Unknown)')}",
+        ]
+        if owner:
+            meta.append(f"Owner: {owner}")
+        if file.get("modifiedTime"):
+            meta.append(f"Modified: {file.get('modifiedTime')}")
+        if file.get("webViewLink"):
+            meta.append(f"Link: {file.get('webViewLink')}")
+        lines.append("\n".join(meta))
+
+    return f"Google Drive results for '{q}' ({len(lines)}):\n\n" + "\n\n---\n\n".join(lines)
+
+
+async def _drive_get_file(file_id: str) -> str:
+    token, err = await _google_access_token()
+    if err:
+        return err
+
+    file_id = (file_id or "").strip()
+    if not file_id:
+        return "Missing required field: file_id."
+
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            meta_resp = await client.get(
+                f"{_DRIVE_API}/files/{file_id}",
+                headers=_google_headers(token),
+                params={
+                    "fields": "id,name,mimeType,modifiedTime,webViewLink,size",
+                    "supportsAllDrives": "true",
+                },
+            )
+    except Exception as exc:
+        return f"Google Drive API error: {exc}"
+
+    if meta_resp.status_code != 200:
+        return _google_error_text(meta_resp, "Google Drive API")
+
+    file_meta = meta_resp.json()
+    mime_type = str(file_meta.get("mimeType", ""))
+    file_name = str(file_meta.get("name", "(Untitled)"))
+    header = (
+        f"Name: {file_name}\n"
+        f"ID: {file_meta.get('id', '')}\n"
+        f"Type: {mime_type}\n"
+        f"Modified: {file_meta.get('modifiedTime', '(Unknown)')}\n"
+        f"Link: {file_meta.get('webViewLink', '')}"
+    )
+
+    export_mime = {
+        "application/vnd.google-apps.document": "text/plain",
+    }.get(mime_type, "")
+
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            if export_mime:
+                content_resp = await client.get(
+                    f"{_DRIVE_API}/files/{file_id}/export",
+                    headers=_google_headers(token),
+                    params={"mimeType": export_mime},
+                )
+            elif mime_type.startswith("text/") or mime_type in {
+                "application/json",
+                "application/xml",
+                "application/javascript",
+            }:
+                content_resp = await client.get(
+                    f"{_DRIVE_API}/files/{file_id}",
+                    headers=_google_headers(token),
+                    params={"alt": "media", "supportsAllDrives": "true"},
+                )
+            else:
+                content_resp = None
+    except Exception as exc:
+        return f"Google Drive API error: {exc}"
+
+    if content_resp is None:
+        return header + "\n\nPreview unavailable for this file type."
+
+    if content_resp.status_code != 200:
+        return header + "\n\n" + _google_error_text(content_resp, "Google Drive API")
+
+    content = content_resp.text.strip()
+    if not content:
+        content = "(No readable text content)"
+    if len(content) > 12000:
+        content = content[:12000] + "..."
+    return header + "\n\n" + content
+
+
+async def _drive_create_folder(name: str, parent_id: str = "") -> str:
+    token, err = await _google_access_token()
+    if err:
+        return err
+
+    folder_name = (name or "").strip()
+    if not folder_name:
+        return "Missing required field: name."
+
+    payload: dict[str, object] = {
+        "name": folder_name,
+        "mimeType": "application/vnd.google-apps.folder",
+    }
+    if parent_id:
+        payload["parents"] = [parent_id.strip()]
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                f"{_DRIVE_API}/files",
+                headers=_google_headers(token),
+                params={"fields": "id,name,webViewLink", "supportsAllDrives": "true"},
+                json=payload,
+            )
+    except Exception as exc:
+        return f"Google Drive API error: {exc}"
+
+    if resp.status_code not in (200, 201):
+        return _google_error_text(resp, "Google Drive API")
+
+    folder = resp.json()
+    return (
+        f"Google Drive folder created: **{folder.get('name', folder_name)}** "
+        f"(ID: {folder.get('id', '')})\n{folder.get('webViewLink', '')}"
+    )
+
+
 # ─── Email tool executors ─────────────────────────────────────────────────────
 
 def _email_configured_imap() -> bool:
@@ -2196,6 +2843,37 @@ async def execute_tool(
         return await _github_get_ci_status(
             repo=args.get("repo", ""),
             branch=args.get("branch", "main"),
+        )
+    if name == "gmail_fetch_inbox":
+        return await _gmail_fetch_inbox(
+            max_emails=int(args.get("max_emails", 5)),
+            unread_only=bool(args.get("unread_only", False)),
+        )
+    if name == "gmail_search":
+        return await _gmail_search(
+            query=args.get("query", ""),
+            max_results=int(args.get("max_results", 5)),
+        )
+    if name == "gmail_get_message":
+        return await _gmail_get_message(args.get("message_id", ""))
+    if name == "gmail_send":
+        return await _gmail_send(
+            to=args.get("to", ""),
+            subject=args.get("subject", ""),
+            body=args.get("body", ""),
+            cc=args.get("cc", ""),
+        )
+    if name == "drive_search":
+        return await _drive_search(
+            query=args.get("query", ""),
+            max_results=int(args.get("max_results", 10)),
+        )
+    if name == "drive_get_file":
+        return await _drive_get_file(args.get("file_id", ""))
+    if name == "drive_create_folder":
+        return await _drive_create_folder(
+            name=args.get("name", ""),
+            parent_id=args.get("parent_id", ""),
         )
     if name == "email_fetch_inbox":
         return await _email_fetch_inbox(

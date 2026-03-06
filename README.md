@@ -129,6 +129,13 @@ The bot calls tools automatically mid-conversation — a chip appears briefly in
 | `set_reminder` | ⏰ | Schedule a reminder (once/daily/weekly) to be sent to this room |
 | `list_reminders` | ⏰ | List pending reminders for this room |
 | `cancel_reminder` | ⏰ | Cancel a reminder by ID |
+| `gmail_fetch_inbox` | 📬 | Fetch recent Gmail messages via Google Workspace API |
+| `gmail_search` | 📬 | Search Gmail using Gmail query syntax |
+| `gmail_get_message` | 📬 | Read a Gmail message in detail by message ID |
+| `gmail_send` | 📤 | Send email through Gmail API |
+| `drive_search` | 📁 | Search Google Drive files and folders |
+| `drive_get_file` | 📁 | Read Drive file metadata and text content when available |
+| `drive_create_folder` | 📁 | Create a folder in Google Drive |
 | `email_fetch_inbox` | 📧 | Fetch N recent (or unread) emails from IMAP inbox |
 | `email_search` | 📧 | Search inbox by subject or sender keyword |
 | `email_send` | 📤 | Send an email via SMTP |
@@ -216,6 +223,22 @@ GROQ_API_KEY=gsk_...
 MINIMAX_API_KEY=...
 SPARKBOT_MODEL=gpt-4o-mini   # default model for all users
 ```
+
+### Optional — Google Workspace (Gmail + Drive)
+```env
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+GOOGLE_REFRESH_TOKEN=...
+GOOGLE_GMAIL_USER=me                 # optional, default "me"
+GOOGLE_DRIVE_SHARED_DRIVE_ID=...     # optional, for a shared drive default corpus
+```
+
+Recommended Google OAuth scopes:
+
+- `https://www.googleapis.com/auth/gmail.readonly`
+- `https://www.googleapis.com/auth/gmail.send`
+- `https://www.googleapis.com/auth/drive.readonly`
+- `https://www.googleapis.com/auth/drive.file`
 
 ### Optional — Web Search
 Sparkbot uses a fallback chain: Brave → SerpAPI → DuckDuckGo (no key required).

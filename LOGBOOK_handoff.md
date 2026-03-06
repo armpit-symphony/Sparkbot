@@ -36,6 +36,8 @@
 
 - Live backend on port `8091` restarted successfully after both fixes.
 - Google Workspace code is live in `sparkbot-v2`, but actual Gmail/Drive access still requires Google OAuth credentials to be added to the live `.env`.
+- The older `/home/sparky/sparkbot` repo has now been backported with the same Gmail and Drive tool set, matching env placeholders, and audit-log redaction improvements so GitHub/docs stay aligned with the active stack.
+- In the older `sparkbot` repo, the safer subset was backported: Gmail/Drive tools plus prompt/routing and audit redaction. The newer `sparkbot-v2` write-confirmation flow was not fully ported because that legacy chat flow does not expose the same confirmation path cleanly.
 - No secrets or personal credentials were committed.
 
 ### Next actions
