@@ -4,6 +4,29 @@
 
 ---
 
+## Current Status
+
+- Production chat is served by the `sparkbot-v2` backend on port `8091`.
+- The March 6, 2026 update added Google Workspace support in the live backend:
+  - Gmail: inbox fetch, search, read, send
+  - Google Drive: search, read, create folder
+- Google Workspace auth is refresh-token based and uses:
+  - `GOOGLE_CLIENT_ID`
+  - `GOOGLE_CLIENT_SECRET`
+  - `GOOGLE_REFRESH_TOKEN`
+  - optional `GOOGLE_GMAIL_USER`
+  - optional `GOOGLE_DRIVE_SHARED_DRIVE_ID`
+- No secrets or personal credentials are committed in this repository.
+
+Recommended Google OAuth scopes:
+
+- `https://www.googleapis.com/auth/gmail.readonly`
+- `https://www.googleapis.com/auth/gmail.send`
+- `https://www.googleapis.com/auth/drive.readonly`
+- `https://www.googleapis.com/auth/drive.file`
+
+---
+
 ## Architecture
 
 ```
