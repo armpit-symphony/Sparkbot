@@ -1,0 +1,45 @@
+models:
+  minimax/MiniMax-M2.5:
+    cost:
+      input: 0.50
+      output: 0.50
+    tier: 1
+    latency: fast
+
+  gpt-4o-mini:
+    cost:
+      input: 0.15
+      output: 0.60
+    tier: 2
+    latency: fast
+
+  gemini/gemini-2.0-flash:
+    cost:
+      input: 0.10
+      output: 0.40
+    tier: 2
+    latency: fast
+
+  groq/llama-3.3-70b-versatile:
+    cost:
+      input: 0.20
+      output: 0.80
+    tier: 2
+    latency: fast
+
+  gpt-4o:
+    cost:
+      input: 2.50
+      output: 10.00
+    tier: 3
+    latency: medium
+
+  claude-sonnet-4-5:
+    cost:
+      input: 3.00
+      output: 15.00
+    tier: 3
+    latency: medium
+
+safe_fallback:
+  model: gpt-4o-mini

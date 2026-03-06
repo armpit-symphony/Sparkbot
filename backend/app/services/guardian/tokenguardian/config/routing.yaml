@@ -1,0 +1,107 @@
+confidence_threshold: 0.80
+
+routing_rules:
+  coding:
+    preferred: claude-sonnet-4-5
+    alternatives:
+      - gpt-4o
+      - groq/llama-3.3-70b-versatile
+    keywords:
+      - code
+      - function
+      - program
+      - debug
+      - api
+      - script
+      - algorithm
+      - sql
+      - python
+      - javascript
+      - class
+      - refactor
+      - test
+      - implementation
+
+  data_analysis:
+    preferred: gpt-4o
+    alternatives:
+      - claude-sonnet-4-5
+      - gemini/gemini-2.0-flash
+    keywords:
+      - analyze
+      - data
+      - statistics
+      - chart
+      - graph
+      - table
+      - query
+      - summary
+      - trend
+      - pattern
+      - insight
+      - report
+
+  creative:
+    preferred: claude-sonnet-4-5
+    alternatives:
+      - gpt-4o-mini
+    keywords:
+      - write
+      - story
+      - article
+      - rewrite
+      - tone
+      - blog
+      - headline
+      - narrative
+      - copy
+      - draft
+
+  reasoning:
+    preferred: claude-sonnet-4-5
+    alternatives:
+      - gpt-4o
+    keywords:
+      - explain
+      - reason
+      - logic
+      - why
+      - how
+      - think
+      - decide
+      - compare
+      - evaluate
+      - consider
+
+  simple_qa:
+    preferred: minimax/MiniMax-M2.5
+    alternatives:
+      - gpt-4o-mini
+      - gemini/gemini-2.0-flash
+    max_length: 100
+    keywords:
+      - what
+      - when
+      - where
+      - who
+      - does
+      - is
+      - are
+      - can
+      - should
+      - could
+      - define
+      - meaning
+      - time
+      - date
+      - weather
+      - capital
+      - population
+      - price
+      - cost
+
+  general:
+    preferred: gpt-4o-mini
+    alternatives:
+      - gemini/gemini-2.0-flash
+      - minimax/MiniMax-M2.5

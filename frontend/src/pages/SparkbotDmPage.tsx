@@ -21,8 +21,12 @@ interface PendingConfirm {
 
 function describeAction(tool: string, input: Record<string, unknown>): string {
   switch (tool) {
+    case "gmail_send":
+      return `Send Gmail message to ${input.to ?? "?"} — subject: ${input.subject ?? "(none)"}`
     case "email_send":
       return `Send email to ${input.to ?? "?"} — subject: ${input.subject ?? "(none)"}`
+    case "drive_create_folder":
+      return `Create Drive folder ${input.name ?? "?"}`
     case "slack_send_message":
       return `Post to Slack #${input.channel ?? "?"}: ${String(input.text ?? "").slice(0, 80)}`
     case "github_create_issue":
@@ -33,6 +37,10 @@ function describeAction(tool: string, input: Record<string, unknown>): string {
       return `Create Confluence page: ${input.title ?? "?"}`
     case "calendar_create_event":
       return `Create calendar event: ${input.title ?? input.summary ?? "?"}`
+    case "server_manage_service":
+      return `Run service action: ${input.action ?? "?"} ${input.service ?? "?"}`
+    case "guardian_schedule_task":
+      return `Schedule Task Guardian job: ${input.name ?? "?"} via ${input.tool_name ?? "?"}`
     default:
       return `Execute ${tool}`
   }
@@ -155,12 +163,27 @@ const TOOL_ICONS: Record<string, string> = {
   github_get_pr:         "🐙",
   github_create_issue:   "🐙",
   github_get_ci_status:  "🔬",
+  gmail_fetch_inbox:     "📬",
+  gmail_search:          "📬",
+  gmail_get_message:     "📬",
+  gmail_send:            "📤",
+  drive_search:          "📁",
+  drive_get_file:        "📁",
+  drive_create_folder:   "📁",
   email_fetch_inbox:     "📧",
   email_search:          "📧",
   email_send:            "📤",
+  server_read_command:   "🖥️",
+  server_manage_service: "🛠️",
+  ssh_read_command:      "🔐",
   set_reminder:          "⏰",
   list_reminders:        "⏰",
   cancel_reminder:       "⏰",
+  guardian_schedule_task: "🛡️",
+  guardian_list_tasks:    "🛡️",
+  guardian_list_runs:     "🛡️",
+  guardian_run_task:      "🛡️",
+  guardian_pause_task:    "🛡️",
   calendar_list_events:    "📅",
   calendar_create_event:   "📅",
   slack_send_message:      "💬",

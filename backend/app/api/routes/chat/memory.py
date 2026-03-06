@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from app.api.deps import CurrentChatUser, SessionDep
 from app.crud import add_user_memory, clear_user_memories, delete_user_memory, get_user_memories
+from app.services.guardian.memory import clear_user_memory_events, delete_fact_memory, memory_guardian_enabled
 
 router = APIRouter(prefix="/memory", tags=["chat-memory"])
 
@@ -30,7 +31,11 @@ def _fmt(m) -> MemoryResponse:
 @router.get("/")
 def list_memories(session: SessionDep, current_user: CurrentChatUser) -> Any:
     mems = get_user_memories(session, current_user.id)
-    return {"memories": [_fmt(m) for m in mems], "count": len(mems)}
+    return {
+        "memories": [_fmt(m) for m in mems],
+        "count": len(mems),
+        "memory_guardian_enabled": memory_guardian_enabled(),
+    }
 
 
 @router.delete("/{memory_id}")
@@ -38,10 +43,19 @@ def remove_memory(memory_id: uuid.UUID, session: SessionDep, current_user: Curre
     ok = delete_user_memory(session, memory_id, current_user.id)
     if not ok:
         raise HTTPException(status_code=404, detail="Memory not found")
+    try:
+        delete_fact_memory(user_id=str(current_user.id), memory_id=str(memory_id))
+    except Exception:
+        pass
     return {"deleted": str(memory_id)}
 
 
 @router.delete("/")
 def clear_memories(session: SessionDep, current_user: CurrentChatUser) -> dict:
     count = clear_user_memories(session, current_user.id)
-    return {"cleared": count}
+    cleared_events = 0
+    try:
+        cleared_events = clear_user_memory_events(user_id=str(current_user.id))
+    except Exception:
+        pass
+    return {"cleared": count, "cleared_memory_events": cleared_events}

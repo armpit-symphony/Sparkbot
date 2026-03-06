@@ -1,0 +1,27 @@
+optimizer:
+  enabled: true
+  dry_run: true
+  refinement:
+    enabled: true
+    fluff_words:
+      - "please"
+      - "thank you"
+      - "could you"
+      - "i would like to"
+      - "can you"
+      - "kindly"
+      - "just"
+      - "really"
+      - "very"
+      - "absolutely"
+      - "essentially"
+      - "basically"
+      - "quite"
+  caching:
+    enabled: false
+    ttl: 86400
+    dir: ~/.sparkbot/tokenguardian/cache
+
+audit:
+  enabled: true
+  dir: ~/.sparkbot/tokenguardian/audit

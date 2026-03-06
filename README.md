@@ -106,6 +106,16 @@ The bot calls tools automatically mid-conversation — a chip appears briefly in
 | `set_reminder` | ⏰ | Schedule a reminder (once/daily/weekly) to be sent to this room |
 | `list_reminders` | ⏰ | List pending reminders for this room |
 | `cancel_reminder` | ⏰ | Cancel a reminder by ID |
+| `gmail_fetch_inbox` | 📬 | Fetch recent Gmail messages via Google Workspace API |
+| `gmail_search` | 📬 | Search Gmail using Gmail query syntax |
+| `gmail_get_message` | 📬 | Read a Gmail message in detail by message ID |
+| `gmail_send` | 📤 | Send an email through Gmail API |
+| `drive_search` | 📁 | Search Google Drive files and folders |
+| `drive_get_file` | 📁 | Read Drive file metadata and text content when available |
+| `drive_create_folder` | 📁 | Create a folder in Google Drive |
+| `server_read_command` | 🖥️ | Run approved read-only diagnostics on the local server |
+| `server_manage_service` | 🛠️ | Start, stop, or restart an approved local systemd service |
+| `ssh_read_command` | 🔐 | Run approved read-only diagnostics on an approved SSH host alias |
 | `email_fetch_inbox` | 📧 | Fetch N recent (or unread) emails from IMAP inbox |
 | `email_search` | 📧 | Search inbox by subject or sender keyword |
 | `email_send` | 📤 | Send an email via SMTP |
@@ -128,11 +138,16 @@ The bot calls tools automatically mid-conversation — a chip appears briefly in
 Tool calling uses litellm's function-calling API (OpenAI format, compatible with all supported models). Up to 5 tool-calling rounds per message.
 
 ### Persistent Memory
-The bot proactively calls `remember_fact` when you reveal your name, role, timezone, preferences, or ongoing projects. Facts are stored in the `user_memories` DB table and injected into every system prompt, so the bot greets you by name and gives context-aware answers across sessions.
+The bot proactively calls `remember_fact` when you reveal your name, role, timezone, preferences, or ongoing projects. Curated facts are stored in the `user_memories` DB table for the `/memory` UI, and Sparkbot now also uses a vendored Memory Guardian layer to retain redacted message/tool context and inject relevant packed memory into prompts.
 
 - `/memory` — list stored facts (with short IDs)
 - `/memory clear` — wipe all stored facts
 - API: `GET /api/v1/chat/memory/`, `DELETE /api/v1/chat/memory/{id}`, `DELETE /api/v1/chat/memory/`
+
+Memory Guardian phase-1 notes:
+- durable user memory session: `user:{user_id}`
+- room-context memory session: `room:{room_id}:user:{user_id}`
+- current user-facing `/memory` endpoints still list curated fact memories, while prompt retrieval uses the richer memory ledger
 
 ### Calendar Integration (CalDAV)
 When configured, the bot can read and create calendar events in natural language:
@@ -168,6 +183,15 @@ Model preferences are per-user (in-memory, resets on service restart). Switch at
 | `gemini/gemini-2.0-flash` | Gemini Flash — fast Google model |
 | `groq/llama-3.3-70b-versatile` | Llama 3.3 70B via Groq — very fast |
 | `minimax/MiniMax-M2.5` | MiniMax M2.5 — reasoning + tool calling |
+
+Token Guardian phase-2 note:
+- Sparkbot can run a shadow routing pass per prompt and log a `tokenguardian_shadow` audit event with classification, confidence, recommended model, and estimated cost, without changing the live model dispatch yet.
+
+Agent Shield / Executive / Task Guardian phase notes:
+- Sparkbot now applies a policy decision to every tool call and logs `policy_decision` audit entries with `allow`, `confirm`, or `deny`.
+- Room-level `execution_allowed` is now enforced for server and SSH operations.
+- High-risk tool calls are wrapped by an Executive Guardian decision journal under `data/guardian/executive/decisions/`.
+- Task Guardian can schedule approved read-only jobs and post their results back into the room.
 
 ---
 
@@ -208,6 +232,46 @@ Recommended Google OAuth scopes on the refresh token:
 - `https://www.googleapis.com/auth/gmail.send`
 - `https://www.googleapis.com/auth/drive.readonly`
 - `https://www.googleapis.com/auth/drive.file`
+
+### Optional — Memory Guardian
+```env
+SPARKBOT_MEMORY_GUARDIAN_ENABLED=true
+SPARKBOT_MEMORY_GUARDIAN_DATA_DIR=./data/memory_guardian
+SPARKBOT_MEMORY_GUARDIAN_MAX_TOKENS=1200
+SPARKBOT_MEMORY_GUARDIAN_RETRIEVE_LIMIT=6
+```
+
+### Optional — Token Guardian Shadow Mode
+```env
+SPARKBOT_TOKEN_GUARDIAN_SHADOW_ENABLED=true
+```
+
+### Optional — Executive Guardian + Task Guardian
+```env
+SPARKBOT_EXECUTIVE_GUARDIAN_ENABLED=true
+SPARKBOT_TASK_GUARDIAN_ENABLED=true
+SPARKBOT_TASK_GUARDIAN_POLL_SECONDS=60
+SPARKBOT_TASK_GUARDIAN_MAX_OUTPUT=2000
+SPARKBOT_GUARDIAN_DATA_DIR=./data/guardian
+```
+
+### Optional — Server Operations
+```env
+SPARKBOT_ALLOWED_SERVICES=sparkbot-v2
+SPARKBOT_SERVICE_USE_SUDO=false
+SPARKBOT_SERVER_COMMAND_TIMEOUT_SECONDS=20
+SPARKBOT_SSH_ALLOWED_HOSTS=
+SPARKBOT_SSH_ALLOWED_SERVICES=
+SPARKBOT_SSH_CONNECT_TIMEOUT_SECONDS=10
+SPARKBOT_SSH_COMMAND_TIMEOUT_SECONDS=30
+```
+
+Notes:
+- `server_read_command` is limited to built-in read-only profiles like system overview, memory, disk, listeners, process snapshot, service status, and recent service logs.
+- `server_manage_service` is limited to services listed in `SPARKBOT_ALLOWED_SERVICES`, requires room `execution_allowed=true`, and uses the chat confirmation modal before execution.
+- `ssh_read_command` only works for SSH aliases listed in `SPARKBOT_SSH_ALLOWED_HOSTS`.
+- Task Guardian only schedules approved read-only tools. It does not run arbitrary shell commands.
+- If service actions require elevation, set `SPARKBOT_SERVICE_USE_SUDO=true` and give the Sparkbot service user a narrow passwordless sudo rule for the allowed units.
 
 ### Optional — Web Search
 Sparkbot uses a fallback chain: Brave → SerpAPI → DuckDuckGo (no key required).

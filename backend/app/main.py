@@ -1,11 +1,15 @@
 import sentry_sdk
+import asyncio
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
 
 from app.api.main import api_router
+from app.api.deps import get_db
+from app.api.routes.chat.reminders import reminder_scheduler
 from app.core.config import settings
+from app.services.guardian.task_guardian import task_guardian_scheduler
 
 
 def custom_generate_unique_id(route: APIRoute) -> str:
@@ -55,3 +59,19 @@ if settings.all_cors_origins:
 app.add_middleware(_SecurityHeadersMiddleware)
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
+
+
+@app.on_event("startup")
+async def _start_background_guardians() -> None:
+    if not getattr(app.state, "reminder_scheduler_task", None):
+        app.state.reminder_scheduler_task = asyncio.create_task(reminder_scheduler())
+    if not getattr(app.state, "task_guardian_scheduler_task", None):
+        app.state.task_guardian_scheduler_task = asyncio.create_task(task_guardian_scheduler(get_db))
+
+
+@app.on_event("shutdown")
+async def _stop_background_guardians() -> None:
+    for attr in ("reminder_scheduler_task", "task_guardian_scheduler_task"):
+        task = getattr(app.state, attr, None)
+        if task:
+            task.cancel()

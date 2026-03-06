@@ -23,7 +23,12 @@ SYSTEM_PROMPT = (
     "If asked what model you are, say: 'I'm Sparkbot, your Sparkpit assistant.' "
     "Use available tools whenever they are relevant. "
     "Do not claim you lack the ability to access external systems if a matching tool is available. "
-    "For Gmail, Google Drive, email, search, Slack, GitHub, Notion, Confluence, and calendar requests, prefer using the corresponding tool. "
+    "For Gmail, Google Drive, email, search, Slack, GitHub, Notion, Confluence, calendar, local server operations, service management, approved SSH host operations, and Task Guardian scheduling, prefer using the corresponding tool. "
+    "For service status, diagnostics, memory, disk, listeners, processes, and logs, use read-only server tools. "
+    "Use service management only for explicit start, stop, or restart requests. "
+    "Use Task Guardian only for approved recurring read-only work such as inbox digests, PR checks, calendar lookups, and diagnostics. "
+    "Never claim that a write action or service action completed unless the tool result explicitly says it succeeded. "
+    "If a write tool requires confirmation, wait for confirmation instead of claiming the action already happened. "
     "If a requested integration is not configured or a tool returns an error, explain that concrete limitation clearly. "
     "Be concise and professional."
 )
@@ -42,19 +47,6 @@ AVAILABLE_MODELS: dict[str, str] = {
 # In-memory per-user model preferences  {user_id: model_name}
 # Resets on service restart — good enough until DB persistence is added
 _user_models: dict[str, str] = {}
-
-# ── Write-tool confirmation gate ──────────────────────────────────────────────
-
-WRITE_TOOLS: frozenset[str] = frozenset({
-    "gmail_send",
-    "email_send",
-    "slack_send_message",
-    "github_create_issue",
-    "notion_create_page",
-    "confluence_create_page",
-    "calendar_create_event",
-    "drive_create_folder",
-})
 
 # Pending confirmations: confirm_id -> {tool, args, user_id, room_id, created_at}
 _pending: dict[str, dict] = {}
@@ -147,6 +139,7 @@ async def stream_chat_with_tools(
     room_id: str | None = None,
     agent_name: str | None = None,
     confirmed_ids: set[str] | None = None,
+    room_execution_allowed: bool | None = None,
 ) -> AsyncGenerator[dict, None]:
     """
     Tool-aware streaming. Yields typed event dicts:
@@ -163,9 +156,45 @@ async def stream_chat_with_tools(
         _email_configured_smtp,
         _google_configured,
     )
+    from app.services.guardian.executive import exec_with_guard
+    from app.services.guardian.policy import decide_tool_use
 
     chosen = model or get_model(user_id)
     msgs = list(messages)
+
+    if db_session is not None and user_id and room_id:
+        try:
+            import uuid as _uuid
+            from app.crud import create_audit_log
+            from app.services.guardian.token_guardian import run_shadow_route
+
+            latest_user_message = next(
+                (
+                    str(msg.get("content", ""))
+                    for msg in reversed(msgs)
+                    if msg.get("role") == "user"
+                ),
+                "",
+            )
+            shadow = run_shadow_route(latest_user_message, chosen)
+            if shadow:
+                create_audit_log(
+                    session=db_session,
+                    tool_name="tokenguardian_shadow",
+                    tool_input=json.dumps(
+                        {
+                            "query": latest_user_message[:500],
+                            "current_model": chosen,
+                        }
+                    ),
+                    tool_result=json.dumps(shadow)[:1000],
+                    user_id=_uuid.UUID(user_id),
+                    room_id=_uuid.UUID(room_id),
+                    agent_name=agent_name,
+                    model=chosen,
+                )
+        except Exception:
+            pass
 
     for _round in range(5):
         # Non-streaming call to resolve any tool calls
@@ -192,8 +221,47 @@ async def stream_chat_with_tools(
                 except Exception:
                     tool_args = {}
 
-                # ── Confirmation gate for write tools ─────────────────────────
-                if tool_name in WRITE_TOOLS:
+                decision = decide_tool_use(
+                    tool_name,
+                    tool_args if isinstance(tool_args, dict) else {},
+                    room_execution_allowed=room_execution_allowed,
+                )
+
+                if db_session is not None:
+                    try:
+                        import uuid as _uuid
+                        from app.crud import create_audit_log
+
+                        create_audit_log(
+                            session=db_session,
+                            tool_name="policy_decision",
+                            tool_input=json.dumps(
+                                {
+                                    "tool_name": tool_name,
+                                    "tool_args": tool_args,
+                                }
+                            )[:2000],
+                            tool_result=decision.to_json()[:1000],
+                            user_id=_uuid.UUID(user_id) if user_id else None,
+                            room_id=_uuid.UUID(room_id) if room_id else None,
+                            agent_name=agent_name,
+                            model=chosen,
+                        )
+                    except Exception:
+                        pass
+
+                if decision.action == "deny":
+                    result = f"POLICY DENIED: {decision.reason}"
+                    yield {"type": "tool_start", "tool": tool_name, "input": tool_args}
+                    yield {"type": "tool_done", "tool": tool_name, "result": result[:300]}
+                    msgs.append({
+                        "role": "tool",
+                        "tool_call_id": tc.id,
+                        "content": result,
+                    })
+                    continue
+
+                if decision.action == "confirm":
                     # Don't prompt for confirmation when email sending is unavailable.
                     # Let the tool return the concrete configuration error instead.
                     if tool_name == "email_send" and not _email_configured_smtp():
@@ -224,7 +292,24 @@ async def stream_chat_with_tools(
 
                 yield {"type": "tool_start", "tool": tool_name, "input": tool_args}
 
-                result = await execute_tool(tool_name, tool_args, user_id=user_id, session=db_session, room_id=room_id)
+                result = await exec_with_guard(
+                    tool_name=tool_name,
+                    action_type=decision.action_type,
+                    expected_outcome=f"Successful tool execution for {tool_name}",
+                    perform_fn=lambda: execute_tool(
+                        tool_name,
+                        tool_args,
+                        user_id=user_id,
+                        session=db_session,
+                        room_id=room_id,
+                    ),
+                    metadata={
+                        "room_id": room_id,
+                        "user_id": user_id,
+                        "scope": decision.scope,
+                        "resource": decision.resource,
+                    },
+                )
 
                 yield {"type": "tool_done", "tool": tool_name, "result": result[:300]}
 
@@ -233,6 +318,7 @@ async def stream_chat_with_tools(
                     try:
                         import uuid as _uuid
                         from app.crud import create_audit_log
+                        from app.services.guardian.memory import remember_tool_event
                         redacted_input, redacted_result = _redact_for_audit(
                             tc.function.arguments, result
                         )
@@ -246,6 +332,15 @@ async def stream_chat_with_tools(
                             agent_name=agent_name,
                             model=chosen,
                         )
+                        if user_id and room_id:
+                            parsed_input = json.loads(redacted_input)
+                            remember_tool_event(
+                                user_id=user_id,
+                                room_id=room_id,
+                                tool_name=tool_name,
+                                args=parsed_input if isinstance(parsed_input, dict) else {},
+                                result=redacted_result,
+                            )
                     except Exception:
                         pass  # never fail the stream because of logging
 

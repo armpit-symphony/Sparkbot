@@ -76,6 +76,8 @@ chainlit.md
 agenthub/agents/youtube/db
 backend/sparkbot_chat.db
 backend/*.db
+backend/data/
+data/
 sparkbot/workspace/sessions/active.json
 
 # Backend runtime

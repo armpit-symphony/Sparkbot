@@ -11,6 +11,8 @@ import asyncio
 import json
 import operator
 import os
+import re
+import shlex
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -73,6 +75,44 @@ _EMAIL_FROM_NAME = os.getenv("EMAIL_FROM_NAME", "Sparkbot").strip()
 _CALDAV_URL = os.getenv("CALDAV_URL", "").strip()
 _CALDAV_USERNAME = os.getenv("CALDAV_USERNAME", "").strip()
 _CALDAV_PASSWORD = os.getenv("CALDAV_PASSWORD", "").strip()
+
+# ─── Server operations config ─────────────────────────────────────────────────
+
+_SAFE_SERVICE_RE = re.compile(r"^[A-Za-z0-9@._-]+$")
+_SAFE_SSH_HOST_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+_ALLOWED_LOCAL_SERVICES = {
+    item.strip()
+    for item in os.getenv("SPARKBOT_ALLOWED_SERVICES", "sparkbot-v2").split(",")
+    if item.strip()
+}
+_ALLOWED_SSH_SERVICES = {
+    item.strip()
+    for item in os.getenv("SPARKBOT_SSH_ALLOWED_SERVICES", "").split(",")
+    if item.strip()
+}
+_ALLOWED_SSH_HOSTS = {
+    item.strip()
+    for item in os.getenv("SPARKBOT_SSH_ALLOWED_HOSTS", "").split(",")
+    if item.strip()
+}
+_SERVICE_USE_SUDO = os.getenv("SPARKBOT_SERVICE_USE_SUDO", "false").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+_SERVER_COMMAND_TIMEOUT_SECONDS = max(
+    5,
+    min(int(os.getenv("SPARKBOT_SERVER_COMMAND_TIMEOUT_SECONDS", "20")), 60),
+)
+_SSH_COMMAND_TIMEOUT_SECONDS = max(
+    5,
+    min(int(os.getenv("SPARKBOT_SSH_COMMAND_TIMEOUT_SECONDS", "30")), 120),
+)
+_SSH_CONNECT_TIMEOUT_SECONDS = max(
+    3,
+    min(int(os.getenv("SPARKBOT_SSH_CONNECT_TIMEOUT_SECONDS", "10")), 30),
+)
 
 # ─── Tool definitions (sent to the LLM) ──────────────────────────────────────
 
@@ -731,6 +771,114 @@ TOOL_DEFINITIONS = [
     {
         "type": "function",
         "function": {
+            "name": "server_read_command",
+            "description": (
+                "Run an approved read-only diagnostic command on the local server. "
+                "Use for checking uptime, disk, memory, network listeners, top processes, "
+                "service status, or recent service logs. "
+                "If the user asks to show the status of a service or show logs, use this tool, not service management. "
+                "Never use this for writing or destructive actions."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "command": {
+                        "type": "string",
+                        "enum": [
+                            "system_overview",
+                            "disk_usage",
+                            "memory",
+                            "network_listeners",
+                            "process_snapshot",
+                            "service_status",
+                            "service_logs",
+                        ],
+                        "description": "Approved diagnostic profile to run on the local server",
+                    },
+                    "service": {
+                        "type": "string",
+                        "description": "Required for service_status or service_logs; must be an allowed systemd unit name",
+                    },
+                    "lines": {
+                        "type": "integer",
+                        "description": "For service_logs only: how many recent log lines to return (default 50, max 200)",
+                    },
+                },
+                "required": ["command"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "server_manage_service",
+            "description": (
+                "Start, stop, or restart an approved local system service. "
+                "Use this only for explicit service control requests such as restart, stop, or start. "
+                "Do not use this for status, logs, or diagnostics. "
+                "Always confirm the target service and action with the user before calling this tool."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "service": {
+                        "type": "string",
+                        "description": "Allowed local systemd service name, for example 'sparkbot-v2'",
+                    },
+                    "action": {
+                        "type": "string",
+                        "enum": ["start", "stop", "restart"],
+                        "description": "Service action to run",
+                    },
+                },
+                "required": ["service", "action"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ssh_read_command",
+            "description": (
+                "Run an approved read-only diagnostic command on a configured SSH host alias. "
+                "Use when asked to inspect a remote server or PC. Host must be in the SSH allowlist."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "host": {
+                        "type": "string",
+                        "description": "SSH host alias from the approved allowlist",
+                    },
+                    "command": {
+                        "type": "string",
+                        "enum": [
+                            "system_overview",
+                            "disk_usage",
+                            "memory",
+                            "network_listeners",
+                            "process_snapshot",
+                            "service_status",
+                            "service_logs",
+                        ],
+                        "description": "Approved diagnostic profile to run on the remote host",
+                    },
+                    "service": {
+                        "type": "string",
+                        "description": "Required for service_status or service_logs; must be an allowed remote systemd unit name",
+                    },
+                    "lines": {
+                        "type": "integer",
+                        "description": "For service_logs only: how many recent log lines to return (default 50, max 200)",
+                    },
+                },
+                "required": ["host", "command"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "email_fetch_inbox",
             "description": (
                 "Fetch recent emails from the inbox. Use when asked about email, "
@@ -861,6 +1009,117 @@ TOOL_DEFINITIONS = [
                     }
                 },
                 "required": ["reminder_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "guardian_schedule_task",
+            "description": (
+                "Schedule a Task Guardian job that runs an approved read-only tool and posts the result "
+                "back into this room. Use for recurring inbox digests, PR checks, calendar lookups, "
+                "server diagnostics, and similar office or monitoring workflows."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Short task name",
+                    },
+                    "tool_name": {
+                        "type": "string",
+                        "description": (
+                            "Approved tool name. Supported: web_search, github_list_prs, github_get_ci_status, "
+                            "slack_get_channel_history, notion_search, confluence_search, gmail_fetch_inbox, "
+                            "gmail_search, drive_search, calendar_list_events, server_read_command, "
+                            "ssh_read_command, list_tasks, list_reminders"
+                        ),
+                    },
+                    "schedule": {
+                        "type": "string",
+                        "description": "Run cadence in every:<seconds> or at:<ISO-8601 UTC datetime> format",
+                    },
+                    "tool_args": {
+                        "type": "object",
+                        "description": "Arguments for the selected tool",
+                        "additionalProperties": True,
+                    },
+                },
+                "required": ["name", "tool_name", "schedule"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "guardian_list_tasks",
+            "description": "List Task Guardian jobs configured for this room.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of tasks to return",
+                    }
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "guardian_list_runs",
+            "description": "List recent Task Guardian job runs for this room.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of runs to return",
+                    }
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "guardian_run_task",
+            "description": "Run an existing Task Guardian job immediately by ID.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "task_id": {
+                        "type": "string",
+                        "description": "Task ID from guardian_list_tasks",
+                    }
+                },
+                "required": ["task_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "guardian_pause_task",
+            "description": "Pause or resume a Task Guardian job by ID.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "task_id": {
+                        "type": "string",
+                        "description": "Task ID from guardian_list_tasks",
+                    },
+                    "enabled": {
+                        "type": "boolean",
+                        "description": "Set to false to pause, true to resume",
+                    },
+                },
+                "required": ["task_id", "enabled"],
             },
         },
     },
@@ -2357,6 +2616,222 @@ async def _drive_create_folder(name: str, parent_id: str = "") -> str:
     )
 
 
+# ─── Server operations executors ──────────────────────────────────────────────
+
+_SERVER_READ_COMMANDS = {
+    "system_overview": "system_overview",
+    "disk_usage": "disk_usage",
+    "memory": "memory",
+    "network_listeners": "network_listeners",
+    "process_snapshot": "process_snapshot",
+    "service_status": "service_status",
+    "service_logs": "service_logs",
+}
+_SERVER_SERVICE_ACTIONS = {"start", "stop", "restart"}
+
+
+def _format_allowed_list(values: set[str]) -> str:
+    if not values:
+        return "(none)"
+    return ", ".join(sorted(values))
+
+
+def _truncate_tool_output(text: str, limit: int = 12000) -> str:
+    text = (text or "").strip()
+    if len(text) <= limit:
+        return text or "(no output)"
+    return text[:limit] + "\n...[truncated]"
+
+
+async def _run_exec(argv: list[str], timeout: int) -> tuple[int, str]:
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *argv,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except FileNotFoundError:
+        return 127, f"Command not found: {argv[0]}"
+    except Exception as exc:
+        return 1, f"Command failed to start: {exc}"
+
+    try:
+        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
+    except asyncio.TimeoutError:
+        process.kill()
+        await process.communicate()
+        return 124, f"Command timed out after {timeout} seconds."
+
+    stdout_text = stdout.decode("utf-8", errors="replace").strip()
+    stderr_text = stderr.decode("utf-8", errors="replace").strip()
+    if stdout_text and stderr_text:
+        output = f"{stdout_text}\n\n[stderr]\n{stderr_text}"
+    else:
+        output = stdout_text or stderr_text or "(no output)"
+    return process.returncode, _truncate_tool_output(output)
+
+
+def _validate_service_name(service: str, allowed_services: set[str]) -> tuple[Optional[str], Optional[str]]:
+    unit = (service or "").strip()
+    if not unit:
+        return None, "Missing required field: service."
+    if not _SAFE_SERVICE_RE.fullmatch(unit):
+        return None, "Invalid service name."
+    if unit not in allowed_services:
+        return None, (
+            "Service is not allowed. Configure SPARKBOT_ALLOWED_SERVICES or "
+            f"SPARKBOT_SSH_ALLOWED_SERVICES. Allowed: {_format_allowed_list(allowed_services)}"
+        )
+    return unit, None
+
+
+def _validate_ssh_host(host: str) -> tuple[Optional[str], Optional[str]]:
+    target = (host or "").strip()
+    if not target:
+        return None, "Missing required field: host."
+    if not _ALLOWED_SSH_HOSTS:
+        return None, "SSH access is not configured. Set SPARKBOT_SSH_ALLOWED_HOSTS to approved SSH host aliases."
+    if not _SAFE_SSH_HOST_RE.fullmatch(target):
+        return None, "Invalid SSH host alias."
+    if target not in _ALLOWED_SSH_HOSTS:
+        return None, f"SSH host is not allowed. Allowed hosts: {_format_allowed_list(_ALLOWED_SSH_HOSTS)}"
+    return target, None
+
+
+def _ops_profile_commands(
+    command: str,
+    service: str = "",
+    lines: int = 50,
+    *,
+    allowed_services: set[str],
+) -> tuple[Optional[list[tuple[str, list[str]]]], Optional[str]]:
+    profile = (command or "").strip()
+    if profile not in _SERVER_READ_COMMANDS:
+        return None, f"Unsupported server command. Allowed: {', '.join(sorted(_SERVER_READ_COMMANDS))}"
+
+    if profile == "system_overview":
+        return [
+            ("uptime", ["uptime"]),
+            ("disk_usage", ["df", "-h", "/"]),
+            ("memory", ["free", "-h"]),
+        ], None
+    if profile == "disk_usage":
+        return [("disk_usage", ["df", "-h"])], None
+    if profile == "memory":
+        return [("memory", ["free", "-h"])], None
+    if profile == "network_listeners":
+        return [("network_listeners", ["ss", "-ltnp"])], None
+    if profile == "process_snapshot":
+        return [("process_snapshot", ["ps", "-eo", "pid,ppid,%cpu,%mem,comm", "--sort=-%cpu"])], None
+
+    unit, err = _validate_service_name(service, allowed_services)
+    if err:
+        return None, err
+
+    if profile == "service_status":
+        return [("service_status", ["systemctl", "status", "--no-pager", unit])], None
+
+    safe_lines = max(1, min(int(lines), 200))
+    return [("service_logs", ["journalctl", "-u", unit, "-n", str(safe_lines), "--no-pager"])], None
+
+
+async def _run_profile_commands(commands: list[tuple[str, list[str]]], timeout: int) -> str:
+    sections: list[str] = []
+    for label, argv in commands:
+        code, output = await _run_exec(argv, timeout=timeout)
+        heading = f"== {label} ==\n$ {' '.join(shlex.quote(arg) for arg in argv)}"
+        body = output
+        if code != 0:
+            body = f"(exit {code})\n{output}"
+        sections.append(f"{heading}\n{body}")
+    return "\n\n".join(sections)
+
+
+async def _server_read_command(command: str, service: str = "", lines: int = 50) -> str:
+    commands, err = _ops_profile_commands(
+        command,
+        service,
+        lines,
+        allowed_services=_ALLOWED_LOCAL_SERVICES,
+    )
+    if err:
+        return err
+    return await _run_profile_commands(commands or [], timeout=_SERVER_COMMAND_TIMEOUT_SECONDS)
+
+
+async def _server_manage_service(service: str, action: str) -> str:
+    unit, err = _validate_service_name(service, _ALLOWED_LOCAL_SERVICES)
+    if err:
+        return err
+
+    op = (action or "").strip().lower()
+    if op in {"status", "service_status", "show_status"}:
+        return await _server_read_command("service_status", service=unit)
+    if op in {"logs", "log", "service_logs", "show_logs"}:
+        return await _server_read_command("service_logs", service=unit, lines=50)
+    if op not in _SERVER_SERVICE_ACTIONS:
+        return (
+            f"Unsupported service action. Allowed: {', '.join(sorted(_SERVER_SERVICE_ACTIONS))}. "
+            "For status or logs, use the read-only server command tool."
+        )
+
+    argv = ["systemctl", op, unit]
+    if _SERVICE_USE_SUDO:
+        argv = ["sudo", "-n", *argv]
+
+    code, output = await _run_exec(argv, timeout=_SERVER_COMMAND_TIMEOUT_SECONDS)
+    if code != 0:
+        if _SERVICE_USE_SUDO and ("password" in output.lower() or "sudo" in output.lower()):
+            return (
+                f"FAILED: service action failed for {unit}. Passwordless sudo may be required for this Sparkbot service user.\n\n{output}"
+            )
+        return f"FAILED: service action failed for {unit}.\n\n{output}"
+
+    return f"SUCCESS: service action succeeded: {op} {unit}\n\n{output}"
+
+
+def _build_ssh_script(commands: list[tuple[str, list[str]]]) -> str:
+    script_parts = ["set -euo pipefail"]
+    for label, argv in commands:
+        script_parts.append(f"printf '%s\\n' {shlex.quote(f'== {label} ==')}")
+        script_parts.append(" ".join(shlex.quote(arg) for arg in argv))
+        script_parts.append("printf '\\n'")
+    return "; ".join(script_parts)
+
+
+async def _ssh_read_command(host: str, command: str, service: str = "", lines: int = 50) -> str:
+    target, err = _validate_ssh_host(host)
+    if err:
+        return err
+
+    allowed_remote_services = _ALLOWED_SSH_SERVICES or _ALLOWED_LOCAL_SERVICES
+    commands, profile_err = _ops_profile_commands(
+        command,
+        service,
+        lines,
+        allowed_services=allowed_remote_services,
+    )
+    if profile_err:
+        return profile_err
+
+    script = _build_ssh_script(commands or [])
+    argv = [
+        "ssh",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        f"ConnectTimeout={_SSH_CONNECT_TIMEOUT_SECONDS}",
+        target,
+        "bash",
+        "-lc",
+        script,
+    ]
+    code, output = await _run_exec(argv, timeout=_SSH_COMMAND_TIMEOUT_SECONDS)
+    if code != 0:
+        return f"SSH command failed for {target}.\n\n{output}"
+    return f"SSH results from {target}:\n\n{output}"
+
+
 # ─── Email tool executors ─────────────────────────────────────────────────────
 
 def _email_configured_imap() -> bool:
@@ -2610,6 +3085,106 @@ async def _cancel_reminder(
     return "Reminder cancelled." if ok else f"Reminder '{reminder_id}' not found."
 
 
+# ─── Task Guardian executors ──────────────────────────────────────────────────
+
+async def _guardian_schedule_task(
+    name: str,
+    tool_name: str,
+    schedule: str,
+    tool_args: dict,
+    room_id: Optional[str],
+    user_id: Optional[str],
+) -> str:
+    if not room_id or not user_id:
+        return "Task Guardian unavailable (no room or user context)."
+    from app.services.guardian.task_guardian import schedule_task
+
+    try:
+        task = schedule_task(
+            name=name,
+            tool_name=tool_name,
+            tool_args=tool_args or {},
+            schedule=schedule,
+            room_id=room_id,
+            user_id=user_id,
+        )
+    except Exception as exc:
+        return f"Task Guardian error: {exc}"
+
+    return (
+        f"Scheduled Task Guardian job `{task['name']}` ({task['id'][:8]}) "
+        f"for `{task['tool_name']}` on `{task['schedule']}`. "
+        f"Next run: {task['next_run_at']}"
+    )
+
+
+async def _guardian_list_tasks(room_id: Optional[str], limit: int = 10) -> str:
+    if not room_id:
+        return "Task Guardian unavailable (no room context)."
+    from app.services.guardian.task_guardian import list_tasks
+
+    tasks = list_tasks(room_id=room_id, limit=limit)
+    if not tasks:
+        return "No Task Guardian jobs configured for this room."
+
+    lines = []
+    for task in tasks:
+        status = "enabled" if task.enabled else "paused"
+        lines.append(
+            f"- [{task.id[:8]}] {task.name} — {task.tool_name} — {task.schedule} — {status}"
+            + (f" — next {task.next_run_at}" if task.next_run_at else "")
+        )
+    return "Task Guardian jobs:\n" + "\n".join(lines)
+
+
+async def _guardian_list_runs(room_id: Optional[str], limit: int = 10) -> str:
+    if not room_id:
+        return "Task Guardian unavailable (no room context)."
+    from app.services.guardian.task_guardian import list_runs
+
+    runs = list_runs(room_id=room_id, limit=limit)
+    if not runs:
+        return "No Task Guardian runs recorded for this room yet."
+
+    lines = []
+    for run in runs:
+        lines.append(
+            f"- [{run.task_id[:8]}] {run.status.upper()} at {run.created_at} — {run.message}"
+        )
+    return "Recent Task Guardian runs:\n" + "\n".join(lines)
+
+
+async def _guardian_run_task(task_id: str, room_id: Optional[str], session) -> str:
+    if not room_id or session is None:
+        return "Task Guardian unavailable (no room/session context)."
+    from app.services.guardian.task_guardian import get_task, run_task_once
+
+    task = get_task(task_id)
+    if not task or task.room_id != room_id:
+        return f"Task Guardian job '{task_id}' not found in this room."
+
+    result = await run_task_once(task, session)
+    return (
+        f"Task Guardian job `{task.name}` ran with status {result['status'].upper()}.\n\n"
+        f"{result['output']}"
+    )
+
+
+async def _guardian_pause_task(task_id: str, enabled: bool, room_id: Optional[str]) -> str:
+    if not room_id:
+        return "Task Guardian unavailable (no room context)."
+    from app.services.guardian.task_guardian import get_task, set_task_enabled
+
+    task = get_task(task_id)
+    if not task or task.room_id != room_id:
+        return f"Task Guardian job '{task_id}' not found in this room."
+
+    ok = set_task_enabled(task_id, enabled)
+    if not ok:
+        return f"Task Guardian job '{task_id}' not found."
+    return f"Task Guardian job `{task.name}` is now {'enabled' if enabled else 'paused'}."
+
+
 # ─── Calendar tool executors ──────────────────────────────────────────────────
 
 def _calendar_configured() -> bool:
@@ -2733,7 +3308,12 @@ async def _remember_fact(fact: str, user_id: Optional[str], session) -> str:
     if not user_id or session is None:
         return "Memory unavailable (no session context)."
     from app.crud import add_user_memory
+    from app.services.guardian.memory import remember_fact
     mem = add_user_memory(session, uuid.UUID(user_id), fact)
+    try:
+        remember_fact(user_id=user_id, fact=mem.fact, memory_id=str(mem.id))
+    except Exception:
+        pass
     return f"Remembered: {mem.fact}"
 
 
@@ -2741,7 +3321,13 @@ async def _forget_fact(memory_id: str, user_id: Optional[str], session) -> str:
     if not user_id or session is None:
         return "Memory unavailable (no session context)."
     from app.crud import delete_user_memory
+    from app.services.guardian.memory import delete_fact_memory
     ok = delete_user_memory(session, uuid.UUID(memory_id), uuid.UUID(user_id))
+    if ok:
+        try:
+            delete_fact_memory(user_id=user_id, memory_id=memory_id)
+        except Exception:
+            pass
     return "Forgotten." if ok else "Memory not found or not yours."
 
 
@@ -2877,6 +3463,24 @@ async def execute_tool(
             name=args.get("name", ""),
             parent_id=args.get("parent_id", ""),
         )
+    if name == "server_read_command":
+        return await _server_read_command(
+            command=args.get("command", ""),
+            service=args.get("service", ""),
+            lines=int(args.get("lines", 50)),
+        )
+    if name == "server_manage_service":
+        return await _server_manage_service(
+            service=args.get("service", ""),
+            action=args.get("action", ""),
+        )
+    if name == "ssh_read_command":
+        return await _ssh_read_command(
+            host=args.get("host", ""),
+            command=args.get("command", ""),
+            service=args.get("service", ""),
+            lines=int(args.get("lines", 50)),
+        )
     if name == "email_fetch_inbox":
         return await _email_fetch_inbox(
             max_emails=int(args.get("max_emails", 5)),
@@ -2910,6 +3514,37 @@ async def execute_tool(
             reminder_id=args.get("reminder_id", ""),
             room_id=room_id,
             session=session,
+        )
+    if name == "guardian_schedule_task":
+        return await _guardian_schedule_task(
+            name=args.get("name", ""),
+            tool_name=args.get("tool_name", ""),
+            schedule=args.get("schedule", ""),
+            tool_args=args.get("tool_args", {}) or {},
+            room_id=room_id,
+            user_id=user_id,
+        )
+    if name == "guardian_list_tasks":
+        return await _guardian_list_tasks(
+            room_id=room_id,
+            limit=int(args.get("limit", 10)),
+        )
+    if name == "guardian_list_runs":
+        return await _guardian_list_runs(
+            room_id=room_id,
+            limit=int(args.get("limit", 10)),
+        )
+    if name == "guardian_run_task":
+        return await _guardian_run_task(
+            task_id=args.get("task_id", ""),
+            room_id=room_id,
+            session=session,
+        )
+    if name == "guardian_pause_task":
+        return await _guardian_pause_task(
+            task_id=args.get("task_id", ""),
+            enabled=bool(args.get("enabled", False)),
+            room_id=room_id,
         )
     if name == "calendar_list_events":
         return await _calendar_list_events(int(args.get("days_ahead", 7)))

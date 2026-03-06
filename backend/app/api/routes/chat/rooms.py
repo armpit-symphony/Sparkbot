@@ -514,8 +514,8 @@ def send_room_message(
             if not bot_user:
                 bot_user = ChatUser(
                     username="sparkbot",
-                    user_type=UserType.BOT,
-                    passphrase_hash="",
+                    type=UserType.BOT,
+                    hashed_password="",
                 )
                 session.add(bot_user)
                 session.commit()
@@ -620,6 +620,8 @@ async def stream_room_message(
     if message_in.confirm_id:
         from app.api.routes.chat.llm import consume_pending
         from app.api.routes.chat.tools import execute_tool
+        from app.services.guardian.executive import exec_with_guard
+        from app.services.guardian.policy import decide_tool_use
 
         pending = consume_pending(message_in.confirm_id)
         if not pending:
@@ -632,12 +634,73 @@ async def stream_room_message(
         async def confirmed_stream():
             try:
                 from app.api.deps import get_db as _get_db
+                from app.crud import create_audit_log
+                from app.api.routes.chat.llm import _redact_for_audit
+                from app.services.guardian.memory import remember_tool_event
                 db2 = next(_get_db())
-                result = await execute_tool(tool_name, tool_args, user_id=user_id_str, session=db2, room_id=str(room_id))
+                decision = decide_tool_use(
+                    tool_name,
+                    tool_args if isinstance(tool_args, dict) else {},
+                    room_execution_allowed=room.execution_allowed,
+                )
+                create_audit_log(
+                    session=db2,
+                    tool_name="policy_decision",
+                    tool_input=json.dumps(
+                        {
+                            "tool_name": tool_name,
+                            "tool_args": tool_args,
+                            "confirmed": True,
+                        }
+                    ),
+                    tool_result=decision.to_json(),
+                    user_id=current_user.id,
+                    room_id=room_id,
+                    model=None,
+                )
+                if decision.action == "deny":
+                    result = f"POLICY DENIED: {decision.reason}"
+                else:
+                    result = await exec_with_guard(
+                        tool_name=tool_name,
+                        action_type=decision.action_type,
+                        expected_outcome=f"Confirmed tool execution for {tool_name}",
+                        perform_fn=lambda: execute_tool(
+                            tool_name,
+                            tool_args,
+                            user_id=user_id_str,
+                            session=db2,
+                            room_id=str(room_id),
+                        ),
+                        metadata={"room_id": str(room_id), "user_id": user_id_str, "confirmed": True},
+                    )
+                redacted_input, redacted_result = _redact_for_audit(
+                    json.dumps(tool_args if isinstance(tool_args, dict) else {}),
+                    str(result),
+                )
+                create_audit_log(
+                    session=db2,
+                    tool_name=tool_name,
+                    tool_input=redacted_input,
+                    tool_result=redacted_result,
+                    user_id=current_user.id,
+                    room_id=room_id,
+                    model=None,
+                )
+                try:
+                    remember_tool_event(
+                        user_id=user_id_str,
+                        room_id=str(room_id),
+                        tool_name=tool_name,
+                        args=tool_args if isinstance(tool_args, dict) else {},
+                        result=redacted_result,
+                    )
+                except Exception:
+                    pass
                 # Save bot reply
                 bot_user2 = db2.exec(select(ChatUser).where(ChatUser.username == "sparkbot")).scalar_one_or_none()
                 if not bot_user2:
-                    bot_user2 = ChatUser(username="sparkbot", user_type=UserType.BOT, passphrase_hash="")
+                    bot_user2 = ChatUser(username="sparkbot", type=UserType.BOT, hashed_password="")
                     db2.add(bot_user2)
                     db2.commit()
                     db2.refresh(bot_user2)
@@ -678,6 +741,17 @@ async def stream_room_message(
     # Detect @agentname routing before building the LLM prompt.
     from app.api.routes.chat.agents import resolve_agent_from_message, get_agent
     agent_name, agent_content = resolve_agent_from_message(message_in.content)
+    from app.services.guardian.memory import build_memory_context, remember_chat_message
+
+    try:
+        remember_chat_message(
+            user_id=str(current_user.id),
+            room_id=str(room_id),
+            role="user",
+            content=agent_content,
+        )
+    except Exception:
+        pass
 
     # Build conversation history (before this message)
     history_msgs, _, _ = get_chat_messages(session=session, room_id=room_id, limit=20)
@@ -706,6 +780,17 @@ async def stream_room_message(
     else:
         system_prompt = base_prompt
 
+    try:
+        memory_context = build_memory_context(
+            user_id=str(current_user.id),
+            room_id=str(room_id),
+            query=agent_content,
+        )
+    except Exception:
+        memory_context = ""
+    if memory_context:
+        system_prompt += f"\n\n{memory_context}"
+
     user_id_str = str(current_user.id)
 
     async def event_stream():
@@ -714,6 +799,7 @@ async def stream_room_message(
         yield f"data: {json.dumps({'type': 'human_message', 'message_id': human_msg_id})}\n\n"
 
         full_text = ""
+        awaiting_confirmation = False
         try:
             from app.api.routes.chat.llm import stream_chat_with_tools
             db = next(get_db())
@@ -723,14 +809,23 @@ async def stream_room_message(
                 db_session=db,
                 room_id=str(room_id),
                 agent_name=agent_name,
+                room_execution_allowed=room.execution_allowed,
             ):
                 if event["type"] == "token":
                     full_text += event["token"]
                     yield f"data: {json.dumps({'type': 'token', 'token': event['token']})}\n\n"
                 elif event["type"] in ("tool_start", "tool_done"):
                     yield f"data: {json.dumps(event)}\n\n"
+                elif event["type"] == "confirm_required":
+                    awaiting_confirmation = True
+                    yield f"data: {json.dumps(event)}\n\n"
+                    break
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+            return
+
+        if awaiting_confirmation:
+            db.close()
             return
 
         # Save completed bot message (reuse the db session opened for tool calls)
@@ -739,7 +834,7 @@ async def stream_room_message(
                 select(ChatUser).where(ChatUser.username == "sparkbot")
             ).scalar_one_or_none()
             if not bot_user:
-                bot_user = ChatUser(username="sparkbot", user_type=UserType.BOT, passphrase_hash="")
+                bot_user = ChatUser(username="sparkbot", type=UserType.BOT, hashed_password="")
                 db.add(bot_user)
                 db.commit()
                 db.refresh(bot_user)
@@ -752,6 +847,15 @@ async def stream_room_message(
                 reply_to_id=human_msg_uuid,
             )
             bot_reply_id = str(bot_reply.id)  # capture before session closes
+            try:
+                remember_chat_message(
+                    user_id=user_id_str,
+                    room_id=str(room_id),
+                    role="assistant",
+                    content=full_text,
+                )
+            except Exception:
+                pass
             db.close()
             done_event: dict = {"type": "done", "message_id": bot_reply_id}
             if agent_name:
