@@ -4,6 +4,25 @@
 
 ---
 
+## Why Sparkbot
+
+Most AI assistants give the LLM unrestricted access to your email, calendar, Slack, and GitHub the moment you connect them. Sparkbot does not.
+
+Every tool the LLM can call is **classified, policy-gated, and logged** before it touches anything external. External writes — send email, post to Slack, create a GitHub issue — require explicit confirmation in the UI. Server commands require the room owner to enable an execution gate. The LLM cannot bypass either control. This is architecture, not a config option.
+
+| What competitors do | What Sparkbot does |
+|--------------------|--------------------|
+| LLM calls tools freely | Policy layer classifies every tool: read / write / execute / admin |
+| External writes happen silently | Confirmation modal required before any external mutation |
+| No audit trail | Every tool call logged + redacted before write |
+| Secrets may leak into logs | Audit redaction strips key-name and token-pattern values at write time |
+| Session token in localStorage | HttpOnly `Secure SameSite=Strict` cookie — never reachable from JavaScript |
+| No dependency scanning | `pip-audit` + `npm audit` on every push via GitHub Actions |
+
+Full architecture: [SECURITY.md](./SECURITY.md)
+
+---
+
 ## Architecture
 
 ```
@@ -444,20 +463,38 @@ sparkbot-v2/
 
 ## Security
 
-Sparkbot v2 has passed a full security audit (Phases A–E). Key controls:
+Sparkbot v2 has passed a full internal security audit (Phases A–E). Security is the primary differentiator — see [SECURITY.md](./SECURITY.md) for the full architecture.
 
-| Area | Implementation |
-|------|----------------|
+### Guardian Stack (summary)
+
+```
+User message → Token Guardian → Memory Guardian → LLM
+                                                    │ tool_calls
+                                                    ▼
+                                           Agent Shield (policy)
+                                                    │ allowed / confirmed
+                                                    ▼
+                                          Executive Guardian (journal)
+                                                    │
+                                                    ▼
+                                           Tool executes → audit log
+```
+
+| Control | Implementation |
+|---------|----------------|
+| **Policy layer** | Every tool classified read / write / execute / admin; unknown tools denied |
+| **Write-tool gate** | LLM cannot email/Slack/GitHub/Notion/Confluence/Calendar/Drive autonomously — confirmation modal required |
+| **Execution gate** | Server + SSH require room owner to explicitly enable; defaults off |
+| **Executive journal** | High-risk actions written to a decision log before + after execution |
+| **Audit trail** | Every tool call logged (allow/confirm/deny) with redacted args |
+| **Audit redaction** | Secret-pattern keys and token-format values stripped at write time |
 | **Session tokens** | HttpOnly `Secure SameSite=Strict` cookie — never exposed to JavaScript |
-| **Bearer fallback** | Old Bearer sessions still accepted until they expire (backward compat) |
-| **Write-tool gate** | LLM cannot email/Slack/GitHub/Notion/Confluence/Calendar autonomously — user must confirm via modal |
-| **Audit redaction** | Secret-pattern keys and token-format values redacted before audit log write |
 | **Response headers** | HSTS, CSP, X-Frame-Options, X-Content-Type-Options, Permissions-Policy, Referrer-Policy |
 | **Rate limiting** | Passphrase login: 10 attempts / 15 min per IP |
 | **Room authz** | All message/upload/audit endpoints gated by membership; non-members get 403 |
-| **Dep scanning** | `pip-audit` + `npm audit` run on every push and weekly via GitHub Actions |
+| **Dep scanning** | `pip-audit` + `npm audit` on every push and weekly via GitHub Actions |
 | **Secret scanning** | `gitleaks` pre-commit hook + CI gate |
-| **Git history** | `.env` / `backend/.env` purged from all commits via `git filter-repo` |
+| **Git history** | `.env` purged from all commits via `git filter-repo` |
 
 ---
 
