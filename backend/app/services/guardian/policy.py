@@ -186,6 +186,11 @@ def get_tool_policy(tool_name: str, args: dict[str, Any] | None = None) -> ToolP
                 action_type="read",
                 high_risk=False,
             )
+    # Check skill-provided policies before unknown→deny fallback
+    from app.services.skills import _registry as _skill_registry  # lazy import avoids circular
+    skill_pol = _skill_registry.policies.get(tool_name)
+    if skill_pol:
+        return ToolPolicy(tool_name=tool_name, **skill_pol)
     return TOOL_POLICIES.get(
         tool_name,
         ToolPolicy(

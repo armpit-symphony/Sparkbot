@@ -434,6 +434,11 @@ async def run_task_once(task: GuardianTask, session: Session) -> dict[str, Any]:
         sender_type="BOT",
     )
     await _broadcast_task_message(task.room_id, str(msg.id), content)
+    try:
+        from app.services.telegram_bridge import send_room_notification
+        await send_room_notification(task.room_id, content)
+    except Exception:
+        pass
 
     return {"run_id": run_id, "status": status, "output": excerpt}
 

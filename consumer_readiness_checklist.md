@@ -27,9 +27,11 @@ Move Sparkbot from an operator-focused internal assistant to a consumer-safe pro
 
 ### Onboarding and UX
 
+- [x] Telegram bridge foundation exists in the backend, using private-chat polling and room mapping.
 - [x] Sparkbot DM now has a controls panel for execution gate, policy visibility, and scheduled jobs.
 - [x] Superuser settings now include a Sparkbot ops overview tab.
 - [ ] First-run onboarding should explain what Sparkbot can and cannot do.
+- [ ] Add visible navigation to Sparkbot controls so users do not need to guess browser routes like `/dm` or `/settings`.
 - [ ] Add starter templates for common scheduled jobs.
 - [ ] Add empty states and friendlier errors for integrations that are not configured.
 
@@ -37,6 +39,7 @@ Move Sparkbot from an operator-focused internal assistant to a consumer-safe pro
 
 - [x] Live chat stream bug around tool-confirmation path has been fixed.
 - [x] Task Guardian scheduler runs inside FastAPI startup.
+- [x] Reminder scheduling and reminder listing now work again in the live stack after the March 6 async guard fix.
 - [ ] Add end-to-end tests for reminder creation, confirmation flow, and room controls.
 - [ ] Add health/status surface for Guardian components.
 
@@ -53,4 +56,4 @@ Move Sparkbot from an operator-focused internal assistant to a consumer-safe pro
 2. Add canned recurring-job templates.
 3. Add a lightweight admin dashboard for Guardian status and queue health.
 4. Add onboarding copy and product guardrails for first-time users.
-5. Run an end-to-end consumer smoke pass on login, chat, reminders, Gmail, Drive, and room settings.
+5. Run an end-to-end consumer smoke pass on login, chat, reminders, Gmail, Drive, Telegram, and room settings.

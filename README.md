@@ -90,6 +90,24 @@ Activated with `/meeting start`. While active, prefix messages with:
 
 `/meeting stop` exports the full notes as a dated `.md` file.
 
+### Skill Plugin System
+Drop a `.py` file into `backend/skills/` and it auto-loads on the next restart — no other files need editing.
+
+Each skill file must export:
+- `DEFINITION` — OpenAI function-calling schema dict
+- `execute` — `async def execute(args, *, user_id=None, room_id=None, session=None) -> str`
+
+Optionally declare `POLICY` to set guardian scope/action (defaults to `read/allow`).
+
+```
+backend/skills/
+└── example_weather.py   # working example using wttr.in (no API key)
+```
+
+Set `SPARKBOT_SKILLS_DIR` env var to change the directory (relative to `backend/` or absolute).
+
+Skills are guarded by the same policy/executive/memory stack as built-in tools. Built-in tools always take priority — skills are only reached as fallback.
+
 ### Agent Tools
 The bot calls tools automatically mid-conversation — a chip appears briefly in the UI while the tool runs, then disappears as the response streams in.
 
@@ -194,6 +212,7 @@ Agent Shield / Executive / Task Guardian phase notes:
 - Task Guardian can schedule approved read-only jobs and post their results back into the room.
 - Sparkbot DM now includes a controls panel for execution gate, recent policy decisions, and Task Guardian jobs.
 - Consumer rollout notes live in `consumer_readiness_checklist.md`.
+- Telegram bridge can run in long-polling mode with only `TELEGRAM_BOT_TOKEN`; private Telegram chats map into real Sparkbot rooms, and `/approve` or `/deny` can resolve pending confirmations.
 
 ---
 
@@ -255,6 +274,27 @@ SPARKBOT_TASK_GUARDIAN_ENABLED=true
 SPARKBOT_TASK_GUARDIAN_POLL_SECONDS=60
 SPARKBOT_TASK_GUARDIAN_MAX_OUTPUT=2000
 SPARKBOT_GUARDIAN_DATA_DIR=./data/guardian
+```
+
+### Optional — Telegram Bridge
+```env
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_POLL_ENABLED=true
+TELEGRAM_ALLOWED_CHAT_IDS=
+TELEGRAM_REQUIRE_PRIVATE_CHAT=true
+TELEGRAM_POLL_TIMEOUT_SECONDS=45
+TELEGRAM_POLL_RETRY_SECONDS=5
+```
+
+Notes:
+- First version uses Telegram long polling so setup can stay as simple as adding the bot token.
+- Telegram is private-chat-first; each Telegram chat is mapped into a dedicated Sparkbot room.
+- Sparkbot stores Telegram conversations in the same room history and uses `/approve` or `/deny` for pending confirmations.
+- Reminder and Task Guardian room notifications can fan back out to linked Telegram chats.
+
+### Optional — Skill Plugins
+```env
+SPARKBOT_SKILLS_DIR=skills   # path relative to backend/ or absolute
 ```
 
 ### Optional — Server Operations
@@ -379,9 +419,14 @@ sparkbot-v2/
 │   │   │       ├── model.py              # Model switching endpoints
 │   │   │       ├── users.py              # Chat user management + bootstrap
 │   │   │       └── websocket.py          # WebSocket handler
+│   │   ├── services/
+│   │   │   ├── skills.py                 # Skill plugin loader (auto-discovers backend/skills/)
+│   │   │   └── guardian/                 # Policy, executive, memory, task guardian
 │   │   ├── models.py                     # SQLModel DB models
 │   │   ├── crud.py                       # DB helper functions
 │   │   └── alembic/                      # DB migrations
+│   ├── skills/                           # Drop skill .py files here — auto-loaded on restart
+│   │   └── example_weather.py            # Example: get_weather via wttr.in
 │   ├── pyproject.toml                    # Python dependencies
 │   └── venv/                             # Python virtualenv
 ├── frontend/
@@ -441,3 +486,4 @@ Sparkbot v2 has passed a full security audit (Phases A–E). Key controls:
 - Key rotation — run after active testing window closes (see `ROTATION_RUNBOOK.md`)
 - Message edit UI (backend PATCH endpoint exists, no frontend)
 - Reply threading UI (DB + API ready, no frontend component)
+- Skill marketplace / built-in skill library (filesystem drop-in is the foundation)

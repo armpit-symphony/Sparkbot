@@ -4,6 +4,123 @@
 
 ---
 
+## Session — 2026-03-06 · Skill plugin system added
+
+### What was done
+
+- Implemented a drop-a-file skill plugin system — identical in spirit to OpenClaw's AgentSkills.
+- Any `.py` file placed in `backend/skills/` is auto-discovered at startup via `importlib.util` — no existing files need editing.
+- New files:
+  - `backend/app/services/skills.py` — `_SkillRegistry` dataclass + `_load()` scanner; runs at module import time; logs a warning and skips any file that is broken or missing the required contract.
+  - `backend/skills/example_weather.py` — working `get_weather` skill using the free `wttr.in` JSON API (no key required); demonstrated live in chat.
+- Modified files:
+  - `backend/app/api/routes/chat/tools.py` — imports `_skill_registry`; extends `TOOL_DEFINITIONS` with skill definitions; adds skill fallback at the end of `execute_tool()` (built-in tools always win).
+  - `backend/app/services/guardian/policy.py` — `get_tool_policy()` checks skill-provided policies before the unknown→deny fallback; lazy import avoids circular imports.
+  - `.env.example` — added `SPARKBOT_SKILLS_DIR=skills` entry.
+  - `README.md` — documented Skill Plugin System section, config var, project tree, and roadmap entry.
+
+### Skill file contract
+
+```python
+DEFINITION = { "type": "function", "function": { "name": "my_skill", ... } }  # required
+POLICY = { ... }           # optional — defaults to read/allow
+async def execute(args, *, user_id=None, room_id=None, session=None) -> str: ...  # required
+```
+
+### Verified working
+
+- `get_weather` skill loaded and confirmed called by LLM for live weather queries.
+- Skill loads silently at import time (before uvicorn configures logging) — `python3 -c "from app.services.skills import _registry; print(_registry.executors)"` confirms load.
+- Broken skill files (missing `execute`) log a warning and do not crash the service.
+
+### Current state
+
+- Skill plugin system is live on production (`sparkbot-v2`).
+- `backend/skills/example_weather.py` is the reference implementation.
+- Adding a new tool now requires only dropping a `.py` file and restarting — no changes to `tools.py`, `policy.py`, or any other core file.
+
+### Next actions
+
+1. Write additional skills (e.g. currency conversion, crypto prices, news headlines).
+2. Consider a skill marketplace / built-in library as the next layer.
+3. Key rotation — still deferred until active testing window closes.
+
+---
+
+## Session — 2026-03-06 · Telegram bridge foundation added
+
+### What was done
+
+- Added a native Telegram bridge in `backend/app/services/telegram_bridge.py`.
+- Chose long polling for the first implementation so setup can stay simple: bot token in `.env`, no webhook ceremony required.
+- Scoped the first Telegram release to private chats.
+- Each Telegram chat now maps into a dedicated Sparkbot room and a synthetic chat user, so Telegram conversations are stored in the same room/message history as browser chat.
+- Telegram approval flow is supported with `/approve` and `/deny` for pending confirm-required actions.
+- Reminder and Task Guardian room notifications can fan back out to linked Telegram chats.
+- Wired the Telegram poller into FastAPI startup/shutdown alongside reminders and Task Guardian.
+- Updated `.env.example` and `README.md` with Telegram bridge configuration notes.
+
+### Current state
+
+- The Telegram bridge code is in `sparkbot-v2` and imports cleanly.
+- The live service will keep the Telegram poller disabled until `TELEGRAM_BOT_TOKEN` is set.
+- This is intentionally a first-pass bridge, not the final consumer UX.
+- Dedicated PWA/mobile packaging remains deferred.
+
+### Next actions
+
+1. Continue real-world Telegram testing across the day.
+2. Check normal chat quality, reminders, and confirm-required actions with `/approve` and `/deny`.
+3. Watch for Telegram-specific UX issues such as long-message formatting, duplicate replies, or delayed polling responses.
+4. After testing is stable, lock Telegram access down to the user's chat ID with `TELEGRAM_ALLOWED_CHAT_IDS`.
+5. Add a browser-side linking/discovery flow later so users do not need manual chat-id allowlisting.
+6. Polish Telegram UX and formatting for consumer-facing use.
+
+## Session — 2026-03-06 · Reminder scheduling fixed + consumer handoff
+
+### What was done
+
+- Fixed the reminder / scheduled-action crash path in the live `sparkbot-v2` backend:
+  - `stream_room_message()` now loads `room` before any confirmation or execution-gate path uses `room.execution_allowed`
+  - this resolves the `name 'room' is not defined` failure seen from chat
+
+- Fixed an async execution bug in `backend/app/services/guardian/executive.py`:
+  - non-high-risk async tool calls were returning raw coroutines instead of awaited results
+  - this caused follow-on chat failures like `'coroutine' object is not subscriptable`
+  - the guard now awaits async results in both the high-risk and non-high-risk paths
+
+- Restarted the live `sparkbot-v2` service after the fix and re-verified the reminder flow from chat:
+  - `schedule a good morning message in 7 hours`
+  - `list reminders`
+  - both now work end-to-end in the live room
+
+- Clarified a UX issue discovered during testing:
+  - `/dm` and `/settings` are browser routes, not chat slash commands
+  - typing them in chat correctly returns `Unknown command`
+
+### Current state
+
+- Reminder scheduling is working again in production.
+- Task / reminder chat flows are now materially more stable after the async guard fix.
+- Sparkbot has the right foundations for consumer use, but the next phase is mostly product polish, onboarding, and end-to-end reliability work rather than raw capability work.
+- Telegram is now the planned next consumer-facing channel because the user already uses Sparkbot from an iPhone home-screen shortcut and wants messaging access beyond the browser.
+- Dedicated PWA/mobile packaging is intentionally deferred; keep it in planning, but do not start that build until the user explicitly asks.
+
+### Tomorrow / next-agent TODO
+
+1. Build a Telegram bridge as the next consumer messaging channel.
+2. Design the Telegram bridge so setup is simple: bot token in `.env`, chat-to-room mapping, unified memory/audit/policy flow, and confirmation handling for risky actions.
+3. Make Telegram feel seamless like OpenClaw, but keep it native to Sparkbot: same reminders, tasks, Guardian controls, and room history across web and Telegram.
+4. Add visible navigation or quick links for Sparkbot controls instead of expecting users to discover `/dm` or `/settings` routes manually.
+5. Add canned templates for common recurring jobs and reminder workflows.
+6. Add end-to-end tests for reminder creation, reminder listing, confirmation flow, Task Guardian actions, and the future Telegram bridge.
+7. Add non-technical onboarding copy that explains permissions, confirmations, execution gate, and integrations.
+8. Add clearer UI labels for read vs write vs execute actions before confirmation dialogs appear.
+9. Add Guardian health/status surfacing so admins can see scheduler, memory, routing, and policy state in one place.
+10. Run a full consumer smoke pass on login, chat, reminders, Gmail, Drive, room controls, scheduled jobs, and Telegram once the bridge exists.
+11. Publish plain-language privacy/data-retention notes and a simple integrations setup guide.
+12. Park dedicated PWA/mobile app work as a later phase. Current user workflow is home-screen browser access at `remote.sparkpitlabs.com`; a true dedicated PWA/mobile build is desired, but not started yet.
+
 ## Session — 2026-03-06 · Consumer readiness controls + reminder regression fix
 
 ### What was done

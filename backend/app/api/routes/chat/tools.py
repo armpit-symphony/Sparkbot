@@ -114,6 +114,8 @@ _SSH_CONNECT_TIMEOUT_SECONDS = max(
     min(int(os.getenv("SPARKBOT_SSH_CONNECT_TIMEOUT_SECONDS", "10")), 30),
 )
 
+from app.services.skills import _registry as _skill_registry
+
 # ─── Tool definitions (sent to the LLM) ──────────────────────────────────────
 
 TOOL_DEFINITIONS = [
@@ -1180,6 +1182,9 @@ TOOL_DEFINITIONS = [
         },
     },
 ]
+
+# Extend with dynamically loaded skills
+TOOL_DEFINITIONS = list(TOOL_DEFINITIONS) + _skill_registry.definitions
 
 
 # ─── Executors ────────────────────────────────────────────────────────────────
@@ -3556,4 +3561,12 @@ async def execute_tool(
             description=args.get("description", ""),
             location=args.get("location", ""),
         )
+    # Fall through to skill plugins
+    if name in _skill_registry.executors:
+        try:
+            return await _skill_registry.executors[name](
+                args, user_id=user_id, room_id=room_id, session=session
+            )
+        except Exception as exc:
+            return f"Skill error [{name}]: {exc}"
     return f"Unknown tool: {name}"

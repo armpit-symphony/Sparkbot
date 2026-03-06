@@ -10,6 +10,7 @@ from app.api.deps import get_db
 from app.api.routes.chat.reminders import reminder_scheduler
 from app.core.config import settings
 from app.services.guardian.task_guardian import task_guardian_scheduler
+from app.services.telegram_bridge import telegram_polling_loop
 
 
 def custom_generate_unique_id(route: APIRoute) -> str:
@@ -67,11 +68,13 @@ async def _start_background_guardians() -> None:
         app.state.reminder_scheduler_task = asyncio.create_task(reminder_scheduler())
     if not getattr(app.state, "task_guardian_scheduler_task", None):
         app.state.task_guardian_scheduler_task = asyncio.create_task(task_guardian_scheduler(get_db))
+    if not getattr(app.state, "telegram_poller_task", None):
+        app.state.telegram_poller_task = asyncio.create_task(telegram_polling_loop(get_db))
 
 
 @app.on_event("shutdown")
 async def _stop_background_guardians() -> None:
-    for attr in ("reminder_scheduler_task", "task_guardian_scheduler_task"):
+    for attr in ("reminder_scheduler_task", "task_guardian_scheduler_task", "telegram_poller_task"):
         task = getattr(app.state, attr, None)
         if task:
             task.cancel()

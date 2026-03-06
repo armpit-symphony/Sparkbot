@@ -80,7 +80,10 @@ async def exec_with_guard(
     metadata: dict[str, Any] | None = None,
 ) -> Any:
     if (not EXECUTIVE_GUARDIAN_ENABLED) or action_type not in HIGH_RISK_ACTIONS:
-        return perform_fn()
+        result = perform_fn()
+        if hasattr(result, "__await__"):
+            result = await result
+        return result
 
     decision_id = str(uuid.uuid4())
     started_at = datetime.now(timezone.utc).isoformat()
