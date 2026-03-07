@@ -694,7 +694,7 @@ def get_audit_logs(
         stmt = stmt.where(AuditLog.room_id == room_id)
 
     total: int = session.exec(select(func.count()).select_from(stmt.subquery())).scalar_one()
-    rows = session.exec(
+    rows = session.execute(
         stmt.order_by(AuditLog.created_at.desc()).offset(offset).limit(limit)
-    ).all()
+    ).scalars().all()
     return list(rows), int(total)

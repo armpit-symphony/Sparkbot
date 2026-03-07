@@ -220,11 +220,18 @@ def get_status() -> dict[str, Any]:
     _init_store()
     with _conn() as conn:
         count_row = conn.execute("SELECT COUNT(*) FROM discord_links").fetchone()
+    enabled = os.getenv("DISCORD_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+    dm_only = os.getenv("DISCORD_DM_ONLY", "false").strip().lower() in {"1", "true", "yes", "on"}
+    restricted_guilds = [
+        int(g.strip())
+        for g in os.getenv("DISCORD_GUILD_IDS", "").split(",")
+        if g.strip().isdigit()
+    ]
     return {
-        "configured": bool(_DISCORD_BOT_TOKEN),
-        "enabled": _DISCORD_ENABLED,
-        "dm_only": _DISCORD_DM_ONLY,
-        "restricted_guilds": list(_DISCORD_GUILD_IDS),
+        "configured": bool(os.getenv("DISCORD_BOT_TOKEN", "").strip()),
+        "enabled": enabled,
+        "dm_only": dm_only,
+        "restricted_guilds": restricted_guilds,
         "linked_channels": int(count_row[0]) if count_row else 0,
         "data_path": str(_db_path()),
     }
@@ -622,6 +629,9 @@ async def on_message(message: discord.Message) -> None:
             if not link.pending_confirm_id:
                 await message.reply("There is no pending approval to cancel.")
                 return
+            from app.api.routes.chat.llm import discard_pending
+
+            discard_pending(link.pending_confirm_id)
             _clear_pending_confirmation(channel_id)
             await message.reply("Pending action cancelled.")
             return

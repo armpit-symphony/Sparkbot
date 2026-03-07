@@ -220,10 +220,13 @@ def get_status() -> dict[str, Any]:
     _init_store()
     with _conn() as conn:
         count_row = conn.execute("SELECT COUNT(*) FROM whatsapp_links").fetchone()
+    allowed_phones = {
+        p.strip() for p in os.getenv("WHATSAPP_ALLOWED_PHONES", "").split(",") if p.strip()
+    }
     return {
-        "configured": bool(_WA_PHONE_ID and _WA_TOKEN),
-        "enabled": _WA_ENABLED,
-        "allowed_phones_count": len(_WA_ALLOWED_PHONES),
+        "configured": bool(os.getenv("WHATSAPP_PHONE_ID", "").strip() and os.getenv("WHATSAPP_TOKEN", "").strip()),
+        "enabled": os.getenv("WHATSAPP_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"},
+        "allowed_phones_count": len(allowed_phones),
         "linked_numbers": int(count_row[0]) if count_row else 0,
         "data_path": str(_db_path()),
     }
@@ -638,6 +641,9 @@ def register_whatsapp_bridge(app: Any, get_db: Callable[[], Any]) -> None:
                 if not link.pending_confirm_id:
                     await client.send_message(to=wa_phone, text="There is no pending approval to cancel.")
                     return
+                from app.api.routes.chat.llm import discard_pending
+
+                discard_pending(link.pending_confirm_id)
                 _clear_pending_confirmation(wa_phone)
                 await client.send_message(to=wa_phone, text="Pending action cancelled.")
                 return

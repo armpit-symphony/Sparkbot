@@ -227,11 +227,16 @@ def get_status() -> dict[str, Any]:
     _init_store()
     with _conn() as conn:
         count_row = conn.execute("SELECT COUNT(*) FROM telegram_links").fetchone()
+    poll_enabled = os.getenv("TELEGRAM_POLL_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+    private_only = os.getenv("TELEGRAM_REQUIRE_PRIVATE_CHAT", "true").strip().lower() in {"1", "true", "yes", "on"}
+    allowed_chat_ids = {
+        part.strip() for part in os.getenv("TELEGRAM_ALLOWED_CHAT_IDS", "").split(",") if part.strip()
+    }
     return {
-        "configured": _configured(),
-        "poll_enabled": _TELEGRAM_POLL_ENABLED,
-        "private_only": _TELEGRAM_REQUIRE_PRIVATE_CHAT,
-        "allowed_chat_ids_count": len(_TELEGRAM_ALLOWED_CHAT_IDS),
+        "configured": bool(os.getenv("TELEGRAM_BOT_TOKEN", "").strip()),
+        "poll_enabled": poll_enabled,
+        "private_only": private_only,
+        "allowed_chat_ids_count": len(allowed_chat_ids),
         "linked_chats": int(count_row[0]) if count_row else 0,
         "data_path": str(_db_path()),
     }
@@ -599,6 +604,9 @@ async def _handle_private_message(message: dict[str, Any], get_db_session: Calla
             if not link.pending_confirm_id:
                 await _send_text(chat_id, "There is no pending approval to cancel.")
                 return
+            from app.api.routes.chat.llm import discard_pending
+
+            discard_pending(link.pending_confirm_id)
             _clear_pending_confirmation(chat_id)
             await _send_text(chat_id, "Pending action cancelled.")
             return

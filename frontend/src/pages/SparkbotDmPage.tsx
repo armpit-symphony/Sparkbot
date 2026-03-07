@@ -128,6 +128,103 @@ interface GuardianRunRecord {
   created_at: string
 }
 
+interface ControlsDashboardSummary {
+  summary: {
+    pending_approvals: number
+    guardian_jobs: number
+    guardian_jobs_enabled: number
+    token_guardian_mode: string
+  }
+  today: {
+    token_guardian: {
+      mode: string
+      live_ready: boolean
+      configured_models: string[]
+      allowed_live_models: string[]
+      last_route: {
+        created_at: string
+        classification: string | null
+        current_model: string | null
+        selected_model: string | null
+        applied_model: string | null
+        fallback_reason: string | null
+      } | null
+    }
+  }
+}
+
+interface ModelsControlsConfig {
+  active_model: string
+  token_guardian_mode: string
+  stack: {
+    primary: string
+    backup_1: string
+    backup_2: string
+    heavy_hitter: string
+  }
+  providers: Array<{
+    id: string
+    label: string
+    configured: boolean
+    models: string[]
+  }>
+  comms: {
+    telegram: {
+      configured: boolean
+      poll_enabled: boolean
+      private_only: boolean
+      linked_chats: number
+    }
+    discord: {
+      configured: boolean
+      enabled: boolean
+      dm_only: boolean
+      linked_channels: number
+    }
+    whatsapp: {
+      configured: boolean
+      enabled: boolean
+      linked_numbers: number
+    }
+  }
+  notices: string[]
+  restart_required?: boolean
+}
+
+interface ModelStackForm {
+  primary: string
+  backup_1: string
+  backup_2: string
+  heavy_hitter: string
+}
+
+interface ProviderTokenDrafts {
+  openai_api_key: string
+  anthropic_api_key: string
+  google_api_key: string
+  groq_api_key: string
+  minimax_api_key: string
+}
+
+interface CommsForm {
+  telegram: {
+    bot_token: string
+    enabled: boolean
+    private_only: boolean
+  }
+  discord: {
+    bot_token: string
+    enabled: boolean
+    dm_only: boolean
+  }
+  whatsapp: {
+    token: string
+    phone_id: string
+    verify_token: string
+    enabled: boolean
+  }
+}
+
 interface Agent {
   name: string
   emoji: string
@@ -438,6 +535,16 @@ interface SparkbotSettingsDialogProps {
   room: RoomInfo | null
   loading: boolean
   savingExecution: boolean
+  dashboardSummary: ControlsDashboardSummary | null
+  modelsConfig: ModelsControlsConfig | null
+  modelStack: ModelStackForm
+  providerDrafts: ProviderTokenDrafts
+  commsForm: CommsForm
+  savingModelStack: boolean
+  savingProviderTokens: boolean
+  savingComms: boolean
+  tokenGuardianMode: string
+  savingTokenGuardianMode: boolean
   policyEntries: PolicyEntry[]
   guardianTasks: GuardianTaskRecord[]
   guardianRuns: GuardianRunRecord[]
@@ -449,6 +556,15 @@ interface SparkbotSettingsDialogProps {
   error: string
   onRefresh: () => void
   onToggleExecution: (enabled: boolean) => void
+  onModelStackChange: (field: keyof ModelStackForm, value: string) => void
+  onProviderDraftChange: (field: keyof ProviderTokenDrafts, value: string) => void
+  onCommsTextChange: (section: keyof CommsForm, field: string, value: string) => void
+  onCommsToggleChange: (section: keyof CommsForm, field: string, value: boolean) => void
+  onSaveModelStack: () => void
+  onSaveProviderTokens: () => void
+  onSaveComms: () => void
+  onTokenGuardianModeChange: (value: string) => void
+  onSaveTokenGuardianMode: () => void
   onTaskNameChange: (value: string) => void
   onTaskToolChange: (value: string) => void
   onTaskScheduleChange: (value: string) => void
@@ -478,6 +594,16 @@ function SparkbotSettingsDialog({
   room,
   loading,
   savingExecution,
+  dashboardSummary,
+  modelsConfig,
+  modelStack,
+  providerDrafts,
+  commsForm,
+  savingModelStack,
+  savingProviderTokens,
+  savingComms,
+  tokenGuardianMode,
+  savingTokenGuardianMode,
   policyEntries,
   guardianTasks,
   guardianRuns,
@@ -489,6 +615,15 @@ function SparkbotSettingsDialog({
   error,
   onRefresh,
   onToggleExecution,
+  onModelStackChange,
+  onProviderDraftChange,
+  onCommsTextChange,
+  onCommsToggleChange,
+  onSaveModelStack,
+  onSaveProviderTokens,
+  onSaveComms,
+  onTokenGuardianModeChange,
+  onSaveTokenGuardianMode,
   onTaskNameChange,
   onTaskToolChange,
   onTaskScheduleChange,
@@ -503,15 +638,16 @@ function SparkbotSettingsDialog({
         <DialogHeader>
           <DialogTitle>Sparkbot Controls</DialogTitle>
           <DialogDescription>
-            Room execution gate, approval visibility, and Task Guardian schedules.
+            Room execution gate, function routing, dashboard access, and Task Guardian schedules.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6">
+          <div className="grid gap-4 lg:grid-cols-2">
           <section className="rounded-xl border p-4">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
-                <h2 className="text-sm font-semibold">Execution Gate</h2>
+                <h2 className="text-sm font-semibold">Room execution gate</h2>
                 <p className="text-xs text-muted-foreground">
                   Server and SSH tools fail closed unless this room is explicitly allowed to execute them.
                 </p>
@@ -542,6 +678,345 @@ function SparkbotSettingsDialog({
                 onChange={(e) => onToggleExecution(e.target.checked)}
               />
             </label>
+          </section>
+
+          <section className="rounded-xl border p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold">Dashboard command center</h2>
+                <p className="text-xs text-muted-foreground">
+                  The command center summary lives here inside Sparkbot Controls for chat-auth sessions.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onRefresh}
+                className="rounded-md border px-3 py-1.5 text-xs hover:bg-muted"
+              >
+                Refresh summary
+              </button>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-lg bg-muted/40 px-3 py-3">
+                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Pending approvals</div>
+                <div className="mt-1 text-lg font-semibold">{dashboardSummary?.summary.pending_approvals ?? 0}</div>
+              </div>
+              <div className="rounded-lg bg-muted/40 px-3 py-3">
+                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Guardian jobs</div>
+                <div className="mt-1 text-lg font-semibold">{dashboardSummary?.summary.guardian_jobs_enabled ?? 0}/{dashboardSummary?.summary.guardian_jobs ?? 0}</div>
+              </div>
+              <div className="rounded-lg bg-muted/40 px-3 py-3">
+                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Token Guardian</div>
+                <div className="mt-1 text-lg font-semibold capitalize">{dashboardSummary?.summary.token_guardian_mode ?? "off"}</div>
+                <div className="mt-2 space-y-2">
+                  <select
+                    value={tokenGuardianMode}
+                    onChange={(e) => onTokenGuardianModeChange(e.target.value)}
+                    className="w-full rounded-md border bg-background px-2 py-1.5 text-sm outline-none"
+                  >
+                    <option value="off">Off</option>
+                    <option value="shadow">Shadow</option>
+                    <option value="live">Live</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={onSaveTokenGuardianMode}
+                    disabled={savingTokenGuardianMode}
+                    className="w-full rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground disabled:opacity-50"
+                  >
+                    {savingTokenGuardianMode ? "Saving..." : "Apply mode"}
+                  </button>
+                  <div className="text-[11px] text-muted-foreground">
+                    {dashboardSummary?.today.token_guardian.live_ready ? "Live-ready" : "No live route targets configured"}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+          </div>
+
+          <section className="rounded-xl border p-4">
+            <div className="mb-3">
+              <h2 className="text-sm font-semibold">Function routing</h2>
+              <p className="text-xs text-muted-foreground">
+                Token Guardian model routing is global. This room gate still separately controls machine operations.
+              </p>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="rounded-lg bg-muted/40 px-3 py-3">
+                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Mode</div>
+                <select
+                  value={tokenGuardianMode}
+                  onChange={(e) => onTokenGuardianModeChange(e.target.value)}
+                  className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                >
+                  <option value="off">Off</option>
+                  <option value="shadow">Shadow</option>
+                  <option value="live">Live</option>
+                </select>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {dashboardSummary?.today.token_guardian.live_ready ? "Live-ready" : "No live route targets configured"}
+                </div>
+              </div>
+              <div className="rounded-lg bg-muted/40 px-3 py-3">
+                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Allowed models</div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {dashboardSummary?.today.token_guardian.allowed_live_models.join(", ") || "None"}
+                </div>
+              </div>
+            </div>
+            <div className="mt-3 rounded-lg bg-muted/40 px-3 py-3">
+              <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Last route</div>
+              {dashboardSummary?.today.token_guardian.last_route ? (
+                <div className="mt-1 space-y-1 text-xs text-muted-foreground">
+                  <div>
+                    {dashboardSummary.today.token_guardian.last_route.current_model || "unknown"} →{" "}
+                    <span className="font-medium text-foreground">
+                      {dashboardSummary.today.token_guardian.last_route.applied_model || "unknown"}
+                    </span>
+                  </div>
+                  <div>
+                    {dashboardSummary.today.token_guardian.last_route.classification || "general"} ·{" "}
+                    {new Date(dashboardSummary.today.token_guardian.last_route.created_at).toLocaleString()}
+                  </div>
+                  <div>
+                    Requested {dashboardSummary.today.token_guardian.last_route.selected_model || "unknown"}
+                  </div>
+                  {dashboardSummary.today.token_guardian.last_route.fallback_reason ? (
+                    <div>{dashboardSummary.today.token_guardian.last_route.fallback_reason}</div>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="mt-1 text-xs text-muted-foreground">
+                  No routed request recorded yet.
+                </div>
+              )}
+            </div>
+            <div className="mt-3 flex justify-end">
+              <button
+                type="button"
+                onClick={onSaveTokenGuardianMode}
+                disabled={savingTokenGuardianMode}
+                className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50"
+              >
+                {savingTokenGuardianMode ? "Saving..." : "Save routing mode"}
+              </button>
+            </div>
+          </section>
+
+          <section className="rounded-xl border p-4">
+            <div className="mb-3">
+              <h2 className="text-sm font-semibold">Models</h2>
+              <p className="text-xs text-muted-foreground">
+                Set Sparkbot&apos;s primary model, backup chain, and heavy hitter for harder work.
+              </p>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              {[
+                ["primary", "Primary"],
+                ["backup_1", "1st backup"],
+                ["backup_2", "2nd backup"],
+                ["heavy_hitter", "Heavy hitter"],
+              ].map(([field, label]) => (
+                <label key={field} className="space-y-1">
+                  <div className="text-xs font-medium text-muted-foreground">{label}</div>
+                  <select
+                    value={modelStack[field as keyof ModelStackForm]}
+                    onChange={(e) => onModelStackChange(field as keyof ModelStackForm, e.target.value)}
+                    className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                  >
+                    {Array.from(new Set(modelsConfig?.providers.flatMap((provider) => provider.models) ?? [])).map((model) => (
+                      <option key={model} value={model}>{model}</option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+            </div>
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <div className="text-xs text-muted-foreground">
+                Active now: <span className="font-medium text-foreground">{modelsConfig?.active_model ?? "unknown"}</span>
+              </div>
+              <button
+                type="button"
+                onClick={onSaveModelStack}
+                disabled={savingModelStack}
+                className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50"
+              >
+                {savingModelStack ? "Saving..." : "Save model stack"}
+              </button>
+            </div>
+          </section>
+
+          <section className="rounded-xl border p-4">
+            <div className="mb-3">
+              <h2 className="text-sm font-semibold">Provider onboarding</h2>
+              <p className="text-xs text-muted-foreground">
+                Paste API tokens once, then choose the matching models above. Tokens are never read back into the UI.
+              </p>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              {modelsConfig?.providers.map((provider) => {
+                const field = `${provider.id}_api_key` as keyof ProviderTokenDrafts
+                return (
+                  <div key={provider.id} className="rounded-lg border bg-muted/40 px-3 py-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-sm font-medium">{provider.label}</div>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${provider.configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
+                        {provider.configured ? "Configured" : "Missing"}
+                      </span>
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {provider.models.join(", ")}
+                    </div>
+                    <input
+                      type="password"
+                      value={providerDrafts[field]}
+                      onChange={(e) => onProviderDraftChange(field, e.target.value)}
+                      placeholder={`Paste ${provider.label} token`}
+                      className="mt-3 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                    />
+                  </div>
+                )
+              })}
+            </div>
+            <div className="mt-3 flex justify-end">
+              <button
+                type="button"
+                onClick={onSaveProviderTokens}
+                disabled={savingProviderTokens}
+                className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50"
+              >
+                {savingProviderTokens ? "Saving..." : "Save provider tokens"}
+              </button>
+            </div>
+          </section>
+
+          <section className="rounded-xl border p-4">
+            <div className="mb-3">
+              <h2 className="text-sm font-semibold">Comms</h2>
+              <p className="text-xs text-muted-foreground">
+                Configure Telegram, Discord, and WhatsApp from the same control panel. Bridge startup changes require a service restart.
+              </p>
+            </div>
+            <div className="grid gap-4 lg:grid-cols-3">
+              <div className="rounded-lg border bg-muted/40 px-3 py-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-sm font-medium">Telegram</div>
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms.telegram.configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
+                    {modelsConfig?.comms.telegram.configured ? "Configured" : "Missing"}
+                  </span>
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground">Linked chats: {modelsConfig?.comms.telegram.linked_chats ?? 0}</div>
+                <input
+                  type="password"
+                  value={commsForm.telegram.bot_token}
+                  onChange={(e) => onCommsTextChange("telegram", "bot_token", e.target.value)}
+                  placeholder="Paste Telegram bot token"
+                  className="mt-3 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                />
+                <label className="mt-3 flex items-center justify-between gap-2 text-xs">
+                  <span>Enable polling</span>
+                  <input
+                    type="checkbox"
+                    checked={commsForm.telegram.enabled}
+                    onChange={(e) => onCommsToggleChange("telegram", "enabled", e.target.checked)}
+                  />
+                </label>
+                <label className="mt-2 flex items-center justify-between gap-2 text-xs">
+                  <span>Private only</span>
+                  <input
+                    type="checkbox"
+                    checked={commsForm.telegram.private_only}
+                    onChange={(e) => onCommsToggleChange("telegram", "private_only", e.target.checked)}
+                  />
+                </label>
+              </div>
+
+              <div className="rounded-lg border bg-muted/40 px-3 py-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-sm font-medium">Discord</div>
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms.discord.configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
+                    {modelsConfig?.comms.discord.configured ? "Configured" : "Missing"}
+                  </span>
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground">Linked channels: {modelsConfig?.comms.discord.linked_channels ?? 0}</div>
+                <input
+                  type="password"
+                  value={commsForm.discord.bot_token}
+                  onChange={(e) => onCommsTextChange("discord", "bot_token", e.target.value)}
+                  placeholder="Paste Discord bot token"
+                  className="mt-3 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                />
+                <label className="mt-3 flex items-center justify-between gap-2 text-xs">
+                  <span>Enable bridge</span>
+                  <input
+                    type="checkbox"
+                    checked={commsForm.discord.enabled}
+                    onChange={(e) => onCommsToggleChange("discord", "enabled", e.target.checked)}
+                  />
+                </label>
+                <label className="mt-2 flex items-center justify-between gap-2 text-xs">
+                  <span>DM only</span>
+                  <input
+                    type="checkbox"
+                    checked={commsForm.discord.dm_only}
+                    onChange={(e) => onCommsToggleChange("discord", "dm_only", e.target.checked)}
+                  />
+                </label>
+              </div>
+
+              <div className="rounded-lg border bg-muted/40 px-3 py-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-sm font-medium">WhatsApp</div>
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms.whatsapp.configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
+                    {modelsConfig?.comms.whatsapp.configured ? "Configured" : "Missing"}
+                  </span>
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground">Linked numbers: {modelsConfig?.comms.whatsapp.linked_numbers ?? 0}</div>
+                <input
+                  type="password"
+                  value={commsForm.whatsapp.token}
+                  onChange={(e) => onCommsTextChange("whatsapp", "token", e.target.value)}
+                  placeholder="Paste WhatsApp token"
+                  className="mt-3 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                />
+                <input
+                  type="text"
+                  value={commsForm.whatsapp.phone_id}
+                  onChange={(e) => onCommsTextChange("whatsapp", "phone_id", e.target.value)}
+                  placeholder="WhatsApp phone ID"
+                  className="mt-2 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                />
+                <input
+                  type="text"
+                  value={commsForm.whatsapp.verify_token}
+                  onChange={(e) => onCommsTextChange("whatsapp", "verify_token", e.target.value)}
+                  placeholder="Verify token"
+                  className="mt-2 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                />
+                <label className="mt-3 flex items-center justify-between gap-2 text-xs">
+                  <span>Enable bridge</span>
+                  <input
+                    type="checkbox"
+                    checked={commsForm.whatsapp.enabled}
+                    onChange={(e) => onCommsToggleChange("whatsapp", "enabled", e.target.checked)}
+                  />
+                </label>
+              </div>
+            </div>
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <div className="text-xs text-muted-foreground">
+                Save comms first, then restart `sparkbot-v2` to apply bridge startup changes.
+              </div>
+              <button
+                type="button"
+                onClick={onSaveComms}
+                disabled={savingComms}
+                className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50"
+              >
+                {savingComms ? "Saving..." : "Save comms"}
+              </button>
+            </div>
           </section>
 
           <section className="rounded-xl border p-4">
@@ -714,6 +1189,31 @@ function SparkbotDmPage() {
   const [settingsLoading, setSettingsLoading] = useState(false)
   const [settingsError, setSettingsError] = useState("")
   const [savingExecution, setSavingExecution] = useState(false)
+  const [controlsDashboard, setControlsDashboard] = useState<ControlsDashboardSummary | null>(null)
+  const [modelsConfig, setModelsConfig] = useState<ModelsControlsConfig | null>(null)
+  const [tokenGuardianMode, setTokenGuardianMode] = useState("shadow")
+  const [savingTokenGuardianMode, setSavingTokenGuardianMode] = useState(false)
+  const [modelStack, setModelStack] = useState<ModelStackForm>({
+    primary: "gpt-4o-mini",
+    backup_1: "gpt-4o",
+    backup_2: "claude-sonnet-4-5",
+    heavy_hitter: "gpt-4o",
+  })
+  const [providerDrafts, setProviderDrafts] = useState<ProviderTokenDrafts>({
+    openai_api_key: "",
+    anthropic_api_key: "",
+    google_api_key: "",
+    groq_api_key: "",
+    minimax_api_key: "",
+  })
+  const [commsForm, setCommsForm] = useState<CommsForm>({
+    telegram: { bot_token: "", enabled: true, private_only: true },
+    discord: { bot_token: "", enabled: false, dm_only: false },
+    whatsapp: { token: "", phone_id: "", verify_token: "sparkbot-wa-verify", enabled: false },
+  })
+  const [savingModelStack, setSavingModelStack] = useState(false)
+  const [savingProviderTokens, setSavingProviderTokens] = useState(false)
+  const [savingComms, setSavingComms] = useState(false)
   const [policyEntries, setPolicyEntries] = useState<PolicyEntry[]>([])
   const [guardianTasks, setGuardianTasks] = useState<GuardianTaskRecord[]>([])
   const [guardianRuns, setGuardianRuns] = useState<GuardianRunRecord[]>([])
@@ -737,6 +1237,30 @@ function SparkbotDmPage() {
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }) }, [messages])
   useEffect(() => { setShowCommands(inputValue.startsWith("/") && !inputValue.includes(" ")) }, [inputValue])
   useEffect(() => { setShowAgentPicker(inputValue.startsWith("@") && !inputValue.includes(" ")) }, [inputValue])
+
+  const applyControlsConfig = useCallback((config: ModelsControlsConfig) => {
+    setModelsConfig(config)
+    setTokenGuardianMode(config.token_guardian_mode || "shadow")
+    setModelStack(config.stack)
+    setCommsForm({
+      telegram: {
+        bot_token: "",
+        enabled: Boolean(config.comms.telegram.poll_enabled),
+        private_only: Boolean(config.comms.telegram.private_only),
+      },
+      discord: {
+        bot_token: "",
+        enabled: Boolean(config.comms.discord.enabled),
+        dm_only: Boolean(config.comms.discord.dm_only),
+      },
+      whatsapp: {
+        token: "",
+        phone_id: "",
+        verify_token: "sparkbot-wa-verify",
+        enabled: Boolean(config.comms.whatsapp.enabled),
+      },
+    })
+  }, [])
 
   useEffect(() => {
     async function init() {
@@ -773,11 +1297,13 @@ function SparkbotDmPage() {
     setSettingsLoading(true)
     setSettingsError("")
     try {
-      const [roomRes, policyRes, tasksRes, runsRes] = await Promise.all([
+      const [roomRes, policyRes, tasksRes, runsRes, dashboardRes, modelsConfigRes] = await Promise.all([
         fetch(`/api/v1/chat/rooms/${roomId}`, { credentials: "include" }),
         fetch(`/api/v1/chat/audit?limit=10&room_id=${roomId}&tool=policy_decision`, { credentials: "include" }),
         fetch(`/api/v1/chat/rooms/${roomId}/guardian/tasks?limit=20`, { credentials: "include" }),
         fetch(`/api/v1/chat/rooms/${roomId}/guardian/runs?limit=10`, { credentials: "include" }),
+        fetch("/api/v1/chat/dashboard/summary", { credentials: "include" }),
+        fetch("/api/v1/chat/models/config", { credentials: "include" }),
       ])
 
       if (roomRes.ok) {
@@ -795,12 +1321,18 @@ function SparkbotDmPage() {
         const data = await runsRes.json()
         setGuardianRuns(data.items ?? [])
       }
+      if (dashboardRes.ok) {
+        setControlsDashboard(await dashboardRes.json())
+      }
+      if (modelsConfigRes.ok) {
+        applyControlsConfig(await modelsConfigRes.json())
+      }
     } catch {
       setSettingsError("Could not load Sparkbot controls.")
     } finally {
       setSettingsLoading(false)
     }
-  }, [roomId])
+  }, [roomId, applyControlsConfig])
 
   useEffect(() => {
     if (settingsOpen) {
@@ -832,6 +1364,148 @@ function SparkbotDmPage() {
       setSavingExecution(false)
     }
   }, [roomId])
+
+  const saveModelStack = useCallback(async () => {
+    setSavingModelStack(true)
+    setSettingsError("")
+    try {
+      const res = await fetch("/api/v1/chat/models/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ stack: modelStack }),
+      })
+      const data = await res.json().catch(() => ({ detail: "Could not save model stack." }))
+      if (!res.ok) {
+        setSettingsError(data.detail ?? "Could not save model stack.")
+      } else {
+        applyControlsConfig(data)
+        await refreshControls()
+        setMessages(prev => [...prev, systemMsg("Model stack updated.")])
+      }
+    } catch {
+      setSettingsError("Could not save model stack.")
+    } finally {
+      setSavingModelStack(false)
+    }
+  }, [applyControlsConfig, modelStack, refreshControls])
+
+  const saveProviderTokens = useCallback(async () => {
+    const payload = Object.fromEntries(
+      Object.entries(providerDrafts).filter(([, value]) => value.trim())
+    )
+    if (!Object.keys(payload).length) {
+      setSettingsError("Paste at least one provider token before saving.")
+      return
+    }
+    setSavingProviderTokens(true)
+    setSettingsError("")
+    try {
+      const res = await fetch("/api/v1/chat/models/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ providers: payload }),
+      })
+      const data = await res.json().catch(() => ({ detail: "Could not save provider tokens." }))
+      if (!res.ok) {
+        setSettingsError(data.detail ?? "Could not save provider tokens.")
+      } else {
+        applyControlsConfig(data)
+        await refreshControls()
+        setProviderDrafts({
+          openai_api_key: "",
+          anthropic_api_key: "",
+          google_api_key: "",
+          groq_api_key: "",
+          minimax_api_key: "",
+        })
+        setMessages(prev => [...prev, systemMsg("Provider tokens saved.")])
+      }
+    } catch {
+      setSettingsError("Could not save provider tokens.")
+    } finally {
+      setSavingProviderTokens(false)
+    }
+  }, [applyControlsConfig, providerDrafts, refreshControls])
+
+  const saveComms = useCallback(async () => {
+    setSavingComms(true)
+    setSettingsError("")
+    try {
+      const res = await fetch("/api/v1/chat/models/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ comms: commsForm }),
+      })
+      const data = await res.json().catch(() => ({ detail: "Could not save comms settings." }))
+      if (!res.ok) {
+        setSettingsError(data.detail ?? "Could not save comms settings.")
+      } else {
+        applyControlsConfig(data)
+        await refreshControls()
+        setMessages(prev => [...prev, systemMsg("Communications settings saved. Restart sparkbot-v2 to apply bridge startup changes.")])
+      }
+    } catch {
+      setSettingsError("Could not save comms settings.")
+    } finally {
+      setSavingComms(false)
+    }
+  }, [applyControlsConfig, commsForm, refreshControls])
+
+  const saveTokenGuardianMode = useCallback(async () => {
+    setSavingTokenGuardianMode(true)
+    setSettingsError("")
+    try {
+      const res = await fetch("/api/v1/chat/models/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ token_guardian_mode: tokenGuardianMode }),
+      })
+      const data = await res.json().catch(() => ({ detail: "Could not save Token Guardian mode." }))
+      if (!res.ok) {
+        setSettingsError(data.detail ?? "Could not save Token Guardian mode.")
+      } else {
+        applyControlsConfig(data)
+        await refreshControls()
+        setMessages(prev => [...prev, systemMsg(`Token Guardian set to **${tokenGuardianMode}**.`)])
+      }
+    } catch {
+      setSettingsError("Could not save Token Guardian mode.")
+    } finally {
+      setSavingTokenGuardianMode(false)
+    }
+  }, [applyControlsConfig, tokenGuardianMode, refreshControls])
+
+  const handleModelStackChange = useCallback((field: keyof ModelStackForm, value: string) => {
+    setModelStack(prev => ({ ...prev, [field]: value }))
+  }, [])
+
+  const handleProviderDraftChange = useCallback((field: keyof ProviderTokenDrafts, value: string) => {
+    setProviderDrafts(prev => ({ ...prev, [field]: value }))
+  }, [])
+
+  const handleCommsTextChange = useCallback((section: keyof CommsForm, field: string, value: string) => {
+    setCommsForm(prev => ({
+      ...prev,
+      [section]: {
+        ...prev[section],
+        [field]: value,
+      },
+    }))
+  }, [])
+
+  const handleCommsToggleChange = useCallback((section: keyof CommsForm, field: string, value: boolean) => {
+    setCommsForm(prev => ({
+      ...prev,
+      [section]: {
+        ...prev[section],
+        [field]: value,
+      },
+    }))
+  }, [])
 
   const createGuardianTask = useCallback(async () => {
     if (!roomId) return
@@ -1517,6 +2191,16 @@ function SparkbotDmPage() {
         room={roomInfo}
         loading={settingsLoading}
         savingExecution={savingExecution}
+        dashboardSummary={controlsDashboard}
+        modelsConfig={modelsConfig}
+        modelStack={modelStack}
+        providerDrafts={providerDrafts}
+        commsForm={commsForm}
+        savingModelStack={savingModelStack}
+        savingProviderTokens={savingProviderTokens}
+        savingComms={savingComms}
+        tokenGuardianMode={tokenGuardianMode}
+        savingTokenGuardianMode={savingTokenGuardianMode}
         policyEntries={policyEntries}
         guardianTasks={guardianTasks}
         guardianRuns={guardianRuns}
@@ -1528,6 +2212,15 @@ function SparkbotDmPage() {
         error={settingsError}
         onRefresh={refreshControls}
         onToggleExecution={toggleExecutionGate}
+        onModelStackChange={handleModelStackChange}
+        onProviderDraftChange={handleProviderDraftChange}
+        onCommsTextChange={handleCommsTextChange}
+        onCommsToggleChange={handleCommsToggleChange}
+        onSaveModelStack={saveModelStack}
+        onSaveProviderTokens={saveProviderTokens}
+        onSaveComms={saveComms}
+        onTokenGuardianModeChange={setTokenGuardianMode}
+        onSaveTokenGuardianMode={saveTokenGuardianMode}
         onTaskNameChange={setTaskName}
         onTaskToolChange={setTaskToolName}
         onTaskScheduleChange={setTaskSchedule}

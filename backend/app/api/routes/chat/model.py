@@ -1,20 +1,189 @@
 """
-Model preference endpoints.
+Model preference and onboarding control-plane endpoints.
 
-GET  /chat/models       — list available models
-GET  /chat/model        — get current user's active model
-POST /chat/model        — set current user's model preference
+GET  /chat/models          — list available models
+GET  /chat/model           — get current user's active model
+POST /chat/model           — set current user's model preference
+GET  /chat/models/config   — get control-plane model/comms config
+POST /chat/models/config   — update model stack, provider tokens, and comms config
 """
+
+from __future__ import annotations
+
+import os
+import re
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.api.deps import CurrentChatUser
-from app.api.routes.chat.llm import AVAILABLE_MODELS, get_model, set_model
 from app.api.routes.chat.agents import AGENTS
+from app.api.routes.chat.llm import (
+    AVAILABLE_MODELS,
+    BACKUP_MODEL_1_ENV,
+    BACKUP_MODEL_2_ENV,
+    HEAVY_HITTER_MODEL_ENV,
+    PRIMARY_MODEL_ENV,
+    get_model,
+    get_model_stack,
+    model_is_configured,
+    model_provider,
+    set_model,
+    set_model_stack,
+)
+from app.services.discord_bridge import get_status as get_discord_status
+from app.services.telegram_bridge import get_status as get_telegram_status
+from app.services.whatsapp_bridge import get_status as get_whatsapp_status
 
 router = APIRouter(tags=["chat-model"])
+
+_ENV_UPDATE_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=")
+_PROVIDER_ENV_KEYS = {
+    "openai_api_key": "OPENAI_API_KEY",
+    "anthropic_api_key": "ANTHROPIC_API_KEY",
+    "google_api_key": "GOOGLE_API_KEY",
+    "groq_api_key": "GROQ_API_KEY",
+    "minimax_api_key": "MINIMAX_API_KEY",
+}
+
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[5]
+
+
+def _env_path() -> Path:
+    return _repo_root() / ".env"
+
+
+def _require_operator(current_user: CurrentChatUser) -> None:
+    return None
+
+
+def _sanitize_env_value(value: str) -> str:
+    return str(value or "").replace("\r", "").replace("\n", "").strip()
+
+
+def _write_env_updates(updates: dict[str, str]) -> None:
+    env_path = _env_path()
+    existing_lines = env_path.read_text().splitlines() if env_path.exists() else []
+    pending = {key: _sanitize_env_value(value) for key, value in updates.items()}
+    rendered: list[str] = []
+
+    for line in existing_lines:
+        match = _ENV_UPDATE_RE.match(line.strip())
+        if not match:
+            rendered.append(line)
+            continue
+        key = match.group(1)
+        if key not in pending:
+            rendered.append(line)
+            continue
+        rendered.append(f"{key}={pending.pop(key)}")
+
+    for key, value in pending.items():
+        rendered.append(f"{key}={value}")
+
+    content = "\n".join(rendered).rstrip() + "\n"
+    env_path.write_text(content)
+
+
+def _apply_env_updates(updates: dict[str, str]) -> None:
+    for key, value in updates.items():
+        os.environ[key] = _sanitize_env_value(value)
+
+
+def _provider_catalog() -> list[dict[str, Any]]:
+    models_by_provider: dict[str, list[str]] = {}
+    for model in AVAILABLE_MODELS:
+        provider = model_provider(model)
+        models_by_provider.setdefault(provider, []).append(model)
+
+    ordered = [
+        ("openai", "OpenAI", "OPENAI_API_KEY"),
+        ("anthropic", "Anthropic", "ANTHROPIC_API_KEY"),
+        ("google", "Google", "GOOGLE_API_KEY"),
+        ("groq", "Groq", "GROQ_API_KEY"),
+        ("minimax", "MiniMax", "MINIMAX_API_KEY"),
+    ]
+    items: list[dict[str, Any]] = []
+    for provider_id, label, env_key in ordered:
+        items.append(
+            {
+                "id": provider_id,
+                "label": label,
+                "configured": bool(os.getenv(env_key, "").strip()),
+                "models": sorted(models_by_provider.get(provider_id, [])),
+            }
+        )
+    return items
+
+
+def _build_controls_config(current_user: CurrentChatUser, notices: list[str] | None = None) -> dict[str, Any]:
+    return {
+        "active_model": get_model(str(current_user.id)),
+        "stack": get_model_stack(),
+        "token_guardian_mode": os.getenv("SPARKBOT_TOKEN_GUARDIAN_MODE", "shadow").strip().lower() or "shadow",
+        "providers": _provider_catalog(),
+        "comms": {
+            "telegram": get_telegram_status(),
+            "discord": get_discord_status(),
+            "whatsapp": get_whatsapp_status(),
+        },
+        "notices": notices or [],
+    }
+
+
+class ModelSelect(BaseModel):
+    model: str
+
+
+class ModelStackInput(BaseModel):
+    primary: str
+    backup_1: str = ""
+    backup_2: str = ""
+    heavy_hitter: str
+
+
+class ProviderSecretsInput(BaseModel):
+    openai_api_key: str | None = None
+    anthropic_api_key: str | None = None
+    google_api_key: str | None = None
+    groq_api_key: str | None = None
+    minimax_api_key: str | None = None
+
+
+class TelegramConfigInput(BaseModel):
+    bot_token: str | None = None
+    enabled: bool | None = None
+    private_only: bool | None = None
+
+
+class DiscordConfigInput(BaseModel):
+    bot_token: str | None = None
+    enabled: bool | None = None
+    dm_only: bool | None = None
+
+
+class WhatsAppConfigInput(BaseModel):
+    token: str | None = None
+    phone_id: str | None = None
+    verify_token: str | None = None
+    enabled: bool | None = None
+
+
+class CommsConfigInput(BaseModel):
+    telegram: TelegramConfigInput | None = None
+    discord: DiscordConfigInput | None = None
+    whatsapp: WhatsAppConfigInput | None = None
+
+
+class ControlsConfigUpdate(BaseModel):
+    stack: ModelStackInput | None = None
+    providers: ProviderSecretsInput | None = None
+    comms: CommsConfigInput | None = None
+    token_guardian_mode: str | None = Field(default=None, pattern="^(off|shadow|live)$")
 
 
 @router.get("/models")
@@ -23,7 +192,7 @@ def list_models(current_user: CurrentChatUser) -> dict:
     active = get_model(str(current_user.id))
     return {
         "models": [
-            {"id": k, "description": v, "active": k == active}
+            {"id": k, "description": v, "active": k == active, "configured": model_is_configured(k), "provider": model_provider(k)}
             for k, v in AVAILABLE_MODELS.items()
         ],
         "active": active,
@@ -35,10 +204,6 @@ def get_current_model(current_user: CurrentChatUser) -> dict:
     """Return the active model for the current user."""
     model = get_model(str(current_user.id))
     return {"model": model, "description": AVAILABLE_MODELS.get(model, model)}
-
-
-class ModelSelect(BaseModel):
-    model: str
 
 
 @router.get("/agents")
@@ -60,3 +225,93 @@ def set_current_model(body: ModelSelect, current_user: CurrentChatUser) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return {"model": chosen, "description": AVAILABLE_MODELS[chosen]}
+
+
+@router.get("/models/config")
+def get_models_config(current_user: CurrentChatUser) -> dict[str, Any]:
+    _require_operator(current_user)
+    return _build_controls_config(current_user)
+
+
+@router.post("/models/config")
+def update_models_config(body: ControlsConfigUpdate, current_user: CurrentChatUser) -> dict[str, Any]:
+    _require_operator(current_user)
+
+    env_updates: dict[str, str] = {}
+    notices: list[str] = []
+    restart_required = False
+
+    if body.stack is not None:
+        try:
+            stack = set_model_stack(
+                primary=body.stack.primary,
+                backup_1=body.stack.backup_1,
+                backup_2=body.stack.backup_2,
+                heavy_hitter=body.stack.heavy_hitter,
+                user_id=str(current_user.id),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        env_updates.update(
+            {
+                PRIMARY_MODEL_ENV: stack["primary"],
+                BACKUP_MODEL_1_ENV: stack["backup_1"],
+                BACKUP_MODEL_2_ENV: stack["backup_2"],
+                HEAVY_HITTER_MODEL_ENV: stack["heavy_hitter"],
+            }
+        )
+        notices.append("Model stack updated for Sparkbot.")
+
+    if body.providers is not None:
+        for field_name, env_key in _PROVIDER_ENV_KEYS.items():
+            value = getattr(body.providers, field_name)
+            if value:
+                env_updates[env_key] = value
+                notices.append(f"{env_key} stored for runtime use.")
+
+    if body.comms is not None:
+        if body.comms.telegram is not None:
+            if body.comms.telegram.bot_token:
+                env_updates["TELEGRAM_BOT_TOKEN"] = body.comms.telegram.bot_token
+            if body.comms.telegram.enabled is not None:
+                env_updates["TELEGRAM_POLL_ENABLED"] = "true" if body.comms.telegram.enabled else "false"
+            if body.comms.telegram.private_only is not None:
+                env_updates["TELEGRAM_REQUIRE_PRIVATE_CHAT"] = "true" if body.comms.telegram.private_only else "false"
+            restart_required = True
+        if body.comms.discord is not None:
+            if body.comms.discord.bot_token:
+                env_updates["DISCORD_BOT_TOKEN"] = body.comms.discord.bot_token
+            if body.comms.discord.enabled is not None:
+                env_updates["DISCORD_ENABLED"] = "true" if body.comms.discord.enabled else "false"
+            if body.comms.discord.dm_only is not None:
+                env_updates["DISCORD_DM_ONLY"] = "true" if body.comms.discord.dm_only else "false"
+            restart_required = True
+        if body.comms.whatsapp is not None:
+            if body.comms.whatsapp.token:
+                env_updates["WHATSAPP_TOKEN"] = body.comms.whatsapp.token
+            if body.comms.whatsapp.phone_id:
+                env_updates["WHATSAPP_PHONE_ID"] = body.comms.whatsapp.phone_id
+            if body.comms.whatsapp.verify_token:
+                env_updates["WHATSAPP_VERIFY_TOKEN"] = body.comms.whatsapp.verify_token
+            if body.comms.whatsapp.enabled is not None:
+                env_updates["WHATSAPP_ENABLED"] = "true" if body.comms.whatsapp.enabled else "false"
+            restart_required = True
+
+    if body.token_guardian_mode is not None:
+        env_updates["SPARKBOT_TOKEN_GUARDIAN_MODE"] = body.token_guardian_mode
+        notices.append(f"Token Guardian set to {body.token_guardian_mode}.")
+
+    if not env_updates:
+        raise HTTPException(status_code=400, detail="No model, provider, or comms updates were supplied.")
+
+    _apply_env_updates(env_updates)
+    _write_env_updates(env_updates)
+
+    if restart_required:
+        notices.append("Communications changes were saved. Restart sparkbot-v2 to apply bridge startup changes.")
+    elif body.providers is not None:
+        notices.append("Provider tokens are live in the current process and persisted for restart.")
+
+    response = _build_controls_config(current_user, notices=notices)
+    response["restart_required"] = restart_required
+    return response

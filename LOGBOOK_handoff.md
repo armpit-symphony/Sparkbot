@@ -4,6 +4,81 @@
 
 ---
 
+## Session — 2026-03-07 · Command center, live Token Guardian, and functional Sparkbot Controls
+
+### What was done
+
+- Added a real dashboard / command-center surface to the existing Sparkbot web app instead of reviving the dead separate dashboard service.
+- Added dashboard aggregate APIs and a live frontend view for:
+  - today summary cards
+  - reminders and tasks
+  - recent meeting artifacts
+  - inbox summary
+  - Guardian health and Task Guardian jobs
+  - pending approvals
+  - Token Guardian routing status
+- Added durable pending approvals plus approve / deny actions directly from the dashboard.
+- Switched Token Guardian from shadow-only plumbing to real live-routing support with:
+  - `off` / `shadow` / `live` modes
+  - allowed-model guardrails
+  - fallback reasons
+  - dashboard-visible routing metadata
+- Expanded `Sparkbot Controls` in the DM page into a real control plane:
+  - room execution gate
+  - dashboard command-center summary
+  - function routing / Token Guardian mode
+  - model stack (`Primary`, `1st backup`, `2nd backup`, `Heavy hitter`)
+  - provider token onboarding inputs
+  - comms setup for Telegram / Discord / WhatsApp
+- Fixed the control-plane regressions that made the new UI look broken:
+  - `403` on `/api/v1/chat/models/config`
+  - dashboard summary crashes from SQL count-row handling
+  - room detail crash from bad `.count()` usage
+  - broken dashboard link inside Sparkbot Controls that forced the user into the main web auth flow and logged them out
+- Rebuilt the frontend, redeployed the static bundle, and restarted the live `sparkbot-v2` service after the fixes.
+
+### Files changed today
+
+- `backend/app/api/routes/chat/dashboard.py` — new dashboard aggregate + dashboard approval actions
+- `backend/app/services/guardian/pending_approvals.py` — durable pending approval state
+- `backend/app/services/guardian/token_guardian.py` — live routing support and status metadata
+- `backend/app/api/routes/chat/llm.py` — model stack fallback + Token Guardian live routing integration
+- `backend/app/api/routes/chat/model.py` — Sparkbot Controls config API, token onboarding, comms save, Token Guardian mode save
+- `backend/app/api/routes/chat/rooms.py` — fixed room detail message-count path
+- `backend/app/api/routes/chat/voice.py` — aligned Token Guardian / model-stack path with voice route
+- `frontend/src/routes/_layout/index.tsx` — dashboard command-center route
+- `frontend/src/pages/SparkbotDmPage.tsx` — functional Sparkbot Controls panel
+
+### Verified working
+
+- Frontend builds completed successfully.
+- Backend import / compile checks completed successfully.
+- Live service restarted cleanly after the control-plane and dashboard fixes.
+- Sparkbot Controls now loads real config instead of blank / failing sections.
+- Token Guardian mode can now be changed from Sparkbot Controls.
+
+### Priority list status
+
+- ~~Main dashboard / command center~~
+- ~~Activate Token Guardian (shadow mode -> live mode)~~
+- ~~More channels — WhatsApp or Discord next~~
+  Connector work is done. Remaining work is activation, testing, and notification fan-out polish.
+- Proactive autonomy — lift the read-only restriction on Task Guardian.
+- Discord activation and live DM / @mention testing.
+- WhatsApp activation with Meta sandbox test number and webhook verification.
+- Inbox triage workflow.
+- Meeting prep / follow-up workflow.
+
+### Next actions
+
+1. Add Task Guardian write-actions with the existing approval flow as the default safety gate.
+2. Activate and test Discord end to end, including DMs, @mentions, and `/approve` / `/deny`.
+3. Activate and test WhatsApp with the Meta sandbox number before using a real dedicated phone number.
+4. Add channel fan-out from reminders and Task Guardian so Telegram / Discord / WhatsApp users receive proactive notifications.
+5. Deepen the command center with stronger `Today`, inbox triage, and meeting follow-up workflows.
+
+---
+
 ## Session — 2026-03-07 · Discord + WhatsApp bridges added
 
 ### What was done

@@ -136,6 +136,7 @@ async def voice_message(
 
         full_text = ""
         awaiting_confirmation = False
+        routing_payload = None
         try:
             from app.api.routes.chat.llm import stream_chat_with_tools
 
@@ -150,6 +151,9 @@ async def voice_message(
                 if event["type"] == "token":
                     full_text += event["token"]
                     yield f"data: {json.dumps({'type': 'token', 'token': event['token']})}\n\n"
+                elif event["type"] == "routing":
+                    routing_payload = event.get("payload")
+                    yield f"data: {json.dumps(event)}\n\n"
                 elif event["type"] in ("tool_start", "tool_done"):
                     yield f"data: {json.dumps(event)}\n\n"
                 elif event["type"] == "confirm_required":
@@ -181,6 +185,7 @@ async def voice_message(
                 content=full_text,
                 sender_type="BOT",
                 reply_to_id=human_msg_uuid,
+                meta_json={"token_guardian": routing_payload} if routing_payload else None,
             )
             bot_reply_id = str(bot_reply.id)
             db.close()

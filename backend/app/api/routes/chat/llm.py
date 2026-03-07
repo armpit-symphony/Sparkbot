@@ -15,7 +15,11 @@ import litellm
 
 litellm.drop_params = True  # ignore unsupported params instead of erroring
 
-DEFAULT_MODEL = os.getenv("SPARKBOT_MODEL", os.getenv("OPENAI_MODEL", "gpt-4o-mini"))
+PRIMARY_MODEL_ENV = "SPARKBOT_MODEL"
+BACKUP_MODEL_1_ENV = "SPARKBOT_BACKUP_MODEL_1"
+BACKUP_MODEL_2_ENV = "SPARKBOT_BACKUP_MODEL_2"
+HEAVY_HITTER_MODEL_ENV = "SPARKBOT_HEAVY_HITTER_MODEL"
+_HEAVY_HITTER_CLASSIFICATIONS = {"coding", "creative", "data_analysis", "reasoning"}
 
 SYSTEM_PROMPT = (
     "You are Sparkbot, the assistant for Sparkpit Labs. "
@@ -64,8 +68,37 @@ def consume_pending(confirm_id: str) -> dict | None:
     """Pop and return a pending confirmation entry, or None if not found/expired."""
     entry = _pending.pop(confirm_id, None)
     if entry and time.time() - entry["created_at"] > _PENDING_TTL:
+        try:
+            from app.services.guardian.pending_approvals import discard_pending_approval
+
+            discard_pending_approval(confirm_id)
+        except Exception:
+            pass
         return None
-    return entry
+    if entry:
+        try:
+            from app.services.guardian.pending_approvals import discard_pending_approval
+
+            discard_pending_approval(confirm_id)
+        except Exception:
+            pass
+        return entry
+    try:
+        from app.services.guardian.pending_approvals import consume_pending_approval
+
+        return consume_pending_approval(confirm_id)
+    except Exception:
+        return None
+
+
+def discard_pending(confirm_id: str) -> None:
+    _pending.pop(confirm_id, None)
+    try:
+        from app.services.guardian.pending_approvals import discard_pending_approval
+
+        discard_pending_approval(confirm_id)
+    except Exception:
+        pass
 
 
 # ── Audit log redaction ───────────────────────────────────────────────────────
@@ -98,10 +131,134 @@ def _redact_for_audit(tool_input: str, tool_result: str) -> tuple[str, str]:
     return tool_input, tool_result
 
 
+def _default_model() -> str:
+    return os.getenv(PRIMARY_MODEL_ENV, os.getenv("OPENAI_MODEL", "gpt-4o-mini")).strip() or "gpt-4o-mini"
+
+
+def model_provider(model: str) -> str:
+    normalized = (model or "").strip()
+    if normalized.startswith("gpt-"):
+        return "openai"
+    if normalized.startswith("claude"):
+        return "anthropic"
+    if normalized.startswith("gemini/"):
+        return "google"
+    if normalized.startswith("groq/"):
+        return "groq"
+    if normalized.startswith("minimax/"):
+        return "minimax"
+    return "other"
+
+
+def model_is_configured(model: str) -> bool:
+    provider = model_provider(model)
+    if provider == "openai":
+        return bool(os.getenv("OPENAI_API_KEY", "").strip())
+    if provider == "anthropic":
+        return bool(os.getenv("ANTHROPIC_API_KEY", "").strip())
+    if provider == "google":
+        return bool(os.getenv("GOOGLE_API_KEY", "").strip())
+    if provider == "groq":
+        return bool(os.getenv("GROQ_API_KEY", "").strip())
+    if provider == "minimax":
+        return bool(os.getenv("MINIMAX_API_KEY", "").strip())
+    return bool((model or "").strip())
+
+
+def get_model_stack() -> dict[str, str]:
+    primary = _default_model()
+    backup_1 = os.getenv(BACKUP_MODEL_1_ENV, "").strip()
+    backup_2 = os.getenv(BACKUP_MODEL_2_ENV, "").strip()
+    heavy_hitter = os.getenv(HEAVY_HITTER_MODEL_ENV, "").strip() or "gpt-4o"
+    return {
+        "primary": primary,
+        "backup_1": backup_1,
+        "backup_2": backup_2,
+        "heavy_hitter": heavy_hitter,
+    }
+
+
+def set_model_stack(
+    *,
+    primary: str,
+    backup_1: str,
+    backup_2: str,
+    heavy_hitter: str,
+    user_id: str | None = None,
+) -> dict[str, str]:
+    stack = {
+        "primary": (primary or "").strip(),
+        "backup_1": (backup_1 or "").strip(),
+        "backup_2": (backup_2 or "").strip(),
+        "heavy_hitter": (heavy_hitter or "").strip(),
+    }
+    for key, model in stack.items():
+        if model and model not in AVAILABLE_MODELS:
+            raise ValueError(f"Unknown model '{model}' for {key}.")
+
+    non_empty = [model for model in stack.values() if model]
+    if len(non_empty) != len(set(non_empty)):
+        raise ValueError("Primary, backup, and heavy hitter models must be distinct.")
+
+    os.environ[PRIMARY_MODEL_ENV] = stack["primary"]
+    os.environ[BACKUP_MODEL_1_ENV] = stack["backup_1"]
+    os.environ[BACKUP_MODEL_2_ENV] = stack["backup_2"]
+    os.environ[HEAVY_HITTER_MODEL_ENV] = stack["heavy_hitter"]
+
+    if user_id:
+        _user_models[user_id] = stack["primary"]
+
+    return stack
+
+
+def _candidate_models(primary_model: str, route_payload: dict | None = None) -> list[str]:
+    stack = get_model_stack()
+    candidates: list[str] = []
+
+    def add(model_name: str) -> None:
+        normalized = (model_name or "").strip()
+        if normalized and normalized in AVAILABLE_MODELS and normalized not in candidates:
+            candidates.append(normalized)
+
+    add(primary_model)
+    classification = str((route_payload or {}).get("classification") or "").strip()
+    if classification in _HEAVY_HITTER_CLASSIFICATIONS:
+        add(stack["heavy_hitter"])
+    add(stack["backup_1"])
+    add(stack["backup_2"])
+    if classification not in _HEAVY_HITTER_CLASSIFICATIONS:
+        add(stack["heavy_hitter"])
+
+    return [candidate for candidate in candidates if model_is_configured(candidate)] or [primary_model]
+
+
+async def _acompletion_with_fallback(
+    *,
+    model: str,
+    route_payload: dict | None = None,
+    **kwargs,
+):
+    last_error: Exception | None = None
+    chosen_candidate = model
+    for candidate in _candidate_models(model, route_payload):
+        try:
+            chosen_candidate = candidate
+            response = await litellm.acompletion(model=candidate, **kwargs)
+            return chosen_candidate, response
+        except Exception as exc:
+            last_error = exc
+            continue
+    if last_error is not None:
+        raise last_error
+    chosen_candidate = model
+    response = await litellm.acompletion(model=chosen_candidate, **kwargs)
+    return chosen_candidate, response
+
+
 def get_model(user_id: str | None = None) -> str:
     if user_id and user_id in _user_models:
         return _user_models[user_id]
-    return DEFAULT_MODEL
+    return _default_model()
 
 
 def set_model(user_id: str, model: str) -> str:
@@ -119,7 +276,7 @@ async def stream_chat(
 ) -> AsyncGenerator[str, None]:
     """Stream chat completion tokens. Yields text deltas."""
     chosen = model or get_model(user_id)
-    response = await litellm.acompletion(
+    _, response = await _acompletion_with_fallback(
         model=chosen,
         messages=messages,
         stream=True,
@@ -143,6 +300,7 @@ async def stream_chat_with_tools(
 ) -> AsyncGenerator[dict, None]:
     """
     Tool-aware streaming. Yields typed event dicts:
+      {"type": "routing",    "payload": {...}}
       {"type": "tool_start", "tool": "web_search", "input": {...}}
       {"type": "tool_done",  "tool": "web_search", "result": "..."}
       {"type": "token",      "token": "..."}
@@ -161,45 +319,63 @@ async def stream_chat_with_tools(
 
     chosen = model or get_model(user_id)
     msgs = list(messages)
+    latest_user_message = next(
+        (
+            str(msg.get("content", ""))
+            for msg in reversed(msgs)
+            if msg.get("role") == "user"
+        ),
+        "",
+    )
 
-    if db_session is not None and user_id and room_id:
+    if latest_user_message:
+        try:
+            from app.services.guardian.token_guardian import route_model
+
+            routed_model, route_payload = route_model(
+                latest_user_message,
+                chosen,
+                available_models=set(AVAILABLE_MODELS),
+            )
+            chosen = routed_model
+        except Exception:
+            route_payload = None
+    else:
+        route_payload = None
+
+    if route_payload is not None:
+        yield {"type": "routing", "payload": route_payload}
+
+    if db_session is not None and user_id and room_id and route_payload:
         try:
             import uuid as _uuid
             from app.crud import create_audit_log
-            from app.services.guardian.token_guardian import run_shadow_route
 
-            latest_user_message = next(
-                (
-                    str(msg.get("content", ""))
-                    for msg in reversed(msgs)
-                    if msg.get("role") == "user"
+            mode = str(route_payload.get("mode") or "shadow")
+            tool_name = "tokenguardian_live" if mode == "live" else "tokenguardian_shadow"
+            create_audit_log(
+                session=db_session,
+                tool_name=tool_name,
+                tool_input=json.dumps(
+                    {
+                        "query": latest_user_message[:500],
+                        "current_model": route_payload.get("current_model", chosen),
+                    }
                 ),
-                "",
+                tool_result=json.dumps(route_payload)[:1000],
+                user_id=_uuid.UUID(user_id),
+                room_id=_uuid.UUID(room_id),
+                agent_name=agent_name,
+                model=chosen,
             )
-            shadow = run_shadow_route(latest_user_message, chosen)
-            if shadow:
-                create_audit_log(
-                    session=db_session,
-                    tool_name="tokenguardian_shadow",
-                    tool_input=json.dumps(
-                        {
-                            "query": latest_user_message[:500],
-                            "current_model": chosen,
-                        }
-                    ),
-                    tool_result=json.dumps(shadow)[:1000],
-                    user_id=_uuid.UUID(user_id),
-                    room_id=_uuid.UUID(room_id),
-                    agent_name=agent_name,
-                    model=chosen,
-                )
         except Exception:
             pass
 
     for _round in range(5):
         # Non-streaming call to resolve any tool calls
-        response = await litellm.acompletion(
+        chosen, response = await _acompletion_with_fallback(
             model=chosen,
+            route_payload=route_payload,
             messages=msgs,
             tools=TOOL_DEFINITIONS,
             tool_choice="auto",
@@ -275,13 +451,26 @@ async def stream_chat_with_tools(
                         if not already_confirmed:
                             confirm_id = str(_uuid_module.uuid4())
                             _pending_ttl_cleanup()
-                            _pending[confirm_id] = {
+                            pending_entry = {
                                 "tool": tool_name,
                                 "args": tool_args,
                                 "user_id": user_id,
                                 "room_id": room_id,
                                 "created_at": time.time(),
                             }
+                            _pending[confirm_id] = pending_entry
+                            try:
+                                from app.services.guardian.pending_approvals import store_pending_approval
+
+                                store_pending_approval(
+                                    confirm_id=confirm_id,
+                                    tool_name=tool_name,
+                                    tool_args=tool_args if isinstance(tool_args, dict) else {},
+                                    user_id=user_id,
+                                    room_id=room_id,
+                                )
+                            except Exception:
+                                pass
                             yield {
                                 "type": "confirm_required",
                                 "confirm_id": confirm_id,
@@ -351,8 +540,9 @@ async def stream_chat_with_tools(
                 })
         else:
             # No more tool calls — stream the final answer
-            stream = await litellm.acompletion(
+            chosen, stream = await _acompletion_with_fallback(
                 model=chosen,
+                route_payload=route_payload,
                 messages=msgs,
                 stream=True,
                 temperature=0.2,

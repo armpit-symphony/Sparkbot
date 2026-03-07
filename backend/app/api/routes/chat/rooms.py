@@ -31,7 +31,7 @@ from app.crud import (
     use_chat_invite,
     validate_chat_invite_token,
 )
-from app.models import ChatRoom, ChatRoomInvite, ChatRoomMember, ChatUser, RoomRole, UserType
+from app.models import ChatMessage, ChatRoom, ChatRoomInvite, ChatRoomMember, ChatUser, RoomRole, UserType
 from app.schemas.chat import (
     MessageCreate,
     MessageListResponse,
@@ -88,9 +88,10 @@ def read_chat_room_by_id(
     
     # Get counts
     member_count = len(get_chat_room_members(session, room_id))
-    message_count = session.exec(
-        select(ChatRoomMember).where(ChatRoomMember.room_id == room_id)
-    ).count()
+    message_count_row = session.exec(
+        select(ChatMessage).where(ChatMessage.room_id == room_id)
+    ).all()
+    message_count = len(message_count_row)
     
     return RoomDetailResponse(
         id=room.id,
@@ -817,6 +818,7 @@ async def stream_room_message(
 
         full_text = ""
         awaiting_confirmation = False
+        routing_payload = None
         try:
             from app.api.routes.chat.llm import stream_chat_with_tools
             db = next(get_db())
@@ -831,6 +833,9 @@ async def stream_room_message(
                 if event["type"] == "token":
                     full_text += event["token"]
                     yield f"data: {json.dumps({'type': 'token', 'token': event['token']})}\n\n"
+                elif event["type"] == "routing":
+                    routing_payload = event.get("payload")
+                    yield f"data: {json.dumps(event)}\n\n"
                 elif event["type"] in ("tool_start", "tool_done"):
                     yield f"data: {json.dumps(event)}\n\n"
                 elif event["type"] == "confirm_required":
@@ -862,6 +867,7 @@ async def stream_room_message(
                 content=full_text,
                 sender_type="BOT",
                 reply_to_id=human_msg_uuid,
+                meta_json={"token_guardian": routing_payload} if routing_payload else None,
             )
             bot_reply_id = str(bot_reply.id)  # capture before session closes
             try:
