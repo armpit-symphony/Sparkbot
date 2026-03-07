@@ -15,5 +15,6 @@ from app.api.routes.chat.audit import router as audit_router
 from app.api.routes.chat.guardian import router as guardian_router
 from app.api.routes.chat.dashboard import router as dashboard_router
 from app.api.routes.chat.voice import router as voice_router
+from app.api.routes.chat.skills import router as skills_router
 
-__all__ = ["messages_router", "rooms_router", "users_router", "ws_router", "bot_integration_router", "uploads_router", "model_router", "memory_router", "tasks_router", "reminders_router", "slack_router", "github_router", "audit_router", "guardian_router", "dashboard_router", "voice_router"]
+__all__ = ["messages_router", "rooms_router", "users_router", "ws_router", "bot_integration_router", "uploads_router", "model_router", "memory_router", "tasks_router", "reminders_router", "slack_router", "github_router", "audit_router", "guardian_router", "dashboard_router", "voice_router", "skills_router"]

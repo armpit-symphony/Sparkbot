@@ -685,7 +685,12 @@ User message → Token Guardian → Memory Guardian → LLM
 - ✅ Onboarding copy — three-panel layout: Start here steps, updated first prompts (morning briefing, crypto), "How Sparkbot protects you" explainer (write confirmations, execution gate, Token Guardian shadow mode)
 - ✅ Task tool dropdown — added morning_briefing, calendar_create_event, news_headlines, crypto_price, currency_convert to the Task Guardian create-job form
 
-### Phase 5 — Persona & Skill Discovery (planned)
-- Per-room persona — name and personality per room ("office assistant", "personal mode")
-- Skill marketplace UI — browse and enable installed backend skills from the settings panel
-- Voice note quick-capture — Whisper-direct option without triggering a full LLM reply
+### Phase 5 — Persona, Skill Discovery & Voice Quick-Capture ✅ (2026-03-07)
+- ✅ Per-room persona — 500-char freetext instruction prepended to every LLM system prompt in the room; saved via PATCH room; textarea + char counter in settings dialog; Alembic migration included
+- ✅ Skill marketplace UI — `GET /api/v1/chat/skills` lists all loaded plugins with name, description, action_type (read/write), high_risk, and execution_gate flags; settings dialog shows colored chip cards; auto-refreshes on open
+- ✅ Voice quick-capture — `POST /rooms/{id}/voice/transcribe` returns `{"text":"..."}` (no LLM); voiceMode OFF = mic transcribes and pastes to input; voiceMode ON = original full voice-message flow with TTS readback
+
+### Phase 6 — Agent Builder & Smart Scheduling (planned)
+- Custom agent builder UI — create agents with name, emoji, system prompt from settings (no env var editing)
+- Skill scheduler helper — detect "every morning / daily" intent in chat and auto-suggest a Task Guardian job
+- Mobile UX — swipe-to-reply, larger touch targets

@@ -56,6 +56,7 @@ class RoomCreate(RoomBase):
 class RoomUpdate(BaseModel):
     name: Optional[str] = Field(None, max_length=200)
     description: Optional[str] = None
+    persona: Optional[str] = Field(None, max_length=500)
     execution_allowed: Optional[bool] = None
     meeting_mode_enabled: Optional[bool] = None
     meeting_mode_bots_mention_only: Optional[bool] = None
@@ -67,6 +68,7 @@ class RoomResponse(RoomBase):
     created_by: UUID
     created_at: datetime
     updated_at: datetime
+    persona: Optional[str] = None
     execution_allowed: bool
     meeting_mode_enabled: bool
     meeting_mode_bots_mention_only: bool

@@ -4,6 +4,70 @@
 
 ---
 
+## Session — 2026-03-07 · Phase 5: Persona, Skill Discovery & Voice Quick-Capture
+
+### Goal
+
+Give Sparkbot a per-room personality users can write themselves, a live skills browser so users know what the bot can do, and a voice-to-text quick-capture mode that doesn't waste an LLM call when you just want to dictate text.
+
+### What was done
+
+**1. Per-room persona**
+
+- **`backend/app/models.py`**: Added `persona: Optional[str] = Field(default=None, max_length=500)` to `ChatRoom`
+- **Alembic migration** `a1f4c8e9d203_add_room_persona.py`: `ADD COLUMN persona VARCHAR(500) NULL` on `chat_rooms`
+- **`backend/app/schemas/chat.py`**: Added `persona` to `RoomUpdate` (patchable) and `RoomResponse` (returned to frontend)
+- **`backend/app/api/routes/chat/rooms.py`**: When building the LLM system prompt, if `room.persona` is set, it is prepended before the default SYSTEM_PROMPT (and any agent prompt). User-controlled tone/role applies to every message in that room.
+- **`backend/app/api/routes/chat/voice.py`**: Same persona injection in the voice endpoint system prompt.
+- **Frontend**: `RoomInfo` interface extended with `persona?`. Settings dialog has a new **Room persona** section: 500-char textarea, character counter, Save button. Loaded from room API on init and settings open. PATCHes `/api/v1/chat/rooms/{roomId}`.
+
+**2. Skill marketplace UI**
+
+- **New `backend/app/api/routes/chat/skills.py`**: `GET /api/v1/chat/skills` — returns `{skills: [{name, description, scope, action_type, high_risk, requires_execution_gate, default_action}]}` for all loaded skill plugins. Read-only, authenticated.
+- **Registered** in `__init__.py` and `main.py` as `skills_router` under `/chat` prefix.
+- **Frontend**: New `SkillInfo` interface. Skills fetched on every settings open (best-effort, non-blocking). Settings dialog has a new **Available skills** section showing each skill as a card: `code` name badge, colored action-type chip (green=read, amber=write, red=high-risk), policy detail, and truncated description. Drop a new `.py` in `backend/skills/` and the panel auto-updates on next open.
+
+**3. Voice quick-capture (transcribe-only)**
+
+- **New backend endpoint** `POST /rooms/{room_id}/voice/transcribe`: transcribes audio via Whisper and returns `{"text": "..."}` — no LLM, no message saved, no SSE. Plain JSON.
+- **Frontend**: Added `handleVoiceTranscribe` callback: calls the transcribe-only endpoint, appends the text to `inputValue`, focuses the input. User can then edit and send normally.
+- **Voice mode toggle changes semantics**:
+  - `voiceMode OFF` (speaker icon muted): mic button → **voice to text** (transcribe + paste to input)
+  - `voiceMode ON` (speaker icon on): mic button → **full voice message** (transcribe + LLM + TTS readback — original behavior)
+  - Tooltips updated to explain both modes clearly.
+
+### New files
+
+- `backend/app/api/routes/chat/skills.py`
+- `backend/app/alembic/versions/a1f4c8e9d203_add_room_persona.py`
+
+### Modified files
+
+- `backend/app/models.py` — persona field on ChatRoom
+- `backend/app/schemas/chat.py` — persona in RoomUpdate + RoomResponse
+- `backend/app/api/routes/chat/rooms.py` — persona injection into system prompt
+- `backend/app/api/routes/chat/voice.py` — persona injection + /transcribe endpoint
+- `backend/app/api/routes/chat/__init__.py` — skills_router import
+- `backend/app/api/main.py` — skills_router registration
+- `frontend/src/pages/SparkbotDmPage.tsx` — persona UI, skills panel, voice quick-capture
+
+### Verified working
+
+- Alembic migration applied cleanly (`a1f4c8e9d203 add_room_persona`)
+- Backend import clean: `from app.api.main import api_router` → OK
+- TypeScript + Vite build clean
+- Persona: save persona → PATCH room → prepended to every LLM call in that room
+- Skills panel: refreshes on settings open, shows action_type chip + description
+- Voice: voiceMode OFF → transcribe-only → paste to input; voiceMode ON → full send
+
+### Next actions (Phase 6)
+
+1. **Agent builder UI** — create custom agents (name, emoji, system prompt) from the settings dialog, stored via `SPARKBOT_AGENTS_JSON` env var update or a new DB table
+2. **Skill scheduler helper** — when user says "every morning" in chat, auto-suggest a Task Guardian job for the relevant skill
+3. **Mobile-optimized input** — swipe-to-reply, better touch targets for mobile users
+
+---
+
 ## Session — 2026-03-07 · Phase 4: Onboarding & Health Observability
 
 ### Goal

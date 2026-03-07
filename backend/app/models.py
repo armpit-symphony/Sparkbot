@@ -200,6 +200,9 @@ class ChatRoom(SQLModel, table=True):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
+    # Room persona — optional system-prompt prefix injected before every LLM call
+    persona: Optional[str] = Field(default=None, max_length=500)
+
     # GO/NO-GO Gate per room
     execution_allowed: bool = Field(default=False)  # Room-level gate (default: NO-GO)
 

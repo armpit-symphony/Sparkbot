@@ -116,11 +116,14 @@ async def voice_message(
     from app.crud import get_user_memories
 
     memories = get_user_memories(session, current_user.id)
+    base_prompt = LLM_SYSTEM_PROMPT
+    if room.persona and room.persona.strip():
+        base_prompt = room.persona.strip() + "\n\n" + base_prompt
     if memories:
         mem_block = "\n".join(f"- {m.fact}" for m in memories)
-        system_prompt = LLM_SYSTEM_PROMPT + f"\n\n## What you know about this user:\n{mem_block}"
+        system_prompt = base_prompt + f"\n\n## What you know about this user:\n{mem_block}"
     else:
-        system_prompt = LLM_SYSTEM_PROMPT
+        system_prompt = base_prompt
 
     user_id_str = str(current_user.id)
 
@@ -198,6 +201,46 @@ async def voice_message(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@router.post("/rooms/{room_id}/voice/transcribe")
+async def transcribe_only(
+    room_id: UUID,
+    session: SessionDep,
+    current_user: CurrentChatUser,
+    audio: UploadFile = File(...),
+):
+    """Transcribe audio without triggering an LLM reply.
+
+    Returns: {"text": "transcribed content"}
+    The client can paste the text directly into the input field for editing
+    before sending — useful for voice-to-text quick-capture.
+    """
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    membership = get_chat_room_member(session, room_id, current_user.id)
+    if not membership:
+        raise HTTPException(status_code=403, detail="Not a member of this room")
+    if membership.role == RoomRole.VIEWER:
+        raise HTTPException(status_code=403, detail="VIEWERs cannot send voice messages")
+
+    audio_bytes = await audio.read()
+    if len(audio_bytes) > MAX_AUDIO_SIZE:
+        raise HTTPException(status_code=413, detail="Audio too large (max 5 MB)")
+    if len(audio_bytes) == 0:
+        raise HTTPException(status_code=400, detail="Empty audio file")
+
+    filename = audio.filename or "recording.webm"
+    try:
+        transcript = await _transcribe(audio_bytes, filename)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Transcription failed: {e}")
+
+    if not transcript.strip():
+        raise HTTPException(status_code=422, detail="No speech detected in audio")
+
+    return {"text": transcript.strip()}
 
 
 @router.post("/voice/tts")

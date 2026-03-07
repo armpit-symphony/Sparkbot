@@ -99,6 +99,17 @@ interface RoomInfo {
   id: string
   name: string
   execution_allowed: boolean
+  persona?: string
+}
+
+interface SkillInfo {
+  name: string
+  description: string
+  scope: string
+  action_type: string
+  high_risk: boolean
+  requires_execution_gate: boolean
+  default_action: string
 }
 
 interface PolicyEntry {
@@ -592,6 +603,11 @@ interface SparkbotSettingsDialogProps {
   onCreateTask: () => void
   onToggleTask: (taskId: string, enabled: boolean) => void
   onRunTask: (taskId: string) => void
+  skills: SkillInfo[]
+  roomPersona: string
+  savingPersona: boolean
+  onPersonaChange: (value: string) => void
+  onSavePersona: () => void
 }
 
 const TASK_TOOL_OPTIONS = [
@@ -656,6 +672,11 @@ function SparkbotSettingsDialog({
   onCreateTask,
   onToggleTask,
   onRunTask,
+  skills,
+  roomPersona,
+  savingPersona,
+  onPersonaChange,
+  onSavePersona,
 }: SparkbotSettingsDialogProps) {
   const configuredProviderCount = modelsConfig?.providers.filter((provider) => provider.configured).length ?? 0
   const enabledChannelCount = [
@@ -770,6 +791,34 @@ function SparkbotSettingsDialog({
                   </div>
                 </div>
               </div>
+            </div>
+          </section>
+
+          <section className="rounded-xl border p-4">
+            <div className="mb-3">
+              <h2 className="text-sm font-semibold">Room persona</h2>
+              <p className="text-xs text-muted-foreground">
+                Optional instruction injected at the start of every system prompt in this room. Use it to set a tone, focus, or role. Leave blank for the default Sparkbot personality.
+              </p>
+            </div>
+            <textarea
+              value={roomPersona}
+              onChange={(e) => onPersonaChange(e.target.value)}
+              placeholder='e.g. "You are a concise office assistant. Always reply in bullet points and keep answers under 5 lines."'
+              rows={3}
+              maxLength={500}
+              className="w-full rounded-md border bg-muted/30 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring/30 resize-none"
+            />
+            <div className="mt-2 flex items-center justify-between">
+              <span className="text-[11px] text-muted-foreground">{roomPersona.length}/500</span>
+              <button
+                type="button"
+                onClick={onSavePersona}
+                disabled={savingPersona}
+                className="rounded-md bg-primary px-4 py-1.5 text-xs text-primary-foreground disabled:opacity-50"
+              >
+                {savingPersona ? "Saving…" : "Save persona"}
+              </button>
             </div>
           </section>
 
@@ -1382,6 +1431,43 @@ function SparkbotSettingsDialog({
           </section>
 
           <section className="rounded-xl border p-4">
+            <div className="mb-3">
+              <h2 className="text-sm font-semibold">Available skills</h2>
+              <p className="text-xs text-muted-foreground">
+                Skill plugins loaded from <code className="rounded bg-muted px-1">backend/skills/</code>. Drop a new <code className="rounded bg-muted px-1">.py</code> file there and restart to add more.
+              </p>
+            </div>
+            {skills.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No skills loaded — open settings to refresh.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {skills.map((skill) => (
+                  <div key={skill.name} className="rounded-lg border px-3 py-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <code className="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">{skill.name}</code>
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                          skill.action_type === "write"
+                            ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                            : skill.high_risk
+                              ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                              : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                        }`}>
+                          {skill.action_type}
+                          {skill.high_risk ? " · high-risk" : ""}
+                          {skill.requires_execution_gate ? " · exec-gate" : ""}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-muted-foreground capitalize">{skill.default_action}</span>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{skill.description}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="rounded-xl border p-4">
             <h2 className="mb-3 text-sm font-semibold">Recent Approval / Policy Decisions</h2>
             <div className="space-y-2">
               {policyEntries.length === 0 ? (
@@ -1504,6 +1590,11 @@ function SparkbotDmPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editContent, setEditContent] = useState("")
 
+  // ── Persona + skills state ───────────────────────────────────────────────────
+  const [roomPersona, setRoomPersona] = useState("")
+  const [savingPersona, setSavingPersona] = useState(false)
+  const [skills, setSkills] = useState<SkillInfo[]>([])
+
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }) }, [messages])
   useEffect(() => { setShowCommands(inputValue.startsWith("/") && !inputValue.includes(" ")) }, [inputValue])
   useEffect(() => { setShowAgentPicker(inputValue.startsWith("@") && !inputValue.includes(" ")) }, [inputValue])
@@ -1554,6 +1645,7 @@ function SparkbotDmPage() {
         if (roomRes.ok) {
           const room = await roomRes.json()
           setRoomInfo(room)
+          setRoomPersona(room.persona ?? "")
         }
         const msgsRes = await fetch(`/api/v1/chat/rooms/${boot.room_id}/messages`, { credentials: "include" })
         if (msgsRes.ok) {
@@ -1585,7 +1677,9 @@ function SparkbotDmPage() {
       ])
 
       if (roomRes.ok) {
-        setRoomInfo(await roomRes.json())
+        const roomData = await roomRes.json()
+        setRoomInfo(roomData)
+        setRoomPersona(roomData.persona ?? "")
       }
       if (policyRes.ok) {
         const data = await policyRes.json()
@@ -1605,6 +1699,11 @@ function SparkbotDmPage() {
       if (modelsConfigRes.ok) {
         applyControlsConfig(await modelsConfigRes.json())
       }
+      // Fetch skill list (best-effort)
+      try {
+        const skillsRes = await fetch("/api/v1/chat/skills", { credentials: "include" })
+        if (skillsRes.ok) { const d = await skillsRes.json(); setSkills(d.skills ?? []) }
+      } catch { /* skills endpoint unavailable — ignore */ }
     } catch {
       setSettingsError("Could not load Sparkbot controls.")
     } finally {
@@ -1642,6 +1741,32 @@ function SparkbotDmPage() {
       setSavingExecution(false)
     }
   }, [roomId])
+
+  const savePersona = useCallback(async () => {
+    if (!roomId) return
+    setSavingPersona(true)
+    setSettingsError("")
+    try {
+      const res = await fetch(`/api/v1/chat/rooms/${roomId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ persona: roomPersona }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ detail: "Could not save persona." }))
+        setSettingsError(data.detail ?? "Could not save persona.")
+      } else {
+        const data = await res.json()
+        setRoomInfo(data)
+        setRoomPersona(data.persona ?? "")
+      }
+    } catch {
+      setSettingsError("Could not save persona.")
+    } finally {
+      setSavingPersona(false)
+    }
+  }, [roomId, roomPersona])
 
   const saveModelStack = useCallback(async () => {
     setSavingModelStack(true)
@@ -2287,6 +2412,29 @@ function SparkbotDmPage() {
     }
   }, [roomId, voiceMode, playTTS])
 
+  // ── Voice quick-capture (transcribe-only — pastes text to input) ─────────────
+
+  const handleVoiceTranscribe = useCallback(async (blob: Blob) => {
+    if (!roomId || sending) return
+    setSending(true)
+    try {
+      const form = new FormData()
+      form.append("audio", blob, "recording.webm")
+      const res = await fetch(`/api/v1/chat/rooms/${roomId}/voice/transcribe`, {
+        method: "POST",
+        credentials: "include",
+        body: form,
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setInputValue(prev => (prev ? prev + " " : "") + (data.text ?? ""))
+        inputRef.current?.focus()
+      }
+    } catch { /* ignore */ } finally {
+      setSending(false)
+    }
+  }, [roomId, sending])
+
   const handleVoiceToggle = useCallback(async () => {
     if (isRecording) {
       mediaRecorderRef.current?.stop()
@@ -2303,14 +2451,20 @@ function SparkbotDmPage() {
         setIsRecording(false)
         setRecordingSeconds(0)
         const blob = new Blob(audioChunksRef.current, { type: "audio/webm" })
-        await handleVoiceSend(blob)
+        // voiceMode ON  → full voice message (transcribe + LLM + TTS)
+        // voiceMode OFF → transcribe only, paste text to input for editing
+        if (voiceMode) {
+          await handleVoiceSend(blob)
+        } else {
+          await handleVoiceTranscribe(blob)
+        }
       }
       mr.start()
       mediaRecorderRef.current = mr
       setIsRecording(true)
       recordingTimerRef.current = setInterval(() => setRecordingSeconds(s => s + 1), 1000)
     } catch { /* mic permission denied — no crash */ }
-  }, [isRecording, handleVoiceSend])
+  }, [isRecording, voiceMode, handleVoiceSend, handleVoiceTranscribe])
 
   // ── Send ─────────────────────────────────────────────────────────────────────
 
@@ -2525,6 +2679,11 @@ function SparkbotDmPage() {
         onCreateTask={createGuardianTask}
         onToggleTask={setGuardianTaskState}
         onRunTask={runGuardianTask}
+        skills={skills}
+        roomPersona={roomPersona}
+        savingPersona={savingPersona}
+        onPersonaChange={setRoomPersona}
+        onSavePersona={savePersona}
       />
 
       {/* Search overlay */}
@@ -2707,7 +2866,7 @@ function SparkbotDmPage() {
           <button
             onClick={handleVoiceToggle}
             disabled={sending || uploading}
-            title={isRecording ? `Recording ${recordingSeconds}s — click to send` : "Voice message"}
+            title={isRecording ? `Recording ${recordingSeconds}s — click to stop` : voiceMode ? "Voice message (send + get reply)" : "Voice to text (paste to input)"}
             className={`flex h-9 w-9 items-center justify-center rounded-full disabled:opacity-40 ${
               isRecording ? "bg-red-500 text-white animate-pulse" : "text-muted-foreground hover:bg-muted"
             }`}
@@ -2744,7 +2903,7 @@ function SparkbotDmPage() {
               setVoiceMode(next)
               localStorage.setItem("sparkbot_voice_mode", String(next))
             }}
-            title={voiceMode ? "Voice mode on — replies spoken aloud" : "Voice mode off"}
+            title={voiceMode ? "Voice mode on — mic sends message, replies spoken aloud. Click to switch to transcribe-only." : "Voice mode off — mic transcribes to text only. Click to enable full voice mode."}
             className={`flex h-9 w-9 items-center justify-center rounded-full ${
               voiceMode ? "text-primary" : "text-muted-foreground hover:bg-muted"
             }`}

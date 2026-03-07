@@ -792,6 +792,10 @@ async def stream_room_message(
         if agent and agent.get("system_prompt"):
             base_prompt = agent["system_prompt"]
 
+    # Inject room persona prefix if set
+    if room.persona and room.persona.strip():
+        base_prompt = room.persona.strip() + "\n\n" + base_prompt
+
     if memories:
         mem_block = "\n".join(f"- {m.fact}" for m in memories)
         system_prompt = base_prompt + f"\n\n## What you know about this user:\n{mem_block}"
