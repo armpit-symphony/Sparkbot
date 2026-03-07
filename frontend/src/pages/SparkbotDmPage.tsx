@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { createFileRoute } from "@tanstack/react-router"
-import { Check, Copy, Loader2, Mic, Paperclip, RefreshCw, Search, Send, Settings2, Volume2, VolumeX, X } from "lucide-react"
+import { Check, CornerUpLeft, Copy, Loader2, Mic, Paperclip, Pencil, RefreshCw, Search, Send, Settings2, Volume2, VolumeX, X } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter"
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism"
@@ -91,6 +91,8 @@ interface Message {
   isSystem?: boolean
   toolActivity?: string   // e.g. "🔍 Searching: climate change 2026"
   agent?: string          // named agent that responded, e.g. "researcher"
+  reply_to_id?: string    // threading: parent message id
+  is_edited?: boolean     // true after inline edit saved
 }
 
 interface RoomInfo {
@@ -650,6 +652,44 @@ function SparkbotSettingsDialog({
   onToggleTask,
   onRunTask,
 }: SparkbotSettingsDialogProps) {
+  const configuredProviderCount = modelsConfig?.providers.filter((provider) => provider.configured).length ?? 0
+  const enabledChannelCount = [
+    Boolean(commsForm.telegram.enabled && modelsConfig?.comms.telegram.configured),
+    Boolean(commsForm.discord.enabled && modelsConfig?.comms.discord.configured),
+    Boolean(commsForm.whatsapp.enabled && modelsConfig?.comms.whatsapp.configured),
+    Boolean(commsForm.github.enabled && modelsConfig?.comms.github.configured),
+  ].filter(Boolean).length
+  const onboardingSteps = [
+    {
+      title: "Connect one AI provider",
+      done: configuredProviderCount > 0,
+      detail: configuredProviderCount > 0
+        ? `${configuredProviderCount} provider${configuredProviderCount === 1 ? "" : "s"} configured`
+        : "Paste one token below so Sparkbot can respond",
+    },
+    {
+      title: "Pick your model stack",
+      done: Boolean(modelStack.primary && modelStack.heavy_hitter),
+      detail: modelStack.primary
+        ? `Primary: ${modelStack.primary}`
+        : "Choose a primary model and a heavy hitter",
+    },
+    {
+      title: "Turn on one channel",
+      done: enabledChannelCount > 0,
+      detail: enabledChannelCount > 0
+        ? `${enabledChannelCount} channel${enabledChannelCount === 1 ? "" : "s"} enabled`
+        : "Enable Telegram, Discord, WhatsApp, or GitHub after adding credentials",
+    },
+    {
+      title: "Keep write actions gated",
+      done: !room?.execution_allowed,
+      detail: room?.execution_allowed
+        ? "Execution gate is on for this room. Turn it off unless you need machine operations."
+        : "Recommended default for personal use: execution gate stays off",
+    },
+  ]
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-auto sm:max-w-3xl">
@@ -661,6 +701,59 @@ function SparkbotSettingsDialog({
         </DialogHeader>
 
         <div className="space-y-6">
+          <section className="rounded-xl border p-4">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold">Consumer onboarding</h2>
+                <p className="text-xs text-muted-foreground">
+                  Get Sparkbot ready for daily personal use without leaving this panel.
+                </p>
+              </div>
+              <div className="rounded-full bg-muted px-3 py-1 text-[11px] font-medium text-muted-foreground">
+                {onboardingSteps.filter((step) => step.done).length}/{onboardingSteps.length} ready
+              </div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              {onboardingSteps.map((step, index) => (
+                <div key={step.title} className="rounded-lg bg-muted/40 px-3 py-3">
+                  <div className="flex items-center gap-2">
+                    <div className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-semibold ${step.done ? "bg-emerald-500/15 text-emerald-600" : "bg-background text-muted-foreground"}`}>
+                      {step.done ? <Check className="size-3.5" /> : index + 1}
+                    </div>
+                    <div className="text-sm font-medium">{step.title}</div>
+                  </div>
+                  <div className="mt-2 text-xs text-muted-foreground">{step.detail}</div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 grid gap-3 lg:grid-cols-2">
+              <div className="rounded-lg border bg-background/60 px-3 py-3">
+                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Start here</div>
+                <div className="mt-2 space-y-1 text-sm">
+                  <div>1. Paste one provider token and save it.</div>
+                  <div>2. Keep `Token Guardian` in `shadow` until you want live routing.</div>
+                  <div>3. Turn on one comms channel you already use every day.</div>
+                  <div>4. Ask Sparkbot for a brief, reminder, or inbox summary.</div>
+                </div>
+              </div>
+              <div className="rounded-lg border bg-background/60 px-3 py-3">
+                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Good first prompts</div>
+                <div className="mt-2 space-y-2 text-xs text-muted-foreground">
+                  <div><code className="rounded bg-muted px-1 py-0.5">Give me a morning brief for today.</code></div>
+                  <div><code className="rounded bg-muted px-1 py-0.5">Summarize my inbox and tell me what matters.</code></div>
+                  <div><code className="rounded bg-muted px-1 py-0.5">Remind me every weekday at 8am to review priorities.</code></div>
+                  <div><code className="rounded bg-muted px-1 py-0.5">Show me anything waiting on my approval.</code></div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-lg bg-muted/40 px-3 py-3 text-xs text-muted-foreground">
+              Sparkbot already protects writes with confirmations. For most personal use, leave the room execution gate off until you explicitly want server or SSH actions.
+            </div>
+          </section>
+
           <div className="grid gap-4 lg:grid-cols-2">
           <section className="rounded-xl border p-4">
             <div className="mb-3 flex items-center justify-between gap-3">
@@ -1074,6 +1167,27 @@ function SparkbotSettingsDialog({
                     onChange={(e) => onCommsToggleChange("github", "enabled", e.target.checked)}
                   />
                 </label>
+                <div className="mt-4 rounded-lg border bg-background/70 px-3 py-3">
+                  <div className="text-[11px] uppercase tracking-wide text-muted-foreground">GitHub onboarding</div>
+                  <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                    <div>1. Paste a GitHub token and a webhook secret, then save comms.</div>
+                    <div>2. In your repo, add a webhook to <code className="rounded bg-muted px-1 py-0.5">{modelsConfig?.comms.github.webhook_path ?? "/api/v1/chat/github/events"}</code>.</div>
+                    <div>3. Select <span className="font-medium text-foreground">Issue comments</span> and <span className="font-medium text-foreground">Pull request review comments</span>.</div>
+                    <div>4. Restart <code className="rounded bg-muted px-1 py-0.5">sparkbot-v2</code>, then test in a thread with <code className="rounded bg-muted px-1 py-0.5">/sparkbot summarize this PR</code>.</div>
+                  </div>
+                  <div className="mt-3 rounded-md bg-muted/50 px-2 py-2 text-[11px] text-muted-foreground">
+                    Replies in-thread support <code className="rounded bg-background px-1 py-0.5">approve</code> and <code className="rounded bg-background px-1 py-0.5">deny</code> for pending actions.
+                  </div>
+                  {modelsConfig?.comms.github.allowed_repos_count ? (
+                    <div className="mt-2 text-[11px] text-muted-foreground">
+                      Allowlisted repos: {modelsConfig.comms.github.allowed_repos.join(", ")}
+                    </div>
+                  ) : (
+                    <div className="mt-2 text-[11px] text-amber-600">
+                      No repo allowlist set. Add one if you want the bridge limited to specific repositories.
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
             <div className="mt-3 flex items-center justify-between gap-3">
@@ -1313,6 +1427,11 @@ function SparkbotDmPage() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // ── Reply / edit state ───────────────────────────────────────────────────────
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editContent, setEditContent] = useState("")
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }) }, [messages])
   useEffect(() => { setShowCommands(inputValue.startsWith("/") && !inputValue.includes(" ")) }, [inputValue])
@@ -2138,13 +2257,15 @@ function SparkbotDmPage() {
     }
 
     captureMeetingItem(content)
+    const replyId = replyingTo?.id ?? null
+    setReplyingTo(null)
     setSending(true)
 
     const tempHumanId = `temp-human-${Date.now()}`
     const tempBotId = `temp-bot-${Date.now()}`
     setMessages(prev => [
       ...prev,
-      { id: tempHumanId, content, created_at: new Date().toISOString(), sender_type: "HUMAN" },
+      { id: tempHumanId, content, created_at: new Date().toISOString(), sender_type: "HUMAN", reply_to_id: replyId ?? undefined },
       { id: tempBotId, content: "", created_at: new Date().toISOString(), sender_type: "BOT", isStreaming: true },
     ])
 
@@ -2153,7 +2274,7 @@ function SparkbotDmPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content, ...(replyId ? { reply_to_id: replyId } : {}) }),
       })
 
       if (!res.ok || !res.body) {
@@ -2206,7 +2327,7 @@ function SparkbotDmPage() {
     } finally {
       setSending(false)
     }
-  }, [inputValue, roomId, sending, handleCommand, captureMeetingItem, agents])
+  }, [inputValue, roomId, sending, handleCommand, captureMeetingItem, agents, replyingTo])
 
   // ── Confirmation handlers ────────────────────────────────────────────────────
 
@@ -2257,6 +2378,23 @@ function SparkbotDmPage() {
     setPendingConfirm(null)
     setMessages(prev => [...prev, systemMsg("Action cancelled.")])
   }, [])
+
+  const handleEditSave = useCallback(async (msgId: string) => {
+    const trimmed = editContent.trim()
+    if (!trimmed || !roomId) { setEditingId(null); return }
+    try {
+      const res = await fetch(`/api/v1/chat/messages/${roomId}/message/${msgId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ content: trimmed }),
+      })
+      if (res.ok) {
+        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, content: trimmed, is_edited: true } : m))
+      }
+    } catch { /* ignore — message stays as-is */ }
+    setEditingId(null)
+  }, [roomId, editContent])
 
   if (loading) {
     return <div className="flex h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
@@ -2375,17 +2513,69 @@ function SparkbotDmPage() {
               )
             }
             const own = isOwn(msg)
+            const parentMsg = msg.reply_to_id ? messages.find(m => m.id === msg.reply_to_id) : null
+            const isEditing = editingId === msg.id
             return (
-              <div key={msg.id} className={`flex ${own ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-[75%] rounded-2xl px-4 py-2 ${own ? "rounded-br-md bg-primary text-primary-foreground" : "rounded-bl-md bg-muted"}`}>
-                  {isBot(msg)
-                    ? <BotMessage content={msg.content} isStreaming={msg.isStreaming} toolActivity={msg.toolActivity} agent={msg.agent} />
-                    : <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
-                  }
-                  <p className={`text-[10px] mt-1 opacity-70 ${own ? "text-right" : ""}`}>
-                    {new Date(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                    {msg.isStreaming && " · typing…"}
-                  </p>
+              <div key={msg.id} className={`group flex ${own ? "justify-end" : "justify-start"}`}>
+                <div className="flex flex-col max-w-[75%]">
+                  {/* Reply quote */}
+                  {parentMsg && (
+                    <div className={`mb-1 px-3 py-1 rounded-lg border-l-2 border-primary/50 bg-muted/40 text-[11px] text-muted-foreground truncate ${own ? "self-end" : "self-start"}`}>
+                      ↩ {parentMsg.sender_type === "BOT" ? "Sparkbot" : (parentMsg.sender_username ?? "You")}: {parentMsg.content.slice(0, 80)}{parentMsg.content.length > 80 ? "…" : ""}
+                    </div>
+                  )}
+                  <div className={`flex items-end gap-1 ${own ? "flex-row-reverse" : "flex-row"}`}>
+                    <div className={`rounded-2xl px-4 py-2 ${own ? "rounded-br-md bg-primary text-primary-foreground" : "rounded-bl-md bg-muted"}`}>
+                      {isEditing ? (
+                        <div className="flex flex-col gap-1">
+                          <textarea
+                            autoFocus
+                            value={editContent}
+                            onChange={e => setEditContent(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleEditSave(msg.id) }
+                              if (e.key === "Escape") setEditingId(null)
+                            }}
+                            className="text-sm w-full rounded bg-background/20 px-2 py-1 outline-none resize-none min-w-[180px]"
+                            rows={Math.min(6, editContent.split("\n").length + 1)}
+                          />
+                          <div className="flex gap-2 justify-end text-[11px]">
+                            <button onClick={() => setEditingId(null)} className="opacity-70 hover:opacity-100">Cancel</button>
+                            <button onClick={() => handleEditSave(msg.id)} className="font-medium hover:opacity-80">Save</button>
+                          </div>
+                        </div>
+                      ) : isBot(msg)
+                        ? <BotMessage content={msg.content} isStreaming={msg.isStreaming} toolActivity={msg.toolActivity} agent={msg.agent} />
+                        : <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
+                      }
+                      <p className={`text-[10px] mt-1 opacity-70 ${own ? "text-right" : ""}`}>
+                        {new Date(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        {msg.isStreaming && " · typing…"}
+                        {msg.is_edited && " · edited"}
+                      </p>
+                    </div>
+                    {/* Hover action buttons */}
+                    {!isEditing && !msg.isStreaming && (
+                      <div className={`flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity mb-1 ${own ? "flex-row-reverse" : "flex-row"}`}>
+                        <button
+                          onClick={() => setReplyingTo(msg)}
+                          title="Reply"
+                          className="flex h-6 w-6 items-center justify-center rounded-full hover:bg-muted text-muted-foreground"
+                        >
+                          <CornerUpLeft className="h-3.5 w-3.5" />
+                        </button>
+                        {own && (
+                          <button
+                            onClick={() => { setEditingId(msg.id); setEditContent(msg.content) }}
+                            title="Edit"
+                            className="flex h-6 w-6 items-center justify-center rounded-full hover:bg-muted text-muted-foreground"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )
@@ -2396,6 +2586,21 @@ function SparkbotDmPage() {
 
       {/* Input */}
       <div className="border-t px-4 py-3 shrink-0">
+        {/* Reply banner */}
+        {replyingTo && (
+          <div className="flex items-center justify-between mb-2 px-3 py-1.5 rounded-lg bg-muted/50 text-[11px] text-muted-foreground">
+            <span className="truncate">
+              <CornerUpLeft className="inline h-3 w-3 mr-1 align-middle" />
+              Replying to{" "}
+              <span className="font-medium">{replyingTo.sender_type === "BOT" ? "Sparkbot" : (replyingTo.sender_username ?? "you")}</span>
+              {": "}
+              {replyingTo.content.slice(0, 80)}{replyingTo.content.length > 80 ? "…" : ""}
+            </span>
+            <button onClick={() => setReplyingTo(null)} className="ml-2 shrink-0 hover:text-foreground">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
         <div className="relative flex items-center gap-2">
           {showCommands && (
             <CommandPicker query={inputValue} onSelect={cmd => { setInputValue(cmd); inputRef.current?.focus() }} />

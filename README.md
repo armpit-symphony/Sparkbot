@@ -670,16 +670,17 @@ User message → Token Guardian → Memory Guardian → LLM
 
 ### Pending (ops, not blocking)
 - Key rotation — run after active testing window closes (see `ROTATION_RUNBOOK.md`)
-- Message edit UI (backend PATCH endpoint exists, no frontend)
-- Reply threading UI (DB + API ready, no frontend component)
 - Skill marketplace / built-in skill library (filesystem drop-in is the foundation)
 
 ### Phase 2 — Proactive Autonomy ✅ (2026-03-07)
 - ✅ Task Guardian write-actions — `gmail_send`, `slack_send_message`, `calendar_create_event` can now run on a schedule. Pre-authorized via the existing `guardian_schedule_task` confirmation modal. Opt-in via `SPARKBOT_TASK_GUARDIAN_WRITE_ENABLED=true`.
 - ✅ Morning briefing skill — `morning_briefing`: one-shot compound digest combining Gmail unread summary, Google Calendar events, and pending room reminders. Fans out to Telegram/Discord/WhatsApp via Phase 1 fan-out. Perfect daily Task Guardian job.
 
-### Phase 3 — Work UX Polish (planned)
-- Reply threading frontend (DB + API ready, needs frontend component)
-- Message edit UI (backend PATCH endpoint ready, needs UI)
+### Phase 3 — Work UX Polish ✅ (2026-03-07)
+- ✅ Reply threading UI — hover any message to reply; banner above input shows quoted snippet; `reply_to_id` sent in stream POST body; quote preview renders inside bubble
+- ✅ Message edit UI — hover own messages to edit inline; auto-resizing textarea; saves via PATCH `/api/v1/chat/messages/{room_id}/message/{message_id}`; `· edited` timestamp badge
+
+### Phase 4 — Onboarding & Health Observability (planned)
 - Onboarding copy / Guardian health explainer in dashboard
 - Guardian health card — single view of scheduler, memory, routing, and policy state
+- Voice note auto-transcription (Whisper API before send)

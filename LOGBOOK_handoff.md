@@ -4,6 +4,59 @@
 
 ---
 
+## Session — 2026-03-07 · Phase 3: Work UX Polish
+
+### Goal
+
+Add message-level UX features that make daily use feel polished and natural: inline reply threading and message editing — the two features users notice most when they're absent.
+
+### What was done
+
+**1. Reply threading (`SparkbotDmPage.tsx`)**
+
+`reply_to_id` was already persisted to DB, returned in `MessageResponse`, and accepted on stream POST — only the UI was missing.
+
+- Extended local `Message` interface: `reply_to_id?: string`, `is_edited?: boolean`
+- Added `replyingTo: Message | null` state
+- Every message (own and bot) gets a **CornerUpLeft** hover button that sets `replyingTo`
+- When `replyingTo` is set, a reply banner appears above the input showing the quoted author + snippet with an ✕ dismiss
+- `handleSend` captures `replyingTo?.id` before clearing state and includes it in the POST body as `reply_to_id`
+- The temp human message is also stamped with `reply_to_id` for instant UI consistency before the server echo
+- Quoted message renders inside the reply bubble as an indented `↩ Author: snippet…` prefix above the bubble
+
+**2. Message edit UI (`SparkbotDmPage.tsx`)**
+
+The PATCH endpoint `/api/v1/chat/messages/{room_id}/message/{message_id}` already existed in `messages.py`.
+
+- Added `editingId: string | null` and `editContent: string` state
+- Added `handleEditSave(msgId)` callback — PATCHes the API, on 2xx maps the message in local state to `{ content: trimmed, is_edited: true }`
+- Own messages get a **Pencil** hover button that drops into inline edit mode
+- Edit mode: auto-resizing `<textarea>` pre-filled with current content, Save/Cancel inline, Enter saves, Escape cancels
+- Timestamp line shows `· edited` badge when `msg.is_edited` is true
+
+**3. Lucide icons**
+
+Added `CornerUpLeft` and `Pencil` to imports.
+
+### Modified files
+
+- `frontend/src/pages/SparkbotDmPage.tsx` — reply threading + message edit UI
+
+### Verified working
+
+- TypeScript: `tsc -p tsconfig.build.json` clean, Vite build successful
+- Reply banner appears, reply_to_id sent in POST body, quote preview shows in bubble
+- Edit pencil appears on own messages (hover), saves via PATCH, `· edited` appears in timestamp
+- No other files changed
+
+### Next actions (Phase 4)
+
+1. **Onboarding copy** — plain-language intro of permissions, execution gate, confirmation flow
+2. **Guardian health card** — single dashboard view of scheduler status, memory, routing, policy
+3. **Voice note transcription** — forward mic audio to Whisper API for auto-transcription before send
+
+---
+
 ## Session — 2026-03-07 · Phase 2: Proactive Autonomy
 
 ### Goal
