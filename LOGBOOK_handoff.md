@@ -4,6 +4,60 @@
 
 ---
 
+## Session — 2026-03-07 · GitHub bridge added
+
+### What was done
+
+- Added a real GitHub bridge on top of the existing GitHub tools.
+- New inbound webhook endpoint: `POST /api/v1/chat/github/events`
+- Verified signed webhook requests with `X-Hub-Signature-256` and fail-closed behavior when the bridge is enabled but not configured.
+- Added GitHub thread-to-room mapping:
+  - issue comments and PR review comments map into dedicated Sparkbot rooms
+  - `/sparkbot ...` and `@sparkbot ...` invoke Sparkbot inside the thread
+  - `approve` / `deny` resolves pending confirmations inside the same thread
+- Added outbound GitHub bridge replies so Sparkbot posts back into the issue / PR conversation using `GITHUB_TOKEN`.
+- Added GitHub bridge controls to Sparkbot Controls:
+  - token
+  - webhook secret
+  - bot login
+  - default repo
+  - allowed repos
+  - enabled toggle
+- Updated `.env.example` and `README.md` with GitHub bridge setup notes and webhook path.
+
+### New files
+
+- `backend/app/services/github_bridge.py`
+- `backend/app/api/routes/chat/github.py`
+
+### Modified files
+
+- `backend/app/api/main.py`
+- `backend/app/api/routes/chat/__init__.py`
+- `backend/app/api/routes/chat/model.py`
+- `frontend/src/pages/SparkbotDmPage.tsx`
+- `.env.example`
+- `README.md`
+
+### Verified working
+
+- Backend compile checks passed.
+- `from app.main import app` passed with the new route wiring.
+- Frontend build passed with the new GitHub controls card.
+
+### Next actions
+
+1. Create a GitHub webhook on the target repo and point it at `/api/v1/chat/github/events`.
+2. Set `GITHUB_TOKEN`, `GITHUB_WEBHOOK_SECRET`, `GITHUB_BOT_LOGIN`, and optionally `GITHUB_ALLOWED_REPOS`.
+3. Restart `sparkbot-v2`.
+4. Smoke-test:
+   - `/sparkbot summarize this PR`
+   - `approve`
+   - `deny`
+   - PR review comment flow
+
+---
+
 ## Session — 2026-03-07 · Command center, live Token Guardian, and functional Sparkbot Controls
 
 ### What was done

@@ -186,6 +186,16 @@ interface ModelsControlsConfig {
       enabled: boolean
       linked_numbers: number
     }
+    github: {
+      configured: boolean
+      enabled: boolean
+      bot_login: string
+      default_repo: string
+      allowed_repos: string[]
+      allowed_repos_count: number
+      linked_threads: number
+      webhook_path: string
+    }
   }
   notices: string[]
   restart_required?: boolean
@@ -221,6 +231,14 @@ interface CommsForm {
     token: string
     phone_id: string
     verify_token: string
+    enabled: boolean
+  }
+  github: {
+    token: string
+    webhook_secret: string
+    bot_login: string
+    default_repo: string
+    allowed_repos: string
     enabled: boolean
   }
 }
@@ -895,10 +913,10 @@ function SparkbotSettingsDialog({
             <div className="mb-3">
               <h2 className="text-sm font-semibold">Comms</h2>
               <p className="text-xs text-muted-foreground">
-                Configure Telegram, Discord, and WhatsApp from the same control panel. Bridge startup changes require a service restart.
+                Configure Telegram, Discord, WhatsApp, and GitHub from the same control panel. Bridge startup changes require a service restart.
               </p>
             </div>
-            <div className="grid gap-4 lg:grid-cols-3">
+            <div className="grid gap-4 lg:grid-cols-4">
               <div className="rounded-lg border bg-muted/40 px-3 py-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-sm font-medium">Telegram</div>
@@ -1000,6 +1018,60 @@ function SparkbotSettingsDialog({
                     type="checkbox"
                     checked={commsForm.whatsapp.enabled}
                     onChange={(e) => onCommsToggleChange("whatsapp", "enabled", e.target.checked)}
+                  />
+                </label>
+              </div>
+
+              <div className="rounded-lg border bg-muted/40 px-3 py-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-sm font-medium">GitHub</div>
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms.github.configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
+                    {modelsConfig?.comms.github.configured ? "Configured" : "Missing"}
+                  </span>
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground">Linked threads: {modelsConfig?.comms.github.linked_threads ?? 0}</div>
+                <div className="mt-1 text-xs text-muted-foreground">Webhook: {modelsConfig?.comms.github.webhook_path ?? "/api/v1/chat/github/events"}</div>
+                <input
+                  type="password"
+                  value={commsForm.github.token}
+                  onChange={(e) => onCommsTextChange("github", "token", e.target.value)}
+                  placeholder="Paste GitHub token"
+                  className="mt-3 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                />
+                <input
+                  type="password"
+                  value={commsForm.github.webhook_secret}
+                  onChange={(e) => onCommsTextChange("github", "webhook_secret", e.target.value)}
+                  placeholder="Webhook secret"
+                  className="mt-2 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                />
+                <input
+                  type="text"
+                  value={commsForm.github.bot_login}
+                  onChange={(e) => onCommsTextChange("github", "bot_login", e.target.value)}
+                  placeholder="Bot login"
+                  className="mt-2 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                />
+                <input
+                  type="text"
+                  value={commsForm.github.default_repo}
+                  onChange={(e) => onCommsTextChange("github", "default_repo", e.target.value)}
+                  placeholder="Default repo (owner/repo)"
+                  className="mt-2 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                />
+                <input
+                  type="text"
+                  value={commsForm.github.allowed_repos}
+                  onChange={(e) => onCommsTextChange("github", "allowed_repos", e.target.value)}
+                  placeholder="Allowed repos (comma-separated)"
+                  className="mt-2 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                />
+                <label className="mt-3 flex items-center justify-between gap-2 text-xs">
+                  <span>Enable bridge</span>
+                  <input
+                    type="checkbox"
+                    checked={commsForm.github.enabled}
+                    onChange={(e) => onCommsToggleChange("github", "enabled", e.target.checked)}
                   />
                 </label>
               </div>
@@ -1210,6 +1282,14 @@ function SparkbotDmPage() {
     telegram: { bot_token: "", enabled: true, private_only: true },
     discord: { bot_token: "", enabled: false, dm_only: false },
     whatsapp: { token: "", phone_id: "", verify_token: "sparkbot-wa-verify", enabled: false },
+    github: {
+      token: "",
+      webhook_secret: "",
+      bot_login: "sparkbot",
+      default_repo: "",
+      allowed_repos: "",
+      enabled: false,
+    },
   })
   const [savingModelStack, setSavingModelStack] = useState(false)
   const [savingProviderTokens, setSavingProviderTokens] = useState(false)
@@ -1258,6 +1338,14 @@ function SparkbotDmPage() {
         phone_id: "",
         verify_token: "sparkbot-wa-verify",
         enabled: Boolean(config.comms.whatsapp.enabled),
+      },
+      github: {
+        token: "",
+        webhook_secret: "",
+        bot_login: config.comms.github.bot_login || "sparkbot",
+        default_repo: config.comms.github.default_repo || "",
+        allowed_repos: (config.comms.github.allowed_repos ?? []).join(", "),
+        enabled: Boolean(config.comms.github.enabled),
       },
     })
   }, [])

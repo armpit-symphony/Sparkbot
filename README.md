@@ -274,6 +274,7 @@ Agent Shield / Executive / Task Guardian phase notes:
 - Telegram bridge can run in long-polling mode with only `TELEGRAM_BOT_TOKEN`; private Telegram chats map into real Sparkbot rooms, and `/approve` or `/deny` can resolve pending confirmations.
 - Discord gateway bot responds to DMs and @mentions; each channel maps to a dedicated Sparkbot room; `/approve` and `/deny` work identically to Telegram.
 - WhatsApp Cloud API bridge (via pywa) mounts a webhook at `/whatsapp`; user-initiated replies are free-form within the 24-hour session window; `approve`/`deny` text commands handle pending confirmations.
+- GitHub bridge accepts signed webhooks for issue comments and PR review comments; `/sparkbot` or `@sparkbot` in a comment maps the thread into a Sparkbot room, and `approve` / `deny` resolves pending confirmations in-thread.
 - All three inbound bridges emit an explicit startup status log so ops can confirm enabled vs disabled state immediately after boot.
 
 ---
@@ -398,6 +399,29 @@ Notes:
 - Business-initiated messages (templates, marketing) are billed per message — not relevant for a reactive chatbot.
 - `approve` / `deny` text resolves pending tool confirmations (same as Telegram/Discord).
 - Uses [pywa](https://github.com/david-lev/pywa) 3.8.0 — the only well-maintained Python library for the official Cloud API.
+
+### Optional — GitHub Bridge
+```env
+GITHUB_BRIDGE_ENABLED=false
+GITHUB_TOKEN=               # token used for GitHub tools + posting bridge replies
+GITHUB_WEBHOOK_SECRET=      # required for X-Hub-Signature-256 verification
+GITHUB_BOT_LOGIN=sparkbot
+GITHUB_DEFAULT_REPO=owner/repo
+GITHUB_ALLOWED_REPOS=owner/repo,owner/another-repo
+```
+
+Setup:
+1. GitHub repo → Settings → Webhooks → Add webhook
+2. Payload URL: `https://yourdomain.com/api/v1/chat/github/events`
+3. Content type: `application/json`
+4. Secret: match `GITHUB_WEBHOOK_SECRET`
+5. Events: `Issue comments` and `Pull request review comments`
+
+Notes:
+- The bridge verifies `X-Hub-Signature-256` and ignores repos outside `GITHUB_ALLOWED_REPOS` when the allowlist is set.
+- Use `/sparkbot your request` or `@sparkbot your request` in a comment to invoke Sparkbot.
+- `approve` / `deny` in the same thread resolves pending confirmations.
+- Each GitHub issue / PR thread maps to a dedicated Sparkbot room and shares the same audit, policy, and approval flow as chat.
 
 ### Optional — Skill Plugins
 ```env
@@ -534,6 +558,7 @@ sparkbot-v2/
 │   │   │       ├── uploads.py            # File upload + vision SSE
 │   │   │       ├── voice.py              # Voice: Whisper transcription + TTS endpoints
 │   │   │       ├── model.py              # Model switching endpoints
+│   │   │       ├── github.py             # GitHub webhook bridge endpoint
 │   │   │       ├── users.py              # Chat user management + bootstrap
 │   │   │       └── websocket.py          # WebSocket handler
 │   │   ├── services/
@@ -541,6 +566,7 @@ sparkbot-v2/
 │   │   │   ├── telegram_bridge.py        # Telegram long-poll bridge
 │   │   │   ├── discord_bridge.py         # Discord gateway bot bridge
 │   │   │   ├── whatsapp_bridge.py        # WhatsApp Cloud API webhook bridge (pywa)
+│   │   │   ├── github_bridge.py          # GitHub issue / PR comment webhook bridge
 │   │   │   └── guardian/                 # Policy, executive, memory, task guardian
 │   │   ├── models.py                     # SQLModel DB models
 │   │   ├── crud.py                       # DB helper functions
@@ -615,6 +641,7 @@ User message → Token Guardian → Memory Guardian → LLM
 - ✅ Voice input + TTS replies (Whisper transcription → LLM pipeline → optional TTS playback)
 - ✅ Discord bridge — gateway bot, DMs + @mentions, `/approve` / `/deny` confirmation flow
 - ✅ WhatsApp bridge — Meta Cloud API webhook (pywa), free-form replies in 24h service window
+- ✅ GitHub bridge — signed webhook for issue / PR comments, room mapping, `approve` / `deny`
 
 ### Security audit — all phases complete ✅
 - ✅ Phase A — access control + secret hygiene

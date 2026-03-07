@@ -34,6 +34,7 @@ from app.api.routes.chat.llm import (
     set_model_stack,
 )
 from app.services.discord_bridge import get_status as get_discord_status
+from app.services.github_bridge import get_status as get_github_status
 from app.services.telegram_bridge import get_status as get_telegram_status
 from app.services.whatsapp_bridge import get_status as get_whatsapp_status
 
@@ -130,6 +131,7 @@ def _build_controls_config(current_user: CurrentChatUser, notices: list[str] | N
             "telegram": get_telegram_status(),
             "discord": get_discord_status(),
             "whatsapp": get_whatsapp_status(),
+            "github": get_github_status(),
         },
         "notices": notices or [],
     }
@@ -173,10 +175,20 @@ class WhatsAppConfigInput(BaseModel):
     enabled: bool | None = None
 
 
+class GitHubConfigInput(BaseModel):
+    token: str | None = None
+    webhook_secret: str | None = None
+    bot_login: str | None = None
+    default_repo: str | None = None
+    allowed_repos: str | None = None
+    enabled: bool | None = None
+
+
 class CommsConfigInput(BaseModel):
     telegram: TelegramConfigInput | None = None
     discord: DiscordConfigInput | None = None
     whatsapp: WhatsAppConfigInput | None = None
+    github: GitHubConfigInput | None = None
 
 
 class ControlsConfigUpdate(BaseModel):
@@ -295,6 +307,23 @@ def update_models_config(body: ControlsConfigUpdate, current_user: CurrentChatUs
                 env_updates["WHATSAPP_VERIFY_TOKEN"] = body.comms.whatsapp.verify_token
             if body.comms.whatsapp.enabled is not None:
                 env_updates["WHATSAPP_ENABLED"] = "true" if body.comms.whatsapp.enabled else "false"
+            restart_required = True
+        if body.comms.github is not None:
+            if body.comms.github.token:
+                env_updates["GITHUB_TOKEN"] = body.comms.github.token
+            if body.comms.github.webhook_secret:
+                env_updates["GITHUB_WEBHOOK_SECRET"] = body.comms.github.webhook_secret
+            if body.comms.github.bot_login:
+                env_updates["GITHUB_BOT_LOGIN"] = body.comms.github.bot_login
+            if body.comms.github.default_repo is not None:
+                env_updates["GITHUB_DEFAULT_REPO"] = body.comms.github.default_repo
+            if body.comms.github.allowed_repos is not None:
+                normalized = ",".join(
+                    repo.strip() for repo in body.comms.github.allowed_repos.split(",") if repo.strip()
+                )
+                env_updates["GITHUB_ALLOWED_REPOS"] = normalized
+            if body.comms.github.enabled is not None:
+                env_updates["GITHUB_BRIDGE_ENABLED"] = "true" if body.comms.github.enabled else "false"
             restart_required = True
 
     if body.token_guardian_mode is not None:
