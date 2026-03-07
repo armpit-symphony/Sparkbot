@@ -442,7 +442,7 @@ async def stream_chat_with_tools(
                     # Let the tool return the concrete configuration error instead.
                     if tool_name == "email_send" and not _email_configured_smtp():
                         pass
-                    elif tool_name in {"gmail_send", "drive_create_folder"} and not _google_configured():
+                    elif tool_name in {"gmail_send", "drive_create_folder", "calendar_create_event"} and not _google_configured():
                         pass
                     else:
                         already_confirmed = confirmed_ids and any(

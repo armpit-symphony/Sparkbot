@@ -50,7 +50,22 @@ ALLOWED_TASK_TOOLS = {
     "ssh_read_command",
     "list_tasks",
     "list_reminders",
+    "morning_briefing",      # compound read skill: gmail + calendar + reminders digest
 }
+
+# Write tools allowed in scheduled context when SPARKBOT_TASK_GUARDIAN_WRITE_ENABLED=true.
+# These require __pre_authorized=True embedded in tool_args at scheduling time,
+# which the guardian_schedule_task confirmation modal provides.
+WRITE_TASK_TOOLS: frozenset[str] = frozenset({
+    "gmail_send",
+    "slack_send_message",
+    "calendar_create_event",
+})
+
+TASK_GUARDIAN_WRITE_ENABLED: bool = (
+    os.getenv("SPARKBOT_TASK_GUARDIAN_WRITE_ENABLED", "false").strip().lower()
+    in {"1", "true", "yes", "on"}
+)
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS guardian_tasks (
@@ -181,7 +196,21 @@ def _safe_excerpt(text: str) -> str:
 
 
 def _allowed_task_tool(tool_name: str) -> bool:
-    return tool_name in ALLOWED_TASK_TOOLS
+    if tool_name in ALLOWED_TASK_TOOLS:
+        return True
+    if TASK_GUARDIAN_WRITE_ENABLED and tool_name in WRITE_TASK_TOOLS:
+        return True
+    return False
+
+
+def _is_pre_authorized(tool_args: dict) -> bool:
+    """Return True when the task was explicitly pre-authorized at scheduling time."""
+    return bool(tool_args.get("__pre_authorized"))
+
+
+def _strip_meta_keys(tool_args: dict) -> dict:
+    """Strip internal __ meta keys before passing args to the actual tool."""
+    return {k: v for k, v in tool_args.items() if not k.startswith("__")}
 
 
 def schedule_task(
@@ -194,10 +223,20 @@ def schedule_task(
     user_id: str,
 ) -> dict[str, Any]:
     if not _allowed_task_tool(tool_name):
+        all_allowed = sorted(ALLOWED_TASK_TOOLS | (WRITE_TASK_TOOLS if TASK_GUARDIAN_WRITE_ENABLED else set()))
         raise ValueError(
-            "Task Guardian only allows approved read-only tools. "
-            f"Allowed: {', '.join(sorted(ALLOWED_TASK_TOOLS))}"
+            f"Task Guardian does not allow '{tool_name}'. "
+            f"Allowed tools: {', '.join(all_allowed)}"
         )
+    if tool_name in WRITE_TASK_TOOLS:
+        if not TASK_GUARDIAN_WRITE_ENABLED:
+            raise ValueError(
+                f"'{tool_name}' is a write-action tool. "
+                "Set SPARKBOT_TASK_GUARDIAN_WRITE_ENABLED=true to allow scheduled write tasks."
+            )
+        # Embed pre-authorization so the executor knows this was confirmed at scheduling time.
+        tool_args = dict(tool_args or {})
+        tool_args["__pre_authorized"] = True
     next_run_at = _next_run_at(schedule)
     task_id = str(uuid.uuid4())
     now = _now_iso()
@@ -360,12 +399,20 @@ async def _execute_internal_tool(task: GuardianTask, session: Session) -> tuple[
     if decision.action == "deny":
         return "denied", decision.reason
     if decision.action == "confirm":
-        return "denied", "Scheduled tasks cannot run confirm-required tools."
+        if not _is_pre_authorized(tool_args if isinstance(tool_args, dict) else {}):
+            return (
+                "denied",
+                "Scheduled tasks cannot run confirm-required tools without pre-authorization. "
+                "Re-schedule the task via chat to go through the confirmation modal.",
+            )
+        # Pre-authorized write task — the user confirmed via guardian_schedule_task modal.
+
+    clean_args = _strip_meta_keys(tool_args if isinstance(tool_args, dict) else {})
 
     def perform() -> Any:
         return execute_tool(
             task.tool_name,
-            tool_args if isinstance(tool_args, dict) else {},
+            clean_args,
             user_id=task.user_id,
             session=session,
             room_id=task.room_id,

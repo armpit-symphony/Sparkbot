@@ -580,6 +580,7 @@ sparkbot-v2/
 │   │   ├── example_weather.py            # get_weather via wttr.in (no API key)
 │   │   ├── calendar_list_events.py       # list Google Calendar events
 │   │   ├── calendar_create_event.py      # create Google Calendar event (confirmation required)
+│   │   ├── morning_briefing.py           # morning_briefing: Gmail + Calendar + reminders digest
 │   │   ├── news_headlines.py             # news_headlines: HN + BBC RSS (no API key)
 │   │   ├── currency_convert.py           # currency_convert: live FX rates (no API key)
 │   │   └── crypto_price.py              # crypto_price: CoinGecko (no API key)
@@ -673,11 +674,12 @@ User message → Token Guardian → Memory Guardian → LLM
 - Reply threading UI (DB + API ready, no frontend component)
 - Skill marketplace / built-in skill library (filesystem drop-in is the foundation)
 
-### Phase 2 — Proactive Autonomy (planned)
-- Task Guardian write-actions with approval gate (gmail_send, slack_post, calendar_create_event in scheduled context)
-- Morning briefing canned job (email summary + calendar + reminders → fan-out to all channels)
+### Phase 2 — Proactive Autonomy ✅ (2026-03-07)
+- ✅ Task Guardian write-actions — `gmail_send`, `slack_send_message`, `calendar_create_event` can now run on a schedule. Pre-authorized via the existing `guardian_schedule_task` confirmation modal. Opt-in via `SPARKBOT_TASK_GUARDIAN_WRITE_ENABLED=true`.
+- ✅ Morning briefing skill — `morning_briefing`: one-shot compound digest combining Gmail unread summary, Google Calendar events, and pending room reminders. Fans out to Telegram/Discord/WhatsApp via Phase 1 fan-out. Perfect daily Task Guardian job.
 
 ### Phase 3 — Work UX Polish (planned)
-- Reply threading frontend
-- Message edit UI
-- Onboarding copy / Guardian health explainer
+- Reply threading frontend (DB + API ready, needs frontend component)
+- Message edit UI (backend PATCH endpoint ready, needs UI)
+- Onboarding copy / Guardian health explainer in dashboard
+- Guardian health card — single view of scheduler, memory, routing, and policy state

@@ -1019,33 +1019,43 @@ TOOL_DEFINITIONS = [
         "function": {
             "name": "guardian_schedule_task",
             "description": (
-                "Schedule a Task Guardian job that runs an approved read-only tool and posts the result "
-                "back into this room. Use for recurring inbox digests, PR checks, calendar lookups, "
-                "server diagnostics, and similar office or monitoring workflows."
+                "Schedule a Task Guardian job that runs a tool on a recurring schedule and posts the result "
+                "back into this room — and fans out to Telegram/Discord/WhatsApp if configured. "
+                "Use for recurring inbox digests, morning briefings, PR checks, calendar lookups, "
+                "server diagnostics, scheduled emails, Slack posts, and similar office workflows. "
+                "Read-only tools run automatically. Write tools (gmail_send, slack_send_message, "
+                "calendar_create_event) require SPARKBOT_TASK_GUARDIAN_WRITE_ENABLED=true and "
+                "will prompt for confirmation before the job is created."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "name": {
                         "type": "string",
-                        "description": "Short task name",
+                        "description": "Short descriptive task name",
                     },
                     "tool_name": {
                         "type": "string",
                         "description": (
-                            "Approved tool name. Supported: web_search, github_list_prs, github_get_ci_status, "
-                            "slack_get_channel_history, notion_search, confluence_search, gmail_fetch_inbox, "
-                            "gmail_search, drive_search, calendar_list_events, server_read_command, "
-                            "ssh_read_command, list_tasks, list_reminders"
+                            "Tool to run on schedule. Read-only: web_search, github_list_prs, "
+                            "github_get_ci_status, slack_get_channel_history, notion_search, "
+                            "confluence_search, gmail_fetch_inbox, gmail_search, drive_search, "
+                            "calendar_list_events, server_read_command, ssh_read_command, "
+                            "list_tasks, list_reminders, morning_briefing. "
+                            "Write (requires confirmation + WRITE_ENABLED env var): "
+                            "gmail_send, slack_send_message, calendar_create_event."
                         ),
                     },
                     "schedule": {
                         "type": "string",
-                        "description": "Run cadence in every:<seconds> or at:<ISO-8601 UTC datetime> format",
+                        "description": (
+                            "Run cadence: every:<seconds> for recurring (e.g. every:86400 = daily) "
+                            "or at:<ISO-8601 UTC datetime> for a one-shot future run."
+                        ),
                     },
                     "tool_args": {
                         "type": "object",
-                        "description": "Arguments for the selected tool",
+                        "description": "Arguments forwarded to the selected tool",
                         "additionalProperties": True,
                     },
                 },
@@ -3102,7 +3112,18 @@ async def _guardian_schedule_task(
 ) -> str:
     if not room_id or not user_id:
         return "Task Guardian unavailable (no room or user context)."
-    from app.services.guardian.task_guardian import schedule_task
+    from app.services.guardian.task_guardian import (
+        WRITE_TASK_TOOLS,
+        TASK_GUARDIAN_WRITE_ENABLED,
+        schedule_task,
+    )
+
+    if tool_name in WRITE_TASK_TOOLS and not TASK_GUARDIAN_WRITE_ENABLED:
+        return (
+            f"'{tool_name}' is a write-action tool. "
+            "Scheduled write tasks are disabled by default. "
+            "Ask the admin to set SPARKBOT_TASK_GUARDIAN_WRITE_ENABLED=true to enable them."
+        )
 
     try:
         task = schedule_task(
@@ -3116,10 +3137,11 @@ async def _guardian_schedule_task(
     except Exception as exc:
         return f"Task Guardian error: {exc}"
 
+    write_note = " ⚠️ Write task — pre-authorized via this confirmation." if tool_name in WRITE_TASK_TOOLS else ""
     return (
         f"Scheduled Task Guardian job `{task['name']}` ({task['id'][:8]}) "
         f"for `{task['tool_name']}` on `{task['schedule']}`. "
-        f"Next run: {task['next_run_at']}"
+        f"Next run: {task['next_run_at']}{write_note}"
     )
 
 

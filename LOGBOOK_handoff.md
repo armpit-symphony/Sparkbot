@@ -4,6 +4,86 @@
 
 ---
 
+## Session — 2026-03-07 · Phase 2: Proactive Autonomy
+
+### Goal
+
+Enable Sparkbot to take scheduled write-actions (send email, post to Slack, create calendar events) on the user's behalf with the same confirmation flow as interactive chat — and give it a compound "morning briefing" skill that compiles a full day digest from all sources in one shot.
+
+### What was done
+
+**1. Task Guardian write-actions**
+
+The Task Guardian previously blocked all write-tool scheduled jobs with:
+`"Scheduled tasks cannot run confirm-required tools."` Hard block, no path around it.
+
+Now write tools can run on schedule with explicit pre-authorization:
+
+- **`WRITE_TASK_TOOLS`** frozenset added to `task_guardian.py`: `gmail_send`, `slack_send_message`, `calendar_create_event`
+- **`TASK_GUARDIAN_WRITE_ENABLED`** env var (default: `false`). Admin opt-in — keeps the system safe out of the box.
+- **Pre-authorization flow**: `guardian_schedule_task` already has `write/confirm` policy, so the existing confirmation modal fires when the user asks to schedule a write job. Once the user confirms, `schedule_task()` embeds `__pre_authorized: True` in `tool_args_json`.
+- **Execution**: `_execute_internal_tool` now checks `_is_pre_authorized(tool_args)` when it sees a `confirm` policy decision. If pre-authorized, strips the `__` meta key via `_strip_meta_keys()` and proceeds to execution. If not pre-authorized, returns the original hard-deny.
+- **LLM bypass**: Added `calendar_create_event` to the "skip confirm when Google unconfigured" list in `llm.py` (alongside `gmail_send`, `drive_create_folder`).
+- **LLM tool description**: Updated `guardian_schedule_task` DEFINITION to clearly describe write tools, their pre-authorization requirement, and the `WRITE_ENABLED` env var.
+- **Executor**: `_guardian_schedule_task` in `tools.py` now shows an early error if write tools are requested but `WRITE_ENABLED=false`, and appends a "⚠️ Write task — pre-authorized" note on success.
+
+**To enable scheduled write actions:**
+```bash
+# In systemd service env or .env:
+SPARKBOT_TASK_GUARDIAN_WRITE_ENABLED=true
+sudo systemctl restart sparkbot-v2
+```
+Then say: *"Every weekday at 9am, send a good morning to team@company.com"*
+→ Confirmation modal appears → User approves → Job created → Runs autonomously.
+
+**2. Morning briefing skill** (`backend/skills/morning_briefing.py`)
+
+A single compound skill that compiles a full morning digest in one tool call:
+- **Date + time** (localized to `timezone` param — uses `zoneinfo`)
+- **Google Calendar** events for today + tomorrow (configurable via `days_ahead`)
+- **Gmail** unread inbox summary — sender name + subject per email, unread count
+- **Pending reminders** for this room — queried directly from DB via `session` param
+- **Optional weather** via wttr.in (same as `get_weather` skill, set `include_weather=true` + `location`)
+
+Policy: `read/allow` — no confirmation required. Added to `ALLOWED_TASK_TOOLS`.
+
+**Example Task Guardian job:**
+```
+guardian_schedule_task(
+    name="Morning Brief",
+    tool_name="morning_briefing",
+    schedule="every:86400",
+    tool_args={"timezone": "America/New_York", "location": "New York", "include_weather": true}
+)
+```
+Result fans out to Telegram/Discord/WhatsApp (Phase 1 fan-out) so the brief arrives on your phone.
+
+### New files
+
+- `backend/skills/morning_briefing.py`
+
+### Modified files
+
+- `backend/app/services/guardian/task_guardian.py` — WRITE_TASK_TOOLS, TASK_GUARDIAN_WRITE_ENABLED, _is_pre_authorized, _strip_meta_keys, updated _allowed_task_tool, schedule_task, _execute_internal_tool
+- `backend/app/api/routes/chat/tools.py` — updated guardian_schedule_task DEFINITION + executor
+- `backend/app/api/routes/chat/llm.py` — calendar_create_event bypass when Google unconfigured
+
+### Verified working
+
+- 7 skills loaded (added morning_briefing)
+- `morning_briefing` in `ALLOWED_TASK_TOOLS`, `gmail_send/slack_send_message/calendar_create_event` in `WRITE_TASK_TOOLS`
+- `WRITE_ENABLED=false` by default — write tasks return clear error until admin enables
+- Full app import clean, service restarted active
+
+### Next actions (Phase 3 — Work UX Polish)
+
+1. **Reply threading frontend** — `reply_to_id` is in DB + API; need a thread component in `SparkbotDmPage.tsx`
+2. **Message edit UI** — backend PATCH endpoint ready; need edit button + inline editor in frontend
+3. **Onboarding copy** — plain-language explanation of permissions, execution gate, confirmation flow in the dashboard
+4. **Guardian health card** — single view of scheduler status, memory, routing, policy in the command center
+
+---
+
 ## Session — 2026-03-07 · Phase 1: Personal + Work Assistant Foundations
 
 ### Goal
