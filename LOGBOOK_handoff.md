@@ -4,6 +4,62 @@
 
 ---
 
+## Session — 2026-03-07 · Phase 4: Onboarding & Health Observability
+
+### Goal
+
+Make Sparkbot feel approachable and transparent: a first-time user can see exactly what's configured and understand the safety model without reading docs. Power users can see system health at a glance.
+
+### What was done
+
+**1. Guardian health card** (replaces plain "Dashboard command center")
+
+Four color-coded tiles in the settings dialog, each with a live status, value, and sub-detail:
+
+| Tile | Green | Amber | Grey |
+|---|---|---|---|
+| **LLM** | ≥1 provider configured | No provider | — |
+| **Task Guardian** | ≥1 enabled job; shows last run status (green/red) | — | No jobs |
+| **Token Guardian** | Live mode + live-ready | — | Off (shadow = sky) |
+| **Comms** | ≥1 channel enabled; shows pending approvals count | Pending approvals > 0 | None enabled |
+
+Token Guardian tile keeps the inline mode selector + Apply button, so users can change it in one click without scrolling to Function Routing.
+
+**2. Onboarding copy — "How Sparkbot protects you"**
+
+Replaced the single "Start here" + vague bottom note with a three-panel layout:
+- **Start here** — clearer numbered steps with plain-English rationale
+- **Good first prompts** — updated with Phase 1/2 skills (crypto_price, morning_briefing)
+- **How Sparkbot protects you** (new, green-tinted) — three concise explainers:
+  - Write actions always confirm (the modal is the safety layer)
+  - Execution gate = opt-in (server/SSH tools disabled by default)
+  - Token Guardian shadow mode only observes — never acts autonomously
+
+**3. Task tool dropdown** (`TASK_TOOL_OPTIONS`)
+
+Added Phase 1/2 skills so users can pick them from the Task Guardian create-job form:
+- `morning_briefing` (top of list — most common daily job)
+- `calendar_create_event`, `news_headlines`, `crypto_price`, `currency_convert`
+
+### Modified files
+
+- `frontend/src/pages/SparkbotDmPage.tsx` — health card, onboarding copy, task tool list
+
+### Verified working
+
+- TypeScript + Vite build clean
+- All four health tiles render with correct color/value/detail logic
+- Protection explainer visible in onboarding section
+- morning_briefing, crypto_price, currency_convert, news_headlines visible in task dropdown
+
+### Next actions (Phase 5)
+
+1. **Voice transcription UX** — already handled backend-side; consider adding a Whisper-direct option without a full LLM reply for quick voice notes
+2. **Skill marketplace** — UI for browsing and enabling installed skills
+3. **Per-room persona** — let the user give each room a name and personality ("office assistant", "personal mode")
+
+---
+
 ## Session — 2026-03-07 · Phase 3: Work UX Polish
 
 ### Goal

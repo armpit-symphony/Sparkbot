@@ -680,7 +680,12 @@ User message → Token Guardian → Memory Guardian → LLM
 - ✅ Reply threading UI — hover any message to reply; banner above input shows quoted snippet; `reply_to_id` sent in stream POST body; quote preview renders inside bubble
 - ✅ Message edit UI — hover own messages to edit inline; auto-resizing textarea; saves via PATCH `/api/v1/chat/messages/{room_id}/message/{message_id}`; `· edited` timestamp badge
 
-### Phase 4 — Onboarding & Health Observability (planned)
-- Onboarding copy / Guardian health explainer in dashboard
-- Guardian health card — single view of scheduler, memory, routing, and policy state
-- Voice note auto-transcription (Whisper API before send)
+### Phase 4 — Onboarding & Health Observability ✅ (2026-03-07)
+- ✅ Guardian health card — four color-coded subsystem tiles (LLM, Task Guardian, Token Guardian, Comms/Approvals) replace the plain dashboard summary; shows last run status, pending approvals, and routing mode inline
+- ✅ Onboarding copy — three-panel layout: Start here steps, updated first prompts (morning briefing, crypto), "How Sparkbot protects you" explainer (write confirmations, execution gate, Token Guardian shadow mode)
+- ✅ Task tool dropdown — added morning_briefing, calendar_create_event, news_headlines, crypto_price, currency_convert to the Task Guardian create-job form
+
+### Phase 5 — Persona & Skill Discovery (planned)
+- Per-room persona — name and personality per room ("office assistant", "personal mode")
+- Skill marketplace UI — browse and enable installed backend skills from the settings panel
+- Voice note quick-capture — Whisper-direct option without triggering a full LLM reply

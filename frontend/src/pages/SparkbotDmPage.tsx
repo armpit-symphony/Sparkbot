@@ -595,11 +595,16 @@ interface SparkbotSettingsDialogProps {
 }
 
 const TASK_TOOL_OPTIONS = [
+  "morning_briefing",
   "gmail_fetch_inbox",
   "gmail_search",
   "github_list_prs",
   "github_get_ci_status",
   "calendar_list_events",
+  "calendar_create_event",
+  "news_headlines",
+  "crypto_price",
+  "currency_convert",
   "drive_search",
   "web_search",
   "server_read_command",
@@ -728,29 +733,43 @@ function SparkbotSettingsDialog({
               ))}
             </div>
 
-            <div className="mt-4 grid gap-3 lg:grid-cols-2">
+            <div className="mt-4 grid gap-3 lg:grid-cols-3">
               <div className="rounded-lg border bg-background/60 px-3 py-3">
                 <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Start here</div>
-                <div className="mt-2 space-y-1 text-sm">
-                  <div>1. Paste one provider token and save it.</div>
-                  <div>2. Keep `Token Guardian` in `shadow` until you want live routing.</div>
-                  <div>3. Turn on one comms channel you already use every day.</div>
-                  <div>4. Ask Sparkbot for a brief, reminder, or inbox summary.</div>
+                <div className="mt-2 space-y-1.5 text-xs">
+                  <div className="flex gap-2"><span className="font-semibold text-primary shrink-0">1.</span> Paste one provider token (below) and save it.</div>
+                  <div className="flex gap-2"><span className="font-semibold text-primary shrink-0">2.</span> Pick your model stack — primary for everyday chat, heavy hitter for long tasks.</div>
+                  <div className="flex gap-2"><span className="font-semibold text-primary shrink-0">3.</span> Enable one comms channel so reminders reach you on Telegram, Discord, or WhatsApp.</div>
+                  <div className="flex gap-2"><span className="font-semibold text-primary shrink-0">4.</span> Ask for a morning brief, set a reminder, or search your inbox.</div>
                 </div>
               </div>
               <div className="rounded-lg border bg-background/60 px-3 py-3">
                 <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Good first prompts</div>
                 <div className="mt-2 space-y-2 text-xs text-muted-foreground">
                   <div><code className="rounded bg-muted px-1 py-0.5">Give me a morning brief for today.</code></div>
-                  <div><code className="rounded bg-muted px-1 py-0.5">Summarize my inbox and tell me what matters.</code></div>
-                  <div><code className="rounded bg-muted px-1 py-0.5">Remind me every weekday at 8am to review priorities.</code></div>
+                  <div><code className="rounded bg-muted px-1 py-0.5">Remind me every weekday at 8am to check priorities.</code></div>
+                  <div><code className="rounded bg-muted px-1 py-0.5">Summarize my unread inbox.</code></div>
+                  <div><code className="rounded bg-muted px-1 py-0.5">What's the price of bitcoin right now?</code></div>
                   <div><code className="rounded bg-muted px-1 py-0.5">Show me anything waiting on my approval.</code></div>
                 </div>
               </div>
-            </div>
-
-            <div className="mt-4 rounded-lg bg-muted/40 px-3 py-3 text-xs text-muted-foreground">
-              Sparkbot already protects writes with confirmations. For most personal use, leave the room execution gate off until you explicitly want server or SSH actions.
+              <div className="rounded-lg border border-emerald-500/20 bg-emerald-50/30 dark:bg-emerald-950/20 px-3 py-3">
+                <div className="text-[11px] uppercase tracking-wide text-emerald-700 dark:text-emerald-400">How Sparkbot protects you</div>
+                <div className="mt-2 space-y-2 text-xs text-muted-foreground">
+                  <div>
+                    <span className="font-medium text-foreground">Write actions always confirm.</span>{" "}
+                    Sending email, posting to Slack, or creating calendar events always shows a modal — Sparkbot cannot act without your approval.
+                  </div>
+                  <div>
+                    <span className="font-medium text-foreground">Execution gate = opt-in only.</span>{" "}
+                    Server commands and SSH tools are disabled by default. Turn on the room execution gate only when you need them.
+                  </div>
+                  <div>
+                    <span className="font-medium text-foreground">Token Guardian shadow mode</span>{" "}
+                    observes routing decisions silently — it never switches models on its own until you flip to live mode.
+                  </div>
+                </div>
+              </div>
             </div>
           </section>
 
@@ -794,9 +813,9 @@ function SparkbotSettingsDialog({
           <section className="rounded-xl border p-4">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
-                <h2 className="text-sm font-semibold">Dashboard command center</h2>
+                <h2 className="text-sm font-semibold">System health</h2>
                 <p className="text-xs text-muted-foreground">
-                  The command center summary lives here inside Sparkbot Controls for chat-auth sessions.
+                  Live status of every Sparkbot subsystem at a glance.
                 </p>
               </div>
               <button
@@ -804,42 +823,94 @@ function SparkbotSettingsDialog({
                 onClick={onRefresh}
                 className="rounded-md border px-3 py-1.5 text-xs hover:bg-muted"
               >
-                Refresh summary
+                <span className="inline-flex items-center gap-1"><RefreshCw className="size-3" /> Refresh</span>
               </button>
             </div>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-lg bg-muted/40 px-3 py-3">
-                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Pending approvals</div>
-                <div className="mt-1 text-lg font-semibold">{dashboardSummary?.summary.pending_approvals ?? 0}</div>
+
+            {/* Health tiles */}
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              {/* LLM */}
+              <div className={`rounded-lg px-3 py-3 ${configuredProviderCount > 0 ? "bg-emerald-50/50 dark:bg-emerald-950/30 border border-emerald-500/20" : "bg-amber-50/50 dark:bg-amber-950/30 border border-amber-500/20"}`}>
+                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">LLM</div>
+                <div className={`mt-1 text-sm font-semibold ${configuredProviderCount > 0 ? "text-emerald-700 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`}>
+                  {configuredProviderCount > 0 ? `${configuredProviderCount} provider${configuredProviderCount > 1 ? "s" : ""}` : "No provider"}
+                </div>
+                <div className="mt-0.5 text-[11px] text-muted-foreground truncate">
+                  {modelStack.primary || "No model selected"}
+                </div>
               </div>
-              <div className="rounded-lg bg-muted/40 px-3 py-3">
-                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Guardian jobs</div>
-                <div className="mt-1 text-lg font-semibold">{dashboardSummary?.summary.guardian_jobs_enabled ?? 0}/{dashboardSummary?.summary.guardian_jobs ?? 0}</div>
-              </div>
-              <div className="rounded-lg bg-muted/40 px-3 py-3">
-                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Token Guardian</div>
-                <div className="mt-1 text-lg font-semibold capitalize">{dashboardSummary?.summary.token_guardian_mode ?? "off"}</div>
-                <div className="mt-2 space-y-2">
-                  <select
-                    value={tokenGuardianMode}
-                    onChange={(e) => onTokenGuardianModeChange(e.target.value)}
-                    className="w-full rounded-md border bg-background px-2 py-1.5 text-sm outline-none"
-                  >
-                    <option value="off">Off</option>
-                    <option value="shadow">Shadow</option>
-                    <option value="live">Live</option>
-                  </select>
-                  <button
-                    type="button"
-                    onClick={onSaveTokenGuardianMode}
-                    disabled={savingTokenGuardianMode}
-                    className="w-full rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground disabled:opacity-50"
-                  >
-                    {savingTokenGuardianMode ? "Saving..." : "Apply mode"}
-                  </button>
-                  <div className="text-[11px] text-muted-foreground">
-                    {dashboardSummary?.today.token_guardian.live_ready ? "Live-ready" : "No live route targets configured"}
+
+              {/* Task Guardian */}
+              {(() => {
+                const enabledCount = guardianTasks.filter(t => t.enabled).length
+                const lastRun = guardianRuns[0]
+                const lastOk = lastRun ? lastRun.status === "success" : null
+                return (
+                  <div className={`rounded-lg px-3 py-3 ${enabledCount > 0 ? "bg-emerald-50/50 dark:bg-emerald-950/30 border border-emerald-500/20" : "bg-muted/40 border"}`}>
+                    <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Task Guardian</div>
+                    <div className={`mt-1 text-sm font-semibold ${enabledCount > 0 ? "text-emerald-700 dark:text-emerald-400" : "text-muted-foreground"}`}>
+                      {enabledCount}/{guardianTasks.length} active
+                    </div>
+                    <div className="mt-0.5 text-[11px] text-muted-foreground">
+                      {lastRun ? (
+                        <span className={lastOk ? "text-emerald-600 dark:text-emerald-400" : "text-red-500"}>
+                          Last: {lastRun.status}
+                        </span>
+                      ) : "No runs yet"}
+                    </div>
                   </div>
+                )
+              })()}
+
+              {/* Token Guardian */}
+              {(() => {
+                const mode = dashboardSummary?.summary.token_guardian_mode ?? tokenGuardianMode ?? "off"
+                const liveReady = dashboardSummary?.today.token_guardian.live_ready
+                return (
+                  <div className={`rounded-lg px-3 py-3 ${mode === "live" ? "bg-emerald-50/50 dark:bg-emerald-950/30 border border-emerald-500/20" : mode === "shadow" ? "bg-sky-50/50 dark:bg-sky-950/30 border border-sky-500/20" : "bg-muted/40 border"}`}>
+                    <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Token Guardian</div>
+                    <div className={`mt-1 text-sm font-semibold capitalize ${mode === "live" ? "text-emerald-700 dark:text-emerald-400" : mode === "shadow" ? "text-sky-700 dark:text-sky-400" : "text-muted-foreground"}`}>
+                      {mode}
+                    </div>
+                    <div className="mt-0.5 text-[11px] text-muted-foreground">
+                      {mode === "shadow" ? "Observing — no auto-routing" : mode === "live" ? (liveReady ? "Live routing active" : "No targets configured") : "Routing disabled"}
+                    </div>
+                    <div className="mt-2 flex gap-1.5">
+                      <select
+                        value={tokenGuardianMode}
+                        onChange={(e) => onTokenGuardianModeChange(e.target.value)}
+                        className="flex-1 rounded border bg-background px-1.5 py-1 text-xs outline-none"
+                      >
+                        <option value="off">Off</option>
+                        <option value="shadow">Shadow</option>
+                        <option value="live">Live</option>
+                      </select>
+                      <button
+                        type="button"
+                        onClick={onSaveTokenGuardianMode}
+                        disabled={savingTokenGuardianMode}
+                        className="rounded bg-primary px-2 py-1 text-[11px] text-primary-foreground disabled:opacity-50"
+                      >
+                        {savingTokenGuardianMode ? "…" : "Apply"}
+                      </button>
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* Comms + Approvals */}
+              <div className={`rounded-lg px-3 py-3 ${enabledChannelCount > 0 ? "bg-emerald-50/50 dark:bg-emerald-950/30 border border-emerald-500/20" : "bg-muted/40 border"}`}>
+                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Comms</div>
+                <div className={`mt-1 text-sm font-semibold ${enabledChannelCount > 0 ? "text-emerald-700 dark:text-emerald-400" : "text-muted-foreground"}`}>
+                  {enabledChannelCount > 0 ? `${enabledChannelCount} channel${enabledChannelCount > 1 ? "s" : ""}` : "None enabled"}
+                </div>
+                <div className="mt-0.5 text-[11px] text-muted-foreground">
+                  {(() => {
+                    const pending = dashboardSummary?.summary.pending_approvals ?? 0
+                    return pending > 0
+                      ? <span className="text-amber-600 dark:text-amber-400 font-medium">{pending} pending approval{pending > 1 ? "s" : ""}</span>
+                      : "No pending approvals"
+                  })()}
                 </div>
               </div>
             </div>
