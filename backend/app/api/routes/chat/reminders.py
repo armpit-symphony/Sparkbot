@@ -89,11 +89,18 @@ async def _fire_one(reminder: Reminder, session: Session) -> None:
         except Exception as ws_err:
             logger.debug(f"[reminders] WS broadcast skipped: {ws_err}")
 
-        try:
-            from app.services.telegram_bridge import send_room_notification
-            await send_room_notification(str(reminder.room_id), f"⏰ Reminder: {reminder.message}")
-        except Exception as tg_err:
-            logger.debug(f"[reminders] Telegram notify skipped: {tg_err}")
+        _room_id_str = str(reminder.room_id)
+        _notif_text = f"⏰ Reminder: {reminder.message}"
+        for _bridge_module, _bridge_label in [
+            ("app.services.telegram_bridge", "Telegram"),
+            ("app.services.discord_bridge", "Discord"),
+            ("app.services.whatsapp_bridge", "WhatsApp"),
+        ]:
+            try:
+                import importlib as _il
+                await _il.import_module(_bridge_module).send_room_notification(_room_id_str, _notif_text)
+            except Exception as _err:
+                logger.debug(f"[reminders] {_bridge_label} notify skipped: {_err}")
 
         logger.info(f"[reminders] Fired reminder {reminder.id}: {reminder.message[:60]}")
     except Exception as e:

@@ -4,6 +4,75 @@
 
 ---
 
+## Session — 2026-03-07 · Phase 1: Personal + Work Assistant Foundations
+
+### Goal
+
+Make Sparkbot a desirable assistant for personal and office use. Phase 1 focuses on proactive reach-out and useful zero-config skills.
+
+### What was done
+
+**1. Proactive notification fan-out (reminders + Task Guardian)**
+- Reminders (`backend/app/api/routes/chat/reminders.py`) were Telegram-only. Now fan out to **Telegram, Discord, and WhatsApp** in sequence using importlib lazy-import (no circular imports, bridges that aren't configured silently skip).
+- Task Guardian run notifications (`backend/app/services/guardian/task_guardian.py`) got the same treatment — all three bridges notified when a scheduled job completes.
+- This is the key UX unlock: a reminder fires and you get the ping on whichever app you're actually looking at.
+
+**2. Google Calendar skill — `calendar_list_events`** (`backend/skills/calendar_list_events.py`)
+- Lists upcoming events using the Google Calendar REST API via httpx.
+- Reuses `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REFRESH_TOKEN` (same as Gmail / Drive — no new credentials).
+- Optional `GOOGLE_CALENDAR_ID` env var (default: `primary`).
+- `max_results` (1–20, default 10) and `days_ahead` (1–30, default 7) parameters.
+- Policy: `read / allow` — no confirmation required.
+
+**3. Google Calendar skill — `calendar_create_event`** (`backend/skills/calendar_create_event.py`)
+- Creates a calendar event with summary, start/end time, optional description, location, and attendee list.
+- Policy: `write / confirm` — always shows confirmation modal before writing to calendar.
+- Passes `requires_execution_gate: True` so the executive guardian journals the action.
+
+**4. News skill — `news_headlines`** (`backend/skills/news_headlines.py`)
+- Zero-config (no API key).
+- `topic=technology` (default) → Hacker News official API top stories with scores.
+- `topic=world/business/science/sports/health` → BBC News RSS feeds parsed via `xml.etree.ElementTree`.
+- `count` parameter (1–15, default 8).
+
+**5. Currency conversion skill — `currency_convert`** (`backend/skills/currency_convert.py`)
+- Live FX rates via `open.er-api.com` (free, no key); falls back to `exchangerate-api.com`.
+- `from_currency`, `to_currency`, `amount` parameters.
+- Zero-config, policy: `read / allow`.
+
+**6. Crypto price skill — `crypto_price`** (`backend/skills/crypto_price.py`)
+- Real-time prices via CoinGecko public API (free, no key, no rate-limit issues at personal use scale).
+- `coins` param: comma-separated names or tickers (`btc`, `eth`, `sol`, `bnb`, …). Built-in alias map → CoinGecko IDs.
+- Shows price, 24h % change (▲/▼), and market cap.
+- `vs_currency` param (default: `usd`).
+
+### New files
+
+- `backend/skills/calendar_list_events.py`
+- `backend/skills/calendar_create_event.py`
+- `backend/skills/news_headlines.py`
+- `backend/skills/currency_convert.py`
+- `backend/skills/crypto_price.py`
+
+### Modified files
+
+- `backend/app/api/routes/chat/reminders.py` — fan-out to all 3 bridges
+- `backend/app/services/guardian/task_guardian.py` — fan-out to all 3 bridges
+
+### Verified working
+
+- `venv/bin/python -c "from app.services.skills import _registry; ..."` → 6 skills loaded (weather + 5 new)
+- `venv/bin/python -c "from app.main import app"` → import clean
+- `sudo systemctl restart sparkbot-v2` → `active`, `Application startup complete`
+
+### Next actions (Phase 2 — Proactive Autonomy)
+
+1. **Task Guardian write-actions** — add `gmail_send`, `calendar_create_event`, `slack_post` to `ALLOWED_TASK_TOOLS` with a confirmation gate that works in the async scheduled context (not the per-request confirm_id flow).
+2. **Morning briefing canned job** — a pre-built Task Guardian template: fetch inbox + calendar + reminders → compose a summary → fan-out to all channels. User just sets their preferred time.
+3. **Channel activation** — set `DISCORD_BOT_TOKEN` + `DISCORD_ENABLED=true` and `WHATSAPP_*` vars to make the fan-out actually reach phone. Ops task, no code changes needed.
+
+---
+
 ## Session — 2026-03-07 · GitHub bridge added
 
 ### What was done

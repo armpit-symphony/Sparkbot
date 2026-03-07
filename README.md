@@ -160,7 +160,12 @@ Optionally declare `POLICY` to set guardian scope/action (defaults to `read/allo
 
 ```
 backend/skills/
-└── example_weather.py   # working example using wttr.in (no API key)
+├── example_weather.py          # get_weather via wttr.in (no API key)
+├── calendar_list_events.py     # list Google Calendar events (uses GOOGLE_* OAuth vars)
+├── calendar_create_event.py    # create Google Calendar event (requires confirmation)
+├── news_headlines.py           # news_headlines: HN top stories or BBC RSS (no API key)
+├── currency_convert.py         # currency_convert: live rates via open.er-api.com (no API key)
+└── crypto_price.py             # crypto_price: BTC/ETH/SOL/… via CoinGecko (no API key)
 ```
 
 Set `SPARKBOT_SKILLS_DIR` env var to change the directory (relative to `backend/` or absolute).
@@ -572,7 +577,12 @@ sparkbot-v2/
 │   │   ├── crud.py                       # DB helper functions
 │   │   └── alembic/                      # DB migrations
 │   ├── skills/                           # Drop skill .py files here — auto-loaded on restart
-│   │   └── example_weather.py            # Example: get_weather via wttr.in
+│   │   ├── example_weather.py            # get_weather via wttr.in (no API key)
+│   │   ├── calendar_list_events.py       # list Google Calendar events
+│   │   ├── calendar_create_event.py      # create Google Calendar event (confirmation required)
+│   │   ├── news_headlines.py             # news_headlines: HN + BBC RSS (no API key)
+│   │   ├── currency_convert.py           # currency_convert: live FX rates (no API key)
+│   │   └── crypto_price.py              # crypto_price: CoinGecko (no API key)
 │   ├── pyproject.toml                    # Python dependencies
 │   └── venv/                             # Python virtualenv
 ├── frontend/
@@ -650,8 +660,24 @@ User message → Token Guardian → Memory Guardian → LLM
 - ✅ Phase D — write-tool gate, audit redaction, HttpOnly cookies, security headers
 - ✅ Phase E — dependency scanning CI workflow
 
+### Phase 1 — Personal + Work Assistant Foundations ✅ (2026-03-07)
+- ✅ Proactive notification fan-out — reminders and Task Guardian results now push to Telegram, Discord, AND WhatsApp (was Telegram-only)
+- ✅ Google Calendar skill — `calendar_list_events` and `calendar_create_event` via existing Google OAuth (no new packages)
+- ✅ News skill — `news_headlines`: Hacker News top stories (tech) or BBC RSS (world/business/science/sports/health), no API key
+- ✅ Currency skill — `currency_convert`: live FX rates via open.er-api.com, no API key
+- ✅ Crypto skill — `crypto_price`: BTC/ETH/SOL/… prices + 24h change + market cap via CoinGecko, no API key
+
 ### Pending (ops, not blocking)
 - Key rotation — run after active testing window closes (see `ROTATION_RUNBOOK.md`)
 - Message edit UI (backend PATCH endpoint exists, no frontend)
 - Reply threading UI (DB + API ready, no frontend component)
 - Skill marketplace / built-in skill library (filesystem drop-in is the foundation)
+
+### Phase 2 — Proactive Autonomy (planned)
+- Task Guardian write-actions with approval gate (gmail_send, slack_post, calendar_create_event in scheduled context)
+- Morning briefing canned job (email summary + calendar + reminders → fan-out to all channels)
+
+### Phase 3 — Work UX Polish (planned)
+- Reply threading frontend
+- Message edit UI
+- Onboarding copy / Guardian health explainer
