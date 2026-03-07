@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { createFileRoute } from "@tanstack/react-router"
-import { Check, Copy, Loader2, Paperclip, RefreshCw, Search, Send, Settings2, X } from "lucide-react"
+import { Check, Copy, Loader2, Mic, Paperclip, RefreshCw, Search, Send, Settings2, Volume2, VolumeX, X } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter"
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism"
@@ -722,9 +722,17 @@ function SparkbotDmPage() {
   const [taskSchedule, setTaskSchedule] = useState("every:3600")
   const [taskArgs, setTaskArgs] = useState('{"max_emails": 5, "unread_only": true}')
   const [taskSaving, setTaskSaving] = useState(false)
+  const [isRecording, setIsRecording] = useState(false)
+  const [recordingSeconds, setRecordingSeconds] = useState(0)
+  const [voiceMode, setVoiceMode] = useState(
+    () => localStorage.getItem("sparkbot_voice_mode") === "true"
+  )
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }) }, [messages])
   useEffect(() => { setShowCommands(inputValue.startsWith("/") && !inputValue.includes(" ")) }, [inputValue])
@@ -1228,6 +1236,130 @@ function SparkbotDmPage() {
     }
   }, [roomId, uploading, sending, inputValue])
 
+  // ── Voice ────────────────────────────────────────────────────────────────────
+
+  const playTTS = useCallback(async (text: string) => {
+    try {
+      const res = await fetch("/api/v1/chat/voice/tts", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      })
+      if (!res.ok) return
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const audio = new Audio(url)
+      audio.onended = () => URL.revokeObjectURL(url)
+      audio.play()
+    } catch { /* ignore */ }
+  }, [])
+
+  const handleVoiceSend = useCallback(async (blob: Blob) => {
+    if (!roomId) return
+    setSending(true)
+
+    const tempHumanId = `temp-human-${Date.now()}`
+    const tempBotId = `temp-bot-${Date.now()}`
+    setMessages(prev => [
+      ...prev,
+      { id: tempHumanId, content: "🎤 …", created_at: new Date().toISOString(), sender_type: "HUMAN" },
+      { id: tempBotId, content: "", created_at: new Date().toISOString(), sender_type: "BOT", isStreaming: true },
+    ])
+
+    try {
+      const form = new FormData()
+      form.append("audio", blob, "recording.webm")
+
+      const res = await fetch(`/api/v1/chat/rooms/${roomId}/voice`, {
+        method: "POST",
+        credentials: "include",
+        body: form,
+      })
+
+      if (!res.ok || !res.body) {
+        setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, content: "⚠️ Voice send failed.", isStreaming: false } : m))
+        setSending(false)
+        return
+      }
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ""
+      let botFullText = ""
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split("\n"); buffer = lines.pop() ?? ""
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue
+          try {
+            const ev = JSON.parse(line.slice(6))
+            if (ev.type === "transcription") {
+              setMessages(prev => prev.map(m => m.id === tempHumanId ? { ...m, content: ev.text } : m))
+            } else if (ev.type === "human_message") {
+              setMessages(prev => prev.map(m => m.id === tempHumanId ? { ...m, id: ev.message_id } : m))
+            } else if (ev.type === "tool_start") {
+              const icon = TOOL_ICONS[ev.tool] ?? "⚙️"
+              const label = ev.input?.query ?? ev.input?.expression ?? ""
+              setMessages(prev => prev.map(m => m.id === tempBotId
+                ? { ...m, toolActivity: `${icon} ${ev.tool.replace("_", " ")}${label ? `: ${label}` : ""}…` }
+                : m))
+            } else if (ev.type === "tool_done") {
+              setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, toolActivity: undefined } : m))
+            } else if (ev.type === "token") {
+              botFullText += ev.token
+              setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, content: m.content + ev.token } : m))
+            } else if (ev.type === "confirm_required") {
+              setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, content: "", isStreaming: false, toolActivity: undefined } : m))
+              setPendingConfirm({ confirmId: ev.confirm_id, tool: ev.tool, input: ev.input ?? {} })
+              setSending(false)
+              return
+            } else if (ev.type === "done") {
+              setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, id: ev.message_id, isStreaming: false, toolActivity: undefined } : m))
+              if (voiceMode && botFullText) {
+                playTTS(botFullText)
+              }
+            } else if (ev.type === "error") {
+              setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, content: `⚠️ ${ev.error}`, isStreaming: false, toolActivity: undefined } : m))
+            }
+          } catch { /* ignore */ }
+        }
+      }
+    } catch {
+      setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, content: "⚠️ Connection error.", isStreaming: false } : m))
+    } finally {
+      setSending(false)
+    }
+  }, [roomId, voiceMode, playTTS])
+
+  const handleVoiceToggle = useCallback(async () => {
+    if (isRecording) {
+      mediaRecorderRef.current?.stop()
+      clearInterval(recordingTimerRef.current!)
+      return
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mr = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" })
+      audioChunksRef.current = []
+      mr.ondataavailable = e => { if (e.data.size > 0) audioChunksRef.current.push(e.data) }
+      mr.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop())
+        setIsRecording(false)
+        setRecordingSeconds(0)
+        const blob = new Blob(audioChunksRef.current, { type: "audio/webm" })
+        await handleVoiceSend(blob)
+      }
+      mr.start()
+      mediaRecorderRef.current = mr
+      setIsRecording(true)
+      recordingTimerRef.current = setInterval(() => setRecordingSeconds(s => s + 1), 1000)
+    } catch { /* mic permission denied — no crash */ }
+  }, [isRecording, handleVoiceSend])
+
   // ── Send ─────────────────────────────────────────────────────────────────────
 
   const handleSend = useCallback(async () => {
@@ -1514,6 +1646,20 @@ function SparkbotDmPage() {
             {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
           </button>
 
+          {/* Mic button */}
+          <button
+            onClick={handleVoiceToggle}
+            disabled={sending || uploading}
+            title={isRecording ? `Recording ${recordingSeconds}s — click to send` : "Voice message"}
+            className={`flex h-9 w-9 items-center justify-center rounded-full disabled:opacity-40 ${
+              isRecording ? "bg-red-500 text-white animate-pulse" : "text-muted-foreground hover:bg-muted"
+            }`}
+          >
+            {isRecording
+              ? <span className="text-[10px] font-mono">{recordingSeconds}s</span>
+              : <Mic className="h-4 w-4" />}
+          </button>
+
           <input
             ref={inputRef}
             value={inputValue}
@@ -1532,6 +1678,21 @@ function SparkbotDmPage() {
             className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground disabled:opacity-40"
           >
             {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+          </button>
+
+          {/* Voice mode toggle */}
+          <button
+            onClick={() => {
+              const next = !voiceMode
+              setVoiceMode(next)
+              localStorage.setItem("sparkbot_voice_mode", String(next))
+            }}
+            title={voiceMode ? "Voice mode on — replies spoken aloud" : "Voice mode off"}
+            className={`flex h-9 w-9 items-center justify-center rounded-full ${
+              voiceMode ? "text-primary" : "text-muted-foreground hover:bg-muted"
+            }`}
+          >
+            {voiceMode ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
           </button>
         </div>
       </div>

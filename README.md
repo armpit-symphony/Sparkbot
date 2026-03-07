@@ -70,6 +70,46 @@ Browser
 - **Copy-code button** — one click to clipboard on every code block
 - **Message search** — full-text search across room history (`/search`)
 - **File uploads** — images (vision analysis), documents (text extraction + summarisation), other files (10 MB max)
+- **Voice input** — click the mic button to record; Whisper transcribes the audio and the transcript enters the normal LLM pipeline (all policy/tool/confirmation logic unchanged)
+- **Text-to-speech replies** — enable voice mode (speaker button) to hear bot replies spoken aloud via OpenAI TTS
+
+### Voice (Whisper + TTS)
+Record a voice message directly in the browser — no extra packages needed.
+
+**How it works:**
+1. Click the **mic button** (between the upload and text input) — browser prompts for mic permission
+2. While recording the button pulses red and shows a second counter
+3. Click again to stop — audio is sent to Whisper (`whisper-1`) for transcription
+4. The transcript appears as your human message; the bot replies via the normal streaming pipeline
+5. Enable **voice mode** (speaker icon after the send button) to have bot replies read aloud automatically
+
+**UI controls in the input bar:**
+
+| Button | State | Action |
+|--------|-------|--------|
+| 🎙 Mic | idle → click | Start recording |
+| 🔴 `Ns` | recording → click | Stop + send |
+| 🔇 VolumeX | voice mode off | Toggle on — replies spoken aloud |
+| 🔊 Volume2 | voice mode on | Toggle off |
+
+Voice mode preference is persisted in `localStorage`.
+
+**SSE protocol for voice** (superset of `/messages/stream`):
+```
+data: {"type": "transcription",  "text": "what's the weather in Tokyo?"}
+data: {"type": "human_message",  "message_id": "..."}
+data: {"type": "token",          "token": "..."}
+data: {"type": "done",           "message_id": "..."}
+```
+
+**Endpoints:**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/v1/chat/rooms/{id}/voice` | Audio → Whisper → SSE stream (multipart, `audio` field ≤ 5 MB) |
+| `POST` | `/api/v1/chat/voice/tts` | Text → `audio/mpeg` stream |
+
+Both require authentication. Room membership is enforced on the per-room endpoint.
 
 ### Document Summarisation
 Upload a PDF, DOCX, TXT, Markdown, or CSV and the bot reads and summarises it. Use the caption field as your prompt — e.g. *"What are the action items?"* or *"Summarise the key findings"*.
@@ -316,6 +356,13 @@ Notes:
 SPARKBOT_SKILLS_DIR=skills   # path relative to backend/ or absolute
 ```
 
+### Optional — Voice (Whisper + TTS)
+Requires `OPENAI_API_KEY` (already needed for the default model).
+```env
+SPARKBOT_TTS_VOICE=alloy   # alloy | echo | fable | onyx | nova | shimmer
+SPARKBOT_TTS_MODEL=tts-1   # tts-1 (fast) or tts-1-hd (higher quality)
+```
+
 ### Optional — Server Operations
 ```env
 SPARKBOT_ALLOWED_SERVICES=sparkbot-v2
@@ -407,6 +454,8 @@ curl https://remote.sparkpitlabs.com/api/v1/utils/health-check/
 | `GET` | `/api/v1/chat/rooms/{id}/messages` | Room message history |
 | `POST` | `/api/v1/chat/rooms/{id}/messages/stream` | Send message, receive SSE stream |
 | `POST` | `/api/v1/chat/rooms/{id}/upload` | Upload file, receive SSE stream |
+| `POST` | `/api/v1/chat/rooms/{id}/voice` | Voice recording → Whisper → SSE stream |
+| `POST` | `/api/v1/chat/voice/tts` | Text → `audio/mpeg` TTS stream |
 | `GET` | `/api/v1/chat/messages/{id}/search?q=` | Full-text message search |
 | `GET` | `/api/v1/chat/models` | List available LLM models |
 | `POST` | `/api/v1/chat/model` | Set model preference `{"model": "gpt-4o"}` |
@@ -435,6 +484,7 @@ sparkbot-v2/
 │   │   │       ├── messages.py           # Message CRUD + search
 │   │   │       ├── memory.py             # User memory CRUD endpoints
 │   │   │       ├── uploads.py            # File upload + vision SSE
+│   │   │       ├── voice.py              # Voice: Whisper transcription + TTS endpoints
 │   │   │       ├── model.py              # Model switching endpoints
 │   │   │       ├── users.py              # Chat user management + bootstrap
 │   │   │       └── websocket.py          # WebSocket handler
@@ -511,6 +561,7 @@ User message → Token Guardian → Memory Guardian → LLM
 - ✅ Email integration (IMAP + SMTP), GitHub, Notion, Confluence, Slack
 - ✅ Multi-agent rooms (@researcher / @coder / @writer / @analyst)
 - ✅ Audit log (tool calls recorded, room-scoped, `/audit` command)
+- ✅ Voice input + TTS replies (Whisper transcription → LLM pipeline → optional TTS playback)
 
 ### Security audit — all phases complete ✅
 - ✅ Phase A — access control + secret hygiene

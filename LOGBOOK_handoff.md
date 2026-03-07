@@ -4,6 +4,71 @@
 
 ---
 
+## Session — 2026-03-07 · Voice input + TTS added (Whisper + OpenAI TTS)
+
+### What was done
+
+- Added full voice support: mic → Whisper transcription → existing LLM pipeline → optional TTS playback.
+- No new packages required — `openai` 2.21.0 was already installed.
+
+### New files
+
+- `backend/app/api/routes/chat/voice.py` (~160 lines) — two endpoints:
+  - `POST /chat/rooms/{room_id}/voice` — accepts `audio` field (≤ 5 MB multipart), transcribes via `whisper-1`, saves human message with transcript, calls `stream_chat_with_tools()`, streams SSE back. Emits a new `transcription` event (voice-only) so the UI can update the temp human message with the actual words heard before the bot replies.
+  - `POST /chat/voice/tts` — accepts `{"text": "..."}` JSON, returns `audio/mpeg` stream via OpenAI TTS. Voice/model configurable via `SPARKBOT_TTS_VOICE` / `SPARKBOT_TTS_MODEL` env vars.
+
+### Modified files
+
+- `backend/app/api/routes/chat/__init__.py` — added `voice_router` import + `__all__` entry
+- `backend/app/api/main.py` — `include_router(voice_router, prefix="/chat")`
+- `frontend/src/pages/SparkbotDmPage.tsx`:
+  - Added `Mic`, `Volume2`, `VolumeX` from lucide-react
+  - New state: `isRecording`, `recordingSeconds`, `voiceMode` (persisted to localStorage)
+  - New refs: `mediaRecorderRef`, `audioChunksRef`, `recordingTimerRef`
+  - `playTTS(text)` — fetches TTS endpoint, plays via `HTMLAudioElement`, revokes blob URL on end
+  - `handleVoiceSend(blob)` — mirrors SSE reader in `handleSend()`; replaces temp "🎤 …" human message with actual transcript on `transcription` event; calls `playTTS()` when voice mode on + `done` fires
+  - `handleVoiceToggle()` — mic permission → `MediaRecorder` start/stop; no crash on denial
+  - Mic button (pulsing red + second counter while recording) inserted between upload and text input
+  - Voice mode toggle (Volume2/VolumeX) inserted after send button
+- `.env.example` — added `SPARKBOT_TTS_VOICE=alloy` and `SPARKBOT_TTS_MODEL=tts-1`
+- `README.md` — new Voice section, config, API table, project tree, roadmap entry
+
+### SSE protocol for voice (superset of /messages/stream)
+
+```
+data: {"type": "transcription",  "text": "what's the weather in Tokyo?"}
+data: {"type": "human_message",  "message_id": "..."}
+data: {"type": "token",          "token": "..."}
+data: {"type": "done",           "message_id": "..."}
+```
+
+### Security notes
+
+- Both endpoints require auth (same cookie-first `CurrentChatUser` dep as all other routes)
+- Room membership enforced on `/rooms/{room_id}/voice`; VIEWERs blocked
+- `/voice/tts` requires auth; no room scope (text → audio, no room state)
+- Transcribed text enters `stream_chat_with_tools()` unchanged — all policy/tool/guardian logic fires identically
+
+### Verified working
+
+- Frontend build: `bun run build` clean (no errors)
+- Service restarted clean: `journalctl -u sparkbot-v2` shows `Application startup complete`
+- Routes confirmed in OpenAPI spec: `GET /api/v1/openapi.json` shows both voice paths
+
+### Current state
+
+- Voice is live on production (`sparkbot-v2`)
+- Requires `OPENAI_API_KEY` (already set); no extra env vars needed to enable (TTS voice/model have sensible defaults)
+- Voice mode preference persists across page reloads via localStorage
+
+### Next actions
+
+1. Test in browser — mic permission, recording, transcription, streaming, TTS playback
+2. Test with voice mode on — bot replies should play automatically after `done` fires
+3. Consider adding OpenClaw voice support via the same Whisper + TTS pattern
+
+---
+
 ## Session — 2026-03-06 · Skill plugin system added
 
 ### What was done
