@@ -260,6 +260,7 @@ interface Agent {
   name: string
   emoji: string
   description: string
+  is_builtin?: boolean
 }
 
 // Built-in agents — mirrors backend agents.py (shown before API loads)
@@ -268,6 +269,22 @@ const BUILTIN_AGENTS: Agent[] = [
   { name: "coder",      emoji: "💻", description: "Software engineer — clean, working code with explanations" },
   { name: "writer",     emoji: "✍️", description: "Professional writer — drafts, edits, structures content" },
   { name: "analyst",    emoji: "📊", description: "Data analyst — structured reasoning and actionable insights" },
+]
+
+// ─── Specialty agent templates (shown in Spawn Agent picker) ──────────────────
+
+const AGENT_TEMPLATES = [
+  { id: "custom",          label: "Custom (blank)",         emoji: "🤖", description: "", prompt: "" },
+  { id: "data_scientist",  label: "Data Scientist",          emoji: "📈", description: "Python data analysis, statistics, visualization, and ML insights", prompt: "You are the Data Scientist agent. You specialize in data analysis, statistics, and machine learning. Use Python-first approaches, produce clear visualizations when helpful, and surface actionable insights. Show your methodology and confidence bounds." },
+  { id: "devops",          label: "DevOps Engineer",         emoji: "🔧", description: "Infrastructure, CI/CD, Docker, Kubernetes, cloud, and automation", prompt: "You are the DevOps Engineer agent. You specialize in infrastructure, containerization, CI/CD pipelines, Kubernetes, and cloud platforms (AWS/GCP/Azure). Produce working shell scripts, Dockerfiles, and pipeline configs. Always consider security, cost, and reliability." },
+  { id: "legal",           label: "Legal Advisor",           emoji: "⚖️", description: "Legal concepts, contract review, compliance guidance (informational only)", prompt: "You are the Legal Advisor agent. You help with understanding legal concepts, reviewing contract language, and identifying compliance considerations. Always clarify that your responses are informational only and not formal legal advice. Flag anything that requires a licensed attorney." },
+  { id: "hr",              label: "HR Manager",              emoji: "👥", description: "Hiring, onboarding, performance reviews, HR policy, team dynamics", prompt: "You are the HR Manager agent. You help with hiring processes, job descriptions, onboarding plans, performance review frameworks, and HR policy questions. Be empathetic, legally aware (flag jurisdiction-specific considerations), and practical." },
+  { id: "marketing",       label: "Marketing Specialist",    emoji: "📣", description: "Content strategy, campaign planning, brand voice, copywriting", prompt: "You are the Marketing Specialist agent. You excel at content strategy, campaign planning, SEO-aware copywriting, and social media. Tailor content to the target audience and channel. Offer multiple tone options when style matters." },
+  { id: "finance",         label: "Financial Analyst",       emoji: "💰", description: "Budgeting, financial modeling, investment concepts, cost analysis", prompt: "You are the Financial Analyst agent. You help with budgeting, financial modeling, cost-benefit analysis, and interpreting financial data. Use structured tables and formulas. Distinguish between estimates and certainties, and flag when professional financial advice is warranted." },
+  { id: "support",         label: "Customer Support",        emoji: "🎧", description: "Friendly, empathetic issue resolution and escalation guidance", prompt: "You are the Customer Support agent. You respond with warmth, patience, and clarity. Help resolve issues step-by-step, de-escalate frustrated customers, and know when to escalate to a human. Keep tone friendly and professional." },
+  { id: "pm",              label: "Project Manager",         emoji: "📋", description: "Project planning, sprint coordination, risk tracking, stakeholder comms", prompt: "You are the Project Manager agent. You help plan projects, define milestones, track risks, write status updates, and structure team communication. Use agile or waterfall frameworks as appropriate. Be precise about timelines, owners, and dependencies." },
+  { id: "security",        label: "Security Analyst",        emoji: "🔐", description: "Threat modeling, code security review, compliance, best practices", prompt: "You are the Security Analyst agent. You review code and architecture for security vulnerabilities, apply threat modeling (STRIDE, OWASP), and advise on compliance (SOC2, GDPR, ISO 27001). Be specific about severity and remediation steps." },
+  { id: "tech_writer",     label: "Technical Writer",        emoji: "📝", description: "API docs, user guides, READMEs, and clear technical documentation", prompt: "You are the Technical Writer agent. You produce clear, well-structured documentation: API references, user guides, READMEs, and changelogs. Adapt tone to the audience (developer vs end-user). Always prioritize accuracy and scannability." },
 ]
 
 // ─── Slash commands ───────────────────────────────────────────────────────────
@@ -608,6 +625,21 @@ interface SparkbotSettingsDialogProps {
   savingPersona: boolean
   onPersonaChange: (value: string) => void
   onSavePersona: () => void
+  allAgents: Agent[]
+  spawnTemplate: string
+  spawnName: string
+  spawnEmoji: string
+  spawnDescription: string
+  spawnPrompt: string
+  spawning: boolean
+  deletingAgent: string | null
+  onSpawnTemplateChange: (id: string) => void
+  onSpawnNameChange: (v: string) => void
+  onSpawnEmojiChange: (v: string) => void
+  onSpawnDescriptionChange: (v: string) => void
+  onSpawnPromptChange: (v: string) => void
+  onSpawnAgent: () => void
+  onDeleteAgent: (name: string) => void
 }
 
 const TASK_TOOL_OPTIONS = [
@@ -677,6 +709,21 @@ function SparkbotSettingsDialog({
   savingPersona,
   onPersonaChange,
   onSavePersona,
+  allAgents,
+  spawnTemplate,
+  spawnName,
+  spawnEmoji,
+  spawnDescription,
+  spawnPrompt,
+  spawning,
+  deletingAgent,
+  onSpawnTemplateChange,
+  onSpawnNameChange,
+  onSpawnEmojiChange,
+  onSpawnDescriptionChange,
+  onSpawnPromptChange,
+  onSpawnAgent,
+  onDeleteAgent,
 }: SparkbotSettingsDialogProps) {
   const configuredProviderCount = modelsConfig?.providers.filter((provider) => provider.configured).length ?? 0
   const enabledChannelCount = [
@@ -1327,6 +1374,134 @@ function SparkbotSettingsDialog({
 
           <section className="rounded-xl border p-4">
             <div className="mb-3">
+              <h2 className="text-sm font-semibold">Spawn Agent</h2>
+              <p className="text-xs text-muted-foreground">
+                Activate a specialty agent for this workspace. Spawned agents are immediately available via <code className="rounded bg-muted px-1">@mention</code> in all rooms — no restart needed.
+              </p>
+            </div>
+
+            {/* Template picker */}
+            <div className="grid gap-3 rounded-lg bg-muted/40 p-3 md:grid-cols-2">
+              <div className="md:col-span-2">
+                <label className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground">Agent template</label>
+                <select
+                  value={spawnTemplate}
+                  onChange={e => {
+                    const tpl = AGENT_TEMPLATES.find(t => t.id === e.target.value)
+                    onSpawnTemplateChange(e.target.value)
+                    if (tpl) {
+                      onSpawnNameChange(tpl.id === "custom" ? "" : tpl.id)
+                      onSpawnEmojiChange(tpl.emoji)
+                      onSpawnDescriptionChange(tpl.description)
+                      onSpawnPromptChange(tpl.prompt)
+                    }
+                  }}
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                >
+                  {AGENT_TEMPLATES.map(t => (
+                    <option key={t.id} value={t.id}>{t.emoji} {t.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex gap-2">
+                <div className="w-20 shrink-0">
+                  <label className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground">Emoji</label>
+                  <input
+                    value={spawnEmoji}
+                    onChange={e => onSpawnEmojiChange(e.target.value)}
+                    maxLength={4}
+                    className="w-full rounded-md border bg-background px-3 py-2 text-center text-lg outline-none"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground">Name (lowercase, no spaces)</label>
+                  <input
+                    value={spawnName}
+                    onChange={e => onSpawnNameChange(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
+                    placeholder="e.g. sysadmin"
+                    className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground">Short description</label>
+                <input
+                  value={spawnDescription}
+                  onChange={e => onSpawnDescriptionChange(e.target.value)}
+                  placeholder="One-line description shown in @mention picker"
+                  maxLength={300}
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground">System prompt</label>
+                <textarea
+                  value={spawnPrompt}
+                  onChange={e => onSpawnPromptChange(e.target.value)}
+                  placeholder="Instructions that define this agent's behavior and expertise…"
+                  rows={4}
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm font-mono outline-none resize-none"
+                />
+              </div>
+
+              <div className="md:col-span-2 flex justify-end">
+                <button
+                  type="button"
+                  onClick={onSpawnAgent}
+                  disabled={spawning || !spawnName.trim() || !spawnPrompt.trim()}
+                  className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50"
+                >
+                  {spawning ? "Spawning…" : "⚡ Spawn agent"}
+                </button>
+              </div>
+            </div>
+
+            {/* Active custom agents */}
+            {allAgents.filter(a => a.is_builtin === false).length > 0 && (
+              <div className="mt-4">
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Active custom agents</h3>
+                <div className="space-y-2">
+                  {allAgents.filter(a => a.is_builtin === false).map(agent => (
+                    <div key={agent.name} className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-base">{agent.emoji}</span>
+                        <div>
+                          <div className="text-sm font-medium">@{agent.name}</div>
+                          <div className="text-xs text-muted-foreground">{agent.description}</div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => onDeleteAgent(agent.name)}
+                        disabled={deletingAgent === agent.name}
+                        className="rounded-md border px-2 py-1 text-xs text-destructive hover:bg-destructive/10 disabled:opacity-50"
+                      >
+                        {deletingAgent === agent.name ? "…" : "Remove"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Built-in agents reference */}
+            <div className="mt-4">
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Built-in agents</h3>
+              <div className="flex flex-wrap gap-2">
+                {allAgents.filter(a => a.is_builtin !== false).map(agent => (
+                  <span key={agent.name} className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-xs">
+                    {agent.emoji} @{agent.name}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-xl border p-4">
+            <div className="mb-3">
               <h2 className="text-sm font-semibold">Task Guardian</h2>
               <p className="text-xs text-muted-foreground">
                 Schedule approved read-only routines and post results back into this room.
@@ -1595,6 +1770,15 @@ function SparkbotDmPage() {
   const [savingPersona, setSavingPersona] = useState(false)
   const [skills, setSkills] = useState<SkillInfo[]>([])
 
+  // ── Spawn Agent state ────────────────────────────────────────────────────────
+  const [spawnTemplate, setSpawnTemplate] = useState("custom")
+  const [spawnName, setSpawnName] = useState("")
+  const [spawnEmoji, setSpawnEmoji] = useState("🤖")
+  const [spawnDescription, setSpawnDescription] = useState("")
+  const [spawnPrompt, setSpawnPrompt] = useState("")
+  const [spawning, setSpawning] = useState(false)
+  const [deletingAgent, setDeletingAgent] = useState<string | null>(null)
+
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }) }, [messages])
   useEffect(() => { setShowCommands(inputValue.startsWith("/") && !inputValue.includes(" ")) }, [inputValue])
   useEffect(() => { setShowAgentPicker(inputValue.startsWith("@") && !inputValue.includes(" ")) }, [inputValue])
@@ -1767,6 +1951,43 @@ function SparkbotDmPage() {
       setSavingPersona(false)
     }
   }, [roomId, roomPersona])
+
+  const spawnAgent = useCallback(async () => {
+    const name = spawnName.trim().toLowerCase().replace(/\s+/g, "_")
+    if (!name || !spawnPrompt.trim()) return
+    setSpawning(true)
+    setSettingsError("")
+    try {
+      const res = await fetch("/api/v1/chat/agents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name, emoji: spawnEmoji, description: spawnDescription, system_prompt: spawnPrompt }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ detail: "Could not spawn agent." }))
+        setSettingsError(data.detail ?? "Could not spawn agent.")
+      } else {
+        const data = await res.json()
+        setAgents(prev => [...prev.filter(a => a.name !== name), { name: data.name, emoji: data.emoji, description: data.description, is_builtin: false }])
+        setSpawnName(""); setSpawnEmoji("🤖"); setSpawnDescription(""); setSpawnPrompt(""); setSpawnTemplate("custom")
+      }
+    } catch { setSettingsError("Could not spawn agent.") } finally { setSpawning(false) }
+  }, [spawnName, spawnEmoji, spawnDescription, spawnPrompt])
+
+  const deleteAgent = useCallback(async (name: string) => {
+    setDeletingAgent(name)
+    setSettingsError("")
+    try {
+      const res = await fetch(`/api/v1/chat/agents/${name}`, { method: "DELETE", credentials: "include" })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ detail: "Could not delete agent." }))
+        setSettingsError(data.detail ?? "Could not delete agent.")
+      } else {
+        setAgents(prev => prev.filter(a => a.name !== name))
+      }
+    } catch { setSettingsError("Could not delete agent.") } finally { setDeletingAgent(null) }
+  }, [])
 
   const saveModelStack = useCallback(async () => {
     setSavingModelStack(true)
@@ -2684,6 +2905,21 @@ function SparkbotDmPage() {
         savingPersona={savingPersona}
         onPersonaChange={setRoomPersona}
         onSavePersona={savePersona}
+        allAgents={agents}
+        spawnTemplate={spawnTemplate}
+        spawnName={spawnName}
+        spawnEmoji={spawnEmoji}
+        spawnDescription={spawnDescription}
+        spawnPrompt={spawnPrompt}
+        spawning={spawning}
+        deletingAgent={deletingAgent}
+        onSpawnTemplateChange={setSpawnTemplate}
+        onSpawnNameChange={setSpawnName}
+        onSpawnEmojiChange={setSpawnEmoji}
+        onSpawnDescriptionChange={setSpawnDescription}
+        onSpawnPromptChange={setSpawnPrompt}
+        onSpawnAgent={spawnAgent}
+        onDeleteAgent={deleteAgent}
       />
 
       {/* Search overlay */}

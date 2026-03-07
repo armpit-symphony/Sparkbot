@@ -78,6 +78,15 @@ async def _start_background_guardians() -> None:
     if not getattr(app.state, "discord_bot_task", None):
         app.state.discord_bot_task = asyncio.create_task(discord_bot_task(get_db))
 
+    # Load custom agents persisted in DB into the runtime registry
+    try:
+        from app.api.routes.chat.agents import load_db_agents_into_registry
+        db = next(get_db())
+        load_db_agents_into_registry(db)
+        db.close()
+    except Exception:
+        pass
+
 
 @app.on_event("shutdown")
 async def _stop_background_guardians() -> None:

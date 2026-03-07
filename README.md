@@ -690,7 +690,14 @@ User message → Token Guardian → Memory Guardian → LLM
 - ✅ Skill marketplace UI — `GET /api/v1/chat/skills` lists all loaded plugins with name, description, action_type (read/write), high_risk, and execution_gate flags; settings dialog shows colored chip cards; auto-refreshes on open
 - ✅ Voice quick-capture — `POST /rooms/{id}/voice/transcribe` returns `{"text":"..."}` (no LLM); voiceMode OFF = mic transcribes and pastes to input; voiceMode ON = original full voice-message flow with TTS readback
 
-### Phase 6 — Agent Builder & Smart Scheduling (planned)
-- Custom agent builder UI — create agents with name, emoji, system prompt from settings (no env var editing)
+### Phase 6 — Spawn Agent ✅ (2026-03-07)
+- ✅ Spawn Agent in Control Center — "Spawn Agent" section in the settings dialog; select from 11 specialty templates (Data Scientist, DevOps, Legal Advisor, HR Manager, Marketing, Finance, Customer Support, PM, Security Analyst, Technical Writer, or Custom); auto-fills emoji, name, description, and system prompt; name sanitized to lowercase alphanumeric/underscore
+- ✅ CustomAgent DB persistence — `custom_agents` table (Alembic migration `c4e8b2f9a017`); spawned agents survive restart; `created_by` FK to user
+- ✅ Hot-load runtime registry — spawned agents available via `@name` mention immediately after creation; no restart required; `_RUNTIME_AGENTS` dict updated in-process by `register_agent()` / `unregister_agent()`
+- ✅ Built-in agent protection — DELETE endpoint returns 403 for built-in agents (researcher, coder, writer, analyst)
+- ✅ Active agents list — settings dialog shows all custom agents with Remove buttons; built-in agents shown as read-only badges
+
+### Phase 7 — Smart Scheduling & Mobile Polish (planned)
 - Skill scheduler helper — detect "every morning / daily" intent in chat and auto-suggest a Task Guardian job
+- Mobile-optimized input — swipe-to-reply, better touch targets
 - Mobile UX — swipe-to-reply, larger touch targets

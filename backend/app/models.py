@@ -389,6 +389,19 @@ class AuditLog(SQLModel, table=True):
     model: Optional[str] = Field(default=None, max_length=100)
 
 
+class CustomAgent(SQLModel, table=True):
+    """User-spawned named agents stored in DB; loaded into runtime registry at startup."""
+    __tablename__ = "custom_agents"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    name: str = Field(max_length=50, nullable=False, sa_column_kwargs={"unique": True}, index=True)
+    emoji: str = Field(max_length=10, default="🤖")
+    description: str = Field(max_length=300, default="")
+    system_prompt: str = Field(default="", sa_column=Column(Text))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_by: Optional[uuid.UUID] = Field(default=None, foreign_key="chat_users.id")
+
+
 # Re-export chat models for convenience
 ChatUser.update_forward_refs()
 ChatRoom.update_forward_refs()

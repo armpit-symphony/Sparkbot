@@ -4,6 +4,81 @@
 
 ---
 
+## Session — 2026-03-07 · Phase 6: Spawn Agent — Custom Agent Builder in Control Center
+
+### Goal
+
+Let users create, persist, and instantly invoke custom specialty agents from the settings dialog ("Control Center"), complete with a template picker and live removal — no restart required.
+
+### What was done
+
+**1. Backend — CustomAgent DB model & migration**
+
+- **`backend/app/models.py`**: Added `CustomAgent` SQLModel table (`id`, `name`, `emoji`, `description`, `system_prompt`, `created_at`, `created_by`). Name is unique, indexed.
+- **Alembic migration** `c4e8b2f9a017_add_custom_agents.py`: creates `custom_agents` table with FK to `chat_users`. `down_revision = 'a1f4c8e9d203'`.
+
+**2. Backend — runtime agent registry**
+
+- **`backend/app/api/routes/chat/agents.py`**: Added module-level `_RUNTIME_AGENTS` dict; `register_agent()`, `unregister_agent()`, `get_all_agents()` (merges built-ins + env + DB runtime agents), `load_db_agents_into_registry()`.
+- Updated `get_agent()` and `resolve_agent_from_message()` to use `get_all_agents()` so newly spawned agents are routable immediately (no restart).
+- Kept `AGENTS` as a backward-compat static alias.
+
+**3. Backend — CRUD endpoints**
+
+- **`backend/app/api/routes/chat/model.py`**:
+  - `GET /agents` — returns all agents with `is_builtin` flag
+  - `POST /agents` — creates `CustomAgent` in DB + calls `register_agent()` (live, no restart)
+  - `DELETE /agents/{name}` — deletes from DB + `unregister_agent()`; rejects deletion of built-ins
+- `SessionDep` added to deps import; `AgentCreate` Pydantic schema validates name pattern `^[a-z0-9_]+$`.
+
+**4. Backend — startup loading**
+
+- **`backend/app/main.py`**: At startup, calls `load_db_agents_into_registry(db)` to restore persisted custom agents into the runtime registry.
+
+**5. Frontend — Spawn Agent UI**
+
+- Extended `Agent` interface with `is_builtin?: boolean`.
+- Added `AGENT_TEMPLATES` constant (11 templates: custom, data_scientist, devops, legal, hr, marketing, finance, support, pm, security, tech_writer) each with pre-filled emoji, description, and system prompt.
+- Added spawn agent state: `spawnTemplate`, `spawnName`, `spawnEmoji`, `spawnDescription`, `spawnPrompt`, `spawning`, `deletingAgent`.
+- `spawnAgent` callback: POST `/api/v1/chat/agents`, updates `agents` state on success, clears form.
+- `deleteAgent` callback: DELETE `/api/v1/chat/agents/{name}`, filters from `agents` state.
+- **Settings dialog "Spawn Agent" section** (before Task Guardian):
+  - Template dropdown — selecting auto-fills emoji, name, description, system prompt
+  - Emoji + name inputs (name auto-sanitized to lowercase alphanumeric/underscore)
+  - Description input + system prompt textarea
+  - "⚡ Spawn agent" button (disabled when name/prompt empty or saving)
+  - Active custom agents list with "Remove" buttons
+  - Built-in agents badge row (read-only)
+- All new props wired to `SparkbotSettingsDialog` call site.
+
+### New files
+
+- `backend/app/alembic/versions/c4e8b2f9a017_add_custom_agents.py`
+
+### Modified files
+
+- `backend/app/models.py` — CustomAgent table
+- `backend/app/api/routes/chat/agents.py` — runtime registry + live routing
+- `backend/app/api/routes/chat/model.py` — CRUD endpoints + AgentCreate schema
+- `backend/app/main.py` — startup DB loading
+- `frontend/src/pages/SparkbotDmPage.tsx` — Spawn Agent UI + state + callbacks
+
+### Verified working
+
+- Alembic migration `c4e8b2f9a017` applied cleanly
+- Backend imports clean
+- TypeScript + Vite build clean (no errors or warnings)
+- Spawned agents available via `@name` mention immediately after creation
+- Built-in agents protected from deletion (403)
+
+### Next actions (Phase 7)
+
+1. **Skill scheduler helper** — when user says "every morning" in chat, auto-suggest a Task Guardian job
+2. **Mobile-optimized input** — swipe-to-reply, better touch targets
+3. **Agent conversation history** — per-agent message history visible in UI
+
+---
+
 ## Session — 2026-03-07 · Phase 5: Persona, Skill Discovery & Voice Quick-Capture
 
 ### Goal

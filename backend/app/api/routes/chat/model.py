@@ -18,8 +18,8 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from app.api.deps import CurrentChatUser
-from app.api.routes.chat.agents import AGENTS
+from app.api.deps import CurrentChatUser, SessionDep
+from app.api.routes.chat.agents import BUILT_IN_AGENTS, get_all_agents, register_agent, unregister_agent
 from app.api.routes.chat.llm import (
     AVAILABLE_MODELS,
     BACKUP_MODEL_1_ENV,
@@ -220,13 +220,79 @@ def get_current_model(current_user: CurrentChatUser) -> dict:
 
 @router.get("/agents")
 def list_agents(current_user: CurrentChatUser) -> dict:
-    """Return all available named agents."""
+    """Return all available named agents, including spawned custom agents."""
     return {
         "agents": [
-            {"name": name, "emoji": info["emoji"], "description": info["description"]}
-            for name, info in AGENTS.items()
+            {
+                "name": name,
+                "emoji": info["emoji"],
+                "description": info["description"],
+                "is_builtin": name in BUILT_IN_AGENTS,
+            }
+            for name, info in get_all_agents().items()
         ]
     }
+
+
+class AgentCreate(BaseModel):
+    name: str = Field(..., max_length=50, pattern=r"^[a-z0-9_]+$")
+    emoji: str = Field(default="🤖", max_length=10)
+    description: str = Field(default="", max_length=300)
+    system_prompt: str = Field(..., min_length=10)
+
+
+@router.post("/agents", status_code=201)
+def create_agent(body: AgentCreate, current_user: CurrentChatUser, session: SessionDep) -> dict:
+    """Spawn a custom agent — persists to DB and registers immediately (no restart needed)."""
+    from sqlmodel import select
+    from app.models import CustomAgent
+
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    name = body.name.lower().strip()
+    if name in BUILT_IN_AGENTS:
+        raise HTTPException(status_code=409, detail=f"'{name}' is a built-in agent name.")
+
+    existing = session.exec(select(CustomAgent).where(CustomAgent.name == name)).first()
+    if existing:
+        raise HTTPException(status_code=409, detail=f"Agent '{name}' already exists.")
+
+    agent = CustomAgent(
+        name=name,
+        emoji=body.emoji,
+        description=body.description,
+        system_prompt=body.system_prompt,
+        created_by=current_user.id,
+    )
+    session.add(agent)
+    session.commit()
+
+    register_agent(name, body.emoji, body.description, body.system_prompt)
+    return {"name": name, "emoji": body.emoji, "description": body.description, "is_builtin": False}
+
+
+@router.delete("/agents/{name}", status_code=200)
+def delete_agent(name: str, current_user: CurrentChatUser, session: SessionDep) -> dict:
+    """Delete a custom agent from DB and unregister from the runtime registry."""
+    from sqlmodel import select
+    from app.models import CustomAgent
+
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    name = name.lower().strip()
+    if name in BUILT_IN_AGENTS:
+        raise HTTPException(status_code=403, detail=f"Cannot delete built-in agent '{name}'.")
+
+    agent = session.exec(select(CustomAgent).where(CustomAgent.name == name)).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail=f"Agent '{name}' not found.")
+
+    session.delete(agent)
+    session.commit()
+    unregister_agent(name)
+    return {"deleted": name}
 
 
 @router.post("/model")

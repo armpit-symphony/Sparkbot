@@ -85,13 +85,48 @@ def _load_custom_agents() -> dict[str, dict]:
         return {}
 
 
-# Merge built-in + custom agents (custom overrides built-in if same name)
+# ─── Runtime registry (DB-loaded + hot-spawned agents) ───────────────────────
+
+_RUNTIME_AGENTS: dict[str, dict] = {}
+
+
+def register_agent(name: str, emoji: str, description: str, system_prompt: str) -> None:
+    """Add/update an agent in the runtime registry. Call after persisting to DB."""
+    _RUNTIME_AGENTS[name.lower()] = {
+        "emoji": emoji,
+        "description": description,
+        "system_prompt": system_prompt,
+    }
+
+
+def unregister_agent(name: str) -> None:
+    """Remove an agent from the runtime registry."""
+    _RUNTIME_AGENTS.pop(name.lower(), None)
+
+
+def get_all_agents() -> dict[str, dict]:
+    """Return the full merged registry: built-ins + env-loaded + runtime DB agents."""
+    return {**BUILT_IN_AGENTS, **_load_custom_agents(), **_RUNTIME_AGENTS}
+
+
+def load_db_agents_into_registry(session) -> None:
+    """Load all custom agents from DB into the runtime registry. Call at startup."""
+    from sqlmodel import select
+    from app.models import CustomAgent
+    try:
+        for a in session.exec(select(CustomAgent)).all():
+            register_agent(a.name, a.emoji, a.description, a.system_prompt)
+    except Exception:
+        pass  # DB may not be ready yet at first boot
+
+
+# Keep AGENTS as a backward-compat alias for the static snapshot (used by imports)
 AGENTS: dict[str, dict] = {**BUILT_IN_AGENTS, **_load_custom_agents()}
 
 
 def get_agent(name: str) -> Optional[dict]:
     """Return agent dict for a name, or None if not found."""
-    return AGENTS.get(name.lower())
+    return get_all_agents().get(name.lower())
 
 
 def resolve_agent_from_message(content: str) -> tuple[Optional[str], str]:
@@ -107,7 +142,7 @@ def resolve_agent_from_message(content: str) -> tuple[Optional[str], str]:
     if not match:
         return None, content
     candidate = match.group(1).lower()
-    if candidate not in AGENTS:
+    if candidate not in get_all_agents():
         return None, content  # not a known agent — treat as regular message
     stripped = match.group(2).strip()
     return candidate, stripped or content  # if nothing after @agent, use full content
@@ -116,7 +151,7 @@ def resolve_agent_from_message(content: str) -> tuple[Optional[str], str]:
 def agents_list_text() -> str:
     """Return a formatted agent list for display in chat."""
     lines = ["**Available agents** — mention with @name:"]
-    for name, info in AGENTS.items():
+    for name, info in get_all_agents().items():
         lines.append(f"{info['emoji']} **@{name}** — {info['description']}")
     lines.append("\nExample: `@researcher what's the latest on quantum computing?`")
     return "\n".join(lines)
