@@ -11,6 +11,8 @@ from app.api.routes.chat.reminders import reminder_scheduler
 from app.core.config import settings
 from app.services.guardian.task_guardian import task_guardian_scheduler
 from app.services.telegram_bridge import telegram_polling_loop
+from app.services.discord_bridge import discord_bot_task
+from app.services.whatsapp_bridge import register_whatsapp_bridge
 
 
 def custom_generate_unique_id(route: APIRoute) -> str:
@@ -61,6 +63,9 @@ app.add_middleware(_SecurityHeadersMiddleware)
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
+# WhatsApp webhook routes mounted here (before uvicorn starts serving)
+register_whatsapp_bridge(app, get_db)
+
 
 @app.on_event("startup")
 async def _start_background_guardians() -> None:
@@ -70,11 +75,13 @@ async def _start_background_guardians() -> None:
         app.state.task_guardian_scheduler_task = asyncio.create_task(task_guardian_scheduler(get_db))
     if not getattr(app.state, "telegram_poller_task", None):
         app.state.telegram_poller_task = asyncio.create_task(telegram_polling_loop(get_db))
+    if not getattr(app.state, "discord_bot_task", None):
+        app.state.discord_bot_task = asyncio.create_task(discord_bot_task(get_db))
 
 
 @app.on_event("shutdown")
 async def _stop_background_guardians() -> None:
-    for attr in ("reminder_scheduler_task", "task_guardian_scheduler_task", "telegram_poller_task"):
+    for attr in ("reminder_scheduler_task", "task_guardian_scheduler_task", "telegram_poller_task", "discord_bot_task"):
         task = getattr(app.state, attr, None)
         if task:
             task.cancel()

@@ -272,6 +272,9 @@ Agent Shield / Executive / Task Guardian phase notes:
 - Sparkbot DM now includes a controls panel for execution gate, recent policy decisions, and Task Guardian jobs.
 - Consumer rollout notes live in `consumer_readiness_checklist.md`.
 - Telegram bridge can run in long-polling mode with only `TELEGRAM_BOT_TOKEN`; private Telegram chats map into real Sparkbot rooms, and `/approve` or `/deny` can resolve pending confirmations.
+- Discord gateway bot responds to DMs and @mentions; each channel maps to a dedicated Sparkbot room; `/approve` and `/deny` work identically to Telegram.
+- WhatsApp Cloud API bridge (via pywa) mounts a webhook at `/whatsapp`; user-initiated replies are free-form within the 24-hour session window; `approve`/`deny` text commands handle pending confirmations.
+- All three inbound bridges emit an explicit startup status log so ops can confirm enabled vs disabled state immediately after boot.
 
 ---
 
@@ -350,6 +353,51 @@ Notes:
 - Telegram is private-chat-first; each Telegram chat is mapped into a dedicated Sparkbot room.
 - Sparkbot stores Telegram conversations in the same room history and uses `/approve` or `/deny` for pending confirmations.
 - Reminder and Task Guardian room notifications can fan back out to linked Telegram chats.
+
+### Optional — Discord Bridge
+```env
+DISCORD_BOT_TOKEN=
+DISCORD_ENABLED=false
+DISCORD_DM_ONLY=false         # true = DMs only; false = DMs + @mentions
+DISCORD_GUILD_IDS=            # comma-separated snowflakes to restrict guilds (optional)
+```
+
+Setup:
+1. [Discord Developer Portal](https://discord.com/developers) → New App → Bot → copy token
+2. Bot Settings → **Message Content Intent** must be **enabled** (privileged intent)
+3. OAuth2 → URL Generator → scopes: `bot` + permissions: Send Messages, Read Message History
+4. Set `DISCORD_ENABLED=true` and paste the token
+
+Notes:
+- Each DM channel and each guild channel where the bot is @mentioned maps to a dedicated Sparkbot room.
+- Runs as an asyncio task alongside FastAPI — same pattern as Telegram, no extra process needed.
+- `message.content` in DMs is always available; guild messages require the Message Content Intent toggle in the portal.
+- `/approve` and `/deny` resolve pending tool confirmations (same as Telegram).
+
+### Optional — WhatsApp Bridge (Meta Cloud API)
+```env
+WHATSAPP_ENABLED=false
+WHATSAPP_PHONE_ID=            # numeric Phone Number ID from Meta Developer Portal
+WHATSAPP_TOKEN=               # permanent system user token (whatsapp_business_messaging scope)
+WHATSAPP_VERIFY_TOKEN=sparkbot-wa-verify   # must match what you set in Meta portal
+WHATSAPP_APP_ID=              # optional: for auto webhook registration
+WHATSAPP_APP_SECRET=          # optional: for auto webhook registration
+WHATSAPP_ALLOWED_PHONES=      # comma-separated E.164 numbers to allowlist (optional)
+PUBLIC_URL=https://remote.sparkpitlabs.com
+```
+
+Setup:
+1. [Meta Developer Portal](https://developers.facebook.com) → New App → WhatsApp → Add Phone Number
+2. System User → generate permanent token with `whatsapp_business_messaging` scope
+3. Webhook URL: `https://yourdomain.com/whatsapp` (pywa mounts this automatically)
+4. Verify Token: match `WHATSAPP_VERIFY_TOKEN`; subscribe to: `messages`
+
+Notes:
+- The registered phone **cannot** be simultaneously used in personal WhatsApp or WhatsApp Business App. Use a dedicated number or Meta's free sandbox test number for development.
+- User-initiated replies within the 24-hour session window are free-form text — no templates needed for a conversational bot.
+- Business-initiated messages (templates, marketing) are billed per message — not relevant for a reactive chatbot.
+- `approve` / `deny` text resolves pending tool confirmations (same as Telegram/Discord).
+- Uses [pywa](https://github.com/david-lev/pywa) 3.8.0 — the only well-maintained Python library for the official Cloud API.
 
 ### Optional — Skill Plugins
 ```env
@@ -490,6 +538,9 @@ sparkbot-v2/
 │   │   │       └── websocket.py          # WebSocket handler
 │   │   ├── services/
 │   │   │   ├── skills.py                 # Skill plugin loader (auto-discovers backend/skills/)
+│   │   │   ├── telegram_bridge.py        # Telegram long-poll bridge
+│   │   │   ├── discord_bridge.py         # Discord gateway bot bridge
+│   │   │   ├── whatsapp_bridge.py        # WhatsApp Cloud API webhook bridge (pywa)
 │   │   │   └── guardian/                 # Policy, executive, memory, task guardian
 │   │   ├── models.py                     # SQLModel DB models
 │   │   ├── crud.py                       # DB helper functions
@@ -562,6 +613,8 @@ User message → Token Guardian → Memory Guardian → LLM
 - ✅ Multi-agent rooms (@researcher / @coder / @writer / @analyst)
 - ✅ Audit log (tool calls recorded, room-scoped, `/audit` command)
 - ✅ Voice input + TTS replies (Whisper transcription → LLM pipeline → optional TTS playback)
+- ✅ Discord bridge — gateway bot, DMs + @mentions, `/approve` / `/deny` confirmation flow
+- ✅ WhatsApp bridge — Meta Cloud API webhook (pywa), free-form replies in 24h service window
 
 ### Security audit — all phases complete ✅
 - ✅ Phase A — access control + secret hygiene

@@ -4,6 +4,115 @@
 
 ---
 
+## Session — 2026-03-07 · Discord + WhatsApp bridges added
+
+### What was done
+
+Added Discord (gateway bot) and WhatsApp (Meta Cloud API webhook) as message channels.
+Both follow the exact same Gateway pattern as the Telegram bridge — identical SQLite sidecar,
+identical `_run_room_prompt()`, `_ensure_linked_room()`, `/approve`/`deny` confirmation flow.
+
+### Research summary
+
+**WhatsApp options researched:**
+- Meta on-premises API: dead, sunset October 23, 2025 — do not use
+- Unofficial libs (`yowsup`, `whatsapp-web.js`): dead or ban-risk — rejected
+- WAHA (self-hosted unofficial REST sidecar): viable for throwaway dev numbers, high ban risk for prod
+- **Meta Cloud API via `pywa` 3.8.0: chosen** — official, webhook-based, free for user-initiated replies within 24h session window. No templates needed for a reactive chatbot.
+
+**Discord options researched:**
+- discord.py 2.7.1: canonical, actively maintained — **chosen**
+- py-cord, nextcord: also viable, not needed over discord.py 2.x
+- Incoming webhooks: send-only, not viable for a chatbot
+
+**Key WhatsApp gotcha**: registered phone cannot simultaneously be used in personal WhatsApp; use a dedicated number or Meta's free sandbox test number for development.
+
+**Key Discord gotcha**: `MESSAGE_CONTENT` is a privileged intent — must be manually toggled in the Developer Portal. `message.content` is always available in DMs without it, but guild messages return empty string without it.
+
+### New files
+
+- `backend/app/services/discord_bridge.py`:
+  - `discord.Client` with `message_content=True` + `dm_messages=True` intents
+  - `on_ready` / `on_message` event handlers (module-level decorators on `bot`)
+  - Responds to DMs always; guild @mentions when not `DISCORD_DM_ONLY`
+  - Optional guild restriction via `DISCORD_GUILD_IDS`
+  - `/start`, `/help`, `/approve`, `/deny` slash-style commands
+  - `_run_room_prompt()` — full history, memory, agent routing, guardian stack
+  - `_execute_pending_confirmation()` — identical to Telegram
+  - `send_room_notification(room_id, text)` — for reminders / Task Guardian fan-out
+  - `discord_bot_task(get_db_session)` — started via `asyncio.create_task` in startup
+  - SQLite sidecar: `discord_bridge.db` — keyed on `channel_id`
+
+- `backend/app/services/whatsapp_bridge.py`:
+  - `register_whatsapp_bridge(app, get_db)` — called from `main.py` after `app = FastAPI(...)`
+  - pywa mounts `GET /whatsapp` (verification challenge) + `POST /whatsapp` (updates) automatically
+  - `@wa.on_message(filters.text)` handler for all inbound text messages
+  - Phone allowlist via `WHATSAPP_ALLOWED_PHONES`
+  - `approve` / `deny` keyword commands (text, not slash — WhatsApp has no slash commands)
+  - `send_room_notification(room_id, text)` — for reminders / Task Guardian fan-out
+  - SQLite sidecar: `whatsapp_bridge.db` — keyed on `wa_phone` (E.164 without +)
+  - Message chunking at 4000 chars (WhatsApp max = 4096)
+
+### Modified files
+
+- `backend/app/main.py`:
+  - `from app.services.discord_bridge import discord_bot_task`
+  - `from app.services.whatsapp_bridge import register_whatsapp_bridge`
+  - `register_whatsapp_bridge(app, get_db)` called after `app.include_router(...)`
+  - `discord_bot_task` started in `_start_background_guardians()` via `asyncio.create_task`
+  - `discord_bot_task` cancelled in `_stop_background_guardians()`
+- `backend/pyproject.toml` — added `discord.py>=2.3.2` and `pywa[fastapi]>=2.0.0`
+- `.env.example` — added Discord and WhatsApp config blocks with inline setup notes
+- `README.md` — new Discord + WhatsApp config sections, project tree, roadmap entries
+
+### Packages installed
+
+```
+pip install "discord.py>=2.3.2" "pywa[fastapi]>=2.0.0"
+# installed: discord.py 2.7.1, pywa 3.8.0
+```
+
+### Verified working
+
+- Both bridge modules import cleanly with `get_status()` returning expected defaults
+- `python3 -c "from app.main import app"` loads without errors
+- Service restarted clean; all three inbound bridges now emit explicit startup status logs. Current startup log shows:
+  - `[telegram] Poller disabled`
+  - `[whatsapp] Bridge disabled or not configured`
+  - `[discord] Bridge disabled or DISCORD_BOT_TOKEN not set`
+  - `Application startup complete.`
+
+### To activate Discord
+
+1. [discord.com/developers](https://discord.com/developers) → New App → Bot → copy token
+2. Bot Settings → **Message Content Intent** → enable (privileged)
+3. OAuth2 invite URL → scopes: `bot`, permissions: Send Messages + Read Message History
+4. Set `DISCORD_BOT_TOKEN=...` and `DISCORD_ENABLED=true` in systemd service env
+5. `sudo systemctl restart sparkbot-v2`
+
+### To activate WhatsApp
+
+1. [developers.facebook.com](https://developers.facebook.com) → New App → WhatsApp → Add Phone Number
+2. System User → generate permanent token (`whatsapp_business_messaging` scope)
+3. Webhook URL: `https://remote.sparkpitlabs.com/whatsapp`, Verify Token: value of `WHATSAPP_VERIFY_TOKEN`
+4. Subscribe webhook field: `messages`
+5. Set `WHATSAPP_PHONE_ID`, `WHATSAPP_TOKEN`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_ENABLED=true`
+6. `sudo systemctl restart sparkbot-v2`
+
+### Current state
+
+- Both bridges are installed and imported; disabled by default (no tokens set)
+- Activating either requires only setting env vars + restarting — no code changes
+
+### Next actions
+
+1. Test Discord: set token, enable, test DM + @mention + `/approve` / `/deny`
+2. Test WhatsApp: use Meta sandbox test number to avoid real number registration
+3. Consider adding `send_room_notification` calls to the reminder and Task Guardian schedulers
+   (so Discord/WhatsApp users get the same proactive notifications as Telegram users)
+
+---
+
 ## Session — 2026-03-07 · Voice input + TTS added (Whisper + OpenAI TTS)
 
 ### What was done
