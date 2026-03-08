@@ -1,6 +1,6 @@
 # Sparkbot v2
 
-**Sparkbot** is a self-hosted AI chat assistant built for Sparkpit Labs. It runs at [remote.sparkpitlabs.com](https://remote.sparkpitlabs.com) and is designed to be a full office worker agent — handling chat, file analysis, meeting capture, web search, calendar access, and memory across sessions.
+**Sparkbot** is a self-hosted AI chat assistant you deploy on your own server. It is designed to be a full office worker agent — handling chat, file analysis, meeting capture, web search, calendar access, and memory across sessions.
 
 ---
 
@@ -28,18 +28,18 @@ Full architecture: [SECURITY.md](./SECURITY.md)
 ```
 Browser
   │
-  └── nginx (remote.sparkpitlabs.com)
-        ├── /            → static files (/var/www/sparkbot-remote)
-        ├── /api/        → FastAPI backend (port 8091)
-        └── /ws/         → WebSocket (port 8091, upgrade headers)
+  └── nginx (your-domain.com)
+        ├── /            → static files (/var/www/sparkbot)
+        ├── /api/        → FastAPI backend (configurable port)
+        └── /ws/         → WebSocket (same port, upgrade headers)
 ```
 
-| Component           | Path                                  | Port  | Status            |
-|---------------------|---------------------------------------|-------|-------------------|
-| FastAPI backend     | `/home/sparky/sparkbot-v2/backend`    | 8091  | ✅ Running         |
-| React frontend      | `/home/sparky/sparkbot-v2/frontend`   | —     | ✅ Built/deployed  |
-| PostgreSQL          | system service                        | 5432  | ✅ Running         |
-| nginx               | `/etc/nginx/sites-available/sparkbot-remote` | 80/443 | ✅ Running |
+| Component           | Path                                  | Port  |
+|---------------------|---------------------------------------|-------|
+| FastAPI backend     | `/home/youruser/sparkbot-v2/backend`  | configurable |
+| React frontend      | `/home/youruser/sparkbot-v2/frontend` | — (built/deployed) |
+| PostgreSQL          | system service                        | 5432  |
+| nginx               | `/etc/nginx/sites-available/sparkbot` | 80/443 |
 
 ---
 
@@ -260,6 +260,8 @@ Model preferences are per-user (in-memory, resets on service restart). Switch at
 |----------|-------------|
 | `gpt-4o-mini` | GPT-4o Mini — fast, cost-effective (default) |
 | `gpt-4o` | GPT-4o — most capable OpenAI model |
+| `gpt-4.5` | GPT-4.5 — OpenAI advanced reasoning model |
+| `gpt-5-mini` | GPT-5 Mini — fast, cost-effective next-gen model |
 | `claude-3-5-haiku-20241022` | Claude Haiku — fast Anthropic model |
 | `claude-sonnet-4-5` | Claude Sonnet — balanced Anthropic model |
 | `gemini/gemini-2.0-flash` | Gemini Flash — fast Google model |
@@ -286,7 +288,7 @@ Agent Shield / Executive / Task Guardian phase notes:
 
 ## Configuration
 
-All configuration is via environment variables. The systemd service file at `/etc/systemd/system/sparkbot-v2.service` is the canonical place to set them for production. A `.env` file in `backend/` works for local dev.
+All configuration is via environment variables. The systemd service file (e.g. `/etc/systemd/system/sparkbot-v2.service`) is the canonical place to set them for production. A `.env` file in `backend/` works for local dev.
 
 ### Required
 ```env
@@ -389,7 +391,7 @@ WHATSAPP_VERIFY_TOKEN=sparkbot-wa-verify   # must match what you set in Meta por
 WHATSAPP_APP_ID=              # optional: for auto webhook registration
 WHATSAPP_APP_SECRET=          # optional: for auto webhook registration
 WHATSAPP_ALLOWED_PHONES=      # comma-separated E.164 numbers to allowlist (optional)
-PUBLIC_URL=https://remote.sparkpitlabs.com
+PUBLIC_URL=https://your-domain.com
 ```
 
 Setup:
@@ -494,7 +496,7 @@ After changing env vars: `sudo systemctl restart sparkbot-v2`
 cd backend
 python3 -m venv venv && source venv/bin/activate
 pip install -e .
-uvicorn app.main:app --reload --port 8091
+uvicorn app.main:app --reload --port 8000
 
 # Frontend (separate terminal)
 cd frontend
@@ -510,13 +512,13 @@ bun run dev
 # Build frontend
 cd frontend
 bun run build
-sudo cp -r dist/* /var/www/sparkbot-remote/
+sudo cp -r dist/* /var/www/sparkbot/
 
 # Restart backend
 sudo systemctl restart sparkbot-v2
 
 # Health check
-curl https://remote.sparkpitlabs.com/api/v1/utils/health-check/
+curl https://your-domain.com/api/v1/utils/health-check/
 ```
 
 ---
@@ -542,7 +544,7 @@ curl https://remote.sparkpitlabs.com/api/v1/utils/health-check/
 | `GET` | `/api/v1/chat/audit` | Recent tool audit log (room-scoped) |
 | `GET` | `/api/v1/utils/health-check/` | Health check → `true` |
 
-Interactive API docs: `http://localhost:8091/docs`
+Interactive API docs: `http://localhost:8000/docs` (or whichever port you configured)
 
 ---
 

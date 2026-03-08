@@ -23,7 +23,7 @@ Secrets to rotate:
 ## Pre-Rotation Checklist
 
 1. Confirm clean deploy state and active service health:
-   - `curl -fsS https://remote.sparkpitlabs.com/api/v1/utils/health-check/`
+   - `curl -fsS https://your-domain.com/api/v1/utils/health-check/`
 2. Export current environment snapshot (private, local only).
 3. Prepare rollback snapshot of current service env file.
 4. Ensure incident contacts are available for key owners (Slack/GitHub/Notion/etc).

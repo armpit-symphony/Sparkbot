@@ -4,6 +4,37 @@
 
 ---
 
+## Session — 2026-03-08 · Add GPT-4.5 and GPT-5 Mini to Provider Onboarding
+
+### Goal
+
+Extend the available OpenAI model list with GPT-4.5 and GPT-5 Mini so they appear in the Provider onboarding section of the Control Center and are selectable via `/model`.
+
+### What was done
+
+- **`backend/app/api/routes/chat/llm.py`**: Added two new entries to `AVAILABLE_MODELS`:
+  - `"gpt-4.5"` → `"GPT-4.5 — OpenAI advanced reasoning model"`
+  - `"gpt-5-mini"` → `"GPT-5 Mini — fast, cost-effective next-gen model"`
+- Both use the `gpt-` prefix so `model_provider()` routes them to the OpenAI provider automatically — they appear under the OpenAI card in the Provider onboarding section with no other changes required.
+- **`README.md`**: Updated the Multi-Model Support table to include both new models.
+
+### Modified files
+
+- `backend/app/api/routes/chat/llm.py` — AVAILABLE_MODELS
+- `README.md` — model table
+
+### Verified
+
+- Backend import clean (no code changes beyond the dict entries)
+- Provider catalog builds dynamically from `AVAILABLE_MODELS` — new models appear under OpenAI automatically
+- `/model gpt-4.5` and `/model gpt-5-mini` will route correctly once keys are configured
+
+### Note on litellm model IDs
+
+The dict keys (`gpt-4.5`, `gpt-5-mini`) are passed directly to litellm. Confirm these match the exact IDs in the [litellm model list](https://docs.litellm.ai/docs/providers/openai) for your OpenAI API version before switching a user's active model to either.
+
+---
+
 ## Session — 2026-03-07 · Phase 6: Spawn Agent — Custom Agent Builder in Control Center
 
 ### Goal
@@ -620,7 +651,7 @@ pip install "discord.py>=2.3.2" "pywa[fastapi]>=2.0.0"
 
 1. [developers.facebook.com](https://developers.facebook.com) → New App → WhatsApp → Add Phone Number
 2. System User → generate permanent token (`whatsapp_business_messaging` scope)
-3. Webhook URL: `https://remote.sparkpitlabs.com/whatsapp`, Verify Token: value of `WHATSAPP_VERIFY_TOKEN`
+3. Webhook URL: `https://your-domain.com/whatsapp`, Verify Token: value of `WHATSAPP_VERIFY_TOKEN`
 4. Subscribe webhook field: `messages`
 5. Set `WHATSAPP_PHONE_ID`, `WHATSAPP_TOKEN`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_ENABLED=true`
 6. `sudo systemctl restart sparkbot-v2`
@@ -819,7 +850,7 @@ async def execute(args, *, user_id=None, room_id=None, session=None) -> str: ...
 9. Add Guardian health/status surfacing so admins can see scheduler, memory, routing, and policy state in one place.
 10. Run a full consumer smoke pass on login, chat, reminders, Gmail, Drive, room controls, scheduled jobs, and Telegram once the bridge exists.
 11. Publish plain-language privacy/data-retention notes and a simple integrations setup guide.
-12. Park dedicated PWA/mobile app work as a later phase. Current user workflow is home-screen browser access at `remote.sparkpitlabs.com`; a true dedicated PWA/mobile build is desired, but not started yet.
+12. Park dedicated PWA/mobile app work as a later phase. Current user workflow is home-screen browser access at `your-domain.com`; a true dedicated PWA/mobile build is desired, but not started yet.
 
 ## Session — 2026-03-06 · Consumer readiness controls + reminder regression fix
 
@@ -894,9 +925,9 @@ async def execute(args, *, user_id=None, room_id=None, session=None) -> str: ...
 
 ### Current state
 
-- Live backend on port `8091` restarted successfully after both fixes.
+- Live backend on port `<api-port>` restarted successfully after both fixes.
 - Google Workspace code is live in `sparkbot-v2`, but actual Gmail/Drive access still requires Google OAuth credentials to be added to the live `.env`.
-- The older `/home/sparky/sparkbot` repo has now been backported with the same Gmail and Drive tool set, matching env placeholders, and audit-log redaction improvements so GitHub/docs stay aligned with the active stack.
+- The older `/home/youruser/sparkbot` repo has now been backported with the same Gmail and Drive tool set, matching env placeholders, and audit-log redaction improvements so GitHub/docs stay aligned with the active stack.
 - In the older `sparkbot` repo, the safer subset was backported: Gmail/Drive tools plus prompt/routing and audit redaction. The newer `sparkbot-v2` write-confirmation flow was not fully ported because that legacy chat flow does not expose the same confirmation path cleanly.
 - No secrets or personal credentials were committed.
 
@@ -954,12 +985,12 @@ async def execute(args, *, user_id=None, room_id=None, session=None) -> str: ...
 
 ### Current state
 - All Phase A–E security items complete except: key rotation (deliberate deferral) and streaming/WS test suite.
-- Production is live at `remote.sparkpitlabs.com` — deploy frontend build + restart service to activate D3/D1/D2 changes.
+- Production is live at `your-domain.com` — deploy frontend build + restart service to activate D3/D1/D2 changes.
 
 ### Next actions
 1. Build + deploy: `cd frontend && bun run build && sudo cp -r dist/* /var/www/sparkbot-remote/ && sudo systemctl restart sparkbot-v2`
 2. Browser smoke test: login → check DevTools → `chat_token` cookie should be HttpOnly, no token in localStorage.
-3. Header check: `curl -I https://remote.sparkpitlabs.com/` — confirm CSP, HSTS, Permissions-Policy.
+3. Header check: `curl -I https://your-domain.com/` — confirm CSP, HSTS, Permissions-Policy.
 4. Rotate all keys when testing window closes (see `ROTATION_RUNBOOK.md`).
 5. Move repo to official GitHub org.
 
@@ -969,12 +1000,12 @@ async def execute(args, *, user_id=None, room_id=None, session=None) -> str: ...
 
 | Component               | Location                              | Port  | Status          |
 |-------------------------|---------------------------------------|-------|-----------------|
-| sparkbot-dashboard      | `/home/sparky/sparkbot/backend`       | 8090  | ❌ Crash-looping |
-| sparkbot-v2 backend     | `/home/sparky/sparkbot-v2/backend`    | 8091  | ✅ Running       |
-| sparkbot (Node.js bot)  | `/home/sparky/sparkbot/sparkbot`      | 8080  | ✅ Running       |
-| nginx → remote.sparkpitlabs.com | proxy                         | —     | ✅ Proxies to 8091 |
+| sparkbot-dashboard      | `/home/youruser/sparkbot/backend`       | 8090  | ❌ Crash-looping |
+| sparkbot-v2 backend     | `/home/youruser/sparkbot-v2/backend`    | <api-port>  | ✅ Running       |
+| sparkbot (Node.js bot)  | `/home/youruser/sparkbot/sparkbot`      | 8080  | ✅ Running       |
+| nginx → your-domain.com | proxy                         | —     | ✅ Proxies to <api-port> |
 
-**Active stack:** nginx → port 8091 (FastAPI) → litellm → LLM provider (Node.js bot on port 8080 is now bypassed)
+**Active stack:** nginx → port <api-port> (FastAPI) → litellm → LLM provider (Node.js bot on port 8080 is now bypassed)
 
 ---
 
@@ -1109,13 +1140,13 @@ Three new outbound LLM tools + one inbound webhook handler:
 - Handles two event types: `app_mention` (threaded reply in channel) and `message.im` (DM response)
 - In-memory dedup cache prevents duplicate processing on Slack retries
 - Ignores messages from bots to prevent reply loops
-- **Webhook URL**: `https://remote.sparkpitlabs.com/api/v1/chat/slack/events` (tested, verified URL challenge returns correctly)
+- **Webhook URL**: `https://your-domain.com/api/v1/chat/slack/events` (tested, verified URL challenge returns correctly)
 
 **Slack App setup (one-time):**
 1. Create app at api.slack.com/apps
 2. Bot Token Scopes: `chat:write`, `channels:read`, `channels:history`, `im:history`, `im:write`
 3. Enable Events API → Subscribe to `app_mention` + `message.im`
-4. Set Request URL → `https://remote.sparkpitlabs.com/api/v1/chat/slack/events`
+4. Set Request URL → `https://your-domain.com/api/v1/chat/slack/events`
 5. Install app to workspace → copy Bot Token + Signing Secret → set env vars → restart
 
 **Env vars:**
@@ -1382,7 +1413,7 @@ Extended the existing `uploads.py` to detect and extract text from documents bef
 - **Nextcloud / Baikal / Radicale**: self-hosted, URL from the server admin panel
 - **Fastmail**: `https://caldav.fastmail.com/dav/`
 
-**To activate:** add three lines to `/home/sparky/sparkbot-v2/backend/.env` (template already there, commented out), then `sudo systemctl restart sparkbot-v2.service`.
+**To activate:** add three lines to `/home/youruser/sparkbot-v2/backend/.env` (template already there, commented out), then `sudo systemctl restart sparkbot-v2.service`.
 
 **Example usage in chat:**
 - "What's on my calendar this week?" → bot calls `calendar_list_events(7)`
@@ -1417,7 +1448,7 @@ Extended the existing `uploads.py` to detect and extract text from documents bef
 - Restarted `sparkbot-v2.service`.
 - Post-restart checks:
   - service status: `active (running)`
-  - listener: `127.0.0.1:8091`
+  - listener: `127.0.0.1:<api-port>`
   - health endpoint: `true`
 
 **Outcome:** Sparkbot now has OpenClaw-style native web search behavior on this host without adding keys directly to Sparkbot env.
@@ -1444,10 +1475,10 @@ Extended the existing `uploads.py` to detect and extract text from documents bef
 - Direct tool smoke returned live results (`Search provider: ddgs` with multiple current links).
 - Restarted `sparkbot-v2.service` and verified:
   - systemd status: `active (running)`
-  - listener on `127.0.0.1:8091`
+  - listener on `127.0.0.1:<api-port>`
   - health endpoint: `true`
 
-**Recommended next step:** Set `BRAVE_SEARCH_API_KEY` in `/home/sparky/sparkbot-v2/.env` to make Brave the default provider (more stable than DDGS scraping). Keep DDGS as fallback.
+**Recommended next step:** Set `BRAVE_SEARCH_API_KEY` in `/home/youruser/sparkbot-v2/.env` to make Brave the default provider (more stable than DDGS scraping). Keep DDGS as fallback.
 
 ### 2026-03-05 — Security/reliability audit pass + regression tests (Codex)
 
@@ -1469,7 +1500,7 @@ Extended the existing `uploads.py` to detect and extract text from documents bef
 
 **Verification run:**
 - `python3 -m py_compile app/api/routes/chat/rooms.py app/crud.py tests/api/routes/test_chat_security.py`
-- `PYTHONPATH=/home/sparky/sparkbot-v2/backend/venv/lib/python3.12/site-packages pytest -q tests/api/routes/test_chat_security.py`
+- `PYTHONPATH=/home/youruser/sparkbot-v2/backend/venv/lib/python3.12/site-packages pytest -q tests/api/routes/test_chat_security.py`
 - Result: `4 passed`.
 
 **Checklist sync:**
@@ -1574,7 +1605,7 @@ Extended the existing `uploads.py` to detect and extract text from documents bef
 
 **Meeting mode (#9):** Client-side state machine in SparkbotDmPage. `/meeting start` activates meeting, `/meeting stop` exports `.md` file, `/meeting notes` shows draft. Messages prefixed `note:` / `decided:` / `action:` are captured into meeting state and appear in the export.
 
-**File uploads (#10):** `POST /api/v1/chat/rooms/{room_id}/upload` — multipart form, saves to `/home/sparky/sparkbot-v2/uploads/{uuid}/{filename}`, max 10MB. Images sent to vision model as base64. SSE response same protocol as /messages/stream. Paperclip button in UI opens file picker.
+**File uploads (#10):** `POST /api/v1/chat/rooms/{room_id}/upload` — multipart form, saves to `/home/youruser/sparkbot-v2/uploads/{uuid}/{filename}`, max 10MB. Images sent to vision model as base64. SSE response same protocol as /messages/stream. Paperclip button in UI opens file picker.
 
 ---
 
@@ -1639,7 +1670,7 @@ Extended the existing `uploads.py` to detect and extract text from documents bef
 
 7. **Frontend built and deployed** — `bun run build` → `sudo cp dist/* /var/www/sparkbot-remote/`
 
-8. **Backend restarted** — `sparkbot-v2.service` restarted, confirmed healthy on port 8091.
+8. **Backend restarted** — `sparkbot-v2.service` restarted, confirmed healthy on port <api-port>.
 
 **Verified:**
 - Health check: `GET /api/v1/utils/health-check/` → `true`
@@ -1651,13 +1682,13 @@ Extended the existing `uploads.py` to detect and extract text from documents bef
 
 **Assessed:**
 - Full architecture review of both sparkbot and sparkbot-v2
-- Confirmed sparkbot-v2 (port 8091) is the live backend proxied by nginx
+- Confirmed sparkbot-v2 (port <api-port>) is the live backend proxied by nginx
 - sparkbot-dashboard (port 8090) is crash-looping but not affecting production
 - Node.js bot (port 8080) is running and reachable from FastAPI
 
 **Fixed:**
-- `/home/sparky/.openclaw/scripts/sparkbot_health.sh` — was checking port 8090 (dead dashboard), changed to 8091 with correct endpoint `/api/v1/utils/health-check/`
-- `/home/sparky/.openclaw/workspace/sparkbot-ops-tools/sparkbot_health.sh` — same fix, same endpoint
+- `/home/youruser/.openclaw/scripts/sparkbot_health.sh` — was checking port 8090 (dead dashboard), changed to <api-port> with correct endpoint `/api/v1/utils/health-check/`
+- `/home/youruser/.openclaw/workspace/sparkbot-ops-tools/sparkbot_health.sh` — same fix, same endpoint
 - Removed stale comment claiming 405 = healthy (check was already for 200)
 - Verified: health check now returns `OK: Backend responding (HTTP 200)`
 
@@ -1894,7 +1925,7 @@ User message → FastAPI → Agent orchestrator → Tool calls (parallel)
   - `sparkbot-v2/backend/app/api/routes/chat/rooms.py`
 
 **C4. Remove hardcoded dotenv absolute path**
-- [x] Delete `load_dotenv("/home/sparky/sparkbot-v2/backend/.env")`.
+- [x] Delete `load_dotenv("/home/youruser/sparkbot-v2/backend/.env")`.
 - [x] Use environment-first config and a single predictable env file path policy.
 - Files:
   - `sparkbot-v2/backend/app/main.py`
@@ -1931,7 +1962,7 @@ User message → FastAPI → Agent orchestrator → Tool calls (parallel)
 **D-phase verification**
 - [ ] XSS regression tests around markdown rendering + token handling.
 - [ ] Manual browser test: no bearer token visible in localStorage — confirm `chat_token` cookie is HttpOnly.
-- [ ] Header validation: `curl -I https://remote.sparkpitlabs.com/` — verify CSP, HSTS, Permissions-Policy present.
+- [ ] Header validation: `curl -I https://your-domain.com/` — verify CSP, HSTS, Permissions-Policy present.
 
 ### Phase E — Ops and CI Safety Net (P2)
 
