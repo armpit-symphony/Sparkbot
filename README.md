@@ -1,6 +1,51 @@
 # Sparkbot v2
 
-**Sparkbot** is a self-hosted AI chat assistant you deploy on your own server. It is designed to be a full office worker agent — handling chat, file analysis, meeting capture, web search, calendar access, and memory across sessions.
+**Sparkbot** is a self-hosted AI chat assistant you deploy on your own server, laptop, or desktop. It is designed to be a full office worker agent — handling chat, file analysis, meeting capture, web search, calendar access, and memory across sessions.
+
+---
+
+## Quick Start
+
+Sparkbot runs anywhere Docker is installed: Windows, macOS, Linux, or a cloud server.
+
+### Desktop / laptop (Windows, macOS, Linux)
+
+**One command:**
+
+```bash
+# Linux / macOS
+bash scripts/quickstart.sh
+
+# Windows (PowerShell)
+.\scripts\quickstart.ps1
+```
+
+Then open **http://localhost:3000**.
+
+Or manually:
+
+```bash
+cp .env.example .env.local     # add at least one LLM API key
+docker compose -f compose.local.yml up --build
+```
+
+Default passphrase: `sparkbot-local`
+Change it by setting `SPARKBOT_PASSPHRASE` in `.env.local`.
+
+### CLI (terminal chat — no browser needed)
+
+```bash
+python sparkbot-cli.py                           # interactive
+python sparkbot-cli.py "What's on my calendar?"  # one-shot
+echo "Summarise my inbox" | python sparkbot-cli.py
+```
+
+Requires Python 3.10+. No extra packages — pure stdlib.
+On first run it prompts for the URL and passphrase and saves them to `~/.sparkbot/cli.json`.
+
+### Server / VPS (public HTTPS)
+
+See [deployment.md](./deployment.md) for the full Traefik + Docker Compose + Let's Encrypt setup.
 
 ---
 
@@ -490,6 +535,14 @@ After changing env vars: `sudo systemctl restart sparkbot-v2`
 ---
 
 ## Running Locally
+
+**Docker (recommended — works on all platforms):**
+
+```bash
+docker compose -f compose.local.yml up --build
+```
+
+**Without Docker (for backend development):**
 
 ```bash
 # Backend

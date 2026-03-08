@@ -4,6 +4,85 @@
 
 ---
 
+## Session — 2026-03-08 · Multi-Device Deployment + CLI
+
+### Goal
+
+Make Sparkbot downloadable and runnable on any device — Windows PC, Mac, Linux laptop, or a cloud server — and add a terminal CLI so users can chat without a browser.
+
+### What was done
+
+**1. `compose.local.yml` — desktop/laptop deployment**
+
+- Self-contained Docker Compose with no Traefik, no domain, no SSL required
+- Exposes `http://localhost:3000` (UI) and `http://localhost:8000` (API) on loopback only
+- Embedded PostgreSQL with named Docker volumes (data persists across restarts)
+- `ENVIRONMENT=local` passed to backend — relaxes cookie security for plain HTTP (see below)
+- `SPARKBOT_PASSPHRASE` defaults to `sparkbot-local` if not set
+- Accepts `.env.local` for user API keys (file is optional — env vars work too)
+- Works on Windows (Docker Desktop), macOS (Docker Desktop), Linux
+
+**2. `sparkbot-cli.py` — terminal chat client**
+
+- Pure Python 3.10+ stdlib — no `pip install` needed
+- Config saved to `~/.sparkbot/cli.json` on first successful login
+- Three modes:
+  - Interactive REPL (`/help`, `/room`, `/clear`, `/quit`, Ctrl-C to exit)
+  - One-shot: `python sparkbot-cli.py "message"`
+  - Piped: `echo "hello" | python sparkbot-cli.py`
+- Streams SSE tokens live (no waiting for full response)
+- Shows tool-use chips inline (`[using web_search]`)
+- Shows CONFIRM REQUIRED events for write-tool gates
+- Custom `_RelaxedCookiePolicy` ignores the `secure` cookie flag so HTTP local sessions work
+- Config override: `--url`, `--passphrase` flags or `SPARKBOT_URL` / `SPARKBOT_PASSPHRASE` env vars
+
+**3. `scripts/quickstart.sh` / `scripts/quickstart.ps1` — one-command start**
+
+- Linux/macOS: `bash scripts/quickstart.sh`
+- Windows: `.\scripts\quickstart.ps1`
+- Checks Docker is installed and running
+- Prompts for an LLM API key if none is set and `.env.local` doesn't exist
+- Auto-generates a random `SECRET_KEY` for first-time users
+- Prints URLs, passphrase, CLI hint, and stop/log commands on finish
+
+**4. Backend — cookie security fix for HTTP local mode**
+
+- `backend/app/api/routes/chat/users.py`: `chat_login()` now sets `secure=False, samesite="lax"` when `ENVIRONMENT in ("local", "development")`
+- Allows both the web UI and the CLI to authenticate over plain `http://localhost` without the browser rejecting the cookie
+- Production deployments (ENVIRONMENT=production) keep `secure=True, samesite="strict"` unchanged
+
+**5. README.md — Quick Start section**
+
+- Added "Quick Start" block at top of README (above "Why Sparkbot")
+- Desktop, CLI, and server paths clearly separated
+- Running Locally section updated to mention `compose.local.yml` as the Docker option
+
+### New files
+
+- `compose.local.yml`
+- `sparkbot-cli.py`
+- `scripts/quickstart.sh` (chmod +x)
+- `scripts/quickstart.ps1`
+
+### Modified files
+
+- `backend/app/api/routes/chat/users.py` — cookie security per environment
+- `README.md` — Quick Start + Running Locally sections
+
+### Verified
+
+- compose.local.yml YAML valid, no Traefik dependency
+- sparkbot-cli.py stdlib-only, Python 3.10+ compatible
+- quickstart scripts print correct URLs and instructions
+
+### Next actions
+
+- Test compose.local.yml on a fresh Docker Desktop install (Windows/Mac)
+- Consider a `sparkbot-cli` entry point in pyproject.toml for `pip install` distribution
+- Add `--json` output flag to CLI for scripting use cases
+
+---
+
 ## Session — 2026-03-08 · Add GPT-4.5 and GPT-5 Mini to Provider Onboarding
 
 ### Goal

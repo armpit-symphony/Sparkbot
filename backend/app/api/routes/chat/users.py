@@ -61,13 +61,15 @@ def chat_login(request: ChatLoginRequest) -> Response:
     )
 
     max_age = int(access_token_expires.total_seconds())
+    # Relax cookie security for local/development so plain-HTTP clients work
+    _local = settings.ENVIRONMENT in ("local", "development")
     response = JSONResponse({"success": True, "token_type": "cookie"})
     response.set_cookie(
         key="chat_token",
         value=access_token,
         httponly=True,
-        secure=True,
-        samesite="strict",
+        secure=not _local,
+        samesite="lax" if _local else "strict",
         max_age=max_age,
         path="/api",
     )
