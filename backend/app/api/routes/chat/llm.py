@@ -41,6 +41,8 @@ SYSTEM_PROMPT = (
 AVAILABLE_MODELS: dict[str, str] = {
     "gpt-4o-mini":                   "GPT-4o Mini — fast, cost-effective (default)",
     "gpt-4o":                        "GPT-4o — most capable OpenAI model",
+    "gpt-4.5":                       "GPT-4.5 — OpenAI advanced reasoning model",
+    "gpt-5-mini":                    "GPT-5 Mini — fast, cost-effective next-gen model",
     "claude-3-5-haiku-20241022":     "Claude Haiku — fast Anthropic model",
     "claude-sonnet-4-5":             "Claude Sonnet — balanced Anthropic model",
     "gemini/gemini-2.0-flash":       "Gemini Flash — fast Google model",
