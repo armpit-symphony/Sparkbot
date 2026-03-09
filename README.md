@@ -63,6 +63,18 @@ That first-run panel is where users:
 
 See [deployment.md](./deployment.md) for the full Traefik + Docker Compose + Let's Encrypt setup.
 
+### Public download packaging
+
+To reproduce the website download bundle from committed source:
+
+```bash
+bash scripts/package-public-download.sh
+```
+
+Default artifacts are written to `dist/public-download/latest/`.
+To publish directly to the website download directory, pass `--publish-dir /var/www/sparkpitlabs.com/downloads/sparkbot/latest`.
+For versioned or tag-bound packaging instructions, see [docs/public-downloads.md](./docs/public-downloads.md).
+
 ---
 
 ## Why Sparkbot
