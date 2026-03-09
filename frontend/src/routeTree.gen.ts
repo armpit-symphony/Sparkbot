@@ -9,6 +9,11 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as WorkstationRouteImport } from './routes/workstation'
+import { Route as SparkbudWebmakerRouteImport } from './routes/sparkbud-webmaker'
+import { Route as SparkbudResearchRouteImport } from './routes/sparkbud-research'
+import { Route as SparkbudBuilderRouteImport } from './routes/sparkbud-builder'
+import { Route as SparkbudAutomationRouteImport } from './routes/sparkbud-automation'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as RecoverPasswordRouteImport } from './routes/recover-password'
@@ -21,6 +26,31 @@ import { Route as LayoutItemsRouteImport } from './routes/_layout/items'
 import { Route as LayoutChatRouteImport } from './routes/_layout/chat'
 import { Route as LayoutAdminRouteImport } from './routes/_layout/admin'
 
+const WorkstationRoute = WorkstationRouteImport.update({
+  id: '/workstation',
+  path: '/workstation',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SparkbudWebmakerRoute = SparkbudWebmakerRouteImport.update({
+  id: '/sparkbud-webmaker',
+  path: '/sparkbud-webmaker',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SparkbudResearchRoute = SparkbudResearchRouteImport.update({
+  id: '/sparkbud-research',
+  path: '/sparkbud-research',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SparkbudBuilderRoute = SparkbudBuilderRouteImport.update({
+  id: '/sparkbud-builder',
+  path: '/sparkbud-builder',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SparkbudAutomationRoute = SparkbudAutomationRouteImport.update({
+  id: '/sparkbud-automation',
+  path: '/sparkbud-automation',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
   path: '/signup',
@@ -83,6 +113,11 @@ export interface FileRoutesByFullPath {
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
+  '/sparkbud-automation': typeof SparkbudAutomationRoute
+  '/sparkbud-builder': typeof SparkbudBuilderRoute
+  '/sparkbud-research': typeof SparkbudResearchRoute
+  '/sparkbud-webmaker': typeof SparkbudWebmakerRoute
+  '/workstation': typeof WorkstationRoute
   '/admin': typeof LayoutAdminRoute
   '/chat': typeof LayoutChatRoute
   '/items': typeof LayoutItemsRoute
@@ -94,6 +129,11 @@ export interface FileRoutesByTo {
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
+  '/sparkbud-automation': typeof SparkbudAutomationRoute
+  '/sparkbud-builder': typeof SparkbudBuilderRoute
+  '/sparkbud-research': typeof SparkbudResearchRoute
+  '/sparkbud-webmaker': typeof SparkbudWebmakerRoute
+  '/workstation': typeof WorkstationRoute
   '/admin': typeof LayoutAdminRoute
   '/chat': typeof LayoutChatRoute
   '/items': typeof LayoutItemsRoute
@@ -108,6 +148,11 @@ export interface FileRoutesById {
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
+  '/sparkbud-automation': typeof SparkbudAutomationRoute
+  '/sparkbud-builder': typeof SparkbudBuilderRoute
+  '/sparkbud-research': typeof SparkbudResearchRoute
+  '/sparkbud-webmaker': typeof SparkbudWebmakerRoute
+  '/workstation': typeof WorkstationRoute
   '/_layout/admin': typeof LayoutAdminRoute
   '/_layout/chat': typeof LayoutChatRoute
   '/_layout/items': typeof LayoutItemsRoute
@@ -123,6 +168,11 @@ export interface FileRouteTypes {
     | '/recover-password'
     | '/reset-password'
     | '/signup'
+    | '/sparkbud-automation'
+    | '/sparkbud-builder'
+    | '/sparkbud-research'
+    | '/sparkbud-webmaker'
+    | '/workstation'
     | '/admin'
     | '/chat'
     | '/items'
@@ -134,6 +184,11 @@ export interface FileRouteTypes {
     | '/recover-password'
     | '/reset-password'
     | '/signup'
+    | '/sparkbud-automation'
+    | '/sparkbud-builder'
+    | '/sparkbud-research'
+    | '/sparkbud-webmaker'
+    | '/workstation'
     | '/admin'
     | '/chat'
     | '/items'
@@ -147,6 +202,11 @@ export interface FileRouteTypes {
     | '/recover-password'
     | '/reset-password'
     | '/signup'
+    | '/sparkbud-automation'
+    | '/sparkbud-builder'
+    | '/sparkbud-research'
+    | '/sparkbud-webmaker'
+    | '/workstation'
     | '/_layout/admin'
     | '/_layout/chat'
     | '/_layout/items'
@@ -161,10 +221,50 @@ export interface RootRouteChildren {
   RecoverPasswordRoute: typeof RecoverPasswordRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignupRoute: typeof SignupRoute
+  SparkbudAutomationRoute: typeof SparkbudAutomationRoute
+  SparkbudBuilderRoute: typeof SparkbudBuilderRoute
+  SparkbudResearchRoute: typeof SparkbudResearchRoute
+  SparkbudWebmakerRoute: typeof SparkbudWebmakerRoute
+  WorkstationRoute: typeof WorkstationRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/workstation': {
+      id: '/workstation'
+      path: '/workstation'
+      fullPath: '/workstation'
+      preLoaderRoute: typeof WorkstationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sparkbud-webmaker': {
+      id: '/sparkbud-webmaker'
+      path: '/sparkbud-webmaker'
+      fullPath: '/sparkbud-webmaker'
+      preLoaderRoute: typeof SparkbudWebmakerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sparkbud-research': {
+      id: '/sparkbud-research'
+      path: '/sparkbud-research'
+      fullPath: '/sparkbud-research'
+      preLoaderRoute: typeof SparkbudResearchRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sparkbud-builder': {
+      id: '/sparkbud-builder'
+      path: '/sparkbud-builder'
+      fullPath: '/sparkbud-builder'
+      preLoaderRoute: typeof SparkbudBuilderRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sparkbud-automation': {
+      id: '/sparkbud-automation'
+      path: '/sparkbud-automation'
+      fullPath: '/sparkbud-automation'
+      preLoaderRoute: typeof SparkbudAutomationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/signup': {
       id: '/signup'
       path: '/signup'
@@ -271,6 +371,11 @@ const rootRouteChildren: RootRouteChildren = {
   RecoverPasswordRoute: RecoverPasswordRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SignupRoute: SignupRoute,
+  SparkbudAutomationRoute: SparkbudAutomationRoute,
+  SparkbudBuilderRoute: SparkbudBuilderRoute,
+  SparkbudResearchRoute: SparkbudResearchRoute,
+  SparkbudWebmakerRoute: SparkbudWebmakerRoute,
+  WorkstationRoute: WorkstationRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
