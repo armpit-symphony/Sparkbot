@@ -36,12 +36,28 @@ Change it by setting `SPARKBOT_PASSPHRASE` in `.env.local`.
 
 ```bash
 python sparkbot-cli.py                           # interactive
+python sparkbot-cli.py --setup                   # provider keys + model roles
+python sparkbot-cli.py "/model gpt-5-mini"      # prompt for key if needed, then switch
 python sparkbot-cli.py "What's on my calendar?"  # one-shot
 echo "Summarise my inbox" | python sparkbot-cli.py
 ```
 
 Requires Python 3.10+. No extra packages — pure stdlib.
 On first run it prompts for the URL and passphrase and saves them to `~/.sparkbot/cli.json`.
+The CLI does not run models by itself. It connects to a running Sparkbot server.
+Use `--setup` or `/setup` to send provider API keys and choose the Sparkbot model stack on your own instance.
+For terminal-only installs, `/model <id>` will prompt for the matching provider API key if that model is not configured yet.
+Keys are stored on that Sparkbot instance, not in the CLI config file.
+
+### First browser launch
+
+On a fresh self-hosted install, Sparkbot opens **Sparkbot Controls** automatically when no provider/model setup exists yet.
+That first-run panel is where users:
+
+- paste provider API keys
+- choose the model stack
+- configure comms channels
+- keep the execution gate off by default
 
 ### Server / VPS (public HTTPS)
 
