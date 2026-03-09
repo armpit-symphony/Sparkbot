@@ -376,6 +376,7 @@ async def _run_room_prompt(
     if memory_context:
         system_prompt += f"\n\n{memory_context}"
 
+    from app.services.guardian.auth import is_operator_privileged, is_operator_user_id
     full_text = ""
     async for event in stream_chat_with_tools(
         [{"role": "system", "content": system_prompt}] + openai_history,
@@ -384,6 +385,8 @@ async def _run_room_prompt(
         room_id=room_id,
         agent_name=agent_name,
         room_execution_allowed=room.execution_allowed,
+        is_operator=is_operator_user_id(session, user_id),
+        is_privileged=is_operator_privileged(user_id),
     ):
         etype = event.get("type")
         if etype == "token":
@@ -456,8 +459,14 @@ async def _execute_pending_confirmation(
     *,
     channel_id: str,
 ) -> str:
-    from app.api.routes.chat.llm import _redact_for_audit, consume_pending
+    from app.api.routes.chat.llm import (
+        consume_pending,
+        mask_tool_result_for_external,
+        redact_tool_call_for_audit,
+        serialize_tool_args_for_audit,
+    )
     from app.api.routes.chat.tools import execute_tool
+    from app.services.guardian.auth import is_operator_privileged, is_operator_user_id
     from app.services.guardian.executive import exec_with_guard
     from app.services.guardian.memory import remember_tool_event
     from app.services.guardian.policy import decide_tool_use
@@ -473,11 +482,23 @@ async def _execute_pending_confirmation(
     if not room:
         return "Linked room not found."
 
-    decision = decide_tool_use(tool_name, tool_args, room_execution_allowed=room.execution_allowed)
+    decision = decide_tool_use(
+        tool_name,
+        tool_args,
+        room_execution_allowed=room.execution_allowed,
+        is_operator=is_operator_user_id(session, user_id),
+        is_privileged=is_operator_privileged(user_id),
+    )
     create_audit_log(
         session=session,
         tool_name="policy_decision",
-        tool_input=json.dumps({"tool_name": tool_name, "tool_args": tool_args, "confirmed": True}),
+        tool_input=json.dumps(
+            {
+                "tool_name": tool_name,
+                "tool_args": json.loads(serialize_tool_args_for_audit(tool_name, tool_args)),
+                "confirmed": True,
+            }
+        ),
         tool_result=decision.to_json(),
         user_id=uuid.UUID(user_id),
         room_id=uuid.UUID(room_id),
@@ -496,8 +517,8 @@ async def _execute_pending_confirmation(
             ),
             metadata={"room_id": room_id, "user_id": user_id, "confirmed": True, "source": "discord"},
         )
-    result_text = str(result)
-    redacted_input, redacted_result = _redact_for_audit(json.dumps(tool_args), result_text)
+    result_text = mask_tool_result_for_external(tool_name, tool_args, result)
+    redacted_input, redacted_result = redact_tool_call_for_audit(tool_name, tool_args, result)
     create_audit_log(
         session=session,
         tool_name=tool_name,

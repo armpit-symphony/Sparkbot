@@ -162,7 +162,11 @@ class Monitor:
         Returns: dict with current token state
         """
         try:
-            sessions_dir = Path('/home/sparky/.openclaw/agents/main/sessions')
+            configured = os.getenv("OPENCLAW_SESSIONS_DIR", "").strip()
+            if configured:
+                sessions_dir = Path(configured).expanduser()
+            else:
+                sessions_dir = Path.home() / ".openclaw" / "agents" / "main" / "sessions"
             
             if not sessions_dir.exists():
                 return {"error": "Sessions directory not found"}

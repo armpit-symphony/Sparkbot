@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import sqlite3
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -29,6 +30,10 @@ from app.crud import (
 from app.models import ChatUser, UserType
 
 logger = logging.getLogger(__name__)
+
+# In-memory PIN awaiting state: chat_id → {confirm_id, requires_confirm, created_at}
+_AWAITING_PIN: dict[str, dict] = {}
+_AWAITING_PIN_TTL_SECONDS = max(60, min(int(os.getenv("SPARKBOT_PIN_PROMPT_TTL_SECONDS", "300")), 1800))
 
 _TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 _TELEGRAM_POLL_ENABLED = os.getenv("TELEGRAM_POLL_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
@@ -223,6 +228,30 @@ def _clear_pending_confirmation(chat_id: str) -> None:
         )
 
 
+def _prune_awaiting_pin(*, chat_id: str | None = None) -> set[str]:
+    now = time.time()
+    expired = {
+        cid
+        for cid, state in _AWAITING_PIN.items()
+        if now - float(state.get("created_at", 0.0)) > _AWAITING_PIN_TTL_SECONDS
+    }
+    if chat_id is not None and chat_id in expired:
+        _AWAITING_PIN.pop(chat_id, None)
+        return {chat_id}
+    for cid in expired:
+        _AWAITING_PIN.pop(cid, None)
+    return expired
+
+
+def _set_awaiting_pin(chat_id: str, *, confirm_id: str | None, requires_confirm: bool) -> None:
+    _prune_awaiting_pin()
+    _AWAITING_PIN[chat_id] = {
+        "confirm_id": confirm_id,
+        "requires_confirm": requires_confirm,
+        "created_at": time.time(),
+    }
+
+
 def get_status() -> dict[str, Any]:
     _init_store()
     with _conn() as conn:
@@ -344,17 +373,23 @@ def _find_or_create_bot_user(session: Session) -> ChatUser:
     return bot_user
 
 
-def _ensure_linked_room(session: Session, chat_id: str, tg_user: dict[str, Any]) -> TelegramLink:
-    existing = _get_link(chat_id)
-    if existing:
-        return _upsert_link(
-            chat_id=chat_id,
-            room_id=existing.room_id,
-            user_id=existing.user_id,
-            tg_user_id=str(tg_user.get("id", "")) or None,
-            tg_username=str(tg_user.get("username", "")).strip() or None,
-            tg_display_name=_display_name(tg_user),
-        )
+def _operator_telegram_chat_ids() -> set[str]:
+    return {
+        part.strip()
+        for part in os.getenv("SPARKBOT_OPERATOR_TELEGRAM_CHAT_IDS", "").split(",")
+        if part.strip()
+    }
+
+
+def _resolve_linked_chat_user(session: Session, chat_id: str, tg_user: dict[str, Any]) -> ChatUser:
+    if chat_id in _operator_telegram_chat_ids():
+        from app.services.guardian.auth import operator_usernames
+
+        operator_username = sorted(operator_usernames())[0]
+        chat_user = get_chat_user_by_username(session, operator_username)
+        if not chat_user:
+            chat_user = create_chat_user(session, username=operator_username, user_type="HUMAN")
+        return chat_user
 
     telegram_user_id = str(tg_user.get("id", "")).strip()
     if not telegram_user_id:
@@ -363,6 +398,22 @@ def _ensure_linked_room(session: Session, chat_id: str, tg_user: dict[str, Any])
     chat_user = get_chat_user_by_username(session, username)
     if not chat_user:
         chat_user = create_chat_user(session, username=username, user_type="HUMAN")
+    return chat_user
+
+
+def _ensure_linked_room(session: Session, chat_id: str, tg_user: dict[str, Any]) -> TelegramLink:
+    chat_user = _resolve_linked_chat_user(session, chat_id, tg_user)
+    existing = _get_link(chat_id)
+    if existing:
+        return _upsert_link(
+            chat_id=chat_id,
+            room_id=existing.room_id,
+            user_id=str(chat_user.id),
+            tg_user_id=str(tg_user.get("id", "")) or None,
+            tg_username=str(tg_user.get("username", "")).strip() or None,
+            tg_display_name=_display_name(tg_user),
+        )
+
     room = create_chat_room(
         session,
         name=_safe_room_name(_display_name(tg_user)),
@@ -373,7 +424,7 @@ def _ensure_linked_room(session: Session, chat_id: str, tg_user: dict[str, Any])
         chat_id=chat_id,
         room_id=str(room.id),
         user_id=str(chat_user.id),
-        tg_user_id=telegram_user_id,
+        tg_user_id=str(tg_user.get("id", "")) or None,
         tg_username=str(tg_user.get("username", "")).strip() or None,
         tg_display_name=_display_name(tg_user),
     )
@@ -436,6 +487,10 @@ async def _run_room_prompt(session: Session, room_id: str, user_id: str, content
     if memory_context:
         system_prompt += f"\n\n{memory_context}"
 
+    from app.services.guardian.auth import is_operator_privileged, is_operator_user_id
+    is_operator = is_operator_user_id(session, user_id)
+    is_priv = is_operator_privileged(user_id)
+
     full_text = ""
     async for event in stream_chat_with_tools(
         [{"role": "system", "content": system_prompt}] + openai_history,
@@ -444,6 +499,8 @@ async def _run_room_prompt(session: Session, room_id: str, user_id: str, content
         room_id=room_id,
         agent_name=agent_name,
         room_execution_allowed=room.execution_allowed,
+        is_operator=is_operator,
+        is_privileged=is_priv,
     ):
         etype = event.get("type")
         if etype == "token":
@@ -464,6 +521,31 @@ async def _run_room_prompt(session: Session, room_id: str, user_id: str, content
             )
             await _broadcast_room_message(room_id, str(bot_msg.id), text, bot_user.username, "BOT")
             return {"kind": "confirm", "text": text, "confirm_id": confirm_id, "tool_name": tool_name}
+        elif etype == "privileged_required":
+            confirm_id = str(event.get("confirm_id", ""))
+            tool_name = str(event.get("tool", "tool"))
+            risk = str(event.get("risk", "Privileged access required"))
+            _set_pending_confirmation(chat_id, confirm_id, tool_name)
+            text = (
+                f"\u26a0\ufe0f Privileged action detected.\n"
+                f"Action: {tool_name}\n"
+                f"Risk: {risk}\n\n"
+                "Reply with one of these messages:\n"
+                "YES\n"
+                "NO\n"
+                "PIN"
+            )
+            bot_user = _find_or_create_bot_user(session)
+            bot_msg = create_chat_message(
+                session=session,
+                room_id=room_uuid,
+                sender_id=bot_user.id,
+                content=text,
+                sender_type="BOT",
+                meta_json={"source": "telegram", "telegram_chat_id": chat_id, "privileged_required": True},
+            )
+            await _broadcast_room_message(room_id, str(bot_msg.id), text, bot_user.username, "BOT")
+            return {"kind": "privileged_required", "text": text, "confirm_id": confirm_id, "tool_name": tool_name}
 
     final_text = full_text.strip() or "I did not generate a response."
     bot_user = _find_or_create_bot_user(session)
@@ -484,8 +566,14 @@ async def _run_room_prompt(session: Session, room_id: str, user_id: str, content
 
 
 async def _execute_pending_confirmation(session: Session, room_id: str, user_id: str, confirm_id: str, *, chat_id: str) -> str:
-    from app.api.routes.chat.llm import _redact_for_audit, consume_pending
+    from app.api.routes.chat.llm import (
+        consume_pending,
+        mask_tool_result_for_external,
+        redact_tool_call_for_audit,
+        serialize_tool_args_for_audit,
+    )
     from app.api.routes.chat.tools import execute_tool
+    from app.services.guardian.auth import is_operator_privileged, is_operator_user_id
     from app.services.guardian.executive import exec_with_guard
     from app.services.guardian.memory import remember_tool_event
     from app.services.guardian.policy import decide_tool_use
@@ -501,11 +589,23 @@ async def _execute_pending_confirmation(session: Session, room_id: str, user_id:
     if not room:
         return "Linked room not found."
 
-    decision = decide_tool_use(tool_name, tool_args, room_execution_allowed=room.execution_allowed)
+    decision = decide_tool_use(
+        tool_name,
+        tool_args,
+        room_execution_allowed=room.execution_allowed,
+        is_operator=is_operator_user_id(session, user_id),
+        is_privileged=is_operator_privileged(user_id),
+    )
     create_audit_log(
         session=session,
         tool_name="policy_decision",
-        tool_input=json.dumps({"tool_name": tool_name, "tool_args": tool_args, "confirmed": True}),
+        tool_input=json.dumps(
+            {
+                "tool_name": tool_name,
+                "tool_args": json.loads(serialize_tool_args_for_audit(tool_name, tool_args)),
+                "confirmed": True,
+            }
+        ),
         tool_result=decision.to_json(),
         user_id=uuid.UUID(user_id),
         room_id=uuid.UUID(room_id),
@@ -527,8 +627,8 @@ async def _execute_pending_confirmation(session: Session, room_id: str, user_id:
             ),
             metadata={"room_id": room_id, "user_id": user_id, "confirmed": True, "source": "telegram"},
         )
-    result_text = str(result)
-    redacted_input, redacted_result = _redact_for_audit(json.dumps(tool_args), result_text)
+    result_text = mask_tool_result_for_external(tool_name, tool_args, result)
+    redacted_input, redacted_result = redact_tool_call_for_audit(tool_name, tool_args, result)
     create_audit_log(
         session=session,
         tool_name=tool_name,
@@ -563,12 +663,74 @@ async def _execute_pending_confirmation(session: Session, room_id: str, user_id:
     return result_text
 
 
+def _log_breakglass_event(event: str, user_id: str, session_id: str | None = None) -> None:
+    """Best-effort audit log for break-glass events (no DB session required)."""
+    logger.info("[guardian-auth] breakglass event=%s user_id=%s session_id=%s", event, user_id, session_id)
+
+
+async def _handle_pin_submission(
+    db,
+    chat_id: str,
+    link,
+    pin_text: str,
+    pin_state: dict,
+) -> None:
+    """Process a PIN submitted after /breakglass or PIN prompt."""
+    from app.services.guardian.auth import is_locked_out, verify_pin, open_privileged_session
+    from app.crud import create_audit_log
+
+    user_id = link.user_id
+    if is_locked_out(user_id):
+        await _send_text(chat_id, "Too many failed PIN attempts. Wait 5 minutes, then send /breakglass to try again.")
+        return
+
+    if verify_pin(user_id, pin_text.strip()):
+        session = open_privileged_session(user_id, operator=user_id)
+        _log_breakglass_event("session_open", user_id, session.session_id)
+        ttl_min = session.ttl_remaining() // 60
+        try:
+            create_audit_log(
+                session=db,
+                tool_name="breakglass_session_open",
+                tool_input=json.dumps({"operator": "sparkbot-user", "session_id": session.session_id}),
+                tool_result="ok",
+                user_id=uuid.UUID(user_id),
+            )
+        except Exception:
+            pass
+        await _send_text(
+            chat_id,
+            f"\U0001f513 Break-glass mode enabled for {ttl_min} minute(s).\n"
+            f"Scope: vault, service control.\n\n"
+            f"Send your privileged request as a new message.\n"
+            f"Use /breakglass close to exit.",
+        )
+        _clear_pending_confirmation(chat_id)
+    else:
+        _log_breakglass_event("pin_failed", user_id)
+        try:
+            create_audit_log(
+                session=db,
+                tool_name="breakglass_pin_failed",
+                tool_input=json.dumps({"operator": "sparkbot-user"}),
+                tool_result="failed",
+                user_id=uuid.UUID(user_id),
+            )
+        except Exception:
+            pass
+        await _send_text(chat_id, "Incorrect operator PIN. Try again, or reply NO to cancel.")
+
+
 def _help_text() -> str:
     return (
         "Sparkbot Telegram bridge is active.\n\n"
         "Send any normal message to chat with Sparkbot.\n"
         "Use /approve to confirm a pending action.\n"
-        "Use /deny to cancel a pending action."
+        "Use /deny or NO to cancel a pending action.\n"
+        "Use YES to approve a pending action.\n"
+        "Use PIN when a privileged action is requested.\n"
+        "Send /breakglass by itself to open privileged mode with your operator PIN.\n"
+        "Send /breakglass close by itself to close privileged mode."
     )
 
 
@@ -596,11 +758,62 @@ async def _handle_private_message(message: dict[str, Any], get_db_session: Calla
     db = next(get_db_session())
     try:
         link = _ensure_linked_room(db, chat_id, sender)
-        lower = text.lower()
+        lower = text.lower().strip()
+
+        if chat_id in _prune_awaiting_pin(chat_id=chat_id):
+            await _send_text(chat_id, "PIN prompt expired. Send /breakglass to start again, or reply PIN when a privileged action is waiting.")
+            return
+
+        # PIN capture — must check first; any text while awaiting PIN is treated as the PIN
+        if chat_id in _AWAITING_PIN:
+            pin_state = _AWAITING_PIN.pop(chat_id)
+            await _handle_pin_submission(db, chat_id, link, text, pin_state)
+            return
+
         if lower in {"/start", "/help"}:
             await _send_text(chat_id, _help_text())
             return
-        if lower in {"/deny", "/cancel"}:
+
+        if lower == "/breakglass close":
+            from app.services.guardian.auth import close_privileged_session, get_active_session, is_operator_user_id, is_operator_privileged
+            from app.crud import create_audit_log
+
+            if not is_operator_user_id(db, link.user_id):
+                await _send_text(chat_id, "Break-glass is restricted to configured Sparkbot operators.")
+                return
+            if not is_operator_privileged(link.user_id):
+                await _send_text(chat_id, "Break-glass mode is not active. Send /breakglass to open it.")
+                return
+            current_session = get_active_session(link.user_id)
+            close_privileged_session(link.user_id)
+            _AWAITING_PIN.pop(chat_id, None)
+            _clear_pending_confirmation(chat_id)
+            try:
+                if current_session:
+                    create_audit_log(
+                        session=db,
+                        tool_name="breakglass_session_close",
+                        tool_input=json.dumps({"operator": "sparkbot-user", "session_id": current_session.session_id}),
+                        tool_result="ok",
+                        user_id=uuid.UUID(link.user_id),
+                    )
+            except Exception:
+                pass
+            await _send_text(chat_id, "Break-glass mode closed.")
+            return
+
+        # /breakglass — enter privileged mode via PIN
+        if lower == "/breakglass":
+            from app.services.guardian.auth import is_operator_user_id
+
+            if not is_operator_user_id(db, link.user_id):
+                await _send_text(chat_id, "Break-glass is restricted to configured Sparkbot operators.")
+                return
+            _set_awaiting_pin(chat_id, confirm_id=None, requires_confirm=False)
+            await _send_text(chat_id, "Enter your operator PIN to open break-glass mode.\nReply NO to cancel.")
+            return
+
+        if lower in {"/deny", "/cancel", "no"}:
             if not link.pending_confirm_id:
                 await _send_text(chat_id, "There is no pending approval to cancel.")
                 return
@@ -610,7 +823,8 @@ async def _handle_private_message(message: dict[str, Any], get_db_session: Calla
             _clear_pending_confirmation(chat_id)
             await _send_text(chat_id, "Pending action cancelled.")
             return
-        if lower == "/approve":
+
+        if lower in {"/approve", "yes"}:
             if not link.pending_confirm_id:
                 await _send_text(chat_id, "There is no pending approval right now.")
                 return
@@ -622,6 +836,15 @@ async def _handle_private_message(message: dict[str, Any], get_db_session: Calla
                 chat_id=chat_id,
             )
             await _send_text(chat_id, result)
+            return
+
+        # PIN keyword — enter PIN auth flow for a pending privileged action
+        if lower == "pin":
+            if not link.pending_confirm_id:
+                await _send_text(chat_id, "There is no pending action requiring privileged access.")
+                return
+            _set_awaiting_pin(chat_id, confirm_id=link.pending_confirm_id, requires_confirm=False)
+            await _send_text(chat_id, "Enter your operator PIN:")
             return
 
         result = await _run_room_prompt(db, link.room_id, link.user_id, text, chat_id=chat_id)

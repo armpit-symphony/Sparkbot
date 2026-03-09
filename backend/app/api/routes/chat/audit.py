@@ -36,15 +36,15 @@ def list_audit_logs(
     Results are newest-first. Use `tool` to filter by tool name (e.g. `web_search`)
     or `room_id` to scope to a specific room.
     """
-    room_uuid: Optional[uuid.UUID] = None
-    if room_id:
-        try:
-            room_uuid = uuid.UUID(room_id)
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid room_id UUID")
-        membership = get_chat_room_member(session, room_uuid, current_user.id)
-        if not membership:
-            raise HTTPException(status_code=403, detail="Not a member of this room")
+    if not room_id:
+        raise HTTPException(status_code=400, detail="room_id is required")
+    try:
+        room_uuid = uuid.UUID(room_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid room_id UUID")
+    membership = get_chat_room_member(session, room_uuid, current_user.id)
+    if not membership:
+        raise HTTPException(status_code=403, detail="Not a member of this room")
 
     rows, total = get_audit_logs(
         session=session,

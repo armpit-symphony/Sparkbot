@@ -386,7 +386,9 @@ async def _broadcast_task_message(room_id: str, message_id: str, content: str) -
 
 
 async def _execute_internal_tool(task: GuardianTask, session: Session) -> tuple[str, str]:
+    from app.api.routes.chat.llm import mask_tool_result_for_external
     from app.api.routes.chat.tools import execute_tool
+    from app.services.guardian.auth import is_operator_user_id
 
     room = session.get(ChatRoom, uuid.UUID(task.room_id))
     execution_allowed = bool(room.execution_allowed) if room else False
@@ -395,6 +397,7 @@ async def _execute_internal_tool(task: GuardianTask, session: Session) -> tuple[
         task.tool_name,
         tool_args if isinstance(tool_args, dict) else {},
         room_execution_allowed=execution_allowed,
+        is_operator=is_operator_user_id(session, task.user_id),
     )
     if decision.action == "deny":
         return "denied", decision.reason
@@ -406,6 +409,11 @@ async def _execute_internal_tool(task: GuardianTask, session: Session) -> tuple[
                 "Re-schedule the task via chat to go through the confirmation modal.",
             )
         # Pre-authorized write task — the user confirmed via guardian_schedule_task modal.
+    if decision.action in {"privileged", "privileged_reveal"}:
+        return (
+            "denied",
+            "Scheduled tasks cannot use break-glass or vault reveal actions. Run them interactively as an operator instead.",
+        )
 
     clean_args = _strip_meta_keys(tool_args if isinstance(tool_args, dict) else {})
 
@@ -425,7 +433,7 @@ async def _execute_internal_tool(task: GuardianTask, session: Session) -> tuple[
         perform_fn=perform,
         metadata={"task_id": task.id, "room_id": task.room_id, "user_id": task.user_id},
     )
-    return "success", str(result)
+    return "success", mask_tool_result_for_external(task.tool_name, clean_args, result)
 
 
 async def run_task_once(task: GuardianTask, session: Session) -> dict[str, Any]:

@@ -188,8 +188,14 @@ async def _execute_dashboard_approval(
     current_user: CurrentChatUser,
     confirm_id: str,
 ) -> ApprovalActionResponse:
-    from app.api.routes.chat.llm import _redact_for_audit, consume_pending
+    from app.api.routes.chat.llm import (
+        consume_pending,
+        mask_tool_result_for_external,
+        redact_tool_call_for_audit,
+        serialize_tool_args_for_audit,
+    )
     from app.api.routes.chat.tools import execute_tool
+    from app.services.guardian.auth import is_operator_identity, is_operator_privileged
     from app.services.guardian.executive import exec_with_guard
     from app.services.guardian.memory import remember_tool_event
     from app.services.guardian.policy import decide_tool_use
@@ -219,6 +225,8 @@ async def _execute_dashboard_approval(
         tool_name,
         tool_args,
         room_execution_allowed=room.execution_allowed if room else None,
+        is_operator=is_operator_identity(username=current_user.username, user_type=current_user.type),
+        is_privileged=is_operator_privileged(user_id_str),
     )
     create_audit_log(
         session=session,
@@ -226,7 +234,7 @@ async def _execute_dashboard_approval(
         tool_input=json.dumps(
             {
                 "tool_name": tool_name,
-                "tool_args": tool_args,
+                "tool_args": json.loads(serialize_tool_args_for_audit(tool_name, tool_args)),
                 "confirmed": True,
                 "source": "dashboard",
             }
@@ -254,10 +262,8 @@ async def _execute_dashboard_approval(
             metadata={"room_id": room_id, "user_id": user_id_str, "confirmed": True, "source": "dashboard"},
         )
 
-    redacted_input, redacted_result = _redact_for_audit(
-        json.dumps(tool_args if isinstance(tool_args, dict) else {}),
-        str(result),
-    )
+    outward_result = mask_tool_result_for_external(tool_name, tool_args, result)
+    redacted_input, redacted_result = redact_tool_call_for_audit(tool_name, tool_args, result)
     create_audit_log(
         session=session,
         tool_name=tool_name,
@@ -291,7 +297,7 @@ async def _execute_dashboard_approval(
             session=session,
             room_id=room_uuid,
             sender_id=bot_user.id,
-            content=str(result),
+            content=outward_result,
             sender_type="BOT",
             meta_json={"source": "dashboard", "approved_confirm_id": confirm_id},
         )
@@ -301,7 +307,7 @@ async def _execute_dashboard_approval(
         status="approved",
         tool_name=tool_name,
         room_id=room_id or None,
-        result=str(result),
+        result=outward_result,
     )
 
 
@@ -345,14 +351,16 @@ async def _load_inbox_summary() -> DashboardInboxSummary:
 def _build_token_guardian_summary(session: SessionDep, room_ids: list[Any], now: datetime) -> DashboardTokenGuardianSummary:
     stats = get_token_guardian_stats()
     audit_window = now - timedelta(hours=24)
-    routing_entries = session.exec(
-        select(AuditLog)
-        .where(AuditLog.room_id.in_(room_ids))
-        .where(AuditLog.tool_name.in_(("tokenguardian_shadow", "tokenguardian_live")))
-        .where(AuditLog.created_at >= audit_window)
-        .order_by(AuditLog.created_at.desc())
-        .limit(200)
-    ).all()
+    routing_entries = list(
+        session.execute(
+            select(AuditLog)
+            .where(AuditLog.room_id.in_(room_ids))
+            .where(AuditLog.tool_name.in_(("tokenguardian_shadow", "tokenguardian_live")))
+            .where(AuditLog.created_at >= audit_window)
+            .order_by(AuditLog.created_at.desc())
+            .limit(200)
+        ).scalars().all()
+    )
 
     live_routes_24h = 0
     suggested_switches_24h = 0

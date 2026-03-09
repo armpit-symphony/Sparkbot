@@ -5,6 +5,7 @@ Replaces direct OpenAI SDK calls so any provider can be swapped
 by changing a model string. Per-user model preferences stored in memory.
 """
 import json
+import logging
 import os
 import re
 import time
@@ -14,6 +15,8 @@ from typing import AsyncGenerator
 import litellm
 
 litellm.drop_params = True  # ignore unsupported params instead of erroring
+
+log = logging.getLogger(__name__)
 
 PRIMARY_MODEL_ENV = "SPARKBOT_MODEL"
 BACKUP_MODEL_1_ENV = "SPARKBOT_BACKUP_MODEL_1"
@@ -27,8 +30,9 @@ SYSTEM_PROMPT = (
     "If asked what model you are, say: 'I'm Sparkbot, your Sparkpit assistant.' "
     "Use available tools whenever they are relevant. "
     "Do not claim you lack the ability to access external systems if a matching tool is available. "
+    "When a user asks for current information, recent news, website checks, or anything that requires live web data, use the web_search tool instead of answering from memory. "
     "For Gmail, Google Drive, email, search, Slack, GitHub, Notion, Confluence, calendar, local server operations, service management, approved SSH host operations, and Task Guardian scheduling, prefer using the corresponding tool. "
-    "For service status, diagnostics, memory, disk, listeners, processes, and logs, use read-only server tools. "
+    "For service status, diagnostics, memory, disk, listeners, processes, logs, and local-machine troubleshooting, use read-only server tools whenever the room execution gate allows them. "
     "Use service management only for explicit start, stop, or restart requests. "
     "Use Task Guardian only for approved recurring read-only work such as inbox digests, PR checks, calendar lookups, and diagnostics. "
     "Never claim that a write action or service action completed unless the tool result explicitly says it succeeded. "
@@ -49,6 +53,23 @@ AVAILABLE_MODELS: dict[str, str] = {
     "groq/llama-3.3-70b-versatile":  "Llama 3.3 70B via Groq — very fast",
     "minimax/MiniMax-M2.5":          "MiniMax M2.5 — reasoning + tool calling (MINIMAX_API_KEY)",
 }
+
+OLLAMA_MODELS: dict[str, str] = {
+    "ollama/llama3.2:1b":    "Llama 3.2 1B — fastest, lowest memory (~1 GB)",
+    "ollama/llama3.2:3b":    "Llama 3.2 3B — fast and balanced (~2 GB)",
+    "ollama/phi4-mini":      "Phi-4 Mini — best default quality/speed balance (~2.5 GB)",
+    "ollama/phi3.5":         "Phi 3.5 — reasoning-focused, efficient (~2 GB)",
+    "ollama/gemma2:2b":      "Gemma 2 2B — compact quality (~1.6 GB)",
+    "ollama/granite3.3:2b":  "Granite 3.3 2B — long-context, compact (~1.5 GB)",
+    "ollama/mistral:7b":     "Mistral 7B — stronger quality (~4.1 GB)",
+    "ollama/falcon3:1b":       "Falcon3 1B — ultra-light (~0.6 GB)",
+    "ollama/falcon3:3b":       "Falcon3 3B — light and capable (~1.7 GB)",
+    "ollama/falcon3:7b":       "Falcon3 7B — powerful, good reasoning (~4 GB)",
+    "ollama/gemma2:9b":        "Gemma 2 9B — strong quality, larger model (~5.5 GB)",
+    "ollama/granite3.3:8b":    "Granite 3.3 8B — long-context, stronger (~4.9 GB)",
+}
+# Merge into AVAILABLE_MODELS so model routing works
+AVAILABLE_MODELS.update(OLLAMA_MODELS)
 
 # In-memory per-user model preferences  {user_id: model_name}
 # Resets on service restart — good enough until DB persistence is added
@@ -117,6 +138,54 @@ _SECRET_VALUE_PATTERNS = [
     re.compile(r"secret_[A-Za-z0-9]{40,}"),
 ]
 
+# Tools whose plaintext result must never leave the LLM context boundary.
+# Result is replaced with a placeholder in all outward-facing paths:
+# SSE tool_done events, audit logs, memory, Telegram responses, chat DB.
+_VAULT_INTERNAL_TOOLS: frozenset[str] = frozenset({"vault_use_secret"})
+_VAULT_VALUE_ARG_TOOLS: frozenset[str] = frozenset({"vault_add_secret", "vault_update_secret"})
+
+
+def _masked_vault_placeholder(tool_args: dict | None) -> str:
+    alias = "secret"
+    if isinstance(tool_args, dict):
+        alias = str(tool_args.get("alias") or alias).strip() or alias
+    return f"[vault:{alias}]"
+
+
+def mask_tool_result_for_external(tool_name: str, tool_args: dict | None, result: object) -> str:
+    if tool_name in _VAULT_INTERNAL_TOOLS:
+        return _masked_vault_placeholder(tool_args)
+    return str(result)
+
+
+def _sanitize_tool_args_for_audit(tool_name: str, tool_args: dict | None) -> str:
+    safe_args = dict(tool_args) if isinstance(tool_args, dict) else {}
+    if tool_name in _VAULT_VALUE_ARG_TOOLS and "value" in safe_args:
+        safe_args["value"] = "[REDACTED]"
+    return json.dumps(safe_args)
+
+
+def serialize_tool_args_for_audit(tool_name: str, tool_args: dict | None) -> str:
+    return _sanitize_tool_args_for_audit(tool_name, tool_args)
+
+
+def redact_tool_call_for_audit(
+    tool_name: str,
+    tool_args: dict | None,
+    result: object,
+) -> tuple[str, str]:
+    outward_result = mask_tool_result_for_external(tool_name, tool_args, result)
+    return _redact_for_audit(_sanitize_tool_args_for_audit(tool_name, tool_args), outward_result)
+
+
+_GENERIC_SECRET_PAIR_RE = re.compile(
+    r"(?i)\b(password|passwd|secret|token|api[_-]?key|access[_-]?key|credential|auth[_-]?token|passphrase|private[_-]?key)\b(\s*[:=]\s*)([^\s,;]+)"
+)
+
+
+def _redact_secret_like_text(text: str) -> str:
+    return _GENERIC_SECRET_PAIR_RE.sub(r"\1\2[REDACTED]", text)
+
 
 def _redact_for_audit(tool_input: str, tool_result: str) -> tuple[str, str]:
     """Redact sensitive values from audit log entries."""
@@ -128,9 +197,37 @@ def _redact_for_audit(tool_input: str, tool_result: str) -> tuple[str, str]:
         tool_input = json.dumps(data)
     except Exception:
         pass
+    tool_input = _redact_secret_like_text(tool_input)
     for pattern in _SECRET_VALUE_PATTERNS:
         tool_result = pattern.sub("[REDACTED]", tool_result)
+    # Also redact secret-keyed fields if result is a JSON dict
+    try:
+        result_data = json.loads(tool_result)
+        if isinstance(result_data, dict):
+            for key in list(result_data.keys()):
+                if _SECRET_KEY_RE.search(key):
+                    result_data[key] = "[REDACTED]"
+            tool_result = json.dumps(result_data)
+    except Exception:
+        pass
+    tool_result = _redact_secret_like_text(tool_result)
     return tool_input, tool_result
+
+
+async def get_ollama_status() -> dict:
+    """Check Ollama server connectivity and list available local models."""
+    import httpx
+    base_url = os.environ.get("OLLAMA_API_BASE", "http://localhost:11434").rstrip("/")
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(f"{base_url}/api/tags")
+            if resp.status_code == 200:
+                data = resp.json()
+                models = [m["name"] for m in data.get("models", [])]
+                return {"reachable": True, "base_url": base_url, "models": models}
+    except Exception:
+        pass
+    return {"reachable": False, "base_url": base_url, "models": []}
 
 
 def _default_model() -> str:
@@ -149,6 +246,8 @@ def model_provider(model: str) -> str:
         return "groq"
     if normalized.startswith("minimax/"):
         return "minimax"
+    if normalized.startswith("ollama/"):
+        return "ollama"
     return "other"
 
 
@@ -164,6 +263,9 @@ def model_is_configured(model: str) -> bool:
         return bool(os.getenv("GROQ_API_KEY", "").strip())
     if provider == "minimax":
         return bool(os.getenv("MINIMAX_API_KEY", "").strip())
+    if provider == "ollama":
+        # Ollama is always "configured" — it's local, no API key needed
+        return True
     return bool((model or "").strip())
 
 
@@ -242,15 +344,30 @@ async def _acompletion_with_fallback(
 ):
     last_error: Exception | None = None
     chosen_candidate = model
+    errors: list[str] = []
     for candidate in _candidate_models(model, route_payload):
         try:
             chosen_candidate = candidate
             response = await litellm.acompletion(model=candidate, **kwargs)
+            if candidate != model:
+                log.warning(
+                    "LLM fallback succeeded: requested=%s applied=%s prior_errors=%s",
+                    model,
+                    candidate,
+                    errors,
+                )
             return chosen_candidate, response
         except Exception as exc:
             last_error = exc
+            errors.append(f"{candidate}: {type(exc).__name__}: {exc}")
             continue
     if last_error is not None:
+        log.error(
+            "LLM completion failed for all candidates: requested=%s candidates=%s errors=%s",
+            model,
+            _candidate_models(model, route_payload),
+            errors,
+        )
         raise last_error
     chosen_candidate = model
     response = await litellm.acompletion(model=chosen_candidate, **kwargs)
@@ -269,6 +386,30 @@ def set_model(user_id: str, model: str) -> str:
         raise ValueError(f"Unknown model '{model}'. Available: {', '.join(AVAILABLE_MODELS)}")
     _user_models[user_id] = model
     return model
+
+
+_WEB_SEARCH_HINT_RE = re.compile(
+    r"\b("
+    r"latest|recent|current|today|news|headline|price|pricing|cost|token cost|weather|look up|lookup|search the web|browse|google|"
+    r"website|web page|url|docs?|documentation|release notes?|what changed"
+    r")\b",
+    re.IGNORECASE,
+)
+_SERVER_READ_HINT_RE = re.compile(
+    r"\b("
+    r"server|machine|local machine|droplet|system|service|journal|log|logs|memory|disk|cpu|process|"
+    r"listener|listeners|port|socket|status|uptime|network|troubleshoot|debug|investigate|check itself|root"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def _should_nudge_web_search(message: str) -> bool:
+    return bool(_WEB_SEARCH_HINT_RE.search((message or "").strip()))
+
+
+def _should_nudge_server_read(message: str) -> bool:
+    return bool(_SERVER_READ_HINT_RE.search((message or "").strip()))
 
 
 async def stream_chat(
@@ -299,6 +440,8 @@ async def stream_chat_with_tools(
     agent_name: str | None = None,
     confirmed_ids: set[str] | None = None,
     room_execution_allowed: bool | None = None,
+    is_operator: bool = False,
+    is_privileged: bool = False,
 ) -> AsyncGenerator[dict, None]:
     """
     Tool-aware streaming. Yields typed event dicts:
@@ -348,6 +491,42 @@ async def stream_chat_with_tools(
     if route_payload is not None:
         yield {"type": "routing", "payload": route_payload}
 
+    if latest_user_message:
+        if _should_nudge_web_search(latest_user_message):
+            msgs.insert(
+                1,
+                {
+                    "role": "system",
+                    "content": (
+                        "This request likely needs live external information. "
+                        "Use the web_search tool unless the user explicitly asked for reasoning only."
+                    ),
+                },
+            )
+        if _should_nudge_server_read(latest_user_message):
+            if room_execution_allowed:
+                msgs.insert(
+                    1,
+                    {
+                        "role": "system",
+                        "content": (
+                            "This request appears to be about the local machine or services. "
+                            "Use read-only server tools for diagnostics before answering when relevant."
+                        ),
+                    },
+                )
+            else:
+                msgs.insert(
+                    1,
+                    {
+                        "role": "system",
+                        "content": (
+                            "This request appears to be about the local machine or services, "
+                            "but the room execution gate is disabled. Explain that clearly instead of pretending the tools do not exist."
+                        ),
+                    },
+                )
+
     if db_session is not None and user_id and room_id and route_payload:
         try:
             import uuid as _uuid
@@ -373,14 +552,29 @@ async def stream_chat_with_tools(
         except Exception:
             pass
 
+    tool_usage_counts: dict[str, int] = {}
+
     for _round in range(5):
+        tool_choice: str = "auto"
+        if tool_usage_counts.get("web_search", 0) >= 2:
+            msgs.append(
+                {
+                    "role": "system",
+                    "content": (
+                        "You already have live search results. "
+                        "Do not call web_search again. Synthesize the answer from the tool results you already received."
+                    ),
+                }
+            )
+            tool_choice = "none"
+
         # Non-streaming call to resolve any tool calls
         chosen, response = await _acompletion_with_fallback(
             model=chosen,
             route_payload=route_payload,
             messages=msgs,
             tools=TOOL_DEFINITIONS,
-            tool_choice="auto",
+            tool_choice=tool_choice,
             temperature=0.2,
         )
 
@@ -403,6 +597,8 @@ async def stream_chat_with_tools(
                     tool_name,
                     tool_args if isinstance(tool_args, dict) else {},
                     room_execution_allowed=room_execution_allowed,
+                    is_operator=is_operator,
+                    is_privileged=is_privileged,
                 )
 
                 if db_session is not None:
@@ -416,7 +612,7 @@ async def stream_chat_with_tools(
                             tool_input=json.dumps(
                                 {
                                     "tool_name": tool_name,
-                                    "tool_args": tool_args,
+                                    "tool_args": json.loads(serialize_tool_args_for_audit(tool_name, tool_args)),
                                 }
                             )[:2000],
                             tool_result=decision.to_json()[:1000],
@@ -438,6 +634,39 @@ async def stream_chat_with_tools(
                         "content": result,
                     })
                     continue
+
+                if decision.action in ("privileged", "privileged_reveal"):
+                    confirm_id = str(_uuid_module.uuid4())
+                    _pending_ttl_cleanup()
+                    pending_entry = {
+                        "tool": tool_name,
+                        "args": tool_args,
+                        "user_id": user_id,
+                        "room_id": room_id,
+                        "created_at": time.time(),
+                    }
+                    _pending[confirm_id] = pending_entry
+                    try:
+                        from app.services.guardian.pending_approvals import store_pending_approval
+
+                        store_pending_approval(
+                            confirm_id=confirm_id,
+                            tool_name=tool_name,
+                            tool_args=tool_args if isinstance(tool_args, dict) else {},
+                            user_id=user_id,
+                            room_id=room_id,
+                        )
+                    except Exception:
+                        pass
+                    yield {
+                        "type": "privileged_required",
+                        "confirm_id": confirm_id,
+                        "tool": tool_name,
+                        "input": tool_args,
+                        "risk": decision.reason,
+                        "requires_confirm_after_auth": decision.action == "privileged_reveal",
+                    }
+                    return
 
                 if decision.action == "confirm":
                     # Don't prompt for confirmation when email sending is unavailable.
@@ -502,7 +731,12 @@ async def stream_chat_with_tools(
                     },
                 )
 
-                yield {"type": "tool_done", "tool": tool_name, "result": result[:300]}
+                # Vault-internal tools: mask plaintext in all outward-facing paths.
+                # The full plaintext stays in `result` for the LLM context only.
+                outward_result = mask_tool_result_for_external(tool_name, tool_args, result)
+
+                yield {"type": "tool_done", "tool": tool_name, "result": outward_result[:300]}
+                tool_usage_counts[tool_name] = tool_usage_counts.get(tool_name, 0) + 1
 
                 # Audit log — best-effort, never let it break the chat stream
                 if db_session is not None:
@@ -510,8 +744,8 @@ async def stream_chat_with_tools(
                         import uuid as _uuid
                         from app.crud import create_audit_log
                         from app.services.guardian.memory import remember_tool_event
-                        redacted_input, redacted_result = _redact_for_audit(
-                            tc.function.arguments, result
+                        redacted_input, redacted_result = redact_tool_call_for_audit(
+                            tool_name, tool_args, result
                         )
                         create_audit_log(
                             session=db_session,
@@ -538,7 +772,7 @@ async def stream_chat_with_tools(
                 msgs.append({
                     "role": "tool",
                     "tool_call_id": tc.id,
-                    "content": result,
+                    "content": result,  # full plaintext for LLM context only
                 })
         else:
             # No more tool calls — stream the final answer

@@ -48,8 +48,6 @@ _PROVIDER_ENV_KEYS = {
     "groq_api_key": "GROQ_API_KEY",
     "minimax_api_key": "MINIMAX_API_KEY",
 }
-
-
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[5]
 
@@ -59,7 +57,13 @@ def _env_path() -> Path:
 
 
 def _require_operator(current_user: CurrentChatUser) -> None:
-    return None
+    from app.services.guardian.auth import is_operator_identity
+
+    if not current_user or not is_operator_identity(
+        username=current_user.username,
+        user_type=current_user.type,
+    ):
+        raise HTTPException(status_code=403, detail="Operator access required.")
 
 
 def _sanitize_env_value(value: str) -> str:
@@ -118,6 +122,18 @@ def _provider_catalog() -> list[dict[str, Any]]:
                 "models": sorted(models_by_provider.get(provider_id, [])),
             }
         )
+    # Ollama is configured if OLLAMA_API_BASE is set or any ollama/ model is selected as primary
+    primary_model = get_model_stack().get("primary", "")
+    ollama_base = os.environ.get("OLLAMA_API_BASE", "")
+    ollama_configured = bool(ollama_base) or primary_model.startswith("ollama/")
+    items.append(
+        {
+            "id": "ollama",
+            "label": "Local (Ollama)",
+            "configured": ollama_configured,
+            "models": sorted(models_by_provider.get("ollama", [])),
+        }
+    )
     return items
 
 
@@ -127,6 +143,10 @@ def _build_controls_config(current_user: CurrentChatUser, notices: list[str] | N
         "stack": get_model_stack(),
         "token_guardian_mode": os.getenv("SPARKBOT_TOKEN_GUARDIAN_MODE", "shadow").strip().lower() or "shadow",
         "providers": _provider_catalog(),
+        # Friendly label for every model — keyed by model ID so the frontend
+        # can show "GPT-5 Mini — fast…" instead of a raw model string.
+        # Auto-updates whenever AVAILABLE_MODELS is updated; no frontend change needed.
+        "model_labels": dict(AVAILABLE_MODELS),
         "comms": {
             "telegram": get_telegram_status(),
             "discord": get_discord_status(),
@@ -154,6 +174,7 @@ class ProviderSecretsInput(BaseModel):
     google_api_key: str | None = None
     groq_api_key: str | None = None
     minimax_api_key: str | None = None
+    ollama_base_url: str | None = None
 
 
 class TelegramConfigInput(BaseModel):
@@ -311,6 +332,13 @@ def get_models_config(current_user: CurrentChatUser) -> dict[str, Any]:
     return _build_controls_config(current_user)
 
 
+@router.get("/ollama/status")
+async def ollama_status(current_user: CurrentChatUser) -> dict:
+    """Check Ollama server connectivity and list available local models."""
+    from app.api.routes.chat.llm import get_ollama_status
+    return await get_ollama_status()
+
+
 @router.post("/models/config")
 def update_models_config(body: ControlsConfigUpdate, current_user: CurrentChatUser) -> dict[str, Any]:
     _require_operator(current_user)
@@ -346,6 +374,9 @@ def update_models_config(body: ControlsConfigUpdate, current_user: CurrentChatUs
             if value:
                 env_updates[env_key] = value
                 notices.append(f"{env_key} stored for runtime use.")
+        if body.providers.ollama_base_url:
+            env_updates["OLLAMA_API_BASE"] = body.providers.ollama_base_url
+            notices.append("OLLAMA_API_BASE stored for runtime use.")
 
     if body.comms is not None:
         if body.comms.telegram is not None:
