@@ -1193,8 +1193,159 @@ TOOL_DEFINITIONS = [
     },
 ]
 
+# ─── Vault tool definitions ───────────────────────────────────────────────────
+_VAULT_TOOL_DEFINITIONS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "vault_list_secrets",
+            "description": (
+                "List all secrets stored in the Guardian Vault. "
+                "Returns alias, category, access policy, and metadata only — no plaintext values."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "vault_use_secret",
+            "description": (
+                "Retrieve a secret from the Guardian Vault and use its value internally. "
+                "The plaintext value is passed to you for use in tool calls but should NOT be echoed in your response. "
+                "Use this when you need to authenticate with an external service using a stored credential."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "alias": {
+                        "type": "string",
+                        "description": "The alias of the secret to retrieve.",
+                    },
+                },
+                "required": ["alias"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "vault_reveal_secret",
+            "description": (
+                "Reveal the plaintext value of a secret to the operator. "
+                "Only works for secrets with policy 'privileged_reveal' or 'admin_reveal'. "
+                "Requires break-glass privileged mode and explicit confirmation."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "alias": {
+                        "type": "string",
+                        "description": "The alias of the secret to reveal.",
+                    },
+                },
+                "required": ["alias"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "vault_add_secret",
+            "description": (
+                "Add a new encrypted secret to the Guardian Vault. "
+                "Requires break-glass privileged mode."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "alias": {
+                        "type": "string",
+                        "description": "Short unique name for this secret (e.g. 'github_token', 'prod_db_password').",
+                    },
+                    "value": {
+                        "type": "string",
+                        "description": "The secret value to encrypt and store.",
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": "Category label (e.g. 'api_key', 'password', 'token'). Defaults to 'general'.",
+                    },
+                    "notes": {
+                        "type": "string",
+                        "description": "Optional human-readable notes about this secret.",
+                    },
+                    "access_policy": {
+                        "type": "string",
+                        "enum": ["use_only", "privileged_reveal", "disabled"],
+                        "description": (
+                            "'use_only': value can be passed to tools but never shown in chat. "
+                            "'privileged_reveal': operator can reveal it in break-glass mode. "
+                            "'disabled': secret is stored but cannot be used."
+                        ),
+                    },
+                },
+                "required": ["alias", "value"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "vault_update_secret",
+            "description": (
+                "Update the value of an existing secret in the Guardian Vault. "
+                "Requires break-glass privileged mode."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "alias": {
+                        "type": "string",
+                        "description": "Alias of the secret to update.",
+                    },
+                    "value": {
+                        "type": "string",
+                        "description": "New encrypted value.",
+                    },
+                    "notes": {
+                        "type": "string",
+                        "description": "Updated notes (optional).",
+                    },
+                    "access_policy": {
+                        "type": "string",
+                        "enum": ["use_only", "privileged_reveal", "disabled"],
+                        "description": "Updated access policy (optional).",
+                    },
+                },
+                "required": ["alias", "value"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "vault_delete_secret",
+            "description": (
+                "Permanently delete a secret from the Guardian Vault. "
+                "Requires break-glass privileged mode and explicit confirmation."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "alias": {
+                        "type": "string",
+                        "description": "Alias of the secret to delete.",
+                    },
+                },
+                "required": ["alias"],
+            },
+        },
+    },
+]
+
 # Extend with dynamically loaded skills
-TOOL_DEFINITIONS = list(TOOL_DEFINITIONS) + _skill_registry.definitions
+TOOL_DEFINITIONS = list(TOOL_DEFINITIONS) + _VAULT_TOOL_DEFINITIONS + _skill_registry.definitions
 
 
 # ─── Executors ────────────────────────────────────────────────────────────────
@@ -3583,6 +3734,93 @@ async def execute_tool(
             description=args.get("description", ""),
             location=args.get("location", ""),
         )
+    # ── Vault tools ──────────────────────────────────────────────────────────
+    if name == "vault_list_secrets":
+        try:
+            from app.services.guardian.vault import vault_list
+            entries = vault_list()
+            if not entries:
+                return "The Guardian Vault is empty. No secrets stored."
+            lines = [f"Guardian Vault — {len(entries)} secret(s):"]
+            for e in entries:
+                policy = e.get("access_policy", "?")
+                cat = e.get("category", "general")
+                notes = f" — {e['notes']}" if e.get("notes") else ""
+                lines.append(f"  • {e['alias']} [{cat}] policy={policy}{notes}")
+            return "\n".join(lines)
+        except Exception as exc:
+            return f"Vault error: {exc}"
+
+    if name == "vault_use_secret":
+        try:
+            from app.services.guardian.vault import vault_use
+            alias = str(args.get("alias", "")).strip()
+            if not alias:
+                return "Error: alias is required."
+            plaintext = vault_use(alias, user_id=user_id or "", operator=user_id or "system")
+            return plaintext
+        except Exception as exc:
+            return f"Vault error: {exc}"
+
+    if name == "vault_reveal_secret":
+        try:
+            from app.services.guardian.vault import vault_reveal
+            alias = str(args.get("alias", "")).strip()
+            if not alias:
+                return "Error: alias is required."
+            plaintext = vault_reveal(alias, user_id=user_id or "", operator=user_id or "system")
+            return f"Secret: {alias}\nValue: {plaintext}"
+        except Exception as exc:
+            return f"Vault error: {exc}"
+
+    if name == "vault_add_secret":
+        try:
+            from app.services.guardian.vault import vault_add
+            alias = str(args.get("alias", "")).strip()
+            value = str(args.get("value", ""))
+            if not alias or not value:
+                return "Error: alias and value are required."
+            result = vault_add(
+                alias=alias,
+                value=value,
+                category=str(args.get("category", "general")),
+                notes=args.get("notes") or None,
+                policy=str(args.get("access_policy", "use_only")),
+                operator=user_id or "system",
+            )
+            return f"Secret '{result['alias']}' added to the vault (policy={result['access_policy']})."
+        except Exception as exc:
+            return f"Vault error: {exc}"
+
+    if name == "vault_update_secret":
+        try:
+            from app.services.guardian.vault import vault_update
+            alias = str(args.get("alias", "")).strip()
+            value = str(args.get("value", ""))
+            if not alias or not value:
+                return "Error: alias and value are required."
+            vault_update(
+                alias=alias,
+                value=value,
+                operator=user_id or "system",
+                notes=args.get("notes") or None,
+                policy=args.get("access_policy") or None,
+            )
+            return f"Secret '{alias}' updated in the vault."
+        except Exception as exc:
+            return f"Vault error: {exc}"
+
+    if name == "vault_delete_secret":
+        try:
+            from app.services.guardian.vault import vault_delete
+            alias = str(args.get("alias", "")).strip()
+            if not alias:
+                return "Error: alias is required."
+            ok = vault_delete(alias, operator=user_id or "system")
+            return f"Secret '{alias}' deleted." if ok else f"Secret '{alias}' not found."
+        except Exception as exc:
+            return f"Vault error: {exc}"
+
     # Fall through to skill plugins
     if name in _skill_registry.executors:
         try:

@@ -62,10 +62,11 @@ def get_current_chat_user(
     bearer_token: OptionalChatBearerDep,
 ) -> ChatUser:
     """
-    Get the current chat user. Accepts HttpOnly cookie first, falls back to Bearer token.
+    Get the current chat user. Prefer an explicit Bearer token over cookies.
+    This avoids stale browser sessions silently overriding API clients/tests.
     Used for chat routes that authenticate via passphrase login.
     """
-    token = request.cookies.get("chat_token") or bearer_token
+    token = bearer_token or request.cookies.get("chat_token")
     if not token:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

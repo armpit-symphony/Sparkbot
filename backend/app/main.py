@@ -87,6 +87,14 @@ async def _start_background_guardians() -> None:
     except Exception:
         pass
 
+    # Initialize Guardian Vault DB (creates tables if not present)
+    try:
+        from app.services.guardian.vault import init_vault_db
+        init_vault_db()
+    except Exception as exc:
+        import logging as _logging
+        _logging.getLogger(__name__).warning("Guardian Vault init warning: %s", exc)
+
 
 @app.on_event("shutdown")
 async def _stop_background_guardians() -> None:

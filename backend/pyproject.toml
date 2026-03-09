@@ -1,6 +1,6 @@
 [project]
 name = "app"
-version = "0.1.0"
+version = "1.1.0"
 description = ""
 requires-python = ">=3.10,<4.0"
 dependencies = [
@@ -19,6 +19,7 @@ dependencies = [
     "sentry-sdk[fastapi]>=2.0.0,<3.0.0",
     "pyjwt<3.0.0,>=2.8.0",
     "pwdlib[argon2,bcrypt]>=0.3.0",
+    "cryptography>=44.0.0,<46.0.0",
     "discord.py>=2.3.2",
     "pywa[fastapi]>=2.0.0",
 ]

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 
-PolicyAction = Literal["allow", "confirm", "deny"]
+PolicyAction = Literal["allow", "confirm", "deny", "privileged", "privileged_reveal"]
 PolicyScope = Literal["read", "write", "execute", "admin"]
 
 
@@ -166,6 +166,55 @@ def _build_policy_registry() -> dict[str, ToolPolicy]:
         high_risk=True,
         requires_execution_gate=True,
     )
+
+    # Vault tools — safe mode allows listing and internal use; writes + reveal require break-glass
+    add(
+        "vault_list_secrets",
+        scope="read",
+        resource="vault",
+        default_action="allow",
+        action_type="read",
+    )
+    add(
+        "vault_use_secret",
+        scope="read",
+        resource="vault",
+        default_action="allow",
+        action_type="read",
+    )
+    add(
+        "vault_add_secret",
+        scope="write",
+        resource="vault",
+        default_action="privileged",
+        action_type="vault_write",
+        high_risk=True,
+    )
+    add(
+        "vault_update_secret",
+        scope="write",
+        resource="vault",
+        default_action="privileged",
+        action_type="vault_write",
+        high_risk=True,
+    )
+    add(
+        "vault_reveal_secret",
+        scope="read",
+        resource="vault",
+        default_action="privileged_reveal",
+        action_type="vault_reveal",
+        high_risk=True,
+    )
+    add(
+        "vault_delete_secret",
+        scope="write",
+        resource="vault",
+        default_action="privileged_reveal",
+        action_type="vault_reveal",
+        high_risk=True,
+    )
+
     return registry
 
 
@@ -208,8 +257,21 @@ def decide_tool_use(
     args: dict[str, Any] | None = None,
     *,
     room_execution_allowed: bool | None = None,
+    is_operator: bool = False,
+    is_privileged: bool = False,
 ) -> PolicyDecision:
     policy = get_tool_policy(tool_name, args)
+
+    if tool_name.startswith("vault_") and not is_operator:
+        return PolicyDecision(
+            tool_name=tool_name,
+            scope=policy.scope,
+            resource=policy.resource,
+            action="deny",
+            action_type=policy.action_type,
+            high_risk=True,
+            reason="Vault tools are restricted to configured Sparkbot operators.",
+        )
 
     if policy.default_action == "deny":
         return PolicyDecision(
@@ -245,6 +307,50 @@ def decide_tool_use(
             action_type=policy.action_type,
             high_risk=policy.high_risk,
             reason=f"{policy.scope.title()} access to {policy.resource} requires confirmation.",
+        )
+
+    # Privileged-only tools: require break-glass session
+    if policy.default_action == "privileged":
+        if is_privileged:
+            return PolicyDecision(
+                tool_name=tool_name,
+                scope=policy.scope,
+                resource=policy.resource,
+                action="allow",
+                action_type=policy.action_type,
+                high_risk=policy.high_risk,
+                reason=f"Privileged access to {policy.resource} is allowed (break-glass active).",
+            )
+        return PolicyDecision(
+            tool_name=tool_name,
+            scope=policy.scope,
+            resource=policy.resource,
+            action="privileged",
+            action_type=policy.action_type,
+            high_risk=policy.high_risk,
+            reason=f"'{tool_name}' requires break-glass privileged mode. Use /breakglass to authenticate.",
+        )
+
+    # Privileged-reveal tools: require break-glass AND explicit confirm
+    if policy.default_action == "privileged_reveal":
+        if is_privileged:
+            return PolicyDecision(
+                tool_name=tool_name,
+                scope=policy.scope,
+                resource=policy.resource,
+                action="confirm",
+                action_type=policy.action_type,
+                high_risk=policy.high_risk,
+                reason=f"Destructive vault operation on {policy.resource} requires explicit confirmation.",
+            )
+        return PolicyDecision(
+            tool_name=tool_name,
+            scope=policy.scope,
+            resource=policy.resource,
+            action="privileged_reveal",
+            action_type=policy.action_type,
+            high_risk=policy.high_risk,
+            reason=f"'{tool_name}' requires break-glass privileged mode. Use /breakglass to authenticate.",
         )
 
     return PolicyDecision(
