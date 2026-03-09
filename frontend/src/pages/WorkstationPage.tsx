@@ -783,7 +783,7 @@ function StationDetailPanel({
   let actionHandler: (() => void) | undefined
 
   if (route && isActive) {
-    actionLabel = type === "sparkbud" ? "Launch Agent" : "Open Station"
+    actionLabel = isSparkbot ? "Open Main Chat" : type === "sparkbud" ? "Launch Agent" : "Open Station"
     actionDisabled = false
     actionHandler = handleNavigate
   } else if (type === "invite" && status === "idle") {
@@ -936,6 +936,130 @@ function StationDetailPanel({
           ))}
         </div>
       </div>
+
+      {isSparkbot && (
+        <>
+          <div style={{ height: 1, backgroundColor: "#1a2235", margin: "0 16px" }} />
+
+          <div style={{ padding: "12px 16px 16px" }}>
+            <div
+              style={{
+                fontSize: 10,
+                color: "#4b5563",
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                marginBottom: 8,
+                fontWeight: 700,
+              }}
+            >
+              Sparkbot Controls
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <button
+                onClick={() => onNavigate("/dm")}
+                style={{
+                  width: "100%",
+                  padding: "9px 10px",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: "#060a13",
+                  backgroundColor: accentHex,
+                  border: "none",
+                  borderRadius: 6,
+                  cursor: "pointer",
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  fontFamily: "monospace",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  boxShadow: `0 0 12px 2px ${accentHex}44`,
+                }}
+              >
+                <ExternalLink size={12} />
+                Open Main Sparkbot Chat
+              </button>
+
+              <div
+                style={{
+                  backgroundColor: "#0a1120",
+                  border: `1px solid ${accentHex}22`,
+                  borderRadius: 6,
+                  padding: "10px 12px",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 10,
+                    color: accentHex,
+                    letterSpacing: "0.06em",
+                    textTransform: "uppercase",
+                    marginBottom: 4,
+                    fontWeight: 700,
+                  }}
+                >
+                  Commands and Help
+                </div>
+                <p style={{ fontSize: 10, color: "#9ca3af", lineHeight: 1.6, margin: 0 }}>
+                  Slash commands live in Sparkbot DM. Open chat and type <span style={{ color: accentHex }}>/help</span> for the current command surface.
+                </p>
+              </div>
+
+              <div
+                style={{
+                  backgroundColor: "#0a1120",
+                  border: `1px solid ${accentHex}22`,
+                  borderRadius: 6,
+                  padding: "10px 12px",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 10,
+                    color: accentHex,
+                    letterSpacing: "0.06em",
+                    textTransform: "uppercase",
+                    marginBottom: 4,
+                    fontWeight: 700,
+                  }}
+                >
+                  Operational Controls
+                </div>
+                <p style={{ fontSize: 10, color: "#9ca3af", lineHeight: 1.6, margin: 0 }}>
+                  Token Guardian, Task Guardian, room execution gate, provider keys, and bridge settings remain in the Sparkbot DM controls drawer today.
+                </p>
+              </div>
+
+              <div
+                style={{
+                  backgroundColor: "#0a1120",
+                  border: "1px dashed #1f2937",
+                  borderRadius: 6,
+                  padding: "10px 12px",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 10,
+                    color: "#6b7280",
+                    letterSpacing: "0.06em",
+                    textTransform: "uppercase",
+                    marginBottom: 4,
+                    fontWeight: 700,
+                  }}
+                >
+                  Future Hook
+                </div>
+                <p style={{ fontSize: 10, color: "#6b7280", lineHeight: 1.6, margin: 0 }}>
+                  Breakglass and admin entry points can attach here once those workstation-native routes are exposed.
+                </p>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Divider */}
       <div style={{ height: 1, backgroundColor: "#1a2235", margin: "0 16px" }} />
@@ -1596,7 +1720,7 @@ export default function WorkstationPage() {
   const navigate = useNavigate()
 
   // ── State ──────────────────────────────────────────────────────────────────
-  const [panel, setPanel] = useState<PanelMode>(null)
+  const [panel, setPanel] = useState<PanelMode>({ kind: "station", station: MAIN_DESK })
   const [inviteModalTarget, setInviteModalTarget] = useState<Station | null>(null)
   const [projectRoom, setProjectRoom] = useState<ProjectRoom>({
     name: "Main Project",

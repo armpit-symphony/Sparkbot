@@ -15,6 +15,13 @@ const isLoggedIn = () => {
   return localStorage.getItem("access_token") !== null
 }
 
+const hasChatSession = () => {
+  return (
+    sessionStorage.getItem("chat_auth") !== null ||
+    localStorage.getItem("access_token") !== null
+  )
+}
+
 const useAuth = () => {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -70,15 +77,12 @@ const useAuth = () => {
     // Server sets HttpOnly cookie — we only store a presence flag
     sessionStorage.setItem("chat_auth", "1")
 
-    // Hard redirect to /dm
-    window.location.replace("/dm")
+    // Land chat users in the workstation; Sparkbot DM remains the main control surface there.
+    window.location.replace("/workstation")
   }
 
   const chatLoginMutation = useMutation({
     mutationFn: chatLogin,
-    onSuccess: () => {
-      navigate({ to: "/chat" })
-    },
     onError: (error: Error) => {
       showErrorToast(error.message)
     },
@@ -101,5 +105,5 @@ const useAuth = () => {
   }
 }
 
-export { isLoggedIn }
+export { hasChatSession, isLoggedIn }
 export default useAuth

@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/form"
 import { LoadingButton } from "@/components/ui/loading-button"
 import { PasswordInput } from "@/components/ui/password-input"
-import useAuth, { isLoggedIn } from "@/hooks/useAuth"
+import useAuth, { hasChatSession, isLoggedIn } from "@/hooks/useAuth"
 
 const formSchema = z.object({
   passphrase: z
@@ -32,7 +32,12 @@ export const Route = createFileRoute("/login")({
   beforeLoad: async () => {
     if (isLoggedIn()) {
       throw redirect({
-        to: "/chat",
+        to: "/",
+      })
+    }
+    if (hasChatSession()) {
+      throw redirect({
+        to: "/workstation",
       })
     }
   },
@@ -65,6 +70,7 @@ function Login() {
     <AuthLayout>
       <Form {...form}>
         <form
+          noValidate
           onSubmit={form.handleSubmit(onSubmit)}
           className="flex flex-col gap-6"
         >

@@ -1,6 +1,6 @@
 import { createFileRoute, redirect } from "@tanstack/react-router"
 import SparkBudPage from "@/pages/SparkBudPage"
-import { isLoggedIn } from "@/hooks/useAuth"
+import { hasChatSession } from "@/hooks/useAuth"
 
 function SparkBudBuilder() {
   return <SparkBudPage budId="sb-builder" />
@@ -9,7 +9,7 @@ function SparkBudBuilder() {
 export const Route = createFileRoute("/sparkbud-builder")({
   component: SparkBudBuilder,
   beforeLoad: async () => {
-    if (!isLoggedIn()) {
+    if (!hasChatSession()) {
       throw redirect({ to: "/login" })
     }
   },
