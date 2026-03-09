@@ -80,6 +80,17 @@ async def websocket_main(websocket: WebSocket):
             if msg_type == "join_room":
                 room_id = data.get("payload", {}).get("room_id")
                 if room_id:
+                    try:
+                        room_uuid = UUID(room_id)
+                    except ValueError:
+                        await websocket.send_json({"type": "error", "message": "Invalid room ID format"})
+                        continue
+
+                    membership = get_chat_room_member(db, room_uuid, user.id)
+                    if not membership:
+                        await websocket.send_json({"type": "error", "message": "Not a member of this room"})
+                        continue
+
                     await ws_manager.join_room(websocket, room_id, str(user.id))
             
             elif msg_type == "leave_room":
@@ -92,6 +103,20 @@ async def websocket_main(websocket: WebSocket):
                 room_id = payload.get("room_id")
                 content = payload.get("content")
                 if room_id and content:
+                    try:
+                        room_uuid = UUID(room_id)
+                    except ValueError:
+                        await websocket.send_json({"type": "error", "message": "Invalid room ID format"})
+                        continue
+
+                    membership = get_chat_room_member(db, room_uuid, user.id)
+                    if not membership:
+                        await websocket.send_json({"type": "error", "message": "Not a member of this room"})
+                        continue
+                    if membership.role == RoomRole.VIEWER:
+                        await websocket.send_json({"type": "error", "message": "VIEWERs cannot send messages"})
+                        continue
+
                     message = await ws_manager.send_message(
                         db, room_id, str(user.id), content, "HUMAN"
                     )
@@ -101,6 +126,17 @@ async def websocket_main(websocket: WebSocket):
                 room_id = payload.get("room_id")
                 is_typing = payload.get("is_typing", False)
                 if room_id:
+                    try:
+                        room_uuid = UUID(room_id)
+                    except ValueError:
+                        await websocket.send_json({"type": "error", "message": "Invalid room ID format"})
+                        continue
+
+                    membership = get_chat_room_member(db, room_uuid, user.id)
+                    if not membership:
+                        await websocket.send_json({"type": "error", "message": "Not a member of this room"})
+                        continue
+
                     await ws_manager.send_typing(
                         room_id, str(user.id), user.username or user.bot_name or "Unknown", is_typing
                     )

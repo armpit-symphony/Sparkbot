@@ -50,26 +50,31 @@ from app.schemas.chat import (
 router = APIRouter(prefix="/rooms", tags=["chat-rooms"])
 
 
+def _require_room_access(
+    session: SessionDep,
+    room_id: UUID,
+    current_user: CurrentChatUser,
+) -> ChatRoomMember:
+    room = get_chat_room_by_id(session, room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    membership = get_chat_room_member(session, room_id, current_user.id)
+    if not membership:
+        raise HTTPException(status_code=403, detail="Not a member of this room")
+
+    return membership
+
+
 @router.get("/", response_model=list[RoomResponse])
 def read_chat_rooms(
     session: SessionDep,
+    current_user: CurrentChatUser,
     skip: int = 0,
     limit: int = 100,
-    current_user: CurrentChatUser = None,
 ) -> Any:
-    """Retrieve rooms. If authenticated, returns user's rooms."""
-    if current_user:
-        # Return user's rooms
-        rooms = get_user_chat_rooms(session, current_user.id)
-    else:
-        # Return all rooms (public listing)
-        rooms = session.exec(
-            select(ChatRoom)
-            .order_by(ChatRoom.updated_at.desc())
-            .offset(skip)
-            .limit(limit)
-        ).all()
-    return rooms
+    """Retrieve rooms for the authenticated user."""
+    return get_user_chat_rooms(session, current_user.id)
 
 
 @router.get("/{room_id}", response_model=RoomDetailResponse)
@@ -421,7 +426,7 @@ def cleanup_expired_chat_invites(session: SessionDep, current_user: CurrentChatU
 def get_room_messages(
     room_id: UUID,
     session: SessionDep,
-    current_user: CurrentChatUser = None,
+    current_user: CurrentChatUser,
     skip: int = 0,
     limit: int = 50,
 ) -> Any:
@@ -429,15 +434,7 @@ def get_room_messages(
     
     Frontend-compatible endpoint: /api/v1/chat/rooms/{room_id}/messages
     """
-    # Check membership if user is authenticated
-    if current_user:
-        membership = session.exec(
-            select(ChatRoomMember)
-            .where(ChatRoomMember.room_id == room_id)
-            .where(ChatRoomMember.user_id == current_user.id)
-        ).first()
-        if not membership:
-            raise HTTPException(status_code=403, detail="Not a member of this room")
+    _require_room_access(session, room_id, current_user)
     
     messages, total, has_more = get_chat_messages(
         session=session,
@@ -489,23 +486,13 @@ def send_room_message(
     room_id: UUID,
     message_in: MessageCreate,
     session: SessionDep,
-    current_user: CurrentChatUser = None,
+    current_user: CurrentChatUser,
 ) -> Any:
     """Send a message to a room.
     
     Frontend-compatible endpoint: /api/v1/chat/rooms/{room_id}/messages
     """
-    if not current_user:
-        raise HTTPException(status_code=401, detail="Authentication required")
-    
-    from app.crud import get_chat_room_member
-    
-    # Check membership and role
-    membership = get_chat_room_member(session, room_id, current_user.id)
-    
-    if not membership:
-        raise HTTPException(status_code=403, detail="Not a member of this room")
-    
+    membership = _require_room_access(session, room_id, current_user)
     if membership.role == RoomRole.VIEWER:
         raise HTTPException(status_code=403, detail="VIEWERs cannot send messages")
     
@@ -612,7 +599,7 @@ async def stream_room_message(
     room_id: UUID,
     message_in: StreamMessageRequest,
     session: SessionDep,
-    current_user: CurrentChatUser = None,
+    current_user: CurrentChatUser,
 ) -> StreamingResponse:
     """Stream bot response as Server-Sent Events (text/event-stream).
 
@@ -622,23 +609,22 @@ async def stream_room_message(
       data: {"type": "done", "message_id": "..."}
       data: {"type": "error", "error": "..."}
     """
-    if not current_user:
-        raise HTTPException(status_code=401, detail="Authentication required")
-
-    membership = get_chat_room_member(session, room_id, current_user.id)
-    if not membership:
-        raise HTTPException(status_code=403, detail="Not a member of this room")
+    membership = _require_room_access(session, room_id, current_user)
     if membership.role == RoomRole.VIEWER:
         raise HTTPException(status_code=403, detail="VIEWERs cannot send messages")
     room = get_chat_room_by_id(session, room_id)
-    if not room:
-        raise HTTPException(status_code=404, detail="Room not found")
 
     # ── Confirmed write-tool execution path ───────────────────────────────────
     if message_in.confirm_id:
-        from app.api.routes.chat.llm import consume_pending
+        from app.api.routes.chat.llm import (
+            consume_pending,
+            mask_tool_result_for_external,
+            redact_tool_call_for_audit,
+            serialize_tool_args_for_audit,
+        )
         from app.api.routes.chat.tools import execute_tool
         from app.services.guardian.executive import exec_with_guard
+        from app.services.guardian.auth import is_operator_identity, is_operator_privileged
         from app.services.guardian.policy import decide_tool_use
 
         pending = consume_pending(message_in.confirm_id)
@@ -648,18 +634,21 @@ async def stream_room_message(
         tool_name = pending["tool"]
         tool_args = pending["args"]
         user_id_str = str(current_user.id)
+        user_is_operator = is_operator_identity(username=current_user.username, user_type=current_user.type)
+        user_is_privileged = is_operator_privileged(user_id_str)
 
         async def confirmed_stream():
             try:
                 from app.api.deps import get_db as _get_db
                 from app.crud import create_audit_log
-                from app.api.routes.chat.llm import _redact_for_audit
                 from app.services.guardian.memory import remember_tool_event
                 db2 = next(_get_db())
                 decision = decide_tool_use(
                     tool_name,
                     tool_args if isinstance(tool_args, dict) else {},
                     room_execution_allowed=room.execution_allowed,
+                    is_operator=user_is_operator,
+                    is_privileged=user_is_privileged,
                 )
                 create_audit_log(
                     session=db2,
@@ -667,7 +656,7 @@ async def stream_room_message(
                     tool_input=json.dumps(
                         {
                             "tool_name": tool_name,
-                            "tool_args": tool_args,
+                            "tool_args": json.loads(serialize_tool_args_for_audit(tool_name, tool_args)),
                             "confirmed": True,
                         }
                     ),
@@ -692,10 +681,8 @@ async def stream_room_message(
                         ),
                         metadata={"room_id": str(room_id), "user_id": user_id_str, "confirmed": True},
                     )
-                redacted_input, redacted_result = _redact_for_audit(
-                    json.dumps(tool_args if isinstance(tool_args, dict) else {}),
-                    str(result),
-                )
+                outward_result = mask_tool_result_for_external(tool_name, tool_args, result)
+                redacted_input, redacted_result = redact_tool_call_for_audit(tool_name, tool_args, result)
                 create_audit_log(
                     session=db2,
                     tool_name=tool_name,
@@ -726,13 +713,13 @@ async def stream_room_message(
                     session=db2,
                     room_id=room_id,
                     sender_id=bot_user2.id,
-                    content=result,
+                    content=outward_result,
                     sender_type="BOT",
                 )
                 done_id = str(bot_reply2.id)
                 db2.close()
                 # Stream result as tokens then done
-                for chunk in [result[i:i+80] for i in range(0, len(result), 80)]:
+                for chunk in [outward_result[i:i+80] for i in range(0, len(outward_result), 80)]:
                     yield f"data: {json.dumps({'type': 'token', 'token': chunk})}\n\n"
                 yield f"data: {json.dumps({'type': 'done', 'message_id': done_id})}\n\n"
             except Exception as e:
@@ -815,6 +802,61 @@ async def stream_room_message(
 
     user_id_str = str(current_user.id)
 
+    # Check for /breakglass slash command before routing to LLM
+    _breakglass_content = (message_in.content or "").strip()
+    if _breakglass_content.lower() in {"/breakglass", "/breakglass close"}:
+        from app.services.guardian.auth import (
+            close_privileged_session,
+            get_active_session,
+            is_operator_identity,
+        )
+
+        async def breakglass_stream():
+            yield f"data: {json.dumps({'type': 'human_message', 'message_id': human_msg_id})}\n\n"
+            session = get_active_session(user_id_str)
+            if not is_operator_identity(username=current_user.username, user_type=current_user.type):
+                msg = "Break-glass is restricted to configured Sparkbot operators."
+            elif _breakglass_content.lower() == "/breakglass close":
+                if session:
+                    close_privileged_session(user_id_str)
+                    msg = "Break-glass mode is now closed."
+                else:
+                    msg = "Break-glass mode is not currently active."
+            elif session:
+                ttl_min = session.ttl_remaining() // 60
+                msg = f"Break-glass mode is already active. Session expires in {ttl_min} minute(s). Use /breakglass close to end it."
+            else:
+                msg = (
+                    "To open break-glass privileged mode, POST to /api/v1/chat/guardian/breakglass "
+                    "with your operator PIN, or use the Telegram bot: send /breakglass and enter your PIN."
+                )
+            from app.api.deps import get_db as _get_db
+            db2 = next(_get_db())
+            from sqlmodel import select as _sel
+            from app.models import ChatUser, UserType
+            from app.crud import create_chat_message as _ccm
+            bot_u = db2.exec(_sel(ChatUser).where(ChatUser.username == "sparkbot")).scalar_one_or_none()
+            if not bot_u:
+                bot_u = ChatUser(username="sparkbot", type=UserType.BOT, hashed_password="")
+                db2.add(bot_u)
+                db2.commit()
+                db2.refresh(bot_u)
+            bot_msg = _ccm(session=db2, room_id=room_id, sender_id=bot_u.id, content=msg, sender_type="BOT")
+            db2.close()
+            yield f"data: {json.dumps({'type': 'token', 'token': msg})}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'message_id': str(bot_msg.id)})}\n\n"
+
+        return StreamingResponse(
+            breakglass_stream(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    from app.services.guardian.auth import is_operator_identity as _is_operator_identity
+    from app.services.guardian.auth import is_operator_privileged as _is_priv
+    _user_is_operator = _is_operator_identity(username=current_user.username, user_type=current_user.type)
+    _user_is_privileged = _is_priv(user_id_str)
+
     async def event_stream():
         from app.api.deps import get_db
 
@@ -833,6 +875,8 @@ async def stream_room_message(
                 room_id=str(room_id),
                 agent_name=agent_name,
                 room_execution_allowed=room.execution_allowed,
+                is_operator=_user_is_operator,
+                is_privileged=_user_is_privileged,
             ):
                 if event["type"] == "token":
                     full_text += event["token"]
@@ -843,6 +887,10 @@ async def stream_room_message(
                 elif event["type"] in ("tool_start", "tool_done"):
                     yield f"data: {json.dumps(event)}\n\n"
                 elif event["type"] == "confirm_required":
+                    awaiting_confirmation = True
+                    yield f"data: {json.dumps(event)}\n\n"
+                    break
+                elif event["type"] == "privileged_required":
                     awaiting_confirmation = True
                     yield f"data: {json.dumps(event)}\n\n"
                     break

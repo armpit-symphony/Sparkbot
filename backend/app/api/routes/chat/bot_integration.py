@@ -15,6 +15,7 @@ from app.crud import (
     create_chat_message,
     get_chat_message_by_id,
     get_chat_room_by_id,
+    get_chat_room_member,
     get_chat_messages,
 )
 from app.models import ChatUser, UserType
@@ -23,6 +24,16 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 
 # Configuration
 SPARKBOT_URL = "http://127.0.0.1:8080"
+
+
+def _require_room_access(session: SessionDep, room_id: uuid.UUID, current_user: CurrentChatUser) -> None:
+    room = get_chat_room_by_id(session, room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    membership = get_chat_room_member(session, room_id, current_user.id)
+    if not membership:
+        raise HTTPException(status_code=403, detail="Not a member of this room")
 
 
 class MessageSendRequest(BaseModel):
@@ -88,7 +99,7 @@ async def send_message_with_bot(
     room_id: str,
     request: MessageSendRequest,
     session: SessionDep,
-    current_user: CurrentChatUser = None,
+    current_user: CurrentChatUser,
 ):
     """
     Send a message to a room and get bot response.
@@ -107,14 +118,11 @@ async def send_message_with_bot(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid room ID format")
     
-    # Check room exists
-    room = get_chat_room_by_id(session, room_uuid)
-    if not room:
-        raise HTTPException(status_code=404, detail="Room not found")
-    
+    _require_room_access(session, room_uuid, current_user)
+
     # Create sender info
-    sender_id = current_user.id if current_user else uuid.uuid4()
-    sender_type = UserType.HUMAN if current_user else UserType.UNKNOWN
+    sender_id = current_user.id
+    sender_type = UserType.HUMAN
     
     # Step 1: Save user message
     user_message = create_chat_message(
@@ -179,7 +187,7 @@ async def get_messages_with_bot_status(
     room_id: str,
     message_id: str,
     session: SessionDep,
-    current_user: CurrentChatUser = None,
+    current_user: CurrentChatUser,
 ):
     """
     Get a specific message and its bot response.
@@ -193,6 +201,8 @@ async def get_messages_with_bot_status(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid ID format")
     
+    _require_room_access(session, room_uuid, current_user)
+
     message = get_chat_message_by_id(session, message_uuid)
     if not message or message.room_id != room_uuid:
         raise HTTPException(status_code=404, detail="Message not found")

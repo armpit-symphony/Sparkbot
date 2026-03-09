@@ -17,6 +17,8 @@ from app.crud import (
     create_chat_message,
     get_chat_message_by_id,
     get_chat_messages,
+    get_chat_room_by_id,
+    get_chat_room_member,
 )
 from app.models import ChatMessage, ChatRoom, ChatRoomMember, ChatUser, RoomRole, UserType
 from app.schemas.chat import (
@@ -31,6 +33,22 @@ router = APIRouter(prefix="/messages", tags=["chat-messages"])
 # Configuration
 SPARKBOT_URL = "http://127.0.0.1:8080"
 logger = logging.getLogger(__name__)
+
+
+def _require_room_access(
+    session: Session,
+    room_id: UUID,
+    current_user: ChatUser,
+) -> ChatRoomMember:
+    room = get_chat_room_by_id(session, room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    membership = get_chat_room_member(session, room_id, current_user.id)
+    if not membership:
+        raise HTTPException(status_code=403, detail="Not a member of this room")
+
+    return membership
 
 
 async def call_sparkbot_inline(message: str) -> str | None:
@@ -69,7 +87,7 @@ def get_sparkbot_user(session: Session) -> ChatUser | None:
 def read_chat_messages(
     room_id: UUID,
     session: SessionDep,
-    current_user: CurrentChatUser = None,
+    current_user: CurrentChatUser,
     skip: int = 0,
     limit: int = 50,
     before: datetime = None,
@@ -78,15 +96,7 @@ def read_chat_messages(
     
     Requires room membership for private rooms.
     """
-    # Check membership if user is authenticated
-    if current_user:
-        membership = session.exec(
-            select(ChatRoomMember)
-            .where(ChatRoomMember.room_id == room_id)
-            .where(ChatRoomMember.user_id == current_user.id)
-        ).first()
-        if not membership:
-            raise HTTPException(status_code=403, detail="Not a member of this room")
+    _require_room_access(session, room_id, current_user)
     
     messages, total, has_more = get_chat_messages(
         session=session,
@@ -126,7 +136,7 @@ def search_room_messages(
     room_id: UUID,
     q: str,
     session: SessionDep,
-    current_user: CurrentChatUser = None,
+    current_user: CurrentChatUser,
     limit: int = 30,
 ) -> Any:
     """Search messages in a room by content (case-insensitive)."""
@@ -134,14 +144,7 @@ def search_room_messages(
     if len(q) < 2:
         raise HTTPException(status_code=400, detail="Query must be at least 2 characters")
 
-    if current_user:
-        membership = session.exec(
-            select(ChatRoomMember)
-            .where(ChatRoomMember.room_id == room_id)
-            .where(ChatRoomMember.user_id == current_user.id)
-        ).first()
-        if not membership:
-            raise HTTPException(status_code=403, detail="Not a member of this room")
+    _require_room_access(session, room_id, current_user)
 
     results = session.exec(
         select(ChatMessage)
@@ -175,9 +178,11 @@ def read_chat_message(
     room_id: UUID,
     message_id: UUID,
     session: SessionDep,
-    current_user: CurrentChatUser = None,
+    current_user: CurrentChatUser,
 ) -> Any:
     """Get a specific message."""
+    _require_room_access(session, room_id, current_user)
+
     message = get_chat_message_by_id(session, message_id)
     if not message or message.room_id != room_id:
         raise HTTPException(status_code=404, detail="Message not found")
@@ -202,26 +207,14 @@ async def create_chat_message(
     room_id: UUID,
     message_in: MessageCreate,
     session: SessionDep,
-    current_user: CurrentChatUser = None,
+    current_user: CurrentChatUser,
 ) -> Any:
     """Create a new message in a room via REST API.
     
     Note: For real-time chat, use the WebSocket endpoint instead.
     This is useful for bots or integrations.
     """
-    if not current_user:
-        raise HTTPException(status_code=401, detail="Authentication required")
-    
-    # Check membership and role
-    membership = session.exec(
-        select(ChatRoomMember)
-        .where(ChatRoomMember.room_id == room_id)
-        .where(ChatRoomMember.user_id == current_user.id)
-    ).first()
-    
-    if not membership:
-        raise HTTPException(status_code=403, detail="Not a member of this room")
-    
+    membership = _require_room_access(session, room_id, current_user)
     if membership.role == RoomRole.VIEWER:
         raise HTTPException(status_code=403, detail="VIEWERs cannot send messages")
     
@@ -277,9 +270,11 @@ def update_chat_message(
     message_id: UUID,
     message_in: MessageUpdate,
     session: SessionDep,
-    current_user: CurrentChatUser = None,
+    current_user: CurrentChatUser,
 ) -> Any:
     """Update a message. Only the sender can edit their own messages."""
+    _require_room_access(session, room_id, current_user)
+
     message = get_chat_message_by_id(session, message_id)
     if not message or message.room_id != room_id:
         raise HTTPException(status_code=404, detail="Message not found")
@@ -316,20 +311,15 @@ def delete_chat_message(
     room_id: UUID,
     message_id: UUID,
     session: SessionDep,
-    current_user: CurrentChatUser = None,
+    current_user: CurrentChatUser,
 ) -> dict:
     """Delete a message. Only the sender can delete their own messages."""
+    membership = _require_room_access(session, room_id, current_user)
+
     message = get_chat_message_by_id(session, message_id)
     if not message or message.room_id != room_id:
         raise HTTPException(status_code=404, detail="Message not found")
-    
-    # Check if user can delete
-    membership = session.exec(
-        select(ChatRoomMember)
-        .where(ChatRoomMember.room_id == room_id)
-        .where(ChatRoomMember.user_id == current_user.id)
-    ).first()
-    
+
     # Can delete own messages, or OWNER/MOD can delete any
     can_delete = (
         message.sender_id == current_user.id or

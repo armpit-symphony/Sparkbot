@@ -3,11 +3,14 @@ API routes for chat users.
 
 Handles user CRUD operations for the chat system.
 """
+import time
+from collections import defaultdict
 from datetime import timedelta
+from threading import Lock
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -20,6 +23,58 @@ from app.models import ChatUser, UserType
 from app.schemas.chat import ChatUserCreate, ChatUserResponse, ChatUserUpdate
 
 router = APIRouter(prefix="/users", tags=["chat-users"])
+
+_chat_login_attempts: dict[str, list[float]] = defaultdict(list)
+_chat_rate_lock = Lock()
+_CHAT_MAX_ATTEMPTS = 5
+_CHAT_WINDOW_SECONDS = 15 * 60
+
+
+def _check_chat_rate_limit(ip: str) -> None:
+    now = time.time()
+    with _chat_rate_lock:
+        _chat_login_attempts[ip] = [
+            ts for ts in _chat_login_attempts[ip] if now - ts < _CHAT_WINDOW_SECONDS
+        ]
+        if len(_chat_login_attempts[ip]) >= _CHAT_MAX_ATTEMPTS:
+            raise HTTPException(
+                status_code=429,
+                detail="Too many chat login attempts. Try again later.",
+                headers={"Retry-After": str(_CHAT_WINDOW_SECONDS)},
+            )
+
+
+def _record_failed_chat_attempt(ip: str) -> None:
+    with _chat_rate_lock:
+        _chat_login_attempts[ip].append(time.time())
+
+
+def _get_or_create_chat_user(
+    session: SessionDep,
+    *,
+    username: str,
+    user_type: UserType = UserType.HUMAN,
+    bot_display_name: str | None = None,
+    bot_slug: str | None = None,
+) -> ChatUser:
+    user = session.execute(
+        select(ChatUser).where(ChatUser.username == username)
+    ).scalar_one_or_none()
+    if user:
+        return user
+
+    user = ChatUser(
+        username=username,
+        type=user_type,
+        is_active=True,
+        hashed_password=None,
+        bot_display_name=bot_display_name,
+        bot_slug=bot_slug,
+    )
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    return user
 
 
 class ChatLoginRequest(BaseModel):
@@ -34,36 +89,48 @@ class ChatLoginResponse(BaseModel):
 
 
 @router.post("/login")
-def chat_login(request: ChatLoginRequest) -> Response:
+def chat_login(request: Request, body: ChatLoginRequest, session: SessionDep) -> Response:
     """
     Simple passphrase login for Sparkbot chat access.
 
     Sets an HttpOnly cookie with the JWT (XSS-safe).
     Also returns the token in the body for backward compatibility.
     """
-    if not request.passphrase:
+    client_ip = request.client.host if request.client else "unknown"
+    _check_chat_rate_limit(client_ip)
+
+    if not body.passphrase:
         raise HTTPException(
             status_code=400,
             detail="Passphrase required"
         )
 
-    if request.passphrase != settings.SPARKBOT_PASSPHRASE:
+    if body.passphrase != settings.SPARKBOT_PASSPHRASE:
+        _record_failed_chat_attempt(client_ip)
         raise HTTPException(
             status_code=401,
             detail="Invalid passphrase"
         )
 
+    chat_user = _get_or_create_chat_user(session, username="sparkbot-user")
+
     # Create access token for chat user
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        subject="phil",
+        subject=str(chat_user.id),
         expires_delta=access_token_expires
     )
 
     max_age = int(access_token_expires.total_seconds())
     # Relax cookie security for local/development so plain-HTTP clients work
     _local = settings.ENVIRONMENT in ("local", "development")
-    response = JSONResponse({"success": True, "token_type": "cookie"})
+    response = JSONResponse(
+        {
+            "success": True,
+            "access_token": access_token,
+            "token_type": "bearer",
+        }
+    )
     response.set_cookie(
         key="chat_token",
         value=access_token,
@@ -107,9 +174,9 @@ def read_chat_user_by_id(user_id: UUID, session: SessionDep) -> Any:
 @router.get("/username/{username}", response_model=ChatUserResponse)
 def read_chat_user_by_username(username: str, session: SessionDep) -> Any:
     """Get a specific user by username."""
-    user = session.exec(
+    user = session.execute(
         select(ChatUser).where(ChatUser.username == username)
-    ).first()
+    ).scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
@@ -118,9 +185,9 @@ def read_chat_user_by_username(username: str, session: SessionDep) -> Any:
 @router.get("/slug/{slug}", response_model=ChatUserResponse)
 def read_chat_user_by_slug(slug: str, session: SessionDep) -> Any:
     """Get a bot user by slug."""
-    user = session.exec(
+    user = session.execute(
         select(ChatUser).where(ChatUser.bot_slug == slug)
-    ).first()
+    ).scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="Bot not found")
     return user
@@ -135,9 +202,9 @@ def create_chat_user(
 ) -> Any:
     """Create a new chat user (admin only)."""
     # Check if username exists
-    existing = session.exec(
+    existing = session.execute(
         select(ChatUser).where(ChatUser.username == user_in.username)
-    ).first()
+    ).scalar_one_or_none()
     if existing:
         raise HTTPException(status_code=409, detail="Username already exists")
     
@@ -170,9 +237,9 @@ def update_chat_user(
     
     if user_in.username:
         # Check if new username is taken
-        existing = session.exec(
+        existing = session.execute(
             select(ChatUser).where(ChatUser.username == user_in.username)
-        ).first()
+        ).scalar_one_or_none()
         if existing and existing.id != user_id:
             raise HTTPException(status_code=409, detail="Username already exists")
         user.username = user_in.username
@@ -223,21 +290,17 @@ def chat_bootstrap(
     Creates a DM room with the bot user if it doesn't exist,
     ensures both the user and bot are members.
     """
+    from app.crud import default_dm_execution_allowed
     from app.models import ChatRoom, ChatRoomMember, RoomRole
-    from app.crud import get_chat_user_by_username
     
     # Find or create bot user
-    bot_user = get_chat_user_by_username(session, "sparkbot")
-    if not bot_user:
-        # Create bot user
-        bot_user = ChatUser(
-            username="sparkbot",
-            user_type=UserType.BOT,
-            passphrase_hash=get_password_hash("sparkbot"),
-        )
-        session.add(bot_user)
-        session.commit()
-        session.refresh(bot_user)
+    bot_user = _get_or_create_chat_user(
+        session,
+        username="sparkbot",
+        user_type=UserType.BOT,
+        bot_display_name="Sparkbot",
+        bot_slug="sparkbot",
+    )
     
     # Find or create Sparkbot DM room (DM between user and bot)
     room_name = f"Sparkbot DM"
@@ -252,12 +315,18 @@ def chat_bootstrap(
     
     if existing_room:
         room = existing_room[0]
+        desired_execution_allowed = default_dm_execution_allowed(room_name)
+        if room.execution_allowed != desired_execution_allowed:
+            room.execution_allowed = desired_execution_allowed
+            session.add(room)
+            session.commit()
+            session.refresh(room)
     else:
         # Create new room
         room = ChatRoom(
             name=room_name,
             created_by=current_user.id,
-            is_direct_message=True,
+            execution_allowed=default_dm_execution_allowed(room_name),
         )
         session.add(room)
         session.commit()

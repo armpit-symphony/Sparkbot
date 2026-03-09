@@ -3,6 +3,7 @@ CRUD operations for the application.
 
 Includes base template CRUD and chat-specific operations.
 """
+import os
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -173,6 +174,18 @@ def get_chat_room_by_id(session: Session, room_id: uuid.UUID) -> Optional[ChatRo
     return session.get(ChatRoom, room_id)
 
 
+def default_dm_execution_allowed(room_name: str) -> bool:
+    name = (room_name or "").strip().lower()
+    if name != "sparkbot dm":
+        return False
+    return os.getenv("SPARKBOT_DM_EXECUTION_DEFAULT", "false").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
 def create_chat_room(
     session: Session,
     name: str,
@@ -183,6 +196,7 @@ def create_chat_room(
         name=name,
         description=description,
         created_by=created_by,
+        execution_allowed=default_dm_execution_allowed(name),
     )
     session.add(room)
     session.commit()

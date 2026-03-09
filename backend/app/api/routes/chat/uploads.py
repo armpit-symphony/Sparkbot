@@ -6,6 +6,7 @@ AI vision analysis back as SSE (same protocol as /messages/stream).
 """
 import base64
 import json
+import os
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -22,7 +23,11 @@ from app.models import ChatUser, RoomRole, UserType
 
 router = APIRouter(tags=["chat-uploads"])
 
-UPLOAD_DIR = Path("/home/sparky/sparkbot-v2/uploads")
+_upload_root = os.getenv("SPARKBOT_UPLOAD_DIR", "").strip()
+if _upload_root:
+    UPLOAD_DIR = Path(_upload_root).expanduser()
+else:
+    UPLOAD_DIR = Path(__file__).resolve().parents[5] / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 MAX_SIZE = 10 * 1024 * 1024  # 10 MB
@@ -30,8 +35,17 @@ IMAGE_TYPES = {"image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"
 
 
 @router.get("/rooms/{room_id}/uploads/{file_id}/{filename}")
-def serve_upload(room_id: UUID, file_id: str, filename: str):
+def serve_upload(
+    room_id: UUID,
+    file_id: str,
+    filename: str,
+    session: SessionDep,
+    current_user: CurrentChatUser,
+):
     """Serve a previously uploaded file."""
+    membership = get_chat_room_member(session, room_id, current_user.id)
+    if not membership:
+        raise HTTPException(status_code=403, detail="Not a member of this room")
     safe_name = Path(filename).name  # strip any path traversal
     file_path = UPLOAD_DIR / file_id / safe_name
     if not file_path.exists():
@@ -163,7 +177,14 @@ async def upload_file(
             db = next(get_db())
             bot_user = db.exec(select(ChatUser).where(ChatUser.username == "sparkbot")).scalar_one_or_none()
             if not bot_user:
-                bot_user = ChatUser(username="sparkbot", user_type=UserType.BOT, passphrase_hash="")
+                bot_user = ChatUser(
+                    username="sparkbot",
+                    type=UserType.BOT,
+                    is_active=True,
+                    hashed_password=None,
+                    bot_display_name="Sparkbot",
+                    bot_slug="sparkbot",
+                )
                 db.add(bot_user)
                 db.commit()
                 db.refresh(bot_user)

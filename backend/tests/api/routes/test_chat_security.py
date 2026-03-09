@@ -8,7 +8,7 @@ from app.api.routes.chat import users as chat_users_route
 from app.core.config import settings
 from app.core.db import engine
 from app.core.security import create_access_token, decode_token
-from app.models import AuditLog, ChatRoom, ChatRoomMember, ChatUser, RoomRole, UserType
+from app.models import AuditLog, ChatMessage, ChatRoom, ChatRoomMember, ChatUser, RoomRole, UserType
 from tests.utils.utils import random_lower_string
 
 
@@ -24,6 +24,18 @@ def _create_chat_user(prefix: str) -> UUID:
             type=UserType.HUMAN,
             is_active=True,
         )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        return user.id
+
+
+def _ensure_chat_user(username: str) -> UUID:
+    with Session(engine) as db:
+        user = db.exec(select(ChatUser).where(ChatUser.username == username)).first()
+        if user:
+            return user.id
+        user = ChatUser(username=username, type=UserType.HUMAN, is_active=True)
         db.add(user)
         db.commit()
         db.refresh(user)
@@ -62,6 +74,8 @@ def test_chat_login_creates_real_user_and_token_subject(client: TestClient) -> N
         token_payload = decode_token(payload["access_token"])
         assert token_payload is not None
         assert token_payload.get("sub") == str(sparkbot_user.id)
+
+    client.cookies.clear()
 
 
 def test_chat_login_rate_limit_blocks_repeated_failures(client: TestClient) -> None:
@@ -131,8 +145,61 @@ def test_room_and_upload_read_endpoints_require_membership(
     )
     assert outsider_messages.status_code == 403
 
+    client.cookies.clear()
     unauth_messages = client.get(f"{settings.API_V1_STR}/chat/rooms/{room_id}/messages")
     assert unauth_messages.status_code in {401, 403}
+
+
+def test_room_listing_and_message_lookup_require_auth_and_membership(
+    client: TestClient,
+) -> None:
+    room_id, owner_id = _create_room_with_owner()
+    outsider_id = _create_chat_user("outsider")
+
+    with Session(engine) as db:
+        message = ChatMessage(
+            room_id=room_id,
+            sender_id=owner_id,
+            sender_type=UserType.HUMAN,
+            content="private message",
+        )
+        db.add(message)
+        db.commit()
+        db.refresh(message)
+        message_id = message.id
+
+    owner_headers = _chat_headers_for_user(owner_id)
+    outsider_headers = _chat_headers_for_user(outsider_id)
+
+    owner_rooms = client.get(f"{settings.API_V1_STR}/chat/rooms/", headers=owner_headers)
+    assert owner_rooms.status_code == 200
+    assert any(room["id"] == str(room_id) for room in owner_rooms.json())
+
+    outsider_rooms = client.get(f"{settings.API_V1_STR}/chat/rooms/", headers=outsider_headers)
+    assert outsider_rooms.status_code == 200
+    assert all(room["id"] != str(room_id) for room in outsider_rooms.json())
+
+    client.cookies.clear()
+    unauth_rooms = client.get(f"{settings.API_V1_STR}/chat/rooms/")
+    assert unauth_rooms.status_code in {401, 403}
+
+    owner_message = client.get(
+        f"{settings.API_V1_STR}/chat/messages/{room_id}/message/{message_id}",
+        headers=owner_headers,
+    )
+    assert owner_message.status_code == 200
+
+    outsider_message = client.get(
+        f"{settings.API_V1_STR}/chat/messages/{room_id}/message/{message_id}",
+        headers=outsider_headers,
+    )
+    assert outsider_message.status_code == 403
+
+    client.cookies.clear()
+    unauth_message = client.get(
+        f"{settings.API_V1_STR}/chat/messages/{room_id}/message/{message_id}"
+    )
+    assert unauth_message.status_code in {401, 403}
 
 
 def test_audit_endpoints_require_room_scope_and_membership(
@@ -173,3 +240,35 @@ def test_audit_endpoints_require_room_scope_and_membership(
         headers=outsider_headers,
     )
     assert non_member_list.status_code == 403
+
+
+def test_models_config_requires_operator_identity(client: TestClient) -> None:
+    operator_id = _ensure_chat_user("sparkbot-user")
+    outsider_id = _create_chat_user("outsider")
+
+    operator_headers = _chat_headers_for_user(operator_id)
+    outsider_headers = _chat_headers_for_user(outsider_id)
+
+    operator_response = client.get(
+        f"{settings.API_V1_STR}/chat/models/config",
+        headers=operator_headers,
+    )
+    assert operator_response.status_code == 200
+
+    outsider_response = client.get(
+        f"{settings.API_V1_STR}/chat/models/config",
+        headers=outsider_headers,
+    )
+    assert outsider_response.status_code == 403
+
+
+def test_models_config_update_requires_operator_identity(client: TestClient) -> None:
+    outsider_id = _create_chat_user("outsider")
+    outsider_headers = _chat_headers_for_user(outsider_id)
+
+    response = client.post(
+        f"{settings.API_V1_STR}/chat/models/config",
+        headers=outsider_headers,
+        json={"token_guardian_mode": "shadow"},
+    )
+    assert response.status_code == 403

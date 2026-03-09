@@ -14,7 +14,7 @@ Setup:
   1. Create a Slack App at api.slack.com/apps
   2. Add Bot Token Scopes: chat:write, channels:read, channels:history, im:history
   3. Enable Events: app_mention + message.im
-  4. Set Request URL to https://remote.sparkpitlabs.com/api/v1/chat/slack/events
+  4. Set Request URL to https://your-domain.example/api/v1/chat/slack/events
   5. Set env vars: SLACK_BOT_TOKEN, SLACK_SIGNING_SECRET
 """
 import hashlib
