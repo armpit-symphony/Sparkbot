@@ -7,6 +7,7 @@
 import { useState, useCallback, useEffect } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import {
+  Bot,
   Plus,
   Users,
   X,
@@ -18,8 +19,10 @@ import {
   ChevronRight,
   Monitor,
   SquareTerminal,
+  Home,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { isLoggedIn } from "@/hooks/useAuth"
 import {
   type Station,
   type StationStatus,
@@ -1714,10 +1717,254 @@ function LiveClock() {
   )
 }
 
+// ─── WorkstationNavStrip ─────────────────────────────────────────────────────
+
+interface WorkstationNavStripProps {
+  onNavigate: (route: string) => void
+  dashboardAvailable: boolean
+}
+
+function WorkstationNavStrip({ onNavigate, dashboardAvailable }: WorkstationNavStripProps) {
+  const primaryLinks = [
+    {
+      label: "Workstation",
+      hint: "Current room",
+      route: "/workstation",
+      icon: Layers,
+      accentHex: "#00d4ff",
+      active: true,
+    },
+    {
+      label: "Sparkbot Chat",
+      hint: "Main DM",
+      route: "/dm",
+      icon: Bot,
+      accentHex: MAIN_DESK.accentHex,
+      active: false,
+    },
+    ...(dashboardAvailable
+      ? [
+          {
+            label: "Dashboard",
+            hint: "App home",
+            route: "/",
+            icon: Home,
+            accentHex: "#4ade80",
+            active: false,
+          },
+        ]
+      : []),
+  ]
+
+  const buttonBaseStyle: React.CSSProperties = {
+    backgroundColor: "#081220",
+    border: "1px solid #1a2235",
+    borderRadius: 8,
+    padding: "10px 12px",
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    textAlign: "left",
+    cursor: "pointer",
+    fontFamily: "monospace",
+    transition: "border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease",
+    minWidth: 0,
+  }
+
+  return (
+    <section
+      style={{
+        border: "1px solid #0d1f35",
+        borderRadius: 10,
+        backgroundColor: "rgba(7, 16, 30, 0.86)",
+        boxShadow: "0 10px 32px rgba(0,0,0,0.28)",
+        padding: "12px 14px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+        }}
+      >
+        <div>
+          <div
+            style={{
+              fontSize: 10,
+              color: "#00d4ff",
+              letterSpacing: "0.12em",
+              textTransform: "uppercase",
+              fontWeight: 700,
+            }}
+          >
+            Navigation
+          </div>
+          <div style={{ fontSize: 10, color: "#4b5563", marginTop: 3 }}>
+            Move between the workstation shell, Sparkbot chat, and direct SparkBud routes.
+          </div>
+        </div>
+        {!dashboardAvailable && (
+          <div
+            style={{
+              fontSize: 9,
+              color: "#6b7280",
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              border: "1px solid #1f2937",
+              borderRadius: 999,
+              padding: "4px 8px",
+              flexShrink: 0,
+            }}
+          >
+            Dashboard requires app login
+          </div>
+        )}
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: `repeat(${primaryLinks.length}, minmax(0, 1fr))`,
+          gap: 8,
+        }}
+      >
+        {primaryLinks.map(({ label, hint, route, icon: Icon, accentHex, active }) => (
+          <button
+            key={route}
+            onClick={() => {
+              if (!active) onNavigate(route)
+            }}
+            aria-current={active ? "page" : undefined}
+            style={{
+              ...buttonBaseStyle,
+              borderColor: active ? accentHex : "#1a2235",
+              boxShadow: active ? `0 0 0 1px ${accentHex}, 0 0 18px 2px ${accentHex}22` : "none",
+              cursor: active ? "default" : "pointer",
+            }}
+          >
+            <div
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 6,
+                backgroundColor: `${accentHex}16`,
+                border: `1px solid ${active ? accentHex : `${accentHex}33`}`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              <Icon size={14} style={{ color: accentHex }} />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: active ? accentHex : "#d1d5db",
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  fontWeight: 700,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {label}
+              </div>
+              <div style={{ fontSize: 9, color: "#4b5563", marginTop: 2 }}>{hint}</div>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+        }}
+      >
+        <div
+          style={{
+            fontSize: 10,
+            color: "#4b5563",
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            fontWeight: 700,
+          }}
+        >
+          SparkBud Routes
+        </div>
+        <div style={{ fontSize: 9, color: "#374151" }}>Direct route launch</div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }}>
+        {SPARKBUDS.map((bud) => {
+          const Icon = bud.icon
+          return (
+            <button
+              key={bud.id}
+              onClick={() => {
+                if (bud.route) onNavigate(bud.route)
+              }}
+              style={{
+                ...buttonBaseStyle,
+                padding: "10px 10px",
+                borderColor: `${bud.accentHex}22`,
+              }}
+            >
+              <div
+                style={{
+                  width: 26,
+                  height: 26,
+                  borderRadius: 6,
+                  backgroundColor: `${bud.accentHex}16`,
+                  border: `1px solid ${bud.accentHex}33`,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
+                <Icon size={13} style={{ color: bud.accentHex }} />
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div
+                  style={{
+                    fontSize: 10,
+                    color: bud.accentHex,
+                    letterSpacing: "0.05em",
+                    textTransform: "uppercase",
+                    fontWeight: 700,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {bud.label}
+                </div>
+                <div style={{ fontSize: 9, color: "#4b5563", marginTop: 2 }}>{bud.subtitle}</div>
+              </div>
+            </button>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
 // ─── WorkstationPage (main export) ───────────────────────────────────────────
 
 export default function WorkstationPage() {
   const navigate = useNavigate()
+  const dashboardAvailable = isLoggedIn()
 
   // ── State ──────────────────────────────────────────────────────────────────
   const [panel, setPanel] = useState<PanelMode>({ kind: "station", station: MAIN_DESK })
@@ -1946,6 +2193,11 @@ export default function WorkstationPage() {
             transition: "padding-right 0.2s ease",
           }}
         >
+          <WorkstationNavStrip
+            onNavigate={handleNavigate}
+            dashboardAvailable={dashboardAvailable}
+          />
+
           {/* ── Section 1: Top row — desk cards ─────────────────────── */}
           <section
             style={{
