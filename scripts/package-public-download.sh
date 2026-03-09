@@ -21,7 +21,7 @@ Options:
 
 Examples:
   bash scripts/package-public-download.sh
-  bash scripts/package-public-download.sh --ref v1.1.0 --artifact-prefix sparkbot-1.1.0 --output-dir dist/public-download/1.1.0
+  bash scripts/package-public-download.sh --ref sparkbot-v1.2.1 --artifact-prefix sparkbot-1.2.1 --output-dir dist/public-download/1.2.1
   bash scripts/package-public-download.sh --publish-dir /var/www/sparkpitlabs.com/downloads/sparkbot/latest
 EOF
 }
