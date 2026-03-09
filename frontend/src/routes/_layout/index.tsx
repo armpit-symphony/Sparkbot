@@ -55,7 +55,7 @@ const moduleCards = [
 ]
 
 const systemSignals = [
-  "FastAPI on remote.sparkpitlabs.com remains the main control plane.",
+  "FastAPI remains the main control plane for the connected Sparkbot instance.",
   "Dashboard will aggregate reminders, jobs, approvals, inbox, and meetings in one surface.",
   "Telegram, Discord, and WhatsApp stay linked channels under the same account and room model.",
 ]
