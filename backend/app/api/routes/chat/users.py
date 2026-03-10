@@ -151,7 +151,7 @@ def chat_logout(response: Response) -> dict:
 
 
 @router.get("/", response_model=list[ChatUserResponse])
-def read_chat_users(session: SessionDep, skip: int = 0, limit: int = 100) -> Any:
+def read_chat_users(session: SessionDep, current_user: CurrentChatUser, skip: int = 0, limit: int = 100) -> Any:
     """Retrieve all chat users."""
     users = session.exec(
         select(ChatUser)
@@ -163,7 +163,7 @@ def read_chat_users(session: SessionDep, skip: int = 0, limit: int = 100) -> Any
 
 
 @router.get("/{user_id}", response_model=ChatUserResponse)
-def read_chat_user_by_id(user_id: UUID, session: SessionDep) -> Any:
+def read_chat_user_by_id(user_id: UUID, session: SessionDep, current_user: CurrentChatUser) -> Any:
     """Get a specific user by ID."""
     user = session.get(ChatUser, user_id)
     if not user:
@@ -172,7 +172,7 @@ def read_chat_user_by_id(user_id: UUID, session: SessionDep) -> Any:
 
 
 @router.get("/username/{username}", response_model=ChatUserResponse)
-def read_chat_user_by_username(username: str, session: SessionDep) -> Any:
+def read_chat_user_by_username(username: str, session: SessionDep, current_user: CurrentChatUser) -> Any:
     """Get a specific user by username."""
     user = session.execute(
         select(ChatUser).where(ChatUser.username == username)
@@ -183,7 +183,7 @@ def read_chat_user_by_username(username: str, session: SessionDep) -> Any:
 
 
 @router.get("/slug/{slug}", response_model=ChatUserResponse)
-def read_chat_user_by_slug(slug: str, session: SessionDep) -> Any:
+def read_chat_user_by_slug(slug: str, session: SessionDep, current_user: CurrentChatUser) -> Any:
     """Get a bot user by slug."""
     user = session.execute(
         select(ChatUser).where(ChatUser.bot_slug == slug)
@@ -234,6 +234,11 @@ def update_chat_user(
     user = session.get(ChatUser, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    from app.services.guardian.auth import is_operator_identity
+    if user.id != current_user.id and not is_operator_identity(
+        username=current_user.username, user_type=current_user.type
+    ):
+        raise HTTPException(status_code=403, detail="Cannot modify another user's account")
     
     if user_in.username:
         # Check if new username is taken
@@ -266,7 +271,11 @@ def delete_chat_user(
     user = session.get(ChatUser, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+    from app.services.guardian.auth import is_operator_identity
+    if user.id != current_user.id and not is_operator_identity(
+        username=current_user.username, user_type=current_user.type
+    ):
+        raise HTTPException(status_code=403, detail="Cannot delete another user's account")
     session.delete(user)
     session.commit()
     return {"message": "User deleted successfully"}

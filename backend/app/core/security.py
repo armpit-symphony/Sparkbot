@@ -38,8 +38,8 @@ def get_password_hash(password: str) -> str:
 
 def decode_token(token: str) -> dict | None:
     """
-    Decode a JWT token without verification.
-    Used for WebSocket authentication where we just need the payload.
+    Decode and verify a JWT token.
+    Used for WebSocket authentication (cookie/query-param token path).
     """
     import logging
     logger = logging.getLogger(__name__)
@@ -50,7 +50,7 @@ def decode_token(token: str) -> dict | None:
             algorithms=[ALGORITHM],
             options={"verify_exp": True},
         )
-        logger.info(f"[WS] decode_token success: {payload}")
+        logger.info("[WS] decode_token success")
         return payload
     except jwt.ExpiredSignatureError:
         logger.error(f"[WS] decode_token: expired signature")

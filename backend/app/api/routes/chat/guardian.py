@@ -5,6 +5,7 @@ Room members can inspect scheduled jobs and recent runs.
 OWNER/MOD members can create, pause/resume, and trigger jobs.
 Break-glass and vault endpoints are operator-only (require privileged session for writes).
 """
+import json
 import uuid
 from typing import Any, Optional
 
@@ -80,7 +81,7 @@ def breakglass_open(
             create_audit_log(
                 session=session,
                 tool_name="breakglass_pin_failed",
-                tool_input='{"operator": "' + str(current_user.username) + '"}',
+                tool_input=json.dumps({"operator": str(current_user.username)}),
                 tool_result="failed",
                 user_id=current_user.id,
             )
@@ -93,7 +94,7 @@ def breakglass_open(
         create_audit_log(
             session=session,
             tool_name="breakglass_session_open",
-            tool_input='{"operator": "' + str(current_user.username) + '", "session_id": "' + priv_session.session_id + '"}',
+            tool_input=json.dumps({"operator": str(current_user.username), "session_id": priv_session.session_id}),
             tool_result="ok",
             user_id=current_user.id,
         )
@@ -126,7 +127,7 @@ def breakglass_close(
             create_audit_log(
                 session=session,
                 tool_name="breakglass_session_close",
-                tool_input='{"operator": "' + str(current_user.username) + '", "session_id": "' + priv_session.session_id + '"}',
+                tool_input=json.dumps({"operator": str(current_user.username), "session_id": priv_session.session_id}),
                 tool_result="ok",
                 user_id=current_user.id,
             )
@@ -190,7 +191,7 @@ def vault_add_endpoint(
             create_audit_log(
                 session=session,
                 tool_name="vault_add",
-                tool_input='{"alias": "' + body.alias + '"}',
+                tool_input=json.dumps({"alias": body.alias}),
                 tool_result="ok",
                 user_id=current_user.id,
             )
@@ -234,7 +235,7 @@ def vault_delete_endpoint(
             create_audit_log(
                 session=session,
                 tool_name="vault_delete",
-                tool_input='{"alias": "' + alias + '"}',
+                tool_input=json.dumps({"alias": alias}),
                 tool_result="ok",
                 user_id=current_user.id,
             )

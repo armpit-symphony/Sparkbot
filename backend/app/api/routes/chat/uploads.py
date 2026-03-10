@@ -33,6 +33,31 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 MAX_SIZE = 10 * 1024 * 1024  # 10 MB
 IMAGE_TYPES = {"image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"}
 
+# Magic byte signatures for server-side image type verification.
+# Keyed by the canonical MIME type; values are byte prefixes to match.
+_IMAGE_MAGIC: list[tuple[bytes, str]] = [
+    (b"\xff\xd8\xff", "image/jpeg"),
+    (b"\x89PNG\r\n\x1a\n", "image/png"),
+    (b"GIF87a", "image/gif"),
+    (b"GIF89a", "image/gif"),
+    # WebP: RIFF....WEBP
+    (b"RIFF", "image/webp"),
+]
+_WEBP_MARKER = b"WEBP"
+
+
+def _detect_image_type(data: bytes) -> str | None:
+    """Return the MIME type if data matches a known image magic, else None."""
+    for magic, mime in _IMAGE_MAGIC:
+        if data[:len(magic)] == magic:
+            if mime == "image/webp":
+                # RIFF header: bytes 8-12 must be WEBP
+                if len(data) >= 12 and data[8:12] == _WEBP_MARKER:
+                    return mime
+                return None
+            return mime
+    return None
+
 
 @router.get("/rooms/{room_id}/uploads/{file_id}/{filename}")
 def serve_upload(
@@ -46,11 +71,39 @@ def serve_upload(
     membership = get_chat_room_member(session, room_id, current_user.id)
     if not membership:
         raise HTTPException(status_code=403, detail="Not a member of this room")
+
+    # Validate file_id is a well-formed UUID to prevent path traversal.
+    try:
+        uuid.UUID(file_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="File not found")
+
     safe_name = Path(filename).name  # strip any path traversal
     file_path = UPLOAD_DIR / file_id / safe_name
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
-    return FileResponse(file_path)
+
+    # Determine content type from magic bytes, not the stored filename.
+    raw = file_path.read_bytes()
+    detected_mime = _detect_image_type(raw)
+
+    if detected_mime:
+        # Known image: serve inline so the browser can render it in chat.
+        return FileResponse(
+            file_path,
+            media_type=detected_mime,
+            headers={"Cache-Control": "private, max-age=3600"},
+        )
+    else:
+        # Unknown / non-image: force download to prevent inline execution.
+        return FileResponse(
+            file_path,
+            media_type="application/octet-stream",
+            headers={
+                "Content-Disposition": f'attachment; filename="{safe_name}"',
+                "Cache-Control": "private, max-age=3600",
+            },
+        )
 
 
 @router.post("/rooms/{room_id}/upload")
@@ -86,8 +139,11 @@ async def upload_file(
     if len(data) > MAX_SIZE:
         raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
 
-    content_type = file.content_type or "application/octet-stream"
-    is_image = content_type in IMAGE_TYPES
+    # Use magic bytes to determine image type — never trust the client Content-Type header.
+    detected_mime = _detect_image_type(data)
+    is_image = detected_mime is not None
+    # Use the server-verified MIME for downstream processing; fall back to octet-stream.
+    content_type = detected_mime or "application/octet-stream"
     filename_safe = Path(file.filename or "upload").name
 
     # Save to disk
