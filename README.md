@@ -77,6 +77,26 @@ For versioned or tag-bound packaging instructions, see [docs/public-downloads.md
 
 ---
 
+## Recent Milestones
+
+### March 8-10, 2026
+
+- **Public release discipline matured.** Sparkbot now ships from a tracked packaging flow with committed-source bundles, checksums, release notes, and traceable public tags through `v1.3.0`.
+- **Security hardening shipped publicly.** The public release line picked up fixes for unauthenticated user enumeration, IDOR on user update/delete paths, upload path traversal, unsafe inline file serving, and audit-log safety.
+- **Guardian Auth + Vault went live.** Sparkbot now supports PIN-gated break-glass privileged mode plus encrypted vault-backed secret storage for operator workflows.
+- **Workstation became a real product surface.** The workstation UI shipped, gained in-shell navigation, and became the post-login landing path for chat-session users.
+- **Live terminal landed in workstation.** Terminal panels now run real xterm.js + WebSocket PTY sessions in the live internal instance instead of placeholder panels.
+- **Memory got better, not just larger.** Guardian memory now promotes safer learned profile/workflow context with redaction before higher-value memory promotion. This shipped publicly in `v1.3.0`.
+- **Autonomy became more evidence-bound.** Verifier Guardian now evaluates scheduled runs and interactive high-risk actions, and Task Guardian has bounded retries plus escalation instead of optimistic looping.
+
+### What this means now
+
+Sparkbot is no longer just a self-hosted chat UI with integrations. It now has a clearer public release process, a stronger workstation/control surface, safer adaptive memory, privileged operator controls, and early verifier-backed autonomy.
+
+For privacy and retention details, see [PRIVACY.md](./PRIVACY.md).
+
+---
+
 ## Why Sparkbot
 
 Most AI assistants give the LLM unrestricted access to your email, calendar, Slack, and GitHub the moment you connect them. Sparkbot does not.
