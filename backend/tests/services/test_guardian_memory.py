@@ -65,3 +65,68 @@ def test_delete_fact_memory_removes_only_matching_fact(monkeypatch, tmp_path: Pa
     )
     assert "Python" not in context
     assert "calm workflows" in context
+
+
+def test_memory_guardian_builds_learned_profile_and_workflow_summary(monkeypatch, tmp_path: Path) -> None:
+    _reset_memory_guardian(monkeypatch, tmp_path)
+
+    assert memory.remember_chat_message(
+        user_id="user-1",
+        room_id="room-1",
+        role="user",
+        content="Call me Phil. I prefer Python over JavaScript.",
+    )
+    assert memory.remember_chat_message(
+        user_id="user-1",
+        room_id="room-1",
+        role="user",
+        content="I'm working on Sparkbot memory quality this week.",
+    )
+    assert memory.remember_tool_event(
+        user_id="user-1",
+        room_id="room-1",
+        tool_name="github_get_pr",
+        args={"repo": "sparkpitlabs/sparkbot", "pr_number": 42},
+        result="Reviewed PR 42 successfully.",
+    )
+
+    context = memory.build_memory_context(
+        user_id="user-1",
+        room_id="room-1",
+        query="How should I help this user right now?",
+    )
+
+    assert "Learned User Profile" in context
+    assert "User goes by Phil" in context
+    assert "User prefers Python over JavaScript" in context
+    assert "Active Workflow Memory" in context
+    assert "GitHub PR review x1" in context
+    assert "Sparkbot memory quality this week" in context
+
+
+def test_memory_guardian_redacts_sensitive_content_from_context(monkeypatch, tmp_path: Path) -> None:
+    _reset_memory_guardian(monkeypatch, tmp_path)
+
+    sensitive_message = (
+        "My phone number is 631-383-0368 and my email is phil@example.com. "
+        "My api key is sk-1234567890abcdefghijklmnop."
+    )
+    assert memory.remember_chat_message(
+        user_id="user-1",
+        room_id="room-1",
+        role="user",
+        content=sensitive_message,
+    )
+
+    context = memory.build_memory_context(
+        user_id="user-1",
+        room_id="room-1",
+        query="What contact details did the user share?",
+    )
+
+    assert "631-383-0368" not in context
+    assert "phil@example.com" not in context
+    assert "sk-1234567890abcdefghijklmnop" not in context
+    assert "[REDACTED_PHONE]" in context
+    assert "[REDACTED_EMAIL]" in context
+    assert "[REDACTED_TOKEN]" in context

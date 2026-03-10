@@ -1,0 +1,6 @@
+Sparkbot v1.3.0
+
+- Improved Guardian memory so Sparkbot can build safer learned profile memory over time
+- Added workflow memory summaries based on recent tool usage and room focus
+- Added sensitive-data redaction before Guardian memory promotion and snapshot generation
+- Prompt context now includes learned profile and active workflow memory blocks
