@@ -1,4 +1,9 @@
-from app.services.guardian.verifier import verify_task_run
+from app.services.guardian.verifier import (
+    format_verifier_note,
+    should_verify_interactive_tool_run,
+    verify_interactive_tool_run,
+    verify_task_run,
+)
 
 
 def test_verifier_marks_read_task_as_verified_when_evidence_exists() -> None:
@@ -48,3 +53,28 @@ def test_verifier_recognizes_explicit_write_success() -> None:
 
     assert result.status == "verified"
     assert result.confidence >= 0.9
+
+
+def test_interactive_verifier_marks_high_risk_write_without_confirmation_as_unverified() -> None:
+    result = verify_interactive_tool_run(
+        tool_name="github_create_issue",
+        output="Queued request to create issue",
+        execution_status="success",
+    )
+
+    assert result.status == "unverified"
+    assert "explicit confirmation" in result.summary.lower()
+
+
+def test_interactive_verifier_gate_and_note_format() -> None:
+    assert should_verify_interactive_tool_run(action_type="write_external", high_risk=True) is True
+
+    result = verify_interactive_tool_run(
+        tool_name="server_manage_service",
+        output="Service status: active: running",
+        execution_status="success",
+    )
+
+    note = format_verifier_note(result)
+    assert result.status == "verified"
+    assert "Verifier status: VERIFIED" in note

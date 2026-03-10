@@ -626,6 +626,11 @@ async def stream_room_message(
         from app.services.guardian.executive import exec_with_guard
         from app.services.guardian.auth import is_operator_identity, is_operator_privileged
         from app.services.guardian.policy import decide_tool_use
+        from app.services.guardian.verifier import (
+            format_verifier_note,
+            should_verify_interactive_tool_run,
+            verify_interactive_tool_run,
+        )
 
         pending = consume_pending(message_in.confirm_id)
         if not pending:
@@ -666,6 +671,7 @@ async def stream_room_message(
                     model=None,
                 )
                 if decision.action == "deny":
+                    verification = None
                     result = f"POLICY DENIED: {decision.reason}"
                 else:
                     result = await exec_with_guard(
@@ -681,8 +687,22 @@ async def stream_room_message(
                         ),
                         metadata={"room_id": str(room_id), "user_id": user_id_str, "confirmed": True},
                     )
+                    verification = None
+                    if should_verify_interactive_tool_run(
+                        action_type=decision.action_type,
+                        high_risk=decision.high_risk,
+                    ):
+                        verification = verify_interactive_tool_run(
+                            tool_name=tool_name,
+                            output=str(result),
+                            execution_status="success",
+                        )
                 outward_result = mask_tool_result_for_external(tool_name, tool_args, result)
+                if verification is not None:
+                    outward_result = f"{outward_result}\n\n{format_verifier_note(verification)}"
                 redacted_input, redacted_result = redact_tool_call_for_audit(tool_name, tool_args, result)
+                if verification is not None:
+                    redacted_result = f"{redacted_result}\n\n{format_verifier_note(verification)}"
                 create_audit_log(
                     session=db2,
                     tool_name=tool_name,

@@ -35,6 +35,18 @@ TASK_GUARDIAN_MAX_OUTPUT = max(
     300,
     min(int(os.getenv("SPARKBOT_TASK_GUARDIAN_MAX_OUTPUT", "2000")), 12000),
 )
+TASK_GUARDIAN_DEFAULT_RETRY_BUDGET = max(
+    1,
+    min(int(os.getenv("SPARKBOT_TASK_GUARDIAN_MAX_RETRIES", "3")), 10),
+)
+TASK_GUARDIAN_RETRY_BASE_SECONDS = max(
+    60,
+    min(int(os.getenv("SPARKBOT_TASK_GUARDIAN_RETRY_BASE_SECONDS", "300")), 86400),
+)
+TASK_GUARDIAN_RETRY_MAX_SECONDS = max(
+    TASK_GUARDIAN_RETRY_BASE_SECONDS,
+    min(int(os.getenv("SPARKBOT_TASK_GUARDIAN_RETRY_MAX_SECONDS", "3600")), 172800),
+)
 
 ALLOWED_TASK_TOOLS = {
     "web_search",
@@ -86,7 +98,11 @@ CREATE TABLE IF NOT EXISTS guardian_tasks (
   last_message TEXT,
   last_verification_status TEXT,
   last_evidence_json TEXT,
-  last_confidence REAL
+  last_confidence REAL,
+  consecutive_failures INTEGER NOT NULL DEFAULT 0,
+  retry_budget INTEGER NOT NULL DEFAULT 3,
+  last_blocked_reason TEXT,
+  escalated_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS guardian_task_runs (
@@ -130,6 +146,10 @@ class GuardianTask:
     last_verification_status: Optional[str] = None
     last_evidence_json: Optional[str] = None
     last_confidence: Optional[float] = None
+    consecutive_failures: Optional[int] = None
+    retry_budget: Optional[int] = None
+    last_blocked_reason: Optional[str] = None
+    escalated_at: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -181,6 +201,15 @@ def _init_store() -> None:
         _ensure_column(conn, "guardian_tasks", "last_verification_status", "TEXT")
         _ensure_column(conn, "guardian_tasks", "last_evidence_json", "TEXT")
         _ensure_column(conn, "guardian_tasks", "last_confidence", "REAL")
+        _ensure_column(conn, "guardian_tasks", "consecutive_failures", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(
+            conn,
+            "guardian_tasks",
+            "retry_budget",
+            f"INTEGER NOT NULL DEFAULT {TASK_GUARDIAN_DEFAULT_RETRY_BUDGET}",
+        )
+        _ensure_column(conn, "guardian_tasks", "last_blocked_reason", "TEXT")
+        _ensure_column(conn, "guardian_tasks", "escalated_at", "TEXT")
         _ensure_column(conn, "guardian_task_runs", "verification_status", "TEXT")
         _ensure_column(conn, "guardian_task_runs", "confidence", "REAL")
         _ensure_column(conn, "guardian_task_runs", "evidence_json", "TEXT")
@@ -278,10 +307,22 @@ def schedule_task(
         conn.execute(
             """
             INSERT INTO guardian_tasks
-            (id, room_id, user_id, name, tool_name, tool_args_json, schedule, enabled, created_at, updated_at, next_run_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+            (id, room_id, user_id, name, tool_name, tool_args_json, schedule, enabled, created_at, updated_at, next_run_at, consecutive_failures, retry_budget)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, 0, ?)
             """,
-            (task_id, room_id, user_id, name.strip(), tool_name, payload, schedule.strip(), now, now, next_run_at),
+            (
+                task_id,
+                room_id,
+                user_id,
+                name.strip(),
+                tool_name,
+                payload,
+                schedule.strip(),
+                now,
+                now,
+                next_run_at,
+                TASK_GUARDIAN_DEFAULT_RETRY_BUDGET,
+            ),
         )
     return {
         "id": task_id,
@@ -289,6 +330,7 @@ def schedule_task(
         "tool_name": tool_name,
         "schedule": schedule.strip(),
         "next_run_at": next_run_at,
+        "retry_budget": TASK_GUARDIAN_DEFAULT_RETRY_BUDGET,
     }
 
 
@@ -396,15 +438,82 @@ def _record_run(
     return run_id
 
 
-def _set_followup_schedule(task: GuardianTask) -> None:
+def _task_failure_count(task: GuardianTask) -> int:
+    return max(0, int(task.consecutive_failures or 0))
+
+
+def _task_retry_budget(task: GuardianTask) -> int:
+    return max(1, int(task.retry_budget or TASK_GUARDIAN_DEFAULT_RETRY_BUDGET))
+
+
+def _retry_delay_seconds(task: GuardianTask, failure_count: int) -> int:
+    delay = min(
+        TASK_GUARDIAN_RETRY_BASE_SECONDS * (2 ** max(0, failure_count - 1)),
+        TASK_GUARDIAN_RETRY_MAX_SECONDS,
+    )
+    kind, value = _parse_schedule(task.schedule)
+    if kind == "every":
+        delay = min(delay, max(60, int(value)))
+    return max(60, int(delay))
+
+
+def _apply_followup_state(task: GuardianTask, verification: VerificationResult) -> dict[str, Any]:
+    now = _now()
+    now_iso = now.isoformat()
+    failure_count = _task_failure_count(task)
+    retry_budget = _task_retry_budget(task)
     kind, _ = _parse_schedule(task.schedule)
-    next_value = None if kind == "at" else _next_run_at(task.schedule)
-    enabled = 0 if kind == "at" else task.enabled
+    enabled = int(task.enabled)
+    escalated = False
+    next_value: Optional[str]
+    blocked_reason: Optional[str] = None
+
+    if verification.status == "verified":
+        failure_count = 0
+        blocked_reason = None
+        next_value = None if kind == "at" else _next_run_at(task.schedule, base=now)
+        enabled = 0 if kind == "at" else int(task.enabled)
+    elif verification.status == "blocked":
+        failure_count += 1
+        blocked_reason = verification.recommended_next_action or verification.summary
+        next_value = None
+        enabled = 0
+        escalated = True
+    else:
+        failure_count += 1
+        blocked_reason = verification.recommended_next_action or verification.summary
+        if failure_count >= retry_budget:
+            next_value = None
+            enabled = 0
+            escalated = True
+        else:
+            next_value = (now + timedelta(seconds=_retry_delay_seconds(task, failure_count))).isoformat()
+
     with _conn() as conn:
         conn.execute(
-            "UPDATE guardian_tasks SET next_run_at = ?, enabled = ?, updated_at = ? WHERE id = ?",
-            (next_value, enabled, _now_iso(), task.id),
+            """
+            UPDATE guardian_tasks
+            SET next_run_at = ?, enabled = ?, updated_at = ?, consecutive_failures = ?, last_blocked_reason = ?, escalated_at = ?
+            WHERE id = ?
+            """,
+            (
+                next_value,
+                enabled,
+                now_iso,
+                failure_count,
+                blocked_reason,
+                now_iso if escalated else None,
+                task.id,
+            ),
         )
+    return {
+        "next_run_at": next_value,
+        "enabled": bool(enabled),
+        "consecutive_failures": failure_count,
+        "retry_budget": retry_budget,
+        "escalated": escalated,
+        "last_blocked_reason": blocked_reason,
+    }
 
 
 def _find_or_create_bot_user(session: Session) -> ChatUser:
@@ -511,7 +620,7 @@ async def run_task_once(task: GuardianTask, session: Session) -> dict[str, Any]:
         message=message,
         output_excerpt=excerpt,
     )
-    _set_followup_schedule(task)
+    followup = _apply_followup_state(task, verification)
 
     create_audit_log(
         session=session,
@@ -554,6 +663,16 @@ async def run_task_once(task: GuardianTask, session: Session) -> dict[str, Any]:
         f"{verification.summary}\n\n"
         f"{excerpt}"
     )
+    if followup["escalated"]:
+        content += (
+            f"\n\nTask Guardian paused this job after "
+            f"{followup['consecutive_failures']} consecutive non-verified runs."
+        )
+    elif status != "verified" and followup["next_run_at"]:
+        content += (
+            f"\n\nRetry {followup['consecutive_failures']}/{followup['retry_budget']} "
+            f"scheduled for {followup['next_run_at']}."
+        )
     if verification.recommended_next_action:
         content += f"\n\nNext action: {verification.recommended_next_action}"
     msg = create_chat_message(
@@ -584,6 +703,11 @@ async def run_task_once(task: GuardianTask, session: Session) -> dict[str, Any]:
         "evidence": verification.evidence,
         "recommended_next_action": verification.recommended_next_action,
         "output": excerpt,
+        "next_run_at": followup["next_run_at"],
+        "enabled": followup["enabled"],
+        "consecutive_failures": followup["consecutive_failures"],
+        "retry_budget": followup["retry_budget"],
+        "escalated": followup["escalated"],
     }
 
 

@@ -32,6 +32,12 @@ _WRITE_SUCCESS_MARKERS: dict[str, tuple[str, ...]] = {
     "gmail_send": ("sent", "email sent"),
     "slack_send_message": ("posted", "message sent", "sent to"),
     "calendar_create_event": ("event created", "created:"),
+    "email_send": ("sent", "email sent"),
+    "github_create_issue": ("issue created", "created issue", "opened issue"),
+    "notion_create_page": ("page created", "created page"),
+    "confluence_create_page": ("page created", "created page"),
+    "drive_create_folder": ("folder created", "created folder"),
+    "server_manage_service": ("started", "stopped", "restarted", "active:", "status:", "logs for"),
 }
 _STRICT_READ_TOOLS = {
     "web_search",
@@ -49,6 +55,21 @@ _STRICT_READ_TOOLS = {
     "list_tasks",
     "list_reminders",
     "morning_briefing",
+}
+_INTERACTIVE_VERIFY_ACTION_TYPES = {
+    "write_external",
+    "service_control",
+    "command_exec",
+    "ssh_exec",
+    "vault_write",
+    "vault_reveal",
+}
+_SECRET_EVIDENCE_TOOLS = {
+    "vault_use_secret",
+    "vault_reveal_secret",
+    "vault_add_secret",
+    "vault_update_secret",
+    "vault_delete_secret",
 }
 _URL_RE = re.compile(r"https?://|www\.", re.IGNORECASE)
 
@@ -79,22 +100,37 @@ def _evidence_from_output(output: str, limit: int = 3) -> list[dict[str, str]]:
     return [{"type": "tool_output", "detail": line} for line in _clean_lines(output, limit=limit)]
 
 
-def verify_task_run(
+def should_verify_interactive_tool_run(*, action_type: str, high_risk: bool) -> bool:
+    return bool(high_risk or action_type in _INTERACTIVE_VERIFY_ACTION_TYPES)
+
+
+def format_verifier_note(verification: VerificationResult) -> str:
+    note = (
+        f"Verifier status: {verification.status.upper()} "
+        f"(confidence {verification.confidence:.2f}). {verification.summary}"
+    )
+    if verification.recommended_next_action:
+        note += f" Next action: {verification.recommended_next_action}"
+    return note
+
+
+def _verify_run(
     *,
-    task_name: str,
+    subject_label: str,
     tool_name: str,
     output: str,
     execution_status: str,
+    allow_output_evidence: bool = True,
 ) -> VerificationResult:
     text = (output or "").strip()
     lowered = text.lower()
-    evidence = _evidence_from_output(text)
+    evidence = _evidence_from_output(text) if allow_output_evidence else []
 
     if execution_status == "denied":
         return VerificationResult(
             status="blocked",
             confidence=1.0,
-            summary=f"Task '{task_name}' was blocked before execution.",
+            summary=f"{subject_label} was blocked before execution.",
             evidence=evidence or [{"type": "policy", "detail": text[:220] or "Execution denied"}],
             recommended_next_action="Review Guardian policy or pre-authorize the task before retrying.",
         )
@@ -103,7 +139,7 @@ def verify_task_run(
         return VerificationResult(
             status="unverified",
             confidence=0.2,
-            summary=f"Task '{task_name}' produced no verifiable output.",
+            summary=f"{subject_label} produced no verifiable output.",
             evidence=[],
             recommended_next_action="Add a stronger verifier or inspect the target system directly before trusting this task.",
         )
@@ -112,7 +148,7 @@ def verify_task_run(
         return VerificationResult(
             status="failed",
             confidence=0.98,
-            summary=f"Task '{task_name}' failed according to tool output.",
+            summary=f"{subject_label} failed according to tool output.",
             evidence=evidence,
             recommended_next_action="Inspect the error output, correct the configuration or command, and rerun.",
         )
@@ -123,13 +159,13 @@ def verify_task_run(
             return VerificationResult(
                 status="verified",
                 confidence=0.93,
-                summary=f"Task '{task_name}' completed with explicit write confirmation.",
+                summary=f"{subject_label} completed with explicit write confirmation.",
                 evidence=evidence,
             )
         return VerificationResult(
             status="unverified",
             confidence=0.45,
-            summary=f"Task '{task_name}' ran, but the write result lacked explicit confirmation.",
+            summary=f"{subject_label} ran, but the write result lacked explicit confirmation.",
             evidence=evidence,
             recommended_next_action="Verify the external system changed state before treating this as complete.",
         )
@@ -141,13 +177,13 @@ def verify_task_run(
             return VerificationResult(
                 status="verified",
                 confidence=0.91,
-                summary=f"Task '{task_name}' returned live search evidence.",
+                summary=f"{subject_label} returned live search evidence.",
                 evidence=evidence,
             )
         return VerificationResult(
             status="unverified",
             confidence=0.4,
-            summary=f"Task '{task_name}' ran, but search evidence was too weak to trust automatically.",
+            summary=f"{subject_label} ran, but search evidence was too weak to trust automatically.",
             evidence=evidence,
             recommended_next_action="Inspect the search output manually or tighten the search query/verifier.",
         )
@@ -157,13 +193,13 @@ def verify_task_run(
             return VerificationResult(
                 status="verified",
                 confidence=0.87 if any(marker in lowered for marker in _NO_RESULT_MARKERS) else 0.9,
-                summary=f"Task '{task_name}' returned readable evidence from `{tool_name}`.",
+                summary=f"{subject_label} returned readable evidence from `{tool_name}`.",
                 evidence=evidence,
             )
         return VerificationResult(
             status="unverified",
             confidence=0.35,
-            summary=f"Task '{task_name}' ran, but no readable evidence was captured.",
+            summary=f"{subject_label} ran, but no readable evidence was captured.",
             evidence=[],
             recommended_next_action="Strengthen the verifier or collect an explicit status check after the tool call.",
         )
@@ -171,7 +207,38 @@ def verify_task_run(
     return VerificationResult(
         status="unverified",
         confidence=0.3,
-        summary=f"Task '{task_name}' ran, but `{tool_name}` has no verifier profile yet.",
+        summary=f"{subject_label} ran, but `{tool_name}` has no verifier profile yet.",
         evidence=evidence,
         recommended_next_action="Add a verifier profile for this tool before trusting autonomous completion.",
+    )
+
+
+def verify_task_run(
+    *,
+    task_name: str,
+    tool_name: str,
+    output: str,
+    execution_status: str,
+) -> VerificationResult:
+    return _verify_run(
+        subject_label=f"Task '{task_name}'",
+        tool_name=tool_name,
+        output=output,
+        execution_status=execution_status,
+        allow_output_evidence=tool_name not in _SECRET_EVIDENCE_TOOLS,
+    )
+
+
+def verify_interactive_tool_run(
+    *,
+    tool_name: str,
+    output: str,
+    execution_status: str,
+) -> VerificationResult:
+    return _verify_run(
+        subject_label=f"Interactive action `{tool_name}`",
+        tool_name=tool_name,
+        output=output,
+        execution_status=execution_status,
+        allow_output_evidence=tool_name not in _SECRET_EVIDENCE_TOOLS,
     )

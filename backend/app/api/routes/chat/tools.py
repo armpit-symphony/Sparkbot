@@ -3308,9 +3308,17 @@ async def _guardian_list_tasks(room_id: Optional[str], limit: int = 10) -> str:
     lines = []
     for task in tasks:
         status = "enabled" if task.enabled else "paused"
+        retry_note = ""
+        if (task.consecutive_failures or 0) > 0:
+            retry_note = (
+                f" — failures {task.consecutive_failures}/{task.retry_budget or 0}"
+            )
+        if task.escalated_at:
+            retry_note += f" — escalated {task.escalated_at}"
         lines.append(
             f"- [{task.id[:8]}] {task.name} — {task.tool_name} — {task.schedule} — {status}"
             + (f" — next {task.next_run_at}" if task.next_run_at else "")
+            + retry_note
         )
     return "Task Guardian jobs:\n" + "\n".join(lines)
 
@@ -3345,6 +3353,16 @@ async def _guardian_run_task(task_id: str, room_id: Optional[str], session) -> s
     return (
         f"Task Guardian job `{task.name}` ran with status {result['status'].upper()}.\n\n"
         f"{result['output']}"
+        + (
+            f"\n\nRetry {result['consecutive_failures']}/{result['retry_budget']} scheduled for {result['next_run_at']}."
+            if result["status"] != "verified" and result.get("next_run_at")
+            else ""
+        )
+        + (
+            f"\n\nTask paused after {result['consecutive_failures']} consecutive non-verified runs."
+            if result.get("escalated")
+            else ""
+        )
     )
 
 

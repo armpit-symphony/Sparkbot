@@ -461,6 +461,11 @@ async def stream_chat_with_tools(
     )
     from app.services.guardian.executive import exec_with_guard
     from app.services.guardian.policy import decide_tool_use
+    from app.services.guardian.verifier import (
+        format_verifier_note,
+        should_verify_interactive_tool_run,
+        verify_interactive_tool_run,
+    )
 
     chosen = model or get_model(user_id)
     msgs = list(messages)
@@ -626,12 +631,32 @@ async def stream_chat_with_tools(
 
                 if decision.action == "deny":
                     result = f"POLICY DENIED: {decision.reason}"
+                    verification = None
+                    if should_verify_interactive_tool_run(
+                        action_type=decision.action_type,
+                        high_risk=decision.high_risk,
+                    ):
+                        verification = verify_interactive_tool_run(
+                            tool_name=tool_name,
+                            output=result,
+                            execution_status="denied",
+                        )
                     yield {"type": "tool_start", "tool": tool_name, "input": tool_args}
-                    yield {"type": "tool_done", "tool": tool_name, "result": result[:300]}
+                    tool_done_event = {"type": "tool_done", "tool": tool_name, "result": result[:300]}
+                    if verification is not None:
+                        tool_done_event["verification_status"] = verification.status
+                        tool_done_event["confidence"] = verification.confidence
+                        if verification.recommended_next_action:
+                            tool_done_event["recommended_next_action"] = verification.recommended_next_action
+                    yield tool_done_event
                     msgs.append({
                         "role": "tool",
                         "tool_call_id": tc.id,
-                        "content": result,
+                        "content": (
+                            f"{result}\n\n{format_verifier_note(verification)}"
+                            if verification is not None
+                            else result
+                        ),
                     })
                     continue
 
@@ -730,12 +755,27 @@ async def stream_chat_with_tools(
                         "resource": decision.resource,
                     },
                 )
+                verification = None
+                if should_verify_interactive_tool_run(
+                    action_type=decision.action_type,
+                    high_risk=decision.high_risk,
+                ):
+                    verification = verify_interactive_tool_run(
+                        tool_name=tool_name,
+                        output=str(result),
+                        execution_status="success",
+                    )
 
                 # Vault-internal tools: mask plaintext in all outward-facing paths.
                 # The full plaintext stays in `result` for the LLM context only.
                 outward_result = mask_tool_result_for_external(tool_name, tool_args, result)
-
-                yield {"type": "tool_done", "tool": tool_name, "result": outward_result[:300]}
+                tool_done_event = {"type": "tool_done", "tool": tool_name, "result": outward_result[:300]}
+                if verification is not None:
+                    tool_done_event["verification_status"] = verification.status
+                    tool_done_event["confidence"] = verification.confidence
+                    if verification.recommended_next_action:
+                        tool_done_event["recommended_next_action"] = verification.recommended_next_action
+                yield tool_done_event
                 tool_usage_counts[tool_name] = tool_usage_counts.get(tool_name, 0) + 1
 
                 # Audit log — best-effort, never let it break the chat stream
@@ -747,6 +787,8 @@ async def stream_chat_with_tools(
                         redacted_input, redacted_result = redact_tool_call_for_audit(
                             tool_name, tool_args, result
                         )
+                        if verification is not None:
+                            redacted_result = f"{redacted_result}\n\n{format_verifier_note(verification)}"
                         create_audit_log(
                             session=db_session,
                             tool_name=tool_name,
@@ -772,7 +814,11 @@ async def stream_chat_with_tools(
                 msgs.append({
                     "role": "tool",
                     "tool_call_id": tc.id,
-                    "content": result,  # full plaintext for LLM context only
+                    "content": (
+                        f"{result}\n\n{format_verifier_note(verification)}"
+                        if verification is not None
+                        else result
+                    ),  # full plaintext for LLM context only
                 })
         else:
             # No more tool calls — stream the final answer

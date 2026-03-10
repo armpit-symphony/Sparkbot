@@ -135,6 +135,9 @@ class ApprovalActionResponse(BaseModel):
     tool_name: str
     room_id: str | None = None
     result: str
+    verification_status: str | None = None
+    confidence: float | None = None
+    recommended_next_action: str | None = None
 
 
 def _day_bounds(now: datetime) -> tuple[datetime, datetime]:
@@ -199,6 +202,11 @@ async def _execute_dashboard_approval(
     from app.services.guardian.executive import exec_with_guard
     from app.services.guardian.memory import remember_tool_event
     from app.services.guardian.policy import decide_tool_use
+    from app.services.guardian.verifier import (
+        format_verifier_note,
+        should_verify_interactive_tool_run,
+        verify_interactive_tool_run,
+    )
 
     pending = consume_pending(confirm_id)
     if not pending:
@@ -247,6 +255,7 @@ async def _execute_dashboard_approval(
 
     if decision.action == "deny":
         result = f"POLICY DENIED: {decision.reason}"
+        verification = None
     else:
         result = await exec_with_guard(
             tool_name=tool_name,
@@ -261,9 +270,23 @@ async def _execute_dashboard_approval(
             ),
             metadata={"room_id": room_id, "user_id": user_id_str, "confirmed": True, "source": "dashboard"},
         )
+        verification = None
+        if should_verify_interactive_tool_run(
+            action_type=decision.action_type,
+            high_risk=decision.high_risk,
+        ):
+            verification = verify_interactive_tool_run(
+                tool_name=tool_name,
+                output=str(result),
+                execution_status="success",
+            )
 
     outward_result = mask_tool_result_for_external(tool_name, tool_args, result)
+    if verification is not None:
+        outward_result = f"{outward_result}\n\n{format_verifier_note(verification)}"
     redacted_input, redacted_result = redact_tool_call_for_audit(tool_name, tool_args, result)
+    if verification is not None:
+        redacted_result = f"{redacted_result}\n\n{format_verifier_note(verification)}"
     create_audit_log(
         session=session,
         tool_name=tool_name,
@@ -308,6 +331,9 @@ async def _execute_dashboard_approval(
         tool_name=tool_name,
         room_id=room_id or None,
         result=outward_result,
+        verification_status=verification.status if verification else None,
+        confidence=verification.confidence if verification else None,
+        recommended_next_action=verification.recommended_next_action if verification else None,
     )
 
 

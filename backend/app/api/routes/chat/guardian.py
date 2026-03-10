@@ -298,6 +298,10 @@ def list_room_guardian_tasks(
                 "last_verification_status": task.last_verification_status,
                 "last_confidence": task.last_confidence,
                 "last_evidence_json": task.last_evidence_json,
+                "consecutive_failures": task.consecutive_failures or 0,
+                "retry_budget": task.retry_budget,
+                "last_blocked_reason": task.last_blocked_reason,
+                "escalated_at": task.escalated_at,
             }
             for task in tasks
         ],
