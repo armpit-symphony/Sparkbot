@@ -18,6 +18,7 @@ from app.models import ChatRoom, ChatUser, UserType
 from app.services.guardian.executive import exec_with_guard
 from app.services.guardian.memory import remember_tool_event
 from app.services.guardian.policy import decide_tool_use
+from app.services.guardian.verifier import VerificationResult, verify_task_run
 
 
 TASK_GUARDIAN_ENABLED = os.getenv("SPARKBOT_TASK_GUARDIAN_ENABLED", "true").strip().lower() in {
@@ -82,7 +83,10 @@ CREATE TABLE IF NOT EXISTS guardian_tasks (
   last_run_at TEXT,
   next_run_at TEXT,
   last_status TEXT,
-  last_message TEXT
+  last_message TEXT,
+  last_verification_status TEXT,
+  last_evidence_json TEXT,
+  last_confidence REAL
 );
 
 CREATE TABLE IF NOT EXISTS guardian_task_runs (
@@ -91,8 +95,12 @@ CREATE TABLE IF NOT EXISTS guardian_task_runs (
   room_id TEXT NOT NULL,
   user_id TEXT NOT NULL,
   status TEXT NOT NULL,
+  verification_status TEXT,
+  confidence REAL,
   message TEXT NOT NULL,
   output_excerpt TEXT NOT NULL,
+  evidence_json TEXT,
+  recommended_next_action TEXT,
   created_at TEXT NOT NULL,
   FOREIGN KEY(task_id) REFERENCES guardian_tasks(id)
 );
@@ -119,6 +127,9 @@ class GuardianTask:
     next_run_at: Optional[str]
     last_status: Optional[str]
     last_message: Optional[str]
+    last_verification_status: Optional[str] = None
+    last_evidence_json: Optional[str] = None
+    last_confidence: Optional[float] = None
 
 
 @dataclass(frozen=True)
@@ -128,8 +139,12 @@ class GuardianTaskRun:
     room_id: str
     user_id: str
     status: str
+    verification_status: Optional[str]
+    confidence: Optional[float]
     message: str
     output_excerpt: str
+    evidence_json: Optional[str]
+    recommended_next_action: Optional[str]
     created_at: str
 
 
@@ -163,6 +178,23 @@ def _conn() -> sqlite3.Connection:
 def _init_store() -> None:
     with _conn() as conn:
         conn.executescript(_SCHEMA)
+        _ensure_column(conn, "guardian_tasks", "last_verification_status", "TEXT")
+        _ensure_column(conn, "guardian_tasks", "last_evidence_json", "TEXT")
+        _ensure_column(conn, "guardian_tasks", "last_confidence", "REAL")
+        _ensure_column(conn, "guardian_task_runs", "verification_status", "TEXT")
+        _ensure_column(conn, "guardian_task_runs", "confidence", "REAL")
+        _ensure_column(conn, "guardian_task_runs", "evidence_json", "TEXT")
+        _ensure_column(conn, "guardian_task_runs", "recommended_next_action", "TEXT")
+
+
+def _ensure_column(conn: sqlite3.Connection, table: str, column: str, column_def: str) -> None:
+    existing = {
+        row["name"]
+        for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+    }
+    if column in existing:
+        return
+    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {column_def}")
 
 
 def _parse_schedule(schedule: str) -> tuple[str, str]:
@@ -315,6 +347,7 @@ def _record_run(
     room_id: str,
     user_id: str,
     status: str,
+    verification: VerificationResult,
     message: str,
     output_excerpt: str,
 ) -> str:
@@ -325,18 +358,40 @@ def _record_run(
         conn.execute(
             """
             INSERT INTO guardian_task_runs
-            (run_id, task_id, room_id, user_id, status, message, output_excerpt, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (run_id, task_id, room_id, user_id, status, verification_status, confidence, message, output_excerpt, evidence_json, recommended_next_action, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (run_id, task_id, room_id, user_id, status, message[:400], output_excerpt[:TASK_GUARDIAN_MAX_OUTPUT], now),
+            (
+                run_id,
+                task_id,
+                room_id,
+                user_id,
+                status,
+                verification.status,
+                verification.confidence,
+                message[:400],
+                output_excerpt[:TASK_GUARDIAN_MAX_OUTPUT],
+                json.dumps(verification.evidence, ensure_ascii=False),
+                verification.recommended_next_action,
+                now,
+            ),
         )
         conn.execute(
             """
             UPDATE guardian_tasks
-            SET last_run_at = ?, updated_at = ?, last_status = ?, last_message = ?
+            SET last_run_at = ?, updated_at = ?, last_status = ?, last_message = ?, last_verification_status = ?, last_evidence_json = ?, last_confidence = ?
             WHERE id = ?
             """,
-            (now, now, status, message[:400], task_id),
+            (
+                now,
+                now,
+                status,
+                message[:400],
+                verification.status,
+                json.dumps(verification.evidence, ensure_ascii=False),
+                verification.confidence,
+                task_id,
+            ),
         )
     return run_id
 
@@ -437,14 +492,22 @@ async def _execute_internal_tool(task: GuardianTask, session: Session) -> tuple[
 
 
 async def run_task_once(task: GuardianTask, session: Session) -> dict[str, Any]:
-    status, output = await _execute_internal_tool(task, session)
+    execution_status, output = await _execute_internal_tool(task, session)
+    verification = verify_task_run(
+        task_name=task.name,
+        tool_name=task.tool_name,
+        output=output,
+        execution_status=execution_status,
+    )
+    status = verification.status
     excerpt = _safe_excerpt(output)
-    message = f"{status.upper()}: {task.name} via {task.tool_name}"
+    message = verification.summary
     run_id = _record_run(
         task_id=task.id,
         room_id=task.room_id,
         user_id=task.user_id,
         status=status,
+        verification=verification,
         message=message,
         output_excerpt=excerpt,
     )
@@ -458,9 +521,18 @@ async def run_task_once(task: GuardianTask, session: Session) -> dict[str, Any]:
                 "task_id": task.id,
                 "task_name": task.name,
                 "tool_name": task.tool_name,
+                "execution_status": execution_status,
             }
         ),
-        tool_result=json.dumps({"status": status, "output_excerpt": excerpt[:600]}),
+        tool_result=json.dumps(
+            {
+                "status": status,
+                "verification_status": verification.status,
+                "confidence": verification.confidence,
+                "output_excerpt": excerpt[:600],
+                "evidence": verification.evidence[:3],
+            }
+        ),
         user_id=uuid.UUID(task.user_id),
         room_id=uuid.UUID(task.room_id),
         agent_name="task_guardian",
@@ -471,16 +543,19 @@ async def run_task_once(task: GuardianTask, session: Session) -> dict[str, Any]:
             room_id=task.room_id,
             tool_name="guardian_task_run",
             args={"task_id": task.id, "tool_name": task.tool_name},
-            result=f"{status}: {excerpt}",
+            result=f"{status}: {verification.summary} :: {excerpt}",
         )
     except Exception:
         pass
 
     bot_user = _find_or_create_bot_user(session)
     content = (
-        f"🛡️ Scheduled task `{task.name}` ran via `{task.tool_name}`.\n\n"
+        f"🛡️ Scheduled task `{task.name}` finished with status `{status}` via `{task.tool_name}`.\n\n"
+        f"{verification.summary}\n\n"
         f"{excerpt}"
     )
+    if verification.recommended_next_action:
+        content += f"\n\nNext action: {verification.recommended_next_action}"
     msg = create_chat_message(
         session=session,
         room_id=uuid.UUID(task.room_id),
@@ -500,7 +575,16 @@ async def run_task_once(task: GuardianTask, session: Session) -> dict[str, Any]:
         except Exception:
             pass
 
-    return {"run_id": run_id, "status": status, "output": excerpt}
+    return {
+        "run_id": run_id,
+        "status": status,
+        "execution_status": execution_status,
+        "verification_status": verification.status,
+        "confidence": verification.confidence,
+        "evidence": verification.evidence,
+        "recommended_next_action": verification.recommended_next_action,
+        "output": excerpt,
+    }
 
 
 def due_tasks(limit: int = 10) -> list[GuardianTask]:

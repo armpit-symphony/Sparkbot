@@ -295,6 +295,9 @@ def list_room_guardian_tasks(
                 "last_run_at": task.last_run_at,
                 "last_status": task.last_status,
                 "last_message": task.last_message,
+                "last_verification_status": task.last_verification_status,
+                "last_confidence": task.last_confidence,
+                "last_evidence_json": task.last_evidence_json,
             }
             for task in tasks
         ],
@@ -317,8 +320,12 @@ def list_room_guardian_runs(
                 "run_id": run.run_id,
                 "task_id": run.task_id,
                 "status": run.status,
+                "verification_status": run.verification_status,
+                "confidence": run.confidence,
                 "message": run.message,
                 "output_excerpt": run.output_excerpt,
+                "evidence_json": run.evidence_json,
+                "recommended_next_action": run.recommended_next_action,
                 "created_at": run.created_at,
             }
             for run in runs
