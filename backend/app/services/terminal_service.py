@@ -136,11 +136,15 @@ class TerminalSessionManager:
             flags = fcntl.fcntl(master_fd, fcntl.F_GETFL)
             fcntl.fcntl(master_fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
 
+            # Get the slave terminal device name before forking.
+            # We need it in preexec_fn to acquire a controlling terminal.
+            slave_name = os.ttyname(slave_fd)
+
             env = {
                 "TERM": "xterm-256color",
                 "LANG": "en_US.UTF-8",
                 "HOME": os.path.expanduser("~"),
-                "USER": os.environ.get("USER", ""),
+                "USER": os.environ.get("USER", "sparky"),
                 "SHELL": shell,
                 "PATH": os.environ.get(
                     "PATH",
@@ -148,14 +152,34 @@ class TerminalSessionManager:
                 ),
             }
 
+            def _acquire_ctty() -> None:
+                # Runs in child process after setsid() (from start_new_session=True).
+                # Opening the slave terminal after setsid() automatically acquires it
+                # as the controlling terminal of the new session on Linux.
+                # Without this, bash starts without a controlling terminal and
+                # disables interactive mode (no prompt, no command output).
+                try:
+                    fd = os.open(slave_name, os.O_RDWR)
+                    os.close(fd)
+                except OSError:
+                    pass  # best-effort; shell may still work in non-interactive mode
+
+            # Shell args: --norc avoids loading ~/.bashrc which may contain slow
+            # or blocking startup commands (e.g. `$(npm root -g)` in PATH exports).
+            # This is intentional for embedded/headless terminal sessions.
+            # Users can source their rc file manually: source ~/.bashrc
+            shell_args = [shell]
+            if shell in ("/bin/bash", "/usr/bin/bash"):
+                shell_args = [shell, "--norc"]
+
             try:
                 proc = subprocess.Popen(
-                    [shell],
+                    shell_args,
                     stdin=slave_fd,
                     stdout=slave_fd,
                     stderr=slave_fd,
-                    start_new_session=True,
-                    preexec_fn=os.setsid,
+                    start_new_session=True,   # setsid() — new session, no ctty yet
+                    preexec_fn=_acquire_ctty, # acquire slave as ctty after setsid
                     env=env,
                 )
             except Exception as exc:
