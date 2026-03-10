@@ -95,6 +95,11 @@ async def _start_background_guardians() -> None:
         import logging as _logging
         _logging.getLogger(__name__).warning("Guardian Vault init warning: %s", exc)
 
+    # Start terminal session idle-cleanup loop
+    if settings.WORKSTATION_LIVE_TERMINAL_ENABLED:
+        from app.services.terminal_service import terminal_manager as _tm
+        await _tm.start()
+
 
 @app.on_event("shutdown")
 async def _stop_background_guardians() -> None:
@@ -102,3 +107,10 @@ async def _stop_background_guardians() -> None:
         task = getattr(app.state, attr, None)
         if task:
             task.cancel()
+
+    # Shutdown terminal sessions cleanly
+    try:
+        from app.services.terminal_service import terminal_manager as _tm
+        await _tm.stop()
+    except Exception:
+        pass

@@ -1,8 +1,7 @@
 // ─── WorkstationPage.tsx ──────────────────────────────────────────────────────
 // Retro pixel-art / hacker-lab visual workstation — pure React/CSS, no canvas.
 // Route: /workstation
-// Phase 2: Round Table participant management, invite desk config modal,
-//          SparkBud routes wired, terminal detail panel.
+// Phase 3: Live terminal via xterm.js + WebSocket-backed PTY sessions.
 
 import { useState, useCallback, useEffect } from "react"
 import { useNavigate } from "@tanstack/react-router"
@@ -17,9 +16,11 @@ import {
   UserPlus,
   UserMinus,
   ChevronRight,
-  Monitor,
   SquareTerminal,
   Home,
+  Power,
+  PowerOff,
+  Loader2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { isLoggedIn } from "@/hooks/useAuth"
@@ -33,6 +34,8 @@ import {
   SPARKBUDS,
   STATION_BY_ID,
 } from "@/config/workstationStations"
+import { useTerminalSession } from "@/hooks/useTerminalSession"
+import { XtermTerminal } from "@/components/Terminal/XtermTerminal"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1501,6 +1504,7 @@ function RoundTablePanel({
 }
 
 // ─── TerminalDetailPanel ──────────────────────────────────────────────────────
+// Phase 3: Live xterm.js terminal backed by a WebSocket PTY session.
 
 interface TerminalDetailPanelProps {
   station: Station
@@ -1509,13 +1513,29 @@ interface TerminalDetailPanelProps {
 
 function TerminalDetailPanel({ station, onClose }: TerminalDetailPanelProps) {
   const { accentHex, label, id, shellType, host } = station
+  const { sessionInfo, ws, error, connect, disconnect } = useTerminalSession(id)
+
+  const isConnected = sessionInfo?.status === "connected"
+  const isConnecting = sessionInfo?.status === "connecting"
+
+  // Panel expands when connected to give the terminal room to breathe
+  const panelWidth = isConnected ? 720 : 340
 
   const infoRowStyle: React.CSSProperties = {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    padding: "8px 0",
+    padding: "6px 0",
     borderBottom: "1px solid #0d1f35",
+  }
+
+  // Status label + color
+  const statusLabel = sessionInfo?.status ?? "idle"
+  const statusColor =
+    isConnected ? accentHex : isConnecting ? "#fbbf24" : "#4b5563"
+
+  const handleConnect = () => {
+    connect().catch((e) => console.error("Terminal connect error:", e))
   }
 
   return (
@@ -1525,7 +1545,7 @@ function TerminalDetailPanel({ station, onClose }: TerminalDetailPanelProps) {
         top: 0,
         right: 0,
         bottom: 0,
-        width: 320,
+        width: panelWidth,
         backgroundColor: "#07101e",
         borderLeft: `1px solid ${accentHex}`,
         boxShadow: `-4px 0 32px ${accentHex}22`,
@@ -1533,16 +1553,17 @@ function TerminalDetailPanel({ station, onClose }: TerminalDetailPanelProps) {
         display: "flex",
         flexDirection: "column",
         fontFamily: "monospace",
-        overflowY: "auto",
+        overflow: "hidden",
         animation: "slideInPanel 0.2s ease-out",
+        transition: "width 0.25s ease",
       }}
     >
-      {/* Header */}
+      {/* ── Header ────────────────────────────────────────────────────────── */}
       <div
         style={{
           backgroundColor: `${accentHex}18`,
           borderBottom: `1px solid ${accentHex}33`,
-          padding: "14px 16px",
+          padding: "12px 16px",
           display: "flex",
           alignItems: "center",
           gap: 10,
@@ -1550,7 +1571,7 @@ function TerminalDetailPanel({ station, onClose }: TerminalDetailPanelProps) {
         }}
       >
         <SquareTerminal size={15} style={{ color: accentHex }} />
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <div
             style={{
               fontSize: 13,
@@ -1562,8 +1583,27 @@ function TerminalDetailPanel({ station, onClose }: TerminalDetailPanelProps) {
           >
             {label}
           </div>
-          <div style={{ fontSize: 10, color: "#6b7280", marginTop: 2 }}>{id}</div>
+          <div style={{ fontSize: 10, color: "#6b7280", marginTop: 1 }}>
+            {isConnected && sessionInfo?.sessionId
+              ? sessionInfo.sessionId.slice(0, 16) + "…"
+              : id}
+          </div>
         </div>
+        {/* Status badge */}
+        <span
+          style={{
+            fontSize: 9,
+            color: statusColor,
+            border: `1px solid ${statusColor}44`,
+            borderRadius: 3,
+            padding: "1px 6px",
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            flexShrink: 0,
+          }}
+        >
+          {statusLabel}
+        </span>
         <button
           onClick={onClose}
           style={{
@@ -1585,118 +1625,191 @@ function TerminalDetailPanel({ station, onClose }: TerminalDetailPanelProps) {
         </button>
       </div>
 
-      {/* Terminal screen preview */}
-      <div style={{ padding: "16px 16px 8px" }}>
+      {/* ── Terminal area ──────────────────────────────────────────────────── */}
+      {isConnected || isConnecting ? (
         <div
           style={{
-            backgroundColor: "#030508",
-            borderRadius: 6,
-            border: `1px solid ${accentHex}22`,
-            padding: "14px 16px",
-            backgroundImage: SCANLINE_BG,
-            boxShadow: "inset 0 2px 8px rgba(0,0,0,0.8)",
-          }}
-        >
-          <div style={{ fontSize: 11, color: "#4ade80", marginBottom: 4, letterSpacing: "0.04em" }}>
-            {host ?? "localhost"}:~$
-          </div>
-          <div style={{ fontSize: 10, color: "#374151", letterSpacing: "0.04em", lineHeight: 1.6 }}>
-            <span style={{ color: "#1f2937" }}>▌</span>
-            {" "}Session idle. Connect to begin.
-          </div>
-        </div>
-      </div>
-
-      {/* Session info */}
-      <div style={{ padding: "8px 16px 16px" }}>
-        <div
-          style={{
-            fontSize: 10,
-            fontWeight: 700,
-            color: "#4b5563",
-            letterSpacing: "0.1em",
-            textTransform: "uppercase",
-            marginBottom: 10,
-          }}
-        >
-          Session Info
-        </div>
-        <div
-          style={{
-            backgroundColor: "#0a1120",
-            border: "1px solid #1a2235",
-            borderRadius: 6,
-            padding: "0 12px",
-          }}
-        >
-          {[
-            { key: "Host", value: host ?? "localhost" },
-            { key: "Shell", value: shellType ?? "bash" },
-            { key: "Status", value: "idle" },
-            { key: "Session", value: "—" },
-          ].map(({ key, value }) => (
-            <div key={key} style={infoRowStyle}>
-              <span style={{ fontSize: 10, color: "#4b5563", letterSpacing: "0.06em", textTransform: "uppercase" }}>
-                {key}
-              </span>
-              <span style={{ fontSize: 11, color: "#9ca3af", letterSpacing: "0.04em" }}>
-                {value}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* xterm.js note */}
-      <div
-        style={{
-          margin: "0 16px 16px",
-          padding: "12px 14px",
-          backgroundColor: `${accentHex}0a`,
-          border: `1px solid ${accentHex}22`,
-          borderRadius: 6,
-        }}
-      >
-        <div
-          style={{
-            fontSize: 10,
-            fontWeight: 700,
-            color: accentHex,
-            letterSpacing: "0.07em",
-            textTransform: "uppercase",
-            marginBottom: 6,
+            flex: 1,
             display: "flex",
-            alignItems: "center",
-            gap: 6,
+            flexDirection: "column",
+            overflow: "hidden",
           }}
         >
-          <Monitor size={11} />
-          Phase 3 — Live Terminal
-        </div>
-        <p style={{ fontSize: 10, color: "#6b7280", margin: 0, lineHeight: 1.6 }}>
-          xterm.js integration and WebSocket shell backend are planned for Phase 3.
-          This panel is the connection point — no changes needed to wire it in.
-        </p>
-      </div>
+          {/* xterm.js mounts here; always rendered so xterm element is stable */}
+          <div
+            style={{
+              flex: 1,
+              padding: "8px",
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            <XtermTerminal ws={ws} accentHex={accentHex} />
+          </div>
 
-      {/* Connect button (placeholder) */}
-      <div style={{ padding: "0 16px 16px", marginTop: "auto" }}>
-        <div
-          style={{
-            width: "100%",
-            padding: "10px 0",
-            textAlign: "center",
-            fontSize: 12,
-            color: "#374151",
-            border: "1px solid #1f2937",
-            borderRadius: 6,
-            letterSpacing: "0.06em",
-            textTransform: "uppercase",
-          }}
-        >
-          Connect (Phase 3)
+          {/* Session info footer bar */}
+          <div
+            style={{
+              flexShrink: 0,
+              borderTop: `1px solid ${accentHex}22`,
+              padding: "8px 16px",
+              display: "flex",
+              alignItems: "center",
+              gap: 16,
+              backgroundColor: "#040d1a",
+            }}
+          >
+            <div style={{ display: "flex", gap: 12, flex: 1 }}>
+              {[
+                { k: "Host", v: host ?? "localhost" },
+                { k: "Shell", v: shellType ?? "bash" },
+              ].map(({ k, v }) => (
+                <span key={k} style={{ fontSize: 10, color: "#4b5563" }}>
+                  <span style={{ letterSpacing: "0.06em", textTransform: "uppercase" }}>{k}: </span>
+                  <span style={{ color: "#9ca3af" }}>{v}</span>
+                </span>
+              ))}
+            </div>
+            <button
+              onClick={disconnect}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 5,
+                background: "none",
+                border: "1px solid #374151",
+                borderRadius: 4,
+                cursor: "pointer",
+                color: "#6b7280",
+                fontSize: 10,
+                padding: "4px 10px",
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+              }}
+            >
+              <PowerOff size={11} />
+              Disconnect
+            </button>
+          </div>
         </div>
-      </div>
+      ) : (
+        /* ── Idle state ─────────────────────────────────────────────────── */
+        <div style={{ display: "flex", flexDirection: "column", flex: 1, overflowY: "auto" }}>
+          {/* Terminal screen preview (static, idle) */}
+          <div style={{ padding: "16px 16px 8px" }}>
+            <div
+              style={{
+                backgroundColor: "#030508",
+                borderRadius: 6,
+                border: `1px solid ${accentHex}22`,
+                padding: "14px 16px",
+                backgroundImage: SCANLINE_BG,
+                boxShadow: "inset 0 2px 8px rgba(0,0,0,0.8)",
+              }}
+            >
+              <div style={{ fontSize: 11, color: "#4ade80", marginBottom: 4, letterSpacing: "0.04em" }}>
+                {host ?? "localhost"}:~$
+              </div>
+              <div style={{ fontSize: 10, color: "#374151", letterSpacing: "0.04em", lineHeight: 1.6 }}>
+                <span style={{ color: "#1f2937" }}>▌</span>
+                {" "}Session idle. Click Connect to begin.
+              </div>
+            </div>
+          </div>
+
+          {/* Session info rows */}
+          <div style={{ padding: "8px 16px 16px" }}>
+            <div
+              style={{
+                fontSize: 10,
+                fontWeight: 700,
+                color: "#4b5563",
+                letterSpacing: "0.1em",
+                textTransform: "uppercase",
+                marginBottom: 10,
+              }}
+            >
+              Session Info
+            </div>
+            <div
+              style={{
+                backgroundColor: "#0a1120",
+                border: "1px solid #1a2235",
+                borderRadius: 6,
+                padding: "0 12px",
+              }}
+            >
+              {[
+                { key: "Host", value: host ?? "localhost" },
+                { key: "Shell", value: shellType ?? "bash" },
+                { key: "Status", value: statusLabel },
+                { key: "Session", value: "—" },
+              ].map(({ key, value }) => (
+                <div key={key} style={infoRowStyle}>
+                  <span style={{ fontSize: 10, color: "#4b5563", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                    {key}
+                  </span>
+                  <span style={{ fontSize: 11, color: "#9ca3af", letterSpacing: "0.04em" }}>
+                    {value}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Error notice */}
+          {error && (
+            <div
+              style={{
+                margin: "0 16px 12px",
+                padding: "10px 12px",
+                backgroundColor: "#2d0a0a",
+                border: "1px solid #7f1d1d",
+                borderRadius: 6,
+                fontSize: 10,
+                color: "#fca5a5",
+                lineHeight: 1.5,
+              }}
+            >
+              {error}
+            </div>
+          )}
+
+          {/* Connect button — live in Phase 3 */}
+          <div style={{ padding: "0 16px 16px", marginTop: "auto" }}>
+            <button
+              onClick={handleConnect}
+              disabled={isConnecting}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                width: "100%",
+                padding: "10px 0",
+                fontSize: 12,
+                color: isConnecting ? "#6b7280" : accentHex,
+                border: `1px solid ${isConnecting ? "#1f2937" : accentHex}44`,
+                borderRadius: 6,
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                background: isConnecting ? "none" : `${accentHex}0d`,
+                cursor: isConnecting ? "default" : "pointer",
+                transition: "background 0.15s ease, color 0.15s ease",
+              }}
+              aria-label="Connect terminal session"
+            >
+              {isConnecting ? (
+                <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} />
+              ) : (
+                <Power size={13} />
+              )}
+              {isConnecting ? "Connecting…" : "Connect"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

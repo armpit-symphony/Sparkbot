@@ -100,6 +100,11 @@ class Settings(BaseSettings):
     # Sparkbot passphrase for simple chat access
     SPARKBOT_PASSPHRASE: str = "changeme-in-production"
 
+    # Workstation live terminal (Phase 3)
+    # Enables PTY shell sessions via WebSocket. Self-hosted / operator use only.
+    # No command-level filtering is enforced in Phase 3 — raw shell access.
+    WORKSTATION_LIVE_TERMINAL_ENABLED: bool = True
+
     def _check_default_secret(self, var_name: str, value: str | None) -> None:
         if value == "changethis":
             message = (

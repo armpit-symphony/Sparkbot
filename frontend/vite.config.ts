@@ -10,6 +10,14 @@ export default defineConfig({
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
+    // Prevent duplicate instances from nested node_modules (radix-ui ships nested deps)
+    dedupe: [
+      "react",
+      "react-dom",
+      "@radix-ui/react-compose-refs",
+      "@radix-ui/react-slot",
+      "@radix-ui/react-use-layout-effect",
+    ],
   },
   plugins: [
     tanstackRouter({
