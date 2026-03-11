@@ -29,9 +29,7 @@ import {
   MAIN_DESK,
   INVITE_DESKS,
   ROUND_TABLE,
-  TERMINALS,
   SPARKBUDS,
-  STATION_BY_ID,
 } from "@/config/workstationStations"
 import { useTerminalSession } from "@/hooks/useTerminalSession"
 import { XtermTerminal } from "@/components/Terminal/XtermTerminal"
@@ -78,7 +76,11 @@ function resolveInviteStation(
 const SCANLINE_BG =
   "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.08) 2px, rgba(0,0,0,0.08) 4px)"
 
-const CHAIR_ANGLES = [0, 60, 120, 180, 240, 300]
+const PUBLIC_WORKSTATION_BADGES = [
+  "Desktop overview",
+  "Chat-first workflow",
+  "Advanced tools hidden by default",
+]
 
 // ─── StatusLight sub-component ────────────────────────────────────────────────
 
@@ -280,219 +282,6 @@ function DeskCard({ station, onClick, isSelected, compact = false }: DeskCardPro
           marginTop: "auto",
         }}
       />
-    </div>
-  )
-}
-
-// ─── RoundTable sub-component ─────────────────────────────────────────────────
-
-interface RoundTableProps {
-  station: Station
-  onClick: (station: Station) => void
-  isSelected: boolean
-  chairColors: (string | null)[]
-}
-
-function RoundTable({ station, onClick, isSelected, chairColors }: RoundTableProps) {
-  const [hovered, setHovered] = useState(false)
-  const handleClick = useCallback(() => onClick(station), [onClick, station])
-  const handleMouseEnter = useCallback(() => setHovered(true), [])
-  const handleMouseLeave = useCallback(() => setHovered(false), [])
-  const { accentHex } = station
-  const borderColor = isSelected ? accentHex : hovered ? `${accentHex}88` : "#1a2235"
-  const shadowStr = isSelected
-    ? `0 0 0 1px ${accentHex}, 0 0 28px 6px ${accentHex}44`
-    : hovered
-      ? `0 0 0 1px ${accentHex}66, 0 0 18px 4px ${accentHex}22`
-      : "0 2px 8px rgba(0,0,0,0.6)"
-
-  return (
-    <div
-      onClick={handleClick}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-      style={{
-        backgroundColor: "#0a1120",
-        border: `1px solid ${borderColor}`,
-        borderRadius: 8,
-        cursor: "pointer",
-        transition: "transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease",
-        transform: hovered ? "translateY(-2px) scale(1.005)" : "none",
-        boxShadow: shadowStr,
-        display: "flex",
-        flexDirection: "column",
-        fontFamily: "monospace",
-        height: "100%",
-        overflow: "hidden",
-      }}
-      role="button"
-      tabIndex={0}
-      aria-pressed={isSelected}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") handleClick()
-      }}
-    >
-      {/* Header strip */}
-      <div
-        style={{
-          backgroundColor: `${accentHex}14`,
-          borderBottom: `1px solid ${accentHex}22`,
-          padding: "10px 14px",
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-        }}
-      >
-        <StatusLight status={station.status} hex={accentHex} />
-        <div style={{ flex: 1 }}>
-          <div
-            style={{
-              fontSize: 12,
-              fontWeight: 700,
-              color: accentHex,
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-            }}
-          >
-            {station.label}
-          </div>
-          <div style={{ fontSize: 10, color: "#4b5563", letterSpacing: "0.04em", marginTop: 1 }}>
-            {station.subtitle}
-          </div>
-        </div>
-        {/* Participant count badge */}
-        <span
-          style={{
-            fontSize: 9,
-            color: accentHex,
-            letterSpacing: "0.08em",
-            textTransform: "uppercase",
-            border: `1px solid ${accentHex}44`,
-            borderRadius: 3,
-            padding: "1px 5px",
-          }}
-        >
-          {chairColors.filter(Boolean).length} / {chairColors.length}
-        </span>
-      </div>
-
-      {/* Table area */}
-      <div
-        style={{
-          flex: 1,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: 24,
-          position: "relative",
-          backgroundImage: `
-            ${SCANLINE_BG},
-            repeating-linear-gradient(90deg, transparent, transparent 23px, ${accentHex}08 23px, ${accentHex}08 24px),
-            repeating-linear-gradient(0deg, transparent, transparent 23px, ${accentHex}08 23px, ${accentHex}08 24px)
-          `,
-        }}
-      >
-        <div style={{ position: "relative", width: 180, height: 180 }}>
-          {/* Chair dots — colored by participant */}
-          {CHAIR_ANGLES.map((angle, i) => {
-            const rad = (angle - 90) * (Math.PI / 180)
-            const r = 95
-            const cx = 90 + r * Math.cos(rad)
-            const cy = 90 + r * Math.sin(rad)
-            const chairColor = chairColors[i]
-            const isOccupied = chairColor !== null
-            const isOperator = i === 0
-            const dotSize = isOperator ? 14 : 10
-            return (
-              <div
-                key={angle}
-                style={{
-                  position: "absolute",
-                  width: dotSize,
-                  height: dotSize,
-                  borderRadius: "50%",
-                  backgroundColor: isOccupied ? chairColor! : "#0f172a",
-                  border: `1px solid ${isOccupied ? chairColor! : "#1f2937"}`,
-                  boxShadow: isOccupied ? `0 0 8px 2px ${chairColor!}66` : undefined,
-                  left: cx - dotSize / 2,
-                  top: cy - dotSize / 2,
-                  transition: "background-color 0.3s, box-shadow 0.3s",
-                }}
-              />
-            )
-          })}
-
-          {/* Inner circle (the table) */}
-          <div
-            style={{
-              position: "absolute",
-              top: 18,
-              left: 18,
-              right: 18,
-              bottom: 18,
-              borderRadius: "50%",
-              border: `2px solid ${accentHex}`,
-              boxShadow: `0 0 20px 4px ${accentHex}33, inset 0 0 30px rgba(0,0,0,0.5)`,
-              backgroundColor: `${accentHex}08`,
-              backgroundImage: `
-                repeating-linear-gradient(45deg, transparent, transparent 8px, ${accentHex}06 8px, ${accentHex}06 9px)
-              `,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 4,
-            }}
-          >
-            <Users
-              size={22}
-              style={{ color: accentHex, filter: `drop-shadow(0 0 6px ${accentHex}88)` }}
-            />
-            <div
-              style={{
-                fontSize: 9,
-                color: accentHex,
-                letterSpacing: "0.08em",
-                textTransform: "uppercase",
-                textAlign: "center",
-                lineHeight: 1.3,
-              }}
-            >
-              Round
-              <br />
-              Table
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Capability tags */}
-      <div
-        style={{
-          padding: "8px 14px 12px",
-          display: "flex",
-          gap: 6,
-          flexWrap: "wrap",
-          borderTop: `1px solid ${accentHex}18`,
-        }}
-      >
-        {station.capabilities.slice(0, 3).map((cap) => (
-          <span
-            key={cap}
-            style={{
-              fontSize: 9,
-              color: accentHex,
-              border: `1px solid ${accentHex}33`,
-              borderRadius: 3,
-              padding: "2px 6px",
-              letterSpacing: "0.05em",
-              backgroundColor: `${accentHex}08`,
-            }}
-          >
-            {cap}
-          </span>
-        ))}
-      </div>
     </div>
   )
 }
@@ -1030,10 +819,12 @@ function StationDetailPanel({
                     fontWeight: 700,
                   }}
                 >
-                  Commands and Help
+                  Everyday use
                 </div>
                 <p style={{ fontSize: 10, color: "#9ca3af", lineHeight: 1.6, margin: 0 }}>
-                  Slash commands live in Sparkbot DM. Open chat and type <span style={{ color: accentHex }}>/help</span> for the current command surface.
+                  Daily prompting, reminders, file analysis, and slash commands all live in chat.
+                  Open Sparkbot DM and type <span style={{ color: accentHex }}>/help</span> for the
+                  current command surface.
                 </p>
               </div>
 
@@ -1055,17 +846,18 @@ function StationDetailPanel({
                     fontWeight: 700,
                   }}
                 >
-                  Operational Controls
+                  Setup and safety
                 </div>
                 <p style={{ fontSize: 10, color: "#9ca3af", lineHeight: 1.6, margin: 0 }}>
-                  Token Guardian, Task Guardian, room execution gate, provider keys, and bridge settings remain in the Sparkbot DM controls drawer today.
+                  Provider keys, model stack, channels, Token Guardian, Task Guardian, and room
+                  safety settings all remain in Sparkbot Controls today.
                 </p>
               </div>
 
               <div
                 style={{
                   backgroundColor: "#0a1120",
-                  border: "1px dashed #1f2937",
+                  border: `1px solid ${accentHex}22`,
                   borderRadius: 6,
                   padding: "10px 12px",
                 }}
@@ -1073,17 +865,18 @@ function StationDetailPanel({
                 <div
                   style={{
                     fontSize: 10,
-                    color: "#6b7280",
+                    color: accentHex,
                     letterSpacing: "0.06em",
                     textTransform: "uppercase",
                     marginBottom: 4,
                     fontWeight: 700,
                   }}
                 >
-                  Future Hook
+                  Workstation role
                 </div>
-                <p style={{ fontSize: 10, color: "#6b7280", lineHeight: 1.6, margin: 0 }}>
-                  Breakglass and admin entry points can attach here once those workstation-native routes are exposed.
+                <p style={{ fontSize: 10, color: "#9ca3af", lineHeight: 1.6, margin: 0 }}>
+                  Workstation is the desktop overview around Chat and Controls. It is meant to feel
+                  clear and calm, not like a hidden admin console.
                 </p>
               </div>
             </div>
@@ -1854,6 +1647,164 @@ function LiveClock() {
   )
 }
 
+function WorkstationOverviewCard({ onNavigate }: { onNavigate: (route: string) => void }) {
+  return (
+    <section
+      style={{
+        border: "1px solid #0d1f35",
+        borderRadius: 12,
+        background:
+          "linear-gradient(135deg, rgba(7,16,30,0.96), rgba(10,17,32,0.92), rgba(0,212,255,0.06))",
+        boxShadow: "0 14px 38px rgba(0,0,0,0.32)",
+        padding: "18px 20px",
+        display: "grid",
+        gridTemplateColumns: "1.35fr 0.95fr",
+        gap: 18,
+      }}
+    >
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div>
+          <div
+            style={{
+              fontSize: 10,
+              color: "#00d4ff",
+              letterSpacing: "0.12em",
+              textTransform: "uppercase",
+              fontWeight: 700,
+            }}
+          >
+            Workstation
+          </div>
+          <div
+            style={{
+              fontSize: 22,
+              color: "#e5eef7",
+              fontWeight: 700,
+              letterSpacing: "0.03em",
+              marginTop: 6,
+            }}
+          >
+            Desktop overview for Sparkbot
+          </div>
+          <p style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.75, margin: "10px 0 0" }}>
+            Workstation is a secondary surface for desktop users. Use it to jump into chat,
+            open Controls, and understand which assistant tools are available on this install
+            without treating the app like an internal console.
+          </p>
+        </div>
+
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {PUBLIC_WORKSTATION_BADGES.map((badge) => (
+            <span
+              key={badge}
+              style={{
+                fontSize: 10,
+                color: "#9ccfe0",
+                border: "1px solid #1f3b51",
+                borderRadius: 999,
+                padding: "5px 10px",
+                letterSpacing: "0.05em",
+                textTransform: "uppercase",
+                backgroundColor: "rgba(8, 18, 32, 0.72)",
+              }}
+            >
+              {badge}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div
+        style={{
+          border: "1px solid #12304a",
+          borderRadius: 10,
+          backgroundColor: "rgba(8, 18, 32, 0.82)",
+          padding: "14px 16px",
+          display: "flex",
+          flexDirection: "column",
+          gap: 12,
+        }}
+      >
+        <div style={{ fontSize: 10, color: "#4b5563", letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700 }}>
+          What belongs here
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {[
+            "Everyday work still starts in Sparkbot Chat.",
+            "Setup, providers, and channels stay in Controls.",
+            "Advanced/operator tools stay hidden until they are explicitly ready.",
+          ].map((item) => (
+            <div
+              key={item}
+              style={{
+                display: "flex",
+                gap: 8,
+                alignItems: "flex-start",
+                fontSize: 11,
+                color: "#cbd5e1",
+                lineHeight: 1.55,
+              }}
+            >
+              <span
+                style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: "50%",
+                  marginTop: 5,
+                  backgroundColor: "#00d4ff",
+                  boxShadow: "0 0 8px #00d4ff66",
+                  flexShrink: 0,
+                }}
+              />
+              <span>{item}</span>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: "auto" }}>
+          <button
+            onClick={() => onNavigate("/dm")}
+            style={{
+              padding: "10px 12px",
+              borderRadius: 8,
+              border: "none",
+              backgroundColor: "#00d4ff",
+              color: "#04101d",
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              cursor: "pointer",
+              fontFamily: "monospace",
+            }}
+          >
+            Open Chat
+          </button>
+          <button
+            onClick={() => onNavigate("/dm?controls=open")}
+            style={{
+              padding: "10px 12px",
+              borderRadius: 8,
+              border: "1px solid #1f3b51",
+              backgroundColor: "transparent",
+              color: "#cbd5e1",
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              cursor: "pointer",
+              fontFamily: "monospace",
+            }}
+          >
+            Open Controls
+          </button>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 // ─── WorkstationNavStrip ─────────────────────────────────────────────────────
 
 interface WorkstationNavStripProps {
@@ -1937,7 +1888,7 @@ function WorkstationNavStrip({ onNavigate }: WorkstationNavStripProps) {
             Navigation
           </div>
           <div style={{ fontSize: 10, color: "#4b5563", marginTop: 3 }}>
-            Move directly between chat, workstation, controls, and SparkBud routes.
+            Move directly between the three public app surfaces without relying on browser history.
           </div>
         </div>
         <div
@@ -2015,76 +1966,16 @@ function WorkstationNavStrip({ onNavigate }: WorkstationNavStripProps) {
 
       <div
         style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 12,
+          borderTop: "1px solid #132235",
+          paddingTop: 10,
+          fontSize: 10,
+          color: "#64748b",
+          lineHeight: 1.7,
         }}
       >
-        <div
-          style={{
-            fontSize: 10,
-            color: "#4b5563",
-            letterSpacing: "0.08em",
-            textTransform: "uppercase",
-            fontWeight: 700,
-          }}
-        >
-          SparkBud Routes
-        </div>
-        <div style={{ fontSize: 9, color: "#374151" }}>Direct route launch</div>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }}>
-        {SPARKBUDS.map((bud) => {
-          const Icon = bud.icon
-          return (
-            <button
-              key={bud.id}
-              onClick={() => {
-                if (bud.route) onNavigate(bud.route)
-              }}
-              style={{
-                ...buttonBaseStyle,
-                padding: "10px 10px",
-                borderColor: `${bud.accentHex}22`,
-              }}
-            >
-              <div
-                style={{
-                  width: 26,
-                  height: 26,
-                  borderRadius: 6,
-                  backgroundColor: `${bud.accentHex}16`,
-                  border: `1px solid ${bud.accentHex}33`,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                }}
-              >
-                <Icon size={13} style={{ color: bud.accentHex }} />
-              </div>
-              <div style={{ minWidth: 0 }}>
-                <div
-                  style={{
-                    fontSize: 10,
-                    color: bud.accentHex,
-                    letterSpacing: "0.05em",
-                    textTransform: "uppercase",
-                    fontWeight: 700,
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                  }}
-                >
-                  {bud.label}
-                </div>
-                <div style={{ fontSize: 9, color: "#4b5563", marginTop: 2 }}>{bud.subtitle}</div>
-              </div>
-            </button>
-          )
-        })}
+        Specialist desk previews and workstation terminal panels are intentionally hidden from the
+        public surface until they have clearer permissions, stronger guardrails, and a cleaner
+        first-run story.
       </div>
     </section>
   )
@@ -2105,22 +1996,6 @@ export default function WorkstationPage() {
   const [configuredInvites, setConfiguredInvites] = useState<Map<string, InviteConfig>>(
     new Map(),
   )
-
-  // ── Resolved invite desks (merge configured data) ─────────────────────────
-  const resolvedInviteDesks = INVITE_DESKS.map((d) =>
-    resolveInviteStation(d, configuredInvites),
-  )
-
-  // ── Participant chair colors for RoundTable visual ─────────────────────────
-  const participantList = [
-    "sparkbot",
-    ...[...projectRoom.participantIds].filter((id) => id !== "sparkbot"),
-  ]
-  const chairColors = CHAIR_ANGLES.map((_, i): string | null => {
-    const pid = participantList[i]
-    if (!pid) return null
-    return STATION_BY_ID.get(pid)?.accentHex ?? "#f59e0b"
-  })
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   const handleNavigate = useCallback(
@@ -2332,11 +2207,13 @@ export default function WorkstationPage() {
             onNavigate={handleNavigate}
           />
 
-          {/* ── Section 1: Top row — desk cards ─────────────────────── */}
+          <WorkstationOverviewCard onNavigate={handleNavigate} />
+
+          {/* ── Section 1: Public-ready desk + guidance cards ───────────────── */}
           <section
             style={{
               display: "grid",
-              gridTemplateColumns: "1.3fr 1fr 1fr 1fr",
+              gridTemplateColumns: "1.35fr 0.95fr",
               gap: 12,
             }}
           >
@@ -2345,69 +2222,141 @@ export default function WorkstationPage() {
               onClick={handleStationClick}
               isSelected={panel?.kind === "station" && panel.station.id === MAIN_DESK.id}
             />
-            {resolvedInviteDesks.map((desk) => (
-              <DeskCard
-                key={desk.id}
-                station={desk}
-                onClick={handleStationClick}
-                isSelected={panel?.kind === "station" && panel.station.id === desk.id}
-              />
-            ))}
+            <div
+              style={{
+                backgroundColor: "#0a1120",
+                border: "1px solid #1a2235",
+                borderRadius: 8,
+                overflow: "hidden",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.6)",
+                display: "flex",
+                flexDirection: "column",
+                fontFamily: "monospace",
+              }}
+            >
+              <div
+                style={{
+                  backgroundColor: "rgba(245, 158, 11, 0.12)",
+                  borderBottom: "1px solid rgba(245, 158, 11, 0.16)",
+                  padding: "10px 12px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 8,
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#f59e0b", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                    Advanced Tools
+                  </div>
+                  <div style={{ fontSize: 10, color: "#6b7280", letterSpacing: "0.04em", marginTop: 1 }}>
+                    Deliberately restrained in the public view
+                  </div>
+                </div>
+                <span
+                  style={{
+                    fontSize: 9,
+                    color: "#f59e0b",
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                    border: "1px solid rgba(245, 158, 11, 0.35)",
+                    borderRadius: 3,
+                    padding: "1px 5px",
+                    flexShrink: 0,
+                  }}
+                >
+                  Hidden by default
+                </span>
+              </div>
+
+              <div style={{ padding: "14px 12px 12px", display: "flex", flexDirection: "column", gap: 10, flex: 1 }}>
+                <p style={{ fontSize: 11, color: "#9ca3af", lineHeight: 1.7, margin: 0 }}>
+                  Terminal panels, specialist desk previews, and other operator-style surfaces are
+                  intentionally kept out of the everyday public workstation until they are easier
+                  to explain and safer to expose by default.
+                </p>
+
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {["Not required for chat", "Operator-oriented", "Future advanced mode"].map((item) => (
+                    <span
+                      key={item}
+                      style={{
+                        fontSize: 9,
+                        color: "#f59e0b",
+                        border: "1px solid rgba(245, 158, 11, 0.25)",
+                        borderRadius: 4,
+                        padding: "3px 8px",
+                        letterSpacing: "0.04em",
+                        backgroundColor: "rgba(245, 158, 11, 0.06)",
+                      }}
+                    >
+                      {item}
+                    </span>
+                  ))}
+                </div>
+
+                <div
+                  style={{
+                    marginTop: "auto",
+                    backgroundColor: "#081220",
+                    border: "1px solid #1f2937",
+                    borderRadius: 6,
+                    padding: "10px 12px",
+                  }}
+                >
+                  <div style={{ fontSize: 10, color: "#e5eef7", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 4 }}>
+                    Public stance
+                  </div>
+                  <p style={{ fontSize: 10, color: "#94a3b8", lineHeight: 1.6, margin: 0 }}>
+                    Chat is the everyday surface. Controls handles setup. Workstation shows the
+                    desktop overview around those two.
+                  </p>
+                </div>
+              </div>
+            </div>
           </section>
 
-          {/* ── Section 2: Middle — Round Table + Terminals/SparkBuds ── */}
+          {/* ── Section 2: What users should expect from Workstation ───────── */}
           <section
             style={{
               display: "grid",
-              gridTemplateColumns: "1fr 220px",
+              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
               gap: 12,
-              flex: 1,
-              minHeight: 0,
+              marginBottom: 16,
             }}
           >
-            {/* Left: Round Table */}
-            <div style={{ minHeight: 320 }}>
-              <RoundTable
-                station={ROUND_TABLE}
-                onClick={handleStationClick}
-                isSelected={panel?.kind === "table"}
-                chairColors={chairColors}
-              />
-            </div>
-
-            {/* Right: Terminals + SparkBuds */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {/* Terminals */}
-              {TERMINALS.map((term) => (
-                <DeskCard
-                  key={term.id}
-                  station={term}
-                  onClick={handleStationClick}
-                  isSelected={panel?.kind === "terminal" && panel.station.id === term.id}
-                  compact
-                />
-              ))}
-
-              {/* SparkBuds 2×2 grid */}
+            {[
+              {
+                title: "Chat first",
+                body: "Sparkbot Chat remains the normal everyday home for prompts, reminders, file work, and conversations.",
+              },
+              {
+                title: "Controls nearby",
+                body: "Provider setup, model stack, channels, and Guardian settings stay one click away instead of being buried.",
+              },
+              {
+                title: "Advanced later",
+                body: "More experimental workstation surfaces stay out of the public path until they have a cleaner product story.",
+              },
+            ].map((card) => (
               <div
+                key={card.title}
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 8,
-                  flex: 1,
+                  backgroundColor: "#0a1120",
+                  border: "1px solid #1a2235",
+                  borderRadius: 8,
+                  padding: "14px 16px",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.6)",
                 }}
               >
-                {SPARKBUDS.map((bud) => (
-                  <DeskCard
-                    key={bud.id}
-                    station={bud}
-                    onClick={handleStationClick}
-                    isSelected={panel?.kind === "station" && panel.station.id === bud.id}
-                    compact
-                  />
-                ))}
+                <div style={{ fontSize: 10, color: "#00d4ff", letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700 }}>
+                  {card.title}
+                </div>
+                <p style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.7, margin: "10px 0 0" }}>
+                  {card.body}
+                </p>
               </div>
-            </div>
+            ))}
           </section>
         </main>
 
@@ -2426,7 +2375,7 @@ export default function WorkstationPage() {
           }}
         >
           <span style={{ fontSize: 10, color: "#1e3a52", letterSpacing: "0.08em" }}>
-            SparkPit Labs · AI Workstation v2
+            SparkPit Labs · Workstation is the desktop overview around Chat and Controls
           </span>
         </footer>
 

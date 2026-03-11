@@ -32,15 +32,15 @@ export interface Station {
 export const MAIN_DESK: Station = {
   id: "sparkbot",
   label: "Sparkbot",
-  subtitle: "Main Assistant",
+  subtitle: "Main Workspace",
   type: "main",
   status: "active",
   icon: Bot,
   route: "/dm",
   accentHex: "#00d4ff",
   description:
-    "Your primary AI workspace. Full memory, vault access, Guardian-confirmed actions, and Telegram bridge integration.",
-  capabilities: ["Chat & memory", "Vault access", "Guardian suite", "Telegram bridge"],
+    "Your main workspace for everyday chat, memory, guided actions, and optional channels. Workstation is the desktop overview around that core surface.",
+  capabilities: ["Everyday chat", "Memory", "Guided actions", "Optional channels"],
 }
 
 export const INVITE_DESKS: Station[] = [

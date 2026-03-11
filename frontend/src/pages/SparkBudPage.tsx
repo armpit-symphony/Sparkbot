@@ -1,6 +1,6 @@
 // ─── SparkBudPage.tsx ─────────────────────────────────────────────────────────
-// Reusable placeholder page for SparkBud agents.
-// Used by all 4 sparkbud routes; looks up agent config by budId.
+// Public-facing gate page for SparkBud routes.
+// Deep links stay valid, but the workstation no longer treats these as public-ready.
 
 import { useCallback } from "react"
 import { useNavigate } from "@tanstack/react-router"
@@ -8,32 +8,32 @@ import { ArrowLeft, Clock, Cpu, Zap } from "lucide-react"
 import { SPARKBUDS } from "@/config/workstationStations"
 import { Button } from "@/components/ui/button"
 
-// ─── Per-bud Phase 3 roadmap entries ─────────────────────────────────────────
+// ─── Per-bud holdback notes ───────────────────────────────────────────────────
 
-const PHASE3_ROADMAP: Record<string, string[]> = {
+const DESK_HOLDBACK_NOTES: Record<string, string[]> = {
   "sb-research": [
-    "Autonomous web browsing with source validation",
-    "Multi-source synthesis and conflict detection",
-    "Persistent research memory per project",
-    "Scheduled research jobs and digest reports",
+    "Needs a clearer source-validation and browsing story for public users",
+    "Needs a simpler explanation of what is live versus aspirational",
+    "Should connect to real project context before surfacing as a desk",
+    "Should feel like a product surface, not a route preview",
   ],
   "sb-builder": [
-    "Repo-aware code generation with context window",
-    "Automated PR creation and review workflows",
-    "CI/CD pipeline integration and build monitoring",
-    "Diff-aware edits with rollback support",
+    "Needs explicit permissions and repo-safety boundaries",
+    "Needs a clearer first-run story than direct deep-link launch",
+    "Should avoid reading like an internal coding console",
+    "Should return only when the desk workflow is truly productized",
   ],
   "sb-webmaker": [
-    "Design-to-code from screenshots or wireframes",
-    "Component library awareness (shadcn, MUI, etc.)",
-    "Automated deployment via Vercel / Netlify hooks",
-    "A/B variant generation for landing pages",
+    "Needs a public-ready design/build workflow with clearer scope",
+    "Should avoid implying live deploy control before it exists cleanly",
+    "Needs stronger guardrails around edits and publish actions",
+    "Should return with clearer outcomes and examples",
   ],
   "sb-automation": [
-    "Cron job builder with natural-language scheduling",
-    "Server health monitoring and alerting",
-    "Multi-step pipeline orchestration",
-    "Webhook receiver and responder automation",
+    "Needs a cleaner separation between personal automation and ops tooling",
+    "Should not imply server/operator control by default",
+    "Needs clearer safety messaging before public exposure",
+    "Should return only after the advanced mode story is settled",
   ],
 }
 
@@ -73,7 +73,7 @@ export default function SparkBudPage({ budId }: SparkBudPageProps) {
   }
 
   const { accentHex, label, description, capabilities, icon: Icon } = bud
-  const roadmap = PHASE3_ROADMAP[budId] ?? []
+  const holdbackNotes = DESK_HOLDBACK_NOTES[budId] ?? []
 
   return (
     <>
@@ -96,7 +96,7 @@ export default function SparkBudPage({ budId }: SparkBudPageProps) {
             This view requires a larger screen.
           </p>
         </div>
-        <Button variant="outline" onClick={handleBack}>← Back to Workstation</Button>
+        <Button variant="outline" onClick={handleBack}>Back to Workstation</Button>
       </div>
 
       {/* Full view */}
@@ -198,7 +198,7 @@ export default function SparkBudPage({ budId }: SparkBudPageProps) {
               padding: "2px 8px",
             }}
           >
-            Phase 2 Preview
+            Hidden from public flow
           </div>
         </header>
 
@@ -272,10 +272,10 @@ export default function SparkBudPage({ budId }: SparkBudPageProps) {
                     marginBottom: 4,
                   }}
                 >
-                  {label} Agent
+                  {label} desk
                 </div>
                 <div style={{ fontSize: 11, color: "#6b7280", letterSpacing: "0.04em" }}>
-                  SparkBud · {budId}
+                  Specialist desk · {budId}
                 </div>
               </div>
               <div
@@ -299,7 +299,7 @@ export default function SparkBudPage({ budId }: SparkBudPageProps) {
                     fontWeight: 700,
                   }}
                 >
-                  Coming in Phase 3
+                  Not public yet
                 </span>
               </div>
             </div>
@@ -307,7 +307,8 @@ export default function SparkBudPage({ budId }: SparkBudPageProps) {
             {/* Description */}
             <div style={{ padding: "16px 24px", borderBottom: `1px solid #0d1f35` }}>
               <p style={{ fontSize: 12, color: "#9ca3af", lineHeight: 1.7, margin: 0 }}>
-                {description}
+                {description} This route is intentionally held back from the public workstation
+                until the desk flow is clearer, more complete, and easier to explain.
               </p>
             </div>
 
@@ -340,7 +341,7 @@ export default function SparkBudPage({ budId }: SparkBudPageProps) {
                   }}
                 >
                   <Cpu size={11} style={{ color: "#4b5563" }} />
-                  Planned Capabilities
+                  Desk focus
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {capabilities.map((cap) => (
@@ -382,10 +383,10 @@ export default function SparkBudPage({ budId }: SparkBudPageProps) {
                   }}
                 >
                   <Zap size={11} style={{ color: "#4b5563" }} />
-                  Phase 3 Roadmap
+                  Why it is hidden today
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {roadmap.map((item) => (
+                  {holdbackNotes.map((item) => (
                     <div
                       key={item}
                       style={{ display: "flex", alignItems: "flex-start", gap: 8 }}
@@ -434,9 +435,9 @@ export default function SparkBudPage({ budId }: SparkBudPageProps) {
               }}
             />
             <p style={{ fontSize: 11, color: "#6b7280", margin: 0, lineHeight: 1.6 }}>
-              <span style={{ color: "#9ca3af", fontWeight: 700 }}>Phase 2 Preview —</span>{" "}
-              This SparkBud page is a placeholder. The agent runtime, task queue, and live tool execution
-              will be wired in Phase 3. The workstation station card for this agent is live now.
+              <span style={{ color: "#9ca3af", fontWeight: 700 }}>Public holdback —</span>{" "}
+              Specialist desks stay out of the public workstation until they have a cleaner setup
+              path, clearer permissions story, and a more complete end-to-end experience.
             </p>
           </div>
         </main>
@@ -456,7 +457,7 @@ export default function SparkBudPage({ budId }: SparkBudPageProps) {
           }}
         >
           <span style={{ fontSize: 10, color: "#1e3a52", letterSpacing: "0.08em" }}>
-            SparkPit Labs · SparkBud {label} · Phase 2
+            SparkPit Labs · Specialist desk routes are intentionally gated
           </span>
         </footer>
       </div>
