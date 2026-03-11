@@ -20,6 +20,9 @@ import {
   PowerOff,
   Loader2,
   SlidersHorizontal,
+  Search,
+  Code2,
+  LineChart,
 } from "lucide-react"
 import SparkbotSurfaceTabs from "@/components/Common/SparkbotSurfaceTabs"
 import { Button } from "@/components/ui/button"
@@ -29,10 +32,10 @@ import {
   MAIN_DESK,
   INVITE_DESKS,
   ROUND_TABLE,
-  SPARKBUDS,
 } from "@/config/workstationStations"
 import { useTerminalSession } from "@/hooks/useTerminalSession"
 import { XtermTerminal } from "@/components/Terminal/XtermTerminal"
+import { fetchControlsConfig, type SparkbotControlsConfig } from "@/lib/sparkbotControls"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -53,6 +56,13 @@ interface InviteConfig {
   description: string
 }
 
+interface CompanionSlotMeta {
+  key: "backup_1" | "backup_2" | "heavy_hitter"
+  fallbackLabel: string
+  fallbackSubtitle: string
+  accentHex: string
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function resolveInviteStation(
@@ -71,16 +81,145 @@ function resolveInviteStation(
   }
 }
 
+const COMPANION_SLOT_META: CompanionSlotMeta[] = [
+  {
+    key: "backup_1",
+    fallbackLabel: "Companion 01",
+    fallbackSubtitle: "Model office",
+    accentHex: "#8b93ff",
+  },
+  {
+    key: "backup_2",
+    fallbackLabel: "Companion 02",
+    fallbackSubtitle: "Model office",
+    accentHex: "#7dd3fc",
+  },
+  {
+    key: "heavy_hitter",
+    fallbackLabel: "Heavy Hitter",
+    fallbackSubtitle: "Deep-work office",
+    accentHex: "#c084fc",
+  },
+]
+
+function titleCaseWords(value: string): string {
+  return value
+    .split(/[\s_-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ")
+}
+
+function simplifyModelOfficeLabel(
+  modelId: string,
+  controlsConfig: SparkbotControlsConfig | null,
+): string {
+  const normalized = modelId.toLowerCase()
+
+  if (normalized.includes("gpt")) return "GPT"
+  if (normalized.includes("claude")) return "Claude"
+  if (normalized.includes("grok")) return "Grok"
+  if (normalized.includes("gemini")) return "Gemini"
+  if (normalized.includes("llama")) return "Llama"
+  if (normalized.includes("mistral")) return "Mistral"
+  if (normalized.includes("deepseek")) return "DeepSeek"
+  if (normalized.includes("qwen")) return "Qwen"
+  if (normalized.includes("phi")) return "Phi"
+
+  const providerLabel = controlsConfig?.providers.find((provider) =>
+    provider.models.includes(modelId),
+  )?.label
+  if (providerLabel) return providerLabel.replace(/\s*\(.+\)\s*$/, "")
+
+  const tail = modelId.split("/").pop() ?? modelId
+  return titleCaseWords(tail.split(":")[0] ?? tail)
+}
+
+function buildCompanionModelStations(
+  controlsConfig: SparkbotControlsConfig | null,
+): Station[] {
+  return COMPANION_SLOT_META.map((slot) => {
+    const modelId = controlsConfig?.stack[slot.key] ?? ""
+    const hasModel = Boolean(modelId)
+    const modelLabel = hasModel
+      ? simplifyModelOfficeLabel(modelId, controlsConfig)
+      : slot.fallbackLabel
+
+    return {
+      id: `stack-${slot.key}`,
+      label: modelLabel,
+      subtitle: hasModel ? slot.fallbackSubtitle : "Awaiting setup",
+      type: "main",
+      status: hasModel ? "idle" : "empty",
+      icon: Layers,
+      route: "/dm?controls=open",
+      accentHex: slot.accentHex,
+      description: hasModel
+        ? `${modelLabel} is staged as part of your current Sparkbot model stack. Adjust its role, fallback order, or replacement model from Sparkbot Controls.`
+        : "Reserve this office for another model in your stack. Configure it in Sparkbot Controls when you want Sparkbot to have another companion desk available.",
+      capabilities: hasModel
+        ? [slot.fallbackSubtitle, modelId, "Review in Controls"]
+        : ["Stack slot", "Configure in Controls", "Future companion desk"],
+    }
+  })
+}
+
+const SPECIALTY_PLACEHOLDERS: Station[] = [
+  {
+    id: "sb-researcher",
+    label: "Researcher",
+    subtitle: "Dormant specialty desk",
+    type: "sparkbud",
+    status: "idle",
+    icon: Search,
+    accentHex: "#60a5fa",
+    description:
+      "Pulls sources, compares references, and assembles research packets when Sparkbot needs a deeper evidence pass.",
+    capabilities: ["Source sweeps", "Reference compare", "Draft brief"],
+  },
+  {
+    id: "sb-coder",
+    label: "Coder",
+    subtitle: "Dormant specialty desk",
+    type: "sparkbud",
+    status: "idle",
+    icon: Code2,
+    accentHex: "#fb7185",
+    description:
+      "Handles repo edits, implementation passes, and code-focused breakdowns when Sparkbot needs a dedicated builder.",
+    capabilities: ["Code changes", "Repo review", "Patch drafting"],
+  },
+  {
+    id: "sb-analyst",
+    label: "Analyst",
+    subtitle: "Dormant specialty desk",
+    type: "sparkbud",
+    status: "idle",
+    icon: LineChart,
+    accentHex: "#c084fc",
+    description:
+      "Sorts signals, compares tradeoffs, and turns rough findings into clearer recommendations and decision support.",
+    capabilities: ["Compare options", "Decision support", "Trend summaries"],
+  },
+  {
+    id: "sb-custom",
+    label: "Custom",
+    subtitle: "Reserved specialty desk",
+    type: "sparkbud",
+    status: "idle",
+    icon: Plus,
+    accentHex: "#7dd3fc",
+    description:
+      "A reserved specialty slot for a future custom SparkBud. Keep the desk visible now, then define the role when you know the workflow.",
+    capabilities: ["Reserved slot", "Custom role", "Future wiring"],
+    route: "/dm?controls=open",
+  },
+]
+
 // ─── Shared CSS strings ───────────────────────────────────────────────────────
 
 const SCANLINE_BG =
   "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.08) 2px, rgba(0,0,0,0.08) 4px)"
-
-const PUBLIC_WORKSTATION_BADGES = [
-  "Desktop overview",
-  "Chat-first workflow",
-  "Advanced tools hidden by default",
-]
 
 const PLASMA_PRIMARY = "#8b93ff"
 const PLASMA_SECONDARY = "#7dd3fc"
@@ -568,6 +707,8 @@ function StationDetailPanel({
 
   const isActive = status !== "empty" && status !== "offline"
   const isSparkbot = id === "sparkbot"
+  const isModelOffice = id.startsWith("stack-")
+  const isCustomSpecialtyDesk = id === "sb-custom"
   const isInRoom = projectRoom.participantIds.has(id)
   const canToggleRoom = !isSparkbot && type !== "table" && type !== "terminal"
 
@@ -581,9 +722,20 @@ function StationDetailPanel({
   let actionHandler: (() => void) | undefined
 
   if (route && isActive) {
-    actionLabel = isSparkbot ? "Open Main Chat" : type === "sparkbud" ? "Launch Agent" : "Open Station"
+    actionLabel = isSparkbot
+      ? "Open Main Chat"
+      : isModelOffice
+        ? "Review in Controls"
+        : isCustomSpecialtyDesk
+          ? "Open Controls"
+          : type === "sparkbud"
+            ? "Launch Agent"
+            : "Open Station"
     actionDisabled = false
     actionHandler = handleNavigate
+  } else if (type === "sparkbud") {
+    actionLabel = "Dormant desk"
+    actionDisabled = true
   } else if (type === "invite" && status === "idle") {
     actionLabel = "Open Chat (Phase 3)"
     actionDisabled = true
@@ -1047,7 +1199,7 @@ interface RoundTablePanelProps {
   onClose: () => void
   onAddToRoom: (id: string) => void
   onRemoveFromRoom: (id: string) => void
-  configuredInvites: Map<string, InviteConfig>
+  eligibleStations: Station[]
 }
 
 function RoundTablePanel({
@@ -1055,18 +1207,9 @@ function RoundTablePanel({
   onClose,
   onAddToRoom,
   onRemoveFromRoom,
-  configuredInvites,
+  eligibleStations,
 }: RoundTablePanelProps) {
   const accentHex = ROUND_TABLE.accentHex
-
-  // Stations that can be in the room (not terminals, not table)
-  const eligibleStations = [
-    MAIN_DESK,
-    ...INVITE_DESKS.map((d) => resolveInviteStation(d, configuredInvites)).filter(
-      (d) => d.status !== "empty",
-    ),
-    ...SPARKBUDS,
-  ]
 
   const participants = eligibleStations.filter((s) => projectRoom.participantIds.has(s.id))
   const available = eligibleStations.filter((s) => !projectRoom.participantIds.has(s.id))
@@ -1651,19 +1794,19 @@ function LiveClock() {
   )
 }
 
-function WorkstationOverviewCard({ onNavigate }: { onNavigate: (route: string) => void }) {
+function FloorLeadIn({ onNavigate }: { onNavigate: (route: string) => void }) {
   return (
     <section
       style={{
-        border: "1px solid #0d1f35",
+        border: `1px solid ${PLASMA_BORDER}`,
         borderRadius: 12,
         background:
-          "linear-gradient(135deg, rgba(7,16,30,0.96), rgba(10,17,32,0.92), rgba(0,212,255,0.06))",
+          "linear-gradient(135deg, rgba(7,16,30,0.96), rgba(10,17,32,0.94), rgba(79,70,229,0.08))",
         boxShadow: "0 14px 38px rgba(0,0,0,0.32)",
         padding: "18px 20px",
         display: "grid",
-        gridTemplateColumns: "1.35fr 0.95fr",
-        gap: 18,
+        gridTemplateColumns: "1.25fr 0.75fr",
+        gap: 16,
       }}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -1677,44 +1820,24 @@ function WorkstationOverviewCard({ onNavigate }: { onNavigate: (route: string) =
               fontWeight: 700,
             }}
           >
-            Workstation
+            Operations Floor
           </div>
           <div
             style={{
-              fontSize: 22,
+              fontSize: 21,
               color: "#e5eef7",
               fontWeight: 700,
               letterSpacing: "0.03em",
               marginTop: 6,
             }}
           >
-            Desktop overview for Sparkbot
+            Spatial office view for Sparkbot and its desks
           </div>
           <p style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.75, margin: "10px 0 0" }}>
-            Workstation is a secondary surface for desktop users. Use it to jump into chat,
-            open Controls, and understand which assistant tools are available on this install
-            without treating the app like an internal console.
+            Workstation is the room map around everyday chat. Sparkbot keeps the corner office,
+            companion model desks line the top row, invited collaborators sit on the left wing,
+            and specialty desks stay staged beside the central meeting room.
           </p>
-        </div>
-
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {PUBLIC_WORKSTATION_BADGES.map((badge) => (
-            <span
-              key={badge}
-              style={{
-                fontSize: 10,
-                color: "#c7d2fe",
-                border: `1px solid ${PLASMA_BORDER}`,
-                borderRadius: 999,
-                padding: "5px 10px",
-                letterSpacing: "0.05em",
-                textTransform: "uppercase",
-                backgroundColor: "rgba(11, 18, 34, 0.78)",
-              }}
-            >
-              {badge}
-            </span>
-          ))}
         </div>
       </div>
 
@@ -1730,14 +1853,14 @@ function WorkstationOverviewCard({ onNavigate }: { onNavigate: (route: string) =
         }}
       >
         <div style={{ fontSize: 10, color: "#4b5563", letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700 }}>
-          What belongs here
+          Room logic
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {[
-            "Everyday work still starts in Sparkbot Chat.",
-            "Setup, providers, and channels stay in Controls.",
-            "Advanced/operator tools stay hidden until they are explicitly ready.",
+            "Chat remains the everyday home.",
+            "Controls still owns stack setup and channels.",
+            "Advanced internal tooling stays off this public floor plan.",
           ].map((item) => (
             <div
               key={item}
@@ -1810,6 +1933,285 @@ function WorkstationOverviewCard({ onNavigate }: { onNavigate: (route: string) =
   )
 }
 
+interface RoundTableStageProps {
+  projectRoom: ProjectRoom
+  eligibleStations: Station[]
+  isSelected: boolean
+  onOpen: () => void
+}
+
+function RoundTableStage({
+  projectRoom,
+  eligibleStations,
+  isSelected,
+  onOpen,
+}: RoundTableStageProps) {
+  const participants = eligibleStations.filter((station) =>
+    projectRoom.participantIds.has(station.id),
+  )
+  const stagedCount = eligibleStations.filter((station) => station.status !== "empty").length
+  const seatMarkers = new Array(8).fill(null)
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      style={{
+        width: "100%",
+        height: "100%",
+        borderRadius: 18,
+        border: `1px solid ${isSelected ? "rgba(125,211,252,0.42)" : PLASMA_BORDER}`,
+        background:
+          "linear-gradient(180deg, rgba(8,14,28,0.96), rgba(10,17,32,0.94), rgba(79,70,229,0.08))",
+        boxShadow: isSelected
+          ? "0 0 0 1px rgba(125,211,252,0.16), 0 18px 48px rgba(15,23,42,0.62)"
+          : "0 18px 48px rgba(15,23,42,0.52)",
+        padding: "18px 20px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 16,
+        cursor: "pointer",
+        textAlign: "left",
+        fontFamily: "monospace",
+        position: "relative",
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background:
+            "radial-gradient(circle at center, rgba(99,102,241,0.16), transparent 42%), radial-gradient(circle at 50% 50%, rgba(125,211,252,0.08), transparent 58%)",
+          pointerEvents: "none",
+        }}
+      />
+
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 12,
+          position: "relative",
+          zIndex: 1,
+        }}
+      >
+        <div>
+          <div
+            style={{
+              fontSize: 10,
+              color: ROUND_TABLE.accentHex,
+              letterSpacing: "0.12em",
+              textTransform: "uppercase",
+              fontWeight: 700,
+            }}
+          >
+            Meeting Room
+          </div>
+          <div style={{ fontSize: 22, color: "#e5eef7", fontWeight: 700, marginTop: 6 }}>
+            {ROUND_TABLE.label}
+          </div>
+          <p style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.7, margin: "8px 0 0" }}>
+            Team planning, collaboration, and shared workspace for whichever desks need to gather
+            around the same project.
+          </p>
+        </div>
+
+        <div
+          style={{
+            flexShrink: 0,
+            border: "1px solid rgba(125,211,252,0.24)",
+            borderRadius: 999,
+            padding: "6px 10px",
+            fontSize: 10,
+            color: "#cbd5f5",
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            backgroundColor: "rgba(10, 17, 32, 0.8)",
+          }}
+        >
+          {participants.length} at table
+        </div>
+      </div>
+
+      <div
+        style={{
+          flex: 1,
+          minHeight: 260,
+          position: "relative",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 1,
+        }}
+      >
+        {seatMarkers.map((_, index) => {
+          const angle = (index / seatMarkers.length) * Math.PI * 2
+          const x = Math.cos(angle) * 168
+          const y = Math.sin(angle) * 110
+          return (
+            <span
+              key={index}
+              style={{
+                position: "absolute",
+                left: "50%",
+                top: "50%",
+                width: 18,
+                height: 18,
+                marginLeft: -9 + x,
+                marginTop: -9 + y,
+                borderRadius: "50%",
+                border: "1px solid rgba(125,211,252,0.18)",
+                backgroundColor: "rgba(7, 13, 28, 0.86)",
+                boxShadow: "0 0 0 1px rgba(30,41,59,0.26)",
+              }}
+            />
+          )
+        })}
+
+        <div
+          style={{
+            width: 360,
+            height: 360,
+            borderRadius: "50%",
+            border: "1px solid rgba(125,211,252,0.18)",
+            background:
+              "radial-gradient(circle at 50% 45%, rgba(99,102,241,0.18), rgba(15,23,42,0.9) 58%, rgba(8,12,24,0.96) 100%)",
+            boxShadow:
+              "inset 0 0 0 1px rgba(125,211,252,0.08), inset 0 -22px 48px rgba(15,23,42,0.68), 0 26px 48px rgba(0,0,0,0.34)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            position: "relative",
+          }}
+        >
+          <div
+            style={{
+              width: 220,
+              height: 220,
+              borderRadius: "50%",
+              border: "1px solid rgba(245,158,11,0.2)",
+              background:
+                "radial-gradient(circle at 50% 38%, rgba(245,158,11,0.22), rgba(39,18,5,0.86) 68%, rgba(13,9,5,0.96) 100%)",
+              boxShadow: "inset 0 0 0 1px rgba(245,158,11,0.08), 0 18px 34px rgba(15,23,42,0.28)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              textAlign: "center",
+              padding: 24,
+            }}
+          >
+            <div>
+              <div
+                style={{
+                  fontSize: 10,
+                  color: "#fbbf24",
+                  letterSpacing: "0.12em",
+                  textTransform: "uppercase",
+                  fontWeight: 700,
+                }}
+              >
+                Shared Project Room
+              </div>
+              <div style={{ fontSize: 18, color: "#f8fafc", fontWeight: 700, marginTop: 8 }}>
+                Collaboration hub
+              </div>
+              <p style={{ fontSize: 11, color: "#cbd5e1", lineHeight: 1.65, margin: "10px 0 0" }}>
+                Open the room to manage who joins the table and how work is staged across desks.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1.1fr 0.9fr",
+          gap: 14,
+          position: "relative",
+          zIndex: 1,
+        }}
+      >
+        <div
+          style={{
+            border: "1px solid rgba(125,211,252,0.14)",
+            borderRadius: 12,
+            backgroundColor: "rgba(7, 13, 28, 0.72)",
+            padding: "12px 14px",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 10,
+              color: "#c7d2fe",
+              letterSpacing: "0.1em",
+              textTransform: "uppercase",
+              fontWeight: 700,
+              marginBottom: 10,
+            }}
+          >
+            At the table
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {participants.map((station) => (
+              <span
+                key={station.id}
+                style={{
+                  fontSize: 10,
+                  color: "#e2e8f0",
+                  border: `1px solid ${station.accentHex}33`,
+                  borderRadius: 999,
+                  padding: "4px 9px",
+                  backgroundColor: `${station.accentHex}10`,
+                  letterSpacing: "0.05em",
+                }}
+              >
+                {station.label}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div
+          style={{
+            border: "1px solid rgba(125,211,252,0.14)",
+            borderRadius: 12,
+            backgroundColor: "rgba(7, 13, 28, 0.72)",
+            padding: "12px 14px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            justifyContent: "space-between",
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontSize: 10,
+                color: "#c7d2fe",
+                letterSpacing: "0.1em",
+                textTransform: "uppercase",
+                fontWeight: 700,
+              }}
+            >
+              Floor status
+            </div>
+            <p style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.65, margin: "8px 0 0" }}>
+              {stagedCount} desks are currently staged on this floor. Open the roundtable to manage
+              who is actively seated on the project.
+            </p>
+          </div>
+          <div style={{ fontSize: 10, color: "#7dd3fc", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+            Click to open room controls
+          </div>
+        </div>
+      </div>
+    </button>
+  )
+}
+
 // ─── WorkstationPage (main export) ───────────────────────────────────────────
 
 export default function WorkstationPage() {
@@ -1825,6 +2227,21 @@ export default function WorkstationPage() {
   const [configuredInvites, setConfiguredInvites] = useState<Map<string, InviteConfig>>(
     new Map(),
   )
+  const [controlsConfig, setControlsConfig] = useState<SparkbotControlsConfig | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+
+    fetchControlsConfig().then((config) => {
+      if (!cancelled) setControlsConfig(config)
+    }).catch(() => {
+      if (!cancelled) setControlsConfig(null)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   const handleNavigate = useCallback(
@@ -1898,6 +2315,16 @@ export default function WorkstationPage() {
   const handleBackToDm = useCallback(() => navigate({ to: "/dm" }), [navigate])
 
   const panelOpen = panel !== null
+  const companionModelStations = buildCompanionModelStations(controlsConfig)
+  const resolvedInviteStations = INVITE_DESKS.map((station) =>
+    resolveInviteStation(station, configuredInvites),
+  )
+  const roomEligibleStations = [
+    MAIN_DESK,
+    ...companionModelStations.filter((station) => station.status !== "empty"),
+    ...resolvedInviteStations.filter((station) => station.status !== "empty"),
+    ...SPECIALTY_PLACEHOLDERS.filter((station) => station.status !== "empty"),
+  ]
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -2040,156 +2467,223 @@ export default function WorkstationPage() {
             transition: "padding-right 0.2s ease",
           }}
         >
-          <WorkstationOverviewCard onNavigate={handleNavigate} />
+          <FloorLeadIn onNavigate={handleNavigate} />
 
-          {/* ── Section 1: Public-ready desk + guidance cards ───────────────── */}
           <section
             style={{
-              display: "grid",
-              gridTemplateColumns: "1.35fr 0.95fr",
-              gap: 12,
+              border: `1px solid ${PLASMA_BORDER}`,
+              borderRadius: 20,
+              background:
+                "linear-gradient(180deg, rgba(7,11,24,0.96), rgba(8,14,28,0.96), rgba(11,17,33,0.98))",
+              boxShadow: "0 18px 48px rgba(0,0,0,0.34)",
+              padding: 18,
+              display: "flex",
+              flexDirection: "column",
+              gap: 16,
+              marginBottom: 16,
             }}
           >
-            <DeskCard
-              station={MAIN_DESK}
-              onClick={handleStationClick}
-              isSelected={panel?.kind === "station" && panel.station.id === MAIN_DESK.id}
-            />
             <div
               style={{
-                backgroundColor: "#0a1120",
-                border: "1px solid #1a2235",
-                borderRadius: 8,
-                overflow: "hidden",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.6)",
                 display: "flex",
-                flexDirection: "column",
-                fontFamily: "monospace",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 16,
               }}
             >
-              <div
-                style={{
-                  backgroundColor: "rgba(245, 158, 11, 0.12)",
-                  borderBottom: "1px solid rgba(245, 158, 11, 0.16)",
-                  padding: "10px 12px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 8,
-                }}
-              >
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "#f59e0b", letterSpacing: "0.06em", textTransform: "uppercase" }}>
-                    Advanced Tools
-                  </div>
-                  <div style={{ fontSize: 10, color: "#6b7280", letterSpacing: "0.04em", marginTop: 1 }}>
-                    Deliberately restrained in the public view
-                  </div>
-                </div>
-                <span
-                  style={{
-                    fontSize: 9,
-                    color: "#f59e0b",
-                    letterSpacing: "0.08em",
-                    textTransform: "uppercase",
-                    border: "1px solid rgba(245, 158, 11, 0.35)",
-                    borderRadius: 3,
-                    padding: "1px 5px",
-                    flexShrink: 0,
-                  }}
-                >
-                  Hidden by default
-                </span>
-              </div>
-
-              <div style={{ padding: "14px 12px 12px", display: "flex", flexDirection: "column", gap: 10, flex: 1 }}>
-                <p style={{ fontSize: 11, color: "#9ca3af", lineHeight: 1.7, margin: 0 }}>
-                  Terminal panels, specialist desk previews, and other operator-style surfaces are
-                  intentionally kept out of the everyday public workstation until they are easier
-                  to explain and safer to expose by default.
-                </p>
-
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {["Not required for chat", "Operator-oriented", "Future advanced mode"].map((item) => (
-                    <span
-                      key={item}
-                      style={{
-                        fontSize: 9,
-                        color: "#f59e0b",
-                        border: "1px solid rgba(245, 158, 11, 0.25)",
-                        borderRadius: 4,
-                        padding: "3px 8px",
-                        letterSpacing: "0.04em",
-                        backgroundColor: "rgba(245, 158, 11, 0.06)",
-                      }}
-                    >
-                      {item}
-                    </span>
-                  ))}
-                </div>
-
+              <div>
                 <div
                   style={{
-                    marginTop: "auto",
-                    backgroundColor: "#081220",
-                    border: "1px solid #1f2937",
-                    borderRadius: 6,
-                    padding: "10px 12px",
+                    fontSize: 10,
+                    color: PLASMA_PRIMARY,
+                    letterSpacing: "0.12em",
+                    textTransform: "uppercase",
+                    fontWeight: 700,
                   }}
                 >
-                  <div style={{ fontSize: 10, color: "#e5eef7", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 4 }}>
-                    Public stance
+                  Office Layout
+                </div>
+                <p style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.7, margin: "8px 0 0" }}>
+                  Sparkbot anchors the floor from the corner office. Companion models line the top
+                  row, invites wait on the left wing, and specialty SparkBud desks stay staged on
+                  the right side of the meeting room.
+                </p>
+              </div>
+              <div
+                style={{
+                  flexShrink: 0,
+                  border: "1px solid rgba(125,211,252,0.18)",
+                  borderRadius: 999,
+                  padding: "6px 10px",
+                  fontSize: 10,
+                  color: "#cbd5f5",
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                  backgroundColor: "rgba(7, 13, 28, 0.78)",
+                }}
+              >
+                Spatial workstation
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "280px minmax(0, 1fr) minmax(0, 1fr) 260px",
+                gridTemplateRows: "minmax(198px, auto) minmax(480px, 1fr)",
+                gap: 16,
+                alignItems: "stretch",
+              }}
+            >
+              <div style={{ gridColumn: "1", gridRow: "1" }}>
+                <DeskCard
+                  station={MAIN_DESK}
+                  onClick={handleStationClick}
+                  isSelected={panel?.kind === "station" && panel.station.id === MAIN_DESK.id}
+                />
+              </div>
+
+              {companionModelStations.map((station, index) => (
+                <div key={station.id} style={{ gridColumn: `${index + 2}`, gridRow: "1" }}>
+                  <DeskCard
+                    station={station}
+                    onClick={handleStationClick}
+                    isSelected={panel?.kind === "station" && panel.station.id === station.id}
+                    compact
+                  />
+                </div>
+              ))}
+
+              <div
+                style={{
+                  gridColumn: "1",
+                  gridRow: "2",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 12,
+                }}
+              >
+                <div
+                  style={{
+                    padding: "0 4px",
+                    fontSize: 10,
+                    color: "#c7d2fe",
+                    letterSpacing: "0.12em",
+                    textTransform: "uppercase",
+                    fontWeight: 700,
+                  }}
+                >
+                  Invite Wing
+                </div>
+                {resolvedInviteStations.map((station) => (
+                  <DeskCard
+                    key={station.id}
+                    station={station}
+                    onClick={handleStationClick}
+                    isSelected={panel?.kind === "station" && panel.station.id === station.id}
+                    compact
+                  />
+                ))}
+                <div
+                  style={{
+                    border: "1px dashed rgba(125,211,252,0.18)",
+                    borderRadius: 12,
+                    padding: "12px 14px",
+                    backgroundColor: "rgba(7,13,28,0.56)",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: "#c7d2fe",
+                      letterSpacing: "0.1em",
+                      textTransform: "uppercase",
+                      fontWeight: 700,
+                    }}
+                  >
+                    Invite staging
                   </div>
-                  <p style={{ fontSize: 10, color: "#94a3b8", lineHeight: 1.6, margin: 0 }}>
-                    Chat is the everyday surface. Controls handles setup. Workstation shows the
-                    desktop overview around those two.
+                  <p style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.65, margin: "8px 0 0" }}>
+                    These desks are reserved for invited assistants or operators such as ChatGPT,
+                    Claude, OpenClaw, or another future collaborator.
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ gridColumn: "2 / span 2", gridRow: "2" }}>
+                <RoundTableStage
+                  projectRoom={projectRoom}
+                  eligibleStations={roomEligibleStations}
+                  isSelected={panel?.kind === "table"}
+                  onOpen={() => handleStationClick(ROUND_TABLE)}
+                />
+              </div>
+
+              <div
+                style={{
+                  gridColumn: "4",
+                  gridRow: "2",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 12,
+                }}
+              >
+                <div
+                  style={{
+                    padding: "0 4px",
+                    fontSize: 10,
+                    color: "#c7d2fe",
+                    letterSpacing: "0.12em",
+                    textTransform: "uppercase",
+                    fontWeight: 700,
+                  }}
+                >
+                  Specialty Wing
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr",
+                    gap: 12,
+                  }}
+                >
+                  {SPECIALTY_PLACEHOLDERS.map((station) => (
+                    <DeskCard
+                      key={station.id}
+                      station={station}
+                      onClick={handleStationClick}
+                      isSelected={panel?.kind === "station" && panel.station.id === station.id}
+                      compact
+                    />
+                  ))}
+                </div>
+                <div
+                  style={{
+                    border: "1px dashed rgba(125,211,252,0.18)",
+                    borderRadius: 12,
+                    padding: "12px 14px",
+                    backgroundColor: "rgba(7,13,28,0.56)",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: "#c7d2fe",
+                      letterSpacing: "0.1em",
+                      textTransform: "uppercase",
+                      fontWeight: 700,
+                    }}
+                  >
+                    Public-safe posture
+                  </div>
+                  <p style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.65, margin: "8px 0 0" }}>
+                    These SparkBud desks are shown as available specialists, but deeper internal
+                    tooling remains hidden until it has clearer permissions and a cleaner product
+                    story.
                   </p>
                 </div>
               </div>
             </div>
-          </section>
-
-          {/* ── Section 2: What users should expect from Workstation ───────── */}
-          <section
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-              gap: 12,
-              marginBottom: 16,
-            }}
-          >
-            {[
-              {
-                title: "Chat first",
-                body: "Sparkbot Chat remains the normal everyday home for prompts, reminders, file work, and conversations.",
-              },
-              {
-                title: "Controls nearby",
-                body: "Provider setup, model stack, channels, and Guardian settings stay one click away instead of being buried.",
-              },
-              {
-                title: "Advanced later",
-                body: "More experimental workstation surfaces stay out of the public path until they have a cleaner product story.",
-              },
-            ].map((card) => (
-              <div
-                key={card.title}
-                style={{
-                  backgroundColor: "#0a1120",
-                  border: "1px solid #1a2235",
-                  borderRadius: 8,
-                  padding: "14px 16px",
-                  boxShadow: "0 2px 8px rgba(0,0,0,0.6)",
-                }}
-              >
-                <div style={{ fontSize: 10, color: PLASMA_PRIMARY, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700 }}>
-                  {card.title}
-                </div>
-                <p style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.7, margin: "10px 0 0" }}>
-                  {card.body}
-                </p>
-              </div>
-            ))}
           </section>
         </main>
 
@@ -2229,7 +2723,7 @@ export default function WorkstationPage() {
             onClose={handleClosePanel}
             onAddToRoom={handleAddToRoom}
             onRemoveFromRoom={handleRemoveFromRoom}
-            configuredInvites={configuredInvites}
+            eligibleStations={roomEligibleStations}
           />
         )}
         {panel?.kind === "terminal" && (

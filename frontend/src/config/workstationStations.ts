@@ -32,7 +32,7 @@ export interface Station {
 export const MAIN_DESK: Station = {
   id: "sparkbot",
   label: "Sparkbot",
-  subtitle: "Main Workspace",
+  subtitle: "Corner Office",
   type: "main",
   status: "active",
   icon: Bot,
@@ -61,12 +61,12 @@ export const INVITE_DESKS: Station[] = [
   },
   {
     id: "invite-gpt",
-    label: "GPT",
+    label: "ChatGPT",
     subtitle: "Invite Desk",
     type: "invite",
     status: "empty",
     icon: Plus,
-    accentHex: "#34d399",
+    accentHex: "#7dd3fc",
     description:
       "Connect an OpenAI GPT model as a dedicated agent desk with function calling support.",
     capabilities: ["Function calling", "Vision", "Code interpreter"],
@@ -76,25 +76,25 @@ export const INVITE_DESKS: Station[] = [
   },
   {
     id: "invite-custom",
-    label: "Add Agent",
+    label: "OpenClaw",
     subtitle: "Invite Desk",
     type: "invite",
     status: "empty",
     icon: Plus,
-    accentHex: "#64748b",
+    accentHex: "#f472b6",
     description:
-      "Define a custom agent with any provider, API key, system prompt, and capabilities.",
-    capabilities: ["Custom provider", "Custom persona", "Dedicated history"],
+      "Stage an external assistant or operator desk, including OpenClaw or another custom collaborator.",
+    capabilities: ["External operator", "Custom provider", "Dedicated history"],
     invitePrompt:
-      "Open Controls → Spawn Agent to create a new agent desk.",
+      "Configure this slot later for OpenClaw or another invited collaborator.",
     isInviteSlot: true,
   },
 ]
 
 export const ROUND_TABLE: Station = {
   id: "round-table",
-  label: "Project Room",
-  subtitle: "Active Collaboration",
+  label: "Roundtable",
+  subtitle: "Shared Project Room",
   type: "table",
   status: "idle",
   icon: Users,
