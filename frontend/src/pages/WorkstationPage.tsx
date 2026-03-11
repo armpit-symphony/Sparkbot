@@ -6,7 +6,6 @@
 import { useState, useCallback, useEffect } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import {
-  Bot,
   Plus,
   Users,
   X,
@@ -22,6 +21,7 @@ import {
   Loader2,
   SlidersHorizontal,
 } from "lucide-react"
+import SparkbotSurfaceTabs from "@/components/Common/SparkbotSurfaceTabs"
 import { Button } from "@/components/ui/button"
 import {
   type Station,
@@ -81,6 +81,10 @@ const PUBLIC_WORKSTATION_BADGES = [
   "Chat-first workflow",
   "Advanced tools hidden by default",
 ]
+
+const PLASMA_PRIMARY = "#8b93ff"
+const PLASMA_SECONDARY = "#7dd3fc"
+const PLASMA_BORDER = "rgba(99, 102, 241, 0.22)"
 
 // ─── StatusLight sub-component ────────────────────────────────────────────────
 
@@ -1641,7 +1645,7 @@ function LiveClock() {
   }, [])
   const pad = (n: number) => String(n).padStart(2, "0")
   return (
-    <span style={{ color: "#4ade80", letterSpacing: "0.1em" }}>
+    <span style={{ color: PLASMA_SECONDARY, letterSpacing: "0.1em" }}>
       {pad(time.getHours())}:{pad(time.getMinutes())}:{pad(time.getSeconds())}
     </span>
   )
@@ -1667,7 +1671,7 @@ function WorkstationOverviewCard({ onNavigate }: { onNavigate: (route: string) =
           <div
             style={{
               fontSize: 10,
-              color: "#00d4ff",
+              color: PLASMA_PRIMARY,
               letterSpacing: "0.12em",
               textTransform: "uppercase",
               fontWeight: 700,
@@ -1699,13 +1703,13 @@ function WorkstationOverviewCard({ onNavigate }: { onNavigate: (route: string) =
               key={badge}
               style={{
                 fontSize: 10,
-                color: "#9ccfe0",
-                border: "1px solid #1f3b51",
+                color: "#c7d2fe",
+                border: `1px solid ${PLASMA_BORDER}`,
                 borderRadius: 999,
                 padding: "5px 10px",
                 letterSpacing: "0.05em",
                 textTransform: "uppercase",
-                backgroundColor: "rgba(8, 18, 32, 0.72)",
+                backgroundColor: "rgba(11, 18, 34, 0.78)",
               }}
             >
               {badge}
@@ -1716,7 +1720,7 @@ function WorkstationOverviewCard({ onNavigate }: { onNavigate: (route: string) =
 
       <div
         style={{
-          border: "1px solid #12304a",
+          border: `1px solid ${PLASMA_BORDER}`,
           borderRadius: 10,
           backgroundColor: "rgba(8, 18, 32, 0.82)",
           padding: "14px 16px",
@@ -1752,8 +1756,8 @@ function WorkstationOverviewCard({ onNavigate }: { onNavigate: (route: string) =
                   height: 7,
                   borderRadius: "50%",
                   marginTop: 5,
-                  backgroundColor: "#00d4ff",
-                  boxShadow: "0 0 8px #00d4ff66",
+                  backgroundColor: PLASMA_PRIMARY,
+                  boxShadow: "0 0 8px rgba(129,140,248,0.42)",
                   flexShrink: 0,
                 }}
               />
@@ -1769,7 +1773,8 @@ function WorkstationOverviewCard({ onNavigate }: { onNavigate: (route: string) =
               padding: "10px 12px",
               borderRadius: 8,
               border: "none",
-              backgroundColor: "#00d4ff",
+              background:
+                "linear-gradient(135deg, rgba(79,70,229,0.96), rgba(99,102,241,0.9), rgba(56,189,248,0.44))",
               color: "#04101d",
               fontSize: 11,
               fontWeight: 700,
@@ -1786,7 +1791,7 @@ function WorkstationOverviewCard({ onNavigate }: { onNavigate: (route: string) =
             style={{
               padding: "10px 12px",
               borderRadius: 8,
-              border: "1px solid #1f3b51",
+              border: `1px solid ${PLASMA_BORDER}`,
               backgroundColor: "transparent",
               color: "#cbd5e1",
               fontSize: 11,
@@ -1800,182 +1805,6 @@ function WorkstationOverviewCard({ onNavigate }: { onNavigate: (route: string) =
             Open Controls
           </button>
         </div>
-      </div>
-    </section>
-  )
-}
-
-// ─── WorkstationNavStrip ─────────────────────────────────────────────────────
-
-interface WorkstationNavStripProps {
-  onNavigate: (route: string) => void
-}
-
-function WorkstationNavStrip({ onNavigate }: WorkstationNavStripProps) {
-  const primaryLinks = [
-    {
-      label: "Workstation",
-      hint: "Current room",
-      route: "/workstation",
-      icon: Layers,
-      accentHex: "#00d4ff",
-      active: true,
-    },
-    {
-      label: "Sparkbot Chat",
-      hint: "Main DM",
-      route: "/dm",
-      icon: Bot,
-      accentHex: MAIN_DESK.accentHex,
-      active: false,
-    },
-    {
-      label: "Controls",
-      hint: "Setup + config",
-      route: "/dm?controls=open",
-      icon: SlidersHorizontal,
-      accentHex: "#f59e0b",
-      active: false,
-    },
-  ]
-
-  const buttonBaseStyle: React.CSSProperties = {
-    backgroundColor: "#081220",
-    border: "1px solid #1a2235",
-    borderRadius: 8,
-    padding: "10px 12px",
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    textAlign: "left",
-    cursor: "pointer",
-    fontFamily: "monospace",
-    transition: "border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease",
-    minWidth: 0,
-  }
-
-  return (
-    <section
-      style={{
-        border: "1px solid #0d1f35",
-        borderRadius: 10,
-        backgroundColor: "rgba(7, 16, 30, 0.86)",
-        boxShadow: "0 10px 32px rgba(0,0,0,0.28)",
-        padding: "12px 14px",
-        display: "flex",
-        flexDirection: "column",
-        gap: 10,
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 12,
-        }}
-      >
-        <div>
-          <div
-            style={{
-              fontSize: 10,
-              color: "#00d4ff",
-              letterSpacing: "0.12em",
-              textTransform: "uppercase",
-              fontWeight: 700,
-            }}
-          >
-            Navigation
-          </div>
-          <div style={{ fontSize: 10, color: "#4b5563", marginTop: 3 }}>
-            Move directly between the three public app surfaces without relying on browser history.
-          </div>
-        </div>
-        <div
-          style={{
-            fontSize: 9,
-            color: "#6b7280",
-            letterSpacing: "0.06em",
-            textTransform: "uppercase",
-            border: "1px solid #1f2937",
-            borderRadius: 999,
-            padding: "4px 8px",
-            flexShrink: 0,
-          }}
-        >
-          Chat is the primary home
-        </div>
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: `repeat(${primaryLinks.length}, minmax(0, 1fr))`,
-          gap: 8,
-        }}
-      >
-        {primaryLinks.map(({ label, hint, route, icon: Icon, accentHex, active }) => (
-          <button
-            key={route}
-            onClick={() => {
-              if (!active) onNavigate(route)
-            }}
-            aria-current={active ? "page" : undefined}
-            style={{
-              ...buttonBaseStyle,
-              borderColor: active ? accentHex : "#1a2235",
-              boxShadow: active ? `0 0 0 1px ${accentHex}, 0 0 18px 2px ${accentHex}22` : "none",
-              cursor: active ? "default" : "pointer",
-            }}
-          >
-            <div
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: 6,
-                backgroundColor: `${accentHex}16`,
-                border: `1px solid ${active ? accentHex : `${accentHex}33`}`,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-              }}
-            >
-              <Icon size={14} style={{ color: accentHex }} />
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <div
-                style={{
-                  fontSize: 11,
-                  color: active ? accentHex : "#d1d5db",
-                  letterSpacing: "0.06em",
-                  textTransform: "uppercase",
-                  fontWeight: 700,
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                {label}
-              </div>
-              <div style={{ fontSize: 9, color: "#4b5563", marginTop: 2 }}>{hint}</div>
-            </div>
-          </button>
-        ))}
-      </div>
-
-      <div
-        style={{
-          borderTop: "1px solid #132235",
-          paddingTop: 10,
-          fontSize: 10,
-          color: "#64748b",
-          lineHeight: 1.7,
-        }}
-      >
-        Specialist desk previews and workstation terminal panels are intentionally hidden from the
-        public surface until they have clearer permissions, stronger guardrails, and a cleaner
-        first-run story.
       </div>
     </section>
   )
@@ -2083,13 +1912,13 @@ export default function WorkstationPage() {
           fontFamily: "monospace",
         }}
       >
-        <Layers size={40} style={{ color: "#00d4ff", filter: "drop-shadow(0 0 10px #00d4ff88)" }} />
+        <Layers size={40} style={{ color: PLASMA_PRIMARY, filter: "drop-shadow(0 0 12px rgba(129,140,248,0.28))" }} />
         <div style={{ textAlign: "center" }}>
           <div
             style={{
               fontSize: 13,
               fontWeight: 700,
-              color: "#00d4ff",
+              color: PLASMA_PRIMARY,
               letterSpacing: "0.1em",
               textTransform: "uppercase",
               marginBottom: 8,
@@ -2136,25 +1965,26 @@ export default function WorkstationPage() {
         {/* ─── Header bar ─────────────────────────────────────────────── */}
         <header
           style={{
-            height: 48,
-            borderBottom: "1px solid #0d1f35",
+            height: 56,
+            borderBottom: `1px solid ${PLASMA_BORDER}`,
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
             padding: "0 20px",
-            backgroundColor: "#060a13",
+            background:
+              "linear-gradient(180deg, rgba(7,11,24,0.98), rgba(10,16,31,0.94))",
             flexShrink: 0,
             zIndex: 10,
             position: "relative",
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <Layers size={16} style={{ color: "#00d4ff", filter: "drop-shadow(0 0 6px #00d4ff88)" }} />
+            <Layers size={16} style={{ color: PLASMA_PRIMARY, filter: "drop-shadow(0 0 10px rgba(129,140,248,0.28))" }} />
             <span
               style={{
                 fontSize: 12,
                 fontWeight: 700,
-                color: "#00d4ff",
+                color: PLASMA_PRIMARY,
                 letterSpacing: "0.12em",
                 textTransform: "uppercase",
               }}
@@ -2163,6 +1993,13 @@ export default function WorkstationPage() {
             </span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <SparkbotSurfaceTabs
+              active="workstation"
+              onChat={() => handleNavigate("/dm")}
+              onWorkstation={() => handleNavigate("/workstation")}
+              onControls={() => handleNavigate("/dm?controls=open")}
+            />
+            <div style={{ width: 1, height: 24, backgroundColor: "rgba(99,102,241,0.16)" }} />
             <LiveClock />
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <span
@@ -2170,20 +2007,20 @@ export default function WorkstationPage() {
                   width: 7,
                   height: 7,
                   borderRadius: "50%",
-                  backgroundColor: "#4ade80",
-                  boxShadow: "0 0 6px 2px #4ade8066",
+                  backgroundColor: PLASMA_SECONDARY,
+                  boxShadow: "0 0 8px rgba(125,211,252,0.3)",
                   display: "inline-block",
                 }}
               />
               <span
                 style={{
                   fontSize: 10,
-                  color: "#4ade80",
+                  color: "#cbd5f5",
                   letterSpacing: "0.08em",
                   textTransform: "uppercase",
                 }}
               >
-                Online
+                Ready
               </span>
             </div>
           </div>
@@ -2203,10 +2040,6 @@ export default function WorkstationPage() {
             transition: "padding-right 0.2s ease",
           }}
         >
-          <WorkstationNavStrip
-            onNavigate={handleNavigate}
-          />
-
           <WorkstationOverviewCard onNavigate={handleNavigate} />
 
           {/* ── Section 1: Public-ready desk + guidance cards ───────────────── */}
@@ -2349,7 +2182,7 @@ export default function WorkstationPage() {
                   boxShadow: "0 2px 8px rgba(0,0,0,0.6)",
                 }}
               >
-                <div style={{ fontSize: 10, color: "#00d4ff", letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700 }}>
+                <div style={{ fontSize: 10, color: PLASMA_PRIMARY, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700 }}>
                   {card.title}
                 </div>
                 <p style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.7, margin: "10px 0 0" }}>

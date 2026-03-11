@@ -37,7 +37,7 @@ export const MAIN_DESK: Station = {
   status: "active",
   icon: Bot,
   route: "/dm",
-  accentHex: "#00d4ff",
+  accentHex: "#8b93ff",
   description:
     "Your main workspace for everyday chat, memory, guided actions, and optional channels. Workstation is the desktop overview around that core surface.",
   capabilities: ["Everyday chat", "Memory", "Guided actions", "Optional channels"],

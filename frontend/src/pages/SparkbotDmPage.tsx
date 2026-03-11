@@ -1,11 +1,12 @@
 // Sparkbot DM Page — streaming, slash commands, syntax highlighting, search, meeting mode
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback, useRef, type CSSProperties } from "react"
 import { useNavigate, useRouterState } from "@tanstack/react-router"
-import { Check, CornerUpLeft, Copy, LayoutGrid, Loader2, MessageSquare, Mic, Paperclip, Pencil, RefreshCw, Search, Send, Settings2, SlidersHorizontal, Volume2, VolumeX, X } from "lucide-react"
+import { Check, CornerUpLeft, Copy, Loader2, Mic, Paperclip, Pencil, RefreshCw, Search, Send, Volume2, VolumeX, X } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter"
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism"
+import SparkbotSurfaceTabs from "@/components/Common/SparkbotSurfaceTabs"
 import {
   Dialog,
   DialogContent,
@@ -3373,9 +3374,14 @@ function SparkbotDmPage() {
   const isBot    = (m: Message) => String(m.sender_type ?? "").toUpperCase() === "BOT"
   const isSystem = (m: Message) => m.isSystem === true
   const isOwn    = (m: Message) => !isBot(m) && !isSystem(m)
+  const plasmaThemeVars = {
+    "--primary": "oklch(0.68 0.16 286)",
+    "--primary-foreground": "oklch(0.985 0 0)",
+    "--ring": "oklch(0.62 0.06 282)",
+  } as CSSProperties
 
   return (
-    <div className="relative flex h-screen flex-col">
+    <div className="relative flex h-screen flex-col" style={plasmaThemeVars}>
       {/* Confirmation modal */}
       {pendingConfirm && (
         <ConfirmModal pending={pendingConfirm} onConfirm={handleConfirm} onCancel={handleCancel} />
@@ -3460,10 +3466,19 @@ function SparkbotDmPage() {
       )}
 
       {/* Header */}
-      <div className="border-b shrink-0">
-        <div className="flex items-center justify-between px-4 py-3">
+      <div className="shrink-0 border-b border-[rgba(99,102,241,0.16)] bg-[linear-gradient(180deg,rgba(7,11,24,0.98),rgba(10,16,31,0.94))]">
+        <div className="flex items-center justify-between gap-4 px-4 py-3">
           <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-bold select-none">S</div>
+            <div
+              className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold text-slate-50 select-none"
+              style={{
+                background:
+                  "linear-gradient(135deg, rgba(79,70,229,0.96), rgba(99,102,241,0.92), rgba(56,189,248,0.72))",
+                boxShadow: "0 0 24px rgba(99,102,241,0.24)",
+              }}
+            >
+              S
+            </div>
             <div>
               <h1 className="text-sm font-semibold flex items-center gap-2">
                 Sparkbot
@@ -3474,63 +3489,31 @@ function SparkbotDmPage() {
                   </span>
                 )}
               </h1>
-              <p className="text-xs text-muted-foreground">Sparkpit Labs · primary everyday chat surface</p>
+              <p className="text-xs text-slate-400">Sparkpit Labs · primary everyday chat surface</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-end gap-2">
+            <SparkbotSurfaceTabs
+              active={controlsRequested ? "controls" : "chat"}
+              onChat={() => navigate({ to: "/dm" })}
+              onWorkstation={() => navigate({ to: "/workstation" })}
+              onControls={() => openControlsPanel()}
+            />
             <button
-              onClick={() => openControlsPanel()}
-              className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-              title="Sparkbot controls"
+              onClick={() => setShowSearch(true)}
+              className="rounded-full border border-[rgba(99,102,241,0.14)] bg-[rgba(7,13,28,0.76)] p-2 text-slate-400 transition-all hover:border-[rgba(129,140,248,0.24)] hover:bg-[rgba(79,70,229,0.08)] hover:text-slate-100"
+              title="Search messages"
             >
-              <Settings2 className="size-4" />
-            </button>
-            <button onClick={() => setShowSearch(true)} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Search messages">
               <Search className="size-4" />
             </button>
             <button onClick={() => {
               localStorage.removeItem("access_token")
               sessionStorage.removeItem("chat_auth")
               fetch("/api/v1/chat/users/session", { method: "DELETE", credentials: "include" }).finally(() => { window.location.href = "/login" })
-            }} className="text-sm text-muted-foreground hover:text-foreground">
+            }} className="rounded-full border border-[rgba(99,102,241,0.14)] bg-[rgba(7,13,28,0.76)] px-3 py-2 text-xs font-medium tracking-[0.08em] text-slate-300 transition-all hover:border-[rgba(129,140,248,0.24)] hover:bg-[rgba(79,70,229,0.08)] hover:text-slate-50">
               Logout
             </button>
           </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 border-t bg-muted/20 px-4 py-2">
-          <button
-            type="button"
-            onClick={() => navigate({ to: "/dm" })}
-            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-              !controlsRequested
-                ? "border-primary bg-primary/10 text-primary"
-                : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
-            }`}
-          >
-            <MessageSquare className="size-3.5" />
-            Chat
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate({ to: "/workstation" })}
-            className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          >
-            <LayoutGrid className="size-3.5" />
-            Workstation
-          </button>
-          <button
-            type="button"
-            onClick={() => openControlsPanel()}
-            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-              controlsRequested
-                ? "border-primary bg-primary/10 text-primary"
-                : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
-            }`}
-          >
-            <SlidersHorizontal className="size-3.5" />
-            Controls
-          </button>
         </div>
       </div>
 
@@ -3551,7 +3534,11 @@ function SparkbotDmPage() {
               <div className="flex flex-col gap-2 sm:flex-row">
                 <button
                   onClick={() => openControlsPanel("cloud")}
-                  className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                  className="rounded-lg px-4 py-2 text-sm font-medium text-slate-50 shadow-[0_12px_28px_rgba(49,46,129,0.24)] transition-opacity hover:opacity-95"
+                  style={{
+                    background:
+                      "linear-gradient(135deg, rgba(79,70,229,0.96), rgba(99,102,241,0.9), rgba(56,189,248,0.48))",
+                  }}
                 >
                   Add cloud API key
                 </button>
@@ -3587,12 +3574,21 @@ function SparkbotDmPage() {
                 <div className="flex flex-col max-w-[75%]">
                   {/* Reply quote */}
                   {parentMsg && (
-                    <div className={`mb-1 px-3 py-1 rounded-lg border-l-2 border-primary/50 bg-muted/40 text-[11px] text-muted-foreground truncate ${own ? "self-end" : "self-start"}`}>
+                    <div
+                      className={`mb-1 rounded-lg border-l-2 bg-muted/40 px-3 py-1 text-[11px] text-muted-foreground truncate ${own ? "self-end" : "self-start"}`}
+                      style={{ borderColor: "rgba(129,140,248,0.36)" }}
+                    >
                       ↩ {parentMsg.sender_type === "BOT" ? "Sparkbot" : (parentMsg.sender_username ?? "You")}: {parentMsg.content.slice(0, 80)}{parentMsg.content.length > 80 ? "…" : ""}
                     </div>
                   )}
                   <div className={`flex items-end gap-1 ${own ? "flex-row-reverse" : "flex-row"}`}>
-                    <div className={`rounded-2xl px-4 py-2 ${own ? "rounded-br-md bg-primary text-primary-foreground" : "rounded-bl-md bg-muted"}`}>
+                    <div
+                      className={`rounded-2xl px-4 py-2 ${own ? "rounded-br-md text-slate-50 shadow-[0_12px_28px_rgba(49,46,129,0.22)]" : "rounded-bl-md bg-muted"}`}
+                      style={own ? {
+                        background:
+                          "linear-gradient(135deg, rgba(79,70,229,0.94), rgba(67,56,202,0.9), rgba(56,189,248,0.34))",
+                      } : undefined}
+                    >
                       {isEditing ? (
                         <div className="flex flex-col gap-1">
                           <textarea
@@ -3728,7 +3724,12 @@ function SparkbotDmPage() {
           <button
             onClick={handleSend}
             disabled={sending || uploading || !inputValue.trim()}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground disabled:opacity-40"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-slate-50 disabled:opacity-40"
+            style={{
+              background:
+                "linear-gradient(135deg, rgba(79,70,229,0.96), rgba(99,102,241,0.9), rgba(56,189,248,0.48))",
+              boxShadow: "0 10px 24px rgba(49,46,129,0.24)",
+            }}
           >
             {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </button>
@@ -3742,7 +3743,7 @@ function SparkbotDmPage() {
             }}
             title={voiceMode ? "Voice mode on — mic sends message, replies spoken aloud. Click to switch to transcribe-only." : "Voice mode off — mic transcribes to text only. Click to enable full voice mode."}
             className={`flex h-9 w-9 items-center justify-center rounded-full ${
-              voiceMode ? "text-primary" : "text-muted-foreground hover:bg-muted"
+              voiceMode ? "text-indigo-200 bg-[rgba(79,70,229,0.12)]" : "text-muted-foreground hover:bg-muted"
             }`}
           >
             {voiceMode ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
