@@ -34,6 +34,7 @@ import {
   MAIN_DESK,
   INVITE_DESKS,
   ROUND_TABLE,
+  TERMINALS,
 } from "@/config/workstationStations"
 import { useTerminalSession } from "@/hooks/useTerminalSession"
 import { XtermTerminal } from "@/components/Terminal/XtermTerminal"
@@ -2168,6 +2169,8 @@ function TerminalDetailPanel({ station, onClose }: TerminalDetailPanelProps) {
     connect().catch((e) => console.error("Terminal connect error:", e))
   }
 
+  const localMachineLabel = host === "localhost" ? "This downloaded machine" : host ?? "localhost"
+
   return (
     <div
       style={{
@@ -2330,6 +2333,32 @@ function TerminalDetailPanel({ station, onClose }: TerminalDetailPanelProps) {
           <div style={{ padding: "16px 16px 8px" }}>
             <div
               style={{
+                marginBottom: 12,
+                backgroundColor: "#0a1120",
+                border: `1px solid ${accentHex}22`,
+                borderRadius: 6,
+                padding: "10px 12px",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 10,
+                  color: accentHex,
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  marginBottom: 4,
+                  fontWeight: 700,
+                }}
+              >
+                Local machine link
+              </div>
+              <p style={{ fontSize: 10, color: "#9ca3af", lineHeight: 1.6, margin: 0 }}>
+                This desk connects to the machine running this Sparkbot download. Use it for local
+                model installs, environment checks, logs, and normal shell work.
+              </p>
+            </div>
+            <div
+              style={{
                 backgroundColor: "#030508",
                 borderRadius: 6,
                 border: `1px solid ${accentHex}22`,
@@ -2371,7 +2400,7 @@ function TerminalDetailPanel({ station, onClose }: TerminalDetailPanelProps) {
               }}
             >
               {[
-                { key: "Host", value: host ?? "localhost" },
+                { key: "Host", value: localMachineLabel },
                 { key: "Shell", value: shellType ?? "bash" },
                 { key: "Status", value: statusLabel },
                 { key: "Session", value: "—" },
@@ -2905,6 +2934,7 @@ export default function WorkstationPage() {
   const resolvedInviteStations = INVITE_DESKS.map((station) =>
     resolveInviteStation(station, configuredInvites),
   )
+  const localTerminalDesk = TERMINALS[0]
   const roomEligibleStations = [
     MAIN_DESK,
     ...companionModelStations.filter((station) => station.status !== "empty"),
@@ -3349,6 +3379,12 @@ export default function WorkstationPage() {
                     Claude, OpenClaw, or another future collaborator.
                   </p>
                 </div>
+                <DeskCard
+                  station={localTerminalDesk}
+                  onClick={handleStationClick}
+                  isSelected={panel?.kind === "terminal" && panel.station.id === localTerminalDesk.id}
+                  compact
+                />
               </div>
 
               <div style={{ gridColumn: "2 / span 2", gridRow: "2" }}>
