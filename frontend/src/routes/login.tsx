@@ -18,6 +18,7 @@ import {
 import { LoadingButton } from "@/components/ui/loading-button"
 import { PasswordInput } from "@/components/ui/password-input"
 import useAuth, { hasChatSession, isLoggedIn } from "@/hooks/useAuth"
+import { resolveChatEntryTarget } from "@/lib/sparkbotControls"
 
 const formSchema = z.object({
   passphrase: z
@@ -36,8 +37,10 @@ export const Route = createFileRoute("/login")({
       })
     }
     if (hasChatSession()) {
+      const target = await resolveChatEntryTarget()
       throw redirect({
-        to: "/workstation",
+        to: target.to,
+        search: target.search,
       })
     }
   },

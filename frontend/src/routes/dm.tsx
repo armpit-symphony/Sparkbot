@@ -1,10 +1,21 @@
 // DM route - redirects to Sparkbot DM
 
-import { createFileRoute } from "@tanstack/react-router"
+import { createFileRoute, redirect } from "@tanstack/react-router"
+import { z } from "zod"
+import { hasChatSession } from "@/hooks/useAuth"
 import SparkbotDmPage from "@/pages/SparkbotDmPage"
+import { CONTROLS_SEARCH_VALUE } from "@/lib/sparkbotControls"
 
-export const Route = createFileRoute("/dm")({
-  component: SparkbotDmPage,
+const searchSchema = z.object({
+  controls: z.literal(CONTROLS_SEARCH_VALUE).optional().catch(undefined),
 })
 
-export default SparkbotDmPage
+export const Route = createFileRoute("/dm")({
+  validateSearch: searchSchema,
+  beforeLoad: async () => {
+    if (!hasChatSession()) {
+      throw redirect({ to: "/login" })
+    }
+  },
+  component: SparkbotDmPage,
+})

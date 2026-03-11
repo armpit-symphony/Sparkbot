@@ -17,13 +17,12 @@ import {
   UserMinus,
   ChevronRight,
   SquareTerminal,
-  Home,
   Power,
   PowerOff,
   Loader2,
+  SlidersHorizontal,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { isLoggedIn } from "@/hooks/useAuth"
 import {
   type Station,
   type StationStatus,
@@ -988,6 +987,31 @@ function StationDetailPanel({
                 Open Main Sparkbot Chat
               </button>
 
+              <button
+                onClick={() => onNavigate("/dm?controls=open")}
+                style={{
+                  width: "100%",
+                  padding: "9px 10px",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: accentHex,
+                  backgroundColor: "#0a1120",
+                  border: `1px solid ${accentHex}55`,
+                  borderRadius: 6,
+                  cursor: "pointer",
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  fontFamily: "monospace",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                }}
+              >
+                <SlidersHorizontal size={12} />
+                Open Sparkbot Controls
+              </button>
+
               <div
                 style={{
                   backgroundColor: "#0a1120",
@@ -1834,10 +1858,9 @@ function LiveClock() {
 
 interface WorkstationNavStripProps {
   onNavigate: (route: string) => void
-  dashboardAvailable: boolean
 }
 
-function WorkstationNavStrip({ onNavigate, dashboardAvailable }: WorkstationNavStripProps) {
+function WorkstationNavStrip({ onNavigate }: WorkstationNavStripProps) {
   const primaryLinks = [
     {
       label: "Workstation",
@@ -1855,18 +1878,14 @@ function WorkstationNavStrip({ onNavigate, dashboardAvailable }: WorkstationNavS
       accentHex: MAIN_DESK.accentHex,
       active: false,
     },
-    ...(dashboardAvailable
-      ? [
-          {
-            label: "Dashboard",
-            hint: "App home",
-            route: "/",
-            icon: Home,
-            accentHex: "#4ade80",
-            active: false,
-          },
-        ]
-      : []),
+    {
+      label: "Controls",
+      hint: "Setup + config",
+      route: "/dm?controls=open",
+      icon: SlidersHorizontal,
+      accentHex: "#f59e0b",
+      active: false,
+    },
   ]
 
   const buttonBaseStyle: React.CSSProperties = {
@@ -1918,25 +1937,23 @@ function WorkstationNavStrip({ onNavigate, dashboardAvailable }: WorkstationNavS
             Navigation
           </div>
           <div style={{ fontSize: 10, color: "#4b5563", marginTop: 3 }}>
-            Move between the workstation shell, Sparkbot chat, and direct SparkBud routes.
+            Move directly between chat, workstation, controls, and SparkBud routes.
           </div>
         </div>
-        {!dashboardAvailable && (
-          <div
-            style={{
-              fontSize: 9,
-              color: "#6b7280",
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-              border: "1px solid #1f2937",
-              borderRadius: 999,
-              padding: "4px 8px",
-              flexShrink: 0,
-            }}
-          >
-            Dashboard requires app login
-          </div>
-        )}
+        <div
+          style={{
+            fontSize: 9,
+            color: "#6b7280",
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+            border: "1px solid #1f2937",
+            borderRadius: 999,
+            padding: "4px 8px",
+            flexShrink: 0,
+          }}
+        >
+          Chat is the primary home
+        </div>
       </div>
 
       <div
@@ -2077,7 +2094,6 @@ function WorkstationNavStrip({ onNavigate, dashboardAvailable }: WorkstationNavS
 
 export default function WorkstationPage() {
   const navigate = useNavigate()
-  const dashboardAvailable = isLoggedIn()
 
   // ── State ──────────────────────────────────────────────────────────────────
   const [panel, setPanel] = useState<PanelMode>({ kind: "station", station: MAIN_DESK })
@@ -2108,7 +2124,13 @@ export default function WorkstationPage() {
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   const handleNavigate = useCallback(
-    (route: string) => navigate({ to: route }),
+    (route: string) => {
+      if (route === "/dm?controls=open") {
+        navigate({ to: "/dm", search: { controls: "open" } })
+        return
+      }
+      navigate({ to: route })
+    },
     [navigate],
   )
 
@@ -2308,7 +2330,6 @@ export default function WorkstationPage() {
         >
           <WorkstationNavStrip
             onNavigate={handleNavigate}
-            dashboardAvailable={dashboardAvailable}
           />
 
           {/* ── Section 1: Top row — desk cards ─────────────────────── */}

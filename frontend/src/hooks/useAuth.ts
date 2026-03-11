@@ -8,6 +8,10 @@ import {
   type UserRegister,
   UsersService,
 } from "@/client"
+import {
+  buildChatEntryHref,
+  resolveChatEntryTarget,
+} from "@/lib/sparkbotControls"
 import { handleError } from "@/utils"
 import useCustomToast from "./useCustomToast"
 
@@ -77,8 +81,8 @@ const useAuth = () => {
     // Server sets HttpOnly cookie — we only store a presence flag
     sessionStorage.setItem("chat_auth", "1")
 
-    // Land chat users in the workstation; Sparkbot DM remains the main control surface there.
-    window.location.replace("/workstation")
+    const target = await resolveChatEntryTarget()
+    window.location.replace(buildChatEntryHref(target))
   }
 
   const chatLoginMutation = useMutation({

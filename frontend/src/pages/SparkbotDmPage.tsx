@@ -1,8 +1,8 @@
 // Sparkbot DM Page — streaming, slash commands, syntax highlighting, search, meeting mode
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import { createFileRoute } from "@tanstack/react-router"
-import { Check, CornerUpLeft, Copy, Loader2, Mic, Paperclip, Pencil, RefreshCw, Search, Send, Settings2, Volume2, VolumeX, X } from "lucide-react"
+import { useNavigate, useRouterState } from "@tanstack/react-router"
+import { Check, CornerUpLeft, Copy, LayoutGrid, Loader2, MessageSquare, Mic, Paperclip, Pencil, RefreshCw, Search, Send, Settings2, SlidersHorizontal, Volume2, VolumeX, X } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter"
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism"
@@ -13,10 +13,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-
-export const Route = createFileRoute("/dm")({
-  component: SparkbotDmPage,
-})
+import {
+  CONTROLS_AUTOOPEN_KEY,
+  CONTROLS_ONBOARDING_KEY,
+  controlsOnboardingComplete,
+  CONTROLS_SEARCH_VALUE,
+  isControlsSearchOpen,
+} from "@/lib/sparkbotControls"
 
 // ─── Confirm modal ────────────────────────────────────────────────────────────
 
@@ -385,15 +388,6 @@ const COMMANDS: SlashCommand[] = [
 
 function systemMsg(content: string): Message {
   return { id: `sys-${Date.now()}-${Math.random()}`, content, created_at: new Date().toISOString(), sender_type: "SYSTEM", isSystem: true }
-}
-
-const CONTROLS_ONBOARDING_KEY = "sparkbot_controls_onboarded"
-const CONTROLS_AUTOOPEN_KEY = "sparkbot_controls_autoshown"
-
-function controlsOnboardingComplete(config: ModelsControlsConfig | null): boolean {
-  if (!config) return false
-  const configuredProviders = config.providers.filter((provider) => provider.configured).length
-  return configuredProviders > 0 && Boolean(config.stack.primary) && Boolean(config.stack.heavy_hitter)
 }
 
 // ─── Code block ───────────────────────────────────────────────────────────────
@@ -885,10 +879,21 @@ function SparkbotSettingsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-auto sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Sparkbot Controls</DialogTitle>
-          <DialogDescription>
-            Room execution gate, function routing, dashboard access, and Task Guardian schedules.
-          </DialogDescription>
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-1">
+              <DialogTitle>Sparkbot Controls</DialogTitle>
+              <DialogDescription>
+                Room execution gate, function routing, dashboard access, and Task Guardian schedules.
+              </DialogDescription>
+            </div>
+            <button
+              type="button"
+              onClick={() => onOpenChange(false)}
+              className="shrink-0 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              Continue to chat
+            </button>
+          </div>
         </DialogHeader>
 
         <div className="space-y-6">
@@ -2068,6 +2073,8 @@ const emptyMeeting = (): MeetingState => ({ active: false, startedAt: null, note
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 function SparkbotDmPage() {
+  const navigate = useNavigate()
+  const routerState = useRouterState()
   const [roomId, setRoomId] = useState<string | null>(null)
   const [roomInfo, setRoomInfo] = useState<RoomInfo | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
@@ -2141,6 +2148,9 @@ function SparkbotDmPage() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const controlsRequested = isControlsSearchOpen(
+    ((routerState.location as { searchStr?: string }).searchStr) ?? window.location.search
+  )
 
   // ── Reply / edit state ───────────────────────────────────────────────────────
   const [replyingTo, setReplyingTo] = useState<Message | null>(null)
@@ -2202,6 +2212,39 @@ function SparkbotDmPage() {
     }
   }, [])
 
+  const openControlsPanel = useCallback((nextMode?: "cloud" | "local" | "hybrid") => {
+    if (nextMode) setAiSourceMode(nextMode)
+    setSettingsOpen(true)
+    navigate({
+      to: "/dm",
+      search: { controls: CONTROLS_SEARCH_VALUE },
+      replace: true,
+    })
+  }, [navigate])
+
+  const closeControlsPanel = useCallback(() => {
+    setSettingsOpen(false)
+    navigate({
+      to: "/dm",
+      search: {},
+      replace: true,
+    })
+  }, [navigate])
+
+  const handleSettingsOpenChange = useCallback((open: boolean) => {
+    if (open) {
+      openControlsPanel()
+    } else {
+      closeControlsPanel()
+    }
+  }, [closeControlsPanel, openControlsPanel])
+
+  useEffect(() => {
+    if (controlsRequested && !settingsOpen) {
+      setSettingsOpen(true)
+    }
+  }, [controlsRequested, settingsOpen])
+
   useEffect(() => {
     async function init() {
       if (!sessionStorage.getItem("chat_auth") && !localStorage.getItem("access_token")) {
@@ -2230,7 +2273,14 @@ function SparkbotDmPage() {
             applyControlsConfig(config)
             const onboardingDone = controlsOnboardingComplete(config)
             const alreadyAutoOpened = sessionStorage.getItem(CONTROLS_AUTOOPEN_KEY) === "true"
-            if (!onboardingDone && !alreadyAutoOpened) {
+            if (!onboardingDone && (controlsRequested || !alreadyAutoOpened)) {
+              if (!controlsRequested) {
+                navigate({
+                  to: "/dm",
+                  search: { controls: CONTROLS_SEARCH_VALUE },
+                  replace: true,
+                })
+              }
               setSettingsOpen(true)
               sessionStorage.setItem(CONTROLS_AUTOOPEN_KEY, "true")
               setMessages(prev => [
@@ -2250,7 +2300,7 @@ function SparkbotDmPage() {
       } catch (e) { console.error(e) } finally { setLoading(false) }
     }
     init()
-  }, [applyControlsConfig])
+  }, [applyControlsConfig, controlsRequested, navigate])
 
   const refreshControls = useCallback(async () => {
     if (!roomId) return
@@ -3333,7 +3383,7 @@ function SparkbotDmPage() {
 
       <SparkbotSettingsDialog
         open={settingsOpen}
-        onOpenChange={setSettingsOpen}
+        onOpenChange={handleSettingsOpenChange}
         room={roomInfo}
         loading={settingsLoading}
         savingExecution={savingExecution}
@@ -3410,35 +3460,76 @@ function SparkbotDmPage() {
       )}
 
       {/* Header */}
-      <div className="flex items-center justify-between border-b px-4 py-3 shrink-0">
-        <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-bold select-none">S</div>
-          <div>
-            <h1 className="text-sm font-semibold flex items-center gap-2">
-              Sparkbot
-              {meeting.active && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-semibold text-red-500">
-                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
-                  MEETING
-                </span>
-              )}
-            </h1>
-            <p className="text-xs text-muted-foreground">Sparkpit Labs · type /help for commands</p>
+      <div className="border-b shrink-0">
+        <div className="flex items-center justify-between px-4 py-3">
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-bold select-none">S</div>
+            <div>
+              <h1 className="text-sm font-semibold flex items-center gap-2">
+                Sparkbot
+                {meeting.active && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-semibold text-red-500">
+                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
+                    MEETING
+                  </span>
+                )}
+              </h1>
+              <p className="text-xs text-muted-foreground">Sparkpit Labs · primary everyday chat surface</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => openControlsPanel()}
+              className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+              title="Sparkbot controls"
+            >
+              <Settings2 className="size-4" />
+            </button>
+            <button onClick={() => setShowSearch(true)} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Search messages">
+              <Search className="size-4" />
+            </button>
+            <button onClick={() => {
+              localStorage.removeItem("access_token")
+              sessionStorage.removeItem("chat_auth")
+              fetch("/api/v1/chat/users/session", { method: "DELETE", credentials: "include" }).finally(() => { window.location.href = "/login" })
+            }} className="text-sm text-muted-foreground hover:text-foreground">
+              Logout
+            </button>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setSettingsOpen(true)} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Sparkbot controls">
-            <Settings2 className="size-4" />
+
+        <div className="flex flex-wrap items-center gap-2 border-t bg-muted/20 px-4 py-2">
+          <button
+            type="button"
+            onClick={() => navigate({ to: "/dm" })}
+            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+              !controlsRequested
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+          >
+            <MessageSquare className="size-3.5" />
+            Chat
           </button>
-          <button onClick={() => setShowSearch(true)} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" title="Search messages">
-            <Search className="size-4" />
+          <button
+            type="button"
+            onClick={() => navigate({ to: "/workstation" })}
+            className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <LayoutGrid className="size-3.5" />
+            Workstation
           </button>
-          <button onClick={() => {
-            localStorage.removeItem("access_token")
-            sessionStorage.removeItem("chat_auth")
-            fetch("/api/v1/chat/users/session", { method: "DELETE", credentials: "include" }).finally(() => { window.location.href = "/login" })
-          }} className="text-sm text-muted-foreground hover:text-foreground">
-            Logout
+          <button
+            type="button"
+            onClick={() => openControlsPanel()}
+            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+              controlsRequested
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+          >
+            <SlidersHorizontal className="size-3.5" />
+            Controls
           </button>
         </div>
       </div>
@@ -3459,13 +3550,13 @@ function SparkbotDmPage() {
               </div>
               <div className="flex flex-col gap-2 sm:flex-row">
                 <button
-                  onClick={() => { setSettingsOpen(true); setAiSourceMode("cloud") }}
+                  onClick={() => openControlsPanel("cloud")}
                   className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
                 >
                   Add cloud API key
                 </button>
                 <button
-                  onClick={() => { setSettingsOpen(true); setAiSourceMode("local") }}
+                  onClick={() => openControlsPanel("local")}
                   className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-muted"
                 >
                   Set up local model
