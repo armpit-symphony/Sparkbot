@@ -39,6 +39,11 @@ import { useTerminalSession } from "@/hooks/useTerminalSession"
 import { XtermTerminal } from "@/components/Terminal/XtermTerminal"
 import { fetchControlsConfig, type SparkbotControlsConfig } from "@/lib/sparkbotControls"
 import {
+  buildSparkBudChatLaunchText,
+  getSparkBudLaunchConfig,
+  saveSparkBudChatLaunchDraft,
+} from "@/lib/sparkbudLaunch"
+import {
   ROUND_TABLE_SEAT_COUNT,
   loadMeetingDraft,
   normalizeMeetingSeats,
@@ -183,7 +188,7 @@ const SPECIALTY_PLACEHOLDERS: Station[] = [
   {
     id: "sb-researcher",
     label: "Researcher",
-    subtitle: "Dormant specialty desk",
+    subtitle: "Launch-ready specialty desk",
     type: "sparkbud",
     status: "idle",
     icon: Search,
@@ -195,7 +200,7 @@ const SPECIALTY_PLACEHOLDERS: Station[] = [
   {
     id: "sb-coder",
     label: "Coder",
-    subtitle: "Dormant specialty desk",
+    subtitle: "Launch-ready specialty desk",
     type: "sparkbud",
     status: "idle",
     icon: Code2,
@@ -207,7 +212,7 @@ const SPECIALTY_PLACEHOLDERS: Station[] = [
   {
     id: "sb-analyst",
     label: "Analyst",
-    subtitle: "Dormant specialty desk",
+    subtitle: "Launch-ready specialty desk",
     type: "sparkbud",
     status: "idle",
     icon: LineChart,
@@ -219,7 +224,7 @@ const SPECIALTY_PLACEHOLDERS: Station[] = [
   {
     id: "sb-custom",
     label: "Custom",
-    subtitle: "Reserved specialty desk",
+    subtitle: "Launch-ready custom desk",
     type: "sparkbud",
     status: "idle",
     icon: Plus,
@@ -741,6 +746,8 @@ interface StationDetailPanelProps {
   onAddToRoom: (id: string) => void
   onRemoveFromRoom: (id: string) => void
   availableSeatCount: number
+  onLaunchSparkBud: (station: Station, config: { prompt: string; agentName?: string }) => Promise<string | null>
+  launchingSparkBudId: string | null
 }
 
 function StationDetailPanel({
@@ -751,6 +758,8 @@ function StationDetailPanel({
   onAddToRoom,
   onRemoveFromRoom,
   availableSeatCount,
+  onLaunchSparkBud,
+  launchingSparkBudId,
 }: StationDetailPanelProps) {
   const {
     accentHex,
@@ -768,35 +777,52 @@ function StationDetailPanel({
 
   const isActive = status !== "empty" && status !== "offline"
   const isSparkbot = id === "sparkbot"
+  const isSparkBud = type === "sparkbud"
   const isModelOffice = id.startsWith("stack-")
-  const isCustomSpecialtyDesk = id === "sb-custom"
   const isInRoom = isStationAssigned(projectRoom, id)
   const canToggleRoom = type !== "table" && type !== "terminal"
+  const sparkBudLaunchConfig = isSparkBud ? getSparkBudLaunchConfig(id) : null
+  const [launchPrompt, setLaunchPrompt] = useState(sparkBudLaunchConfig?.defaultPrompt ?? "")
+  const [launchAgentName, setLaunchAgentName] = useState(sparkBudLaunchConfig?.defaultHandle ?? "")
+  const [launchError, setLaunchError] = useState("")
+
+  useEffect(() => {
+    setLaunchPrompt(sparkBudLaunchConfig?.defaultPrompt ?? "")
+    setLaunchAgentName(sparkBudLaunchConfig?.defaultHandle ?? "")
+    setLaunchError("")
+  }, [sparkBudLaunchConfig, station.id])
 
   const handleNavigate = useCallback(() => {
     if (route) onNavigate(route)
   }, [route, onNavigate])
+
+  const handleLaunchSparkBud = useCallback(async () => {
+    if (!sparkBudLaunchConfig || !launchPrompt.trim()) return
+    setLaunchError("")
+    const result = await onLaunchSparkBud(station, {
+      prompt: launchPrompt,
+      agentName: sparkBudLaunchConfig.launchMode === "custom" ? launchAgentName : undefined,
+    })
+    if (result) setLaunchError(result)
+  }, [launchAgentName, launchPrompt, onLaunchSparkBud, sparkBudLaunchConfig, station])
 
   // Primary action
   let actionLabel = "Coming Soon"
   let actionDisabled = true
   let actionHandler: (() => void) | undefined
 
-  if (route && isActive) {
+  if (isSparkBud) {
+    actionLabel = "Launch"
+    actionDisabled = false
+    actionHandler = handleLaunchSparkBud
+  } else if (route && isActive) {
     actionLabel = isSparkbot
       ? "Open Main Chat"
       : isModelOffice
         ? "Review in Controls"
-        : isCustomSpecialtyDesk
-          ? "Open Controls"
-          : type === "sparkbud"
-            ? "Launch Agent"
-            : "Open Station"
+        : "Open Station"
     actionDisabled = false
     actionHandler = handleNavigate
-  } else if (type === "sparkbud") {
-    actionLabel = "Dormant desk"
-    actionDisabled = true
   } else if (type === "invite" && status === "idle") {
     actionLabel = "Open Chat (Phase 3)"
     actionDisabled = true
@@ -1199,9 +1225,227 @@ function StationDetailPanel({
 
       {canToggleRoom && <div style={{ height: 1, backgroundColor: "#1a2235", margin: "0 16px" }} />}
 
+      {sparkBudLaunchConfig && (
+        <>
+          <div style={{ padding: "12px 16px 16px" }}>
+            <div
+              style={{
+                fontSize: 10,
+                color: "#4b5563",
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                marginBottom: 8,
+                fontWeight: 700,
+              }}
+            >
+              Launch Prep
+            </div>
+
+            <div
+              style={{
+                backgroundColor: "#0a1120",
+                border: `1px solid ${accentHex}22`,
+                borderRadius: 6,
+                padding: "10px 12px",
+                marginBottom: 10,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 10,
+                  color: accentHex,
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  marginBottom: 4,
+                  fontWeight: 700,
+                }}
+              >
+                Role
+              </div>
+              <p style={{ fontSize: 10, color: "#9ca3af", lineHeight: 1.6, margin: 0 }}>
+                {sparkBudLaunchConfig.summary}
+              </p>
+            </div>
+
+            {sparkBudLaunchConfig.launchMode === "custom" && (
+              <div style={{ marginBottom: 10 }}>
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: 10,
+                    color: "#4b5563",
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                    marginBottom: 6,
+                    fontWeight: 700,
+                  }}
+                >
+                  Agent handle
+                </label>
+                <input
+                  value={launchAgentName}
+                  onChange={(event) =>
+                    setLaunchAgentName(
+                      event.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""),
+                    )
+                  }
+                  placeholder="specialist"
+                  maxLength={32}
+                  style={{
+                    width: "100%",
+                    backgroundColor: "#030508",
+                    border: "1px solid #1a2235",
+                    borderRadius: 4,
+                    padding: "8px 10px",
+                    fontSize: 12,
+                    color: "#d1d5db",
+                    fontFamily: "monospace",
+                    letterSpacing: "0.03em",
+                    outline: "none",
+                    boxSizing: "border-box",
+                  }}
+                />
+              </div>
+            )}
+
+            <div>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: 10,
+                  color: "#4b5563",
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                  marginBottom: 6,
+                  fontWeight: 700,
+                }}
+              >
+                Preloaded launch prompt
+              </label>
+              <textarea
+                value={launchPrompt}
+                onChange={(event) => setLaunchPrompt(event.target.value)}
+                rows={7}
+                style={{
+                  width: "100%",
+                  backgroundColor: "#030508",
+                  border: "1px solid #1a2235",
+                  borderRadius: 4,
+                  padding: "8px 10px",
+                  fontSize: 11,
+                  color: "#d1d5db",
+                  fontFamily: "monospace",
+                  lineHeight: 1.6,
+                  letterSpacing: "0.03em",
+                  outline: "none",
+                  boxSizing: "border-box",
+                  resize: "vertical",
+                  minHeight: 136,
+                }}
+              />
+            </div>
+
+            <p style={{ fontSize: 10, color: "#94a3b8", lineHeight: 1.6, margin: "8px 0 0" }}>
+              {sparkBudLaunchConfig.helperText}
+            </p>
+
+            {launchError && (
+              <div
+                style={{
+                  marginTop: 10,
+                  border: "1px solid rgba(248,113,113,0.3)",
+                  borderRadius: 6,
+                  padding: "9px 10px",
+                  backgroundColor: "rgba(127,29,29,0.16)",
+                  color: "#fca5a5",
+                  fontSize: 10,
+                  lineHeight: 1.6,
+                }}
+              >
+                {launchError}
+              </div>
+            )}
+          </div>
+
+          <div style={{ height: 1, backgroundColor: "#1a2235", margin: "0 16px" }} />
+        </>
+      )}
+
       {/* Primary action button */}
       <div style={{ padding: 16, marginTop: "auto" }}>
-        {actionDisabled ? (
+        {sparkBudLaunchConfig ? (
+          <div style={{ display: "flex", gap: 10 }}>
+            <button
+              onClick={onClose}
+              style={{
+                flex: 1,
+                padding: "10px 0",
+                fontSize: 12,
+                fontWeight: 700,
+                color: "#94a3b8",
+                backgroundColor: "transparent",
+                border: "1px solid #1f2937",
+                borderRadius: 6,
+                cursor: "pointer",
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                fontFamily: "monospace",
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleLaunchSparkBud}
+              disabled={
+                launchingSparkBudId === station.id ||
+                !launchPrompt.trim() ||
+                (sparkBudLaunchConfig.launchMode === "custom" && !launchAgentName.trim())
+              }
+              style={{
+                flex: 1,
+                padding: "10px 0",
+                fontSize: 12,
+                fontWeight: 700,
+                color:
+                  launchingSparkBudId === station.id ||
+                  !launchPrompt.trim() ||
+                  (sparkBudLaunchConfig.launchMode === "custom" && !launchAgentName.trim())
+                    ? "#64748b"
+                    : "#060a13",
+                backgroundColor:
+                  launchingSparkBudId === station.id ||
+                  !launchPrompt.trim() ||
+                  (sparkBudLaunchConfig.launchMode === "custom" && !launchAgentName.trim())
+                    ? "#1a2235"
+                    : accentHex,
+                border: "none",
+                borderRadius: 6,
+                cursor:
+                  launchingSparkBudId === station.id ||
+                  !launchPrompt.trim() ||
+                  (sparkBudLaunchConfig.launchMode === "custom" && !launchAgentName.trim())
+                    ? "not-allowed"
+                    : "pointer",
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                fontFamily: "monospace",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6,
+                boxShadow:
+                  launchingSparkBudId === station.id ||
+                  !launchPrompt.trim() ||
+                  (sparkBudLaunchConfig.launchMode === "custom" && !launchAgentName.trim())
+                    ? "none"
+                    : `0 0 14px 2px ${accentHex}55`,
+              }}
+            >
+              <Rocket size={13} />
+              {launchingSparkBudId === station.id ? "Launching..." : "Launch"}
+            </button>
+          </div>
+        ) : actionDisabled ? (
           <div
             style={{
               width: "100%",
@@ -2519,6 +2763,7 @@ export default function WorkstationPage() {
   const [controlsConfig, setControlsConfig] = useState<SparkbotControlsConfig | null>(null)
   const [infoOpen, setInfoOpen] = useState(false)
   const [seatPicker, setSeatPicker] = useState<SeatPickerState | null>(null)
+  const [launchingSparkBudId, setLaunchingSparkBudId] = useState<string | null>(null)
   const [launchingMeeting, setLaunchingMeeting] = useState(false)
 
   useEffect(() => {
@@ -2640,6 +2885,58 @@ export default function WorkstationPage() {
     setSeatPicker(null)
     setInfoOpen((prev) => !prev)
   }, [])
+
+  const handleLaunchSparkBud = useCallback(
+    async (station: Station, config: { prompt: string; agentName?: string }) => {
+      const launchConfig = getSparkBudLaunchConfig(station.id)
+      if (!launchConfig) return "Specialty launch is not available for this desk."
+      if (!config.prompt.trim()) return "Enter a launch prompt before continuing."
+
+      setLaunchingSparkBudId(station.id)
+      try {
+        if (launchConfig.launchMode === "builtin" && launchConfig.mentionName) {
+          saveSparkBudChatLaunchDraft({
+            text: buildSparkBudChatLaunchText(launchConfig.mentionName, config.prompt),
+          })
+          navigate({ to: "/dm" })
+          return null
+        }
+
+        const agentName = (config.agentName ?? "").trim().toLowerCase()
+        if (!agentName || !/^[a-z0-9_]+$/.test(agentName)) {
+          return "Use a lowercase handle with letters, numbers, or underscores."
+        }
+
+        const response = await fetch("/api/v1/chat/agents", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            name: agentName,
+            emoji: launchConfig.emoji,
+            description: `${station.label} specialist launched from Workstation`,
+            system_prompt: config.prompt.trim(),
+          }),
+        })
+
+        if (!response.ok) {
+          const errorPayload = await response
+            .json()
+            .catch(() => ({ detail: "Could not launch custom specialist." }))
+          return String(errorPayload.detail ?? "Could not launch custom specialist.")
+        }
+
+        saveSparkBudChatLaunchDraft({ text: `@${agentName} ` })
+        navigate({ to: "/dm" })
+        return null
+      } catch {
+        return "Could not launch specialty desk."
+      } finally {
+        setLaunchingSparkBudId(null)
+      }
+    },
+    [navigate],
+  )
 
   const handleLaunchMeeting = useCallback(async () => {
     const assignedStations = getAssignedStationIds(projectRoom)
@@ -3074,6 +3371,8 @@ export default function WorkstationPage() {
             onAddToRoom={handleAddToRoom}
             onRemoveFromRoom={handleRemoveFromRoom}
             availableSeatCount={availableSeatCount}
+            onLaunchSparkBud={handleLaunchSparkBud}
+            launchingSparkBudId={launchingSparkBudId}
           />
         )}
         {panel?.kind === "table" && (

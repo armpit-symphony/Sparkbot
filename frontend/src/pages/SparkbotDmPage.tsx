@@ -21,6 +21,7 @@ import {
   CONTROLS_SEARCH_VALUE,
   isControlsSearchOpen,
 } from "@/lib/sparkbotControls"
+import { consumeSparkBudChatLaunchDraft } from "@/lib/sparkbudLaunch"
 
 // ─── Confirm modal ────────────────────────────────────────────────────────────
 
@@ -2173,6 +2174,12 @@ function SparkbotDmPage() {
   const [deletingAgent, setDeletingAgent] = useState<string | null>(null)
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }) }, [messages])
+  useEffect(() => {
+    const launchDraft = consumeSparkBudChatLaunchDraft()
+    if (!launchDraft?.text) return
+    setInputValue(launchDraft.text)
+    requestAnimationFrame(() => inputRef.current?.focus())
+  }, [])
   useEffect(() => { setShowCommands(inputValue.startsWith("/") && !inputValue.includes(" ")) }, [inputValue])
   useEffect(() => { setShowAgentPicker(inputValue.startsWith("@") && !inputValue.includes(" ")) }, [inputValue])
 
