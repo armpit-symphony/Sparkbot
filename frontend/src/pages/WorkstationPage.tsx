@@ -23,8 +23,10 @@ import {
   Search,
   Code2,
   LineChart,
+  Rocket,
 } from "lucide-react"
 import SparkbotSurfaceTabs from "@/components/Common/SparkbotSurfaceTabs"
+import SparkbotSurfaceInfoDialog from "@/components/Common/SparkbotSurfaceInfoDialog"
 import { Button } from "@/components/ui/button"
 import {
   type Station,
@@ -36,6 +38,14 @@ import {
 import { useTerminalSession } from "@/hooks/useTerminalSession"
 import { XtermTerminal } from "@/components/Terminal/XtermTerminal"
 import { fetchControlsConfig, type SparkbotControlsConfig } from "@/lib/sparkbotControls"
+import {
+  ROUND_TABLE_SEAT_COUNT,
+  loadMeetingDraft,
+  normalizeMeetingSeats,
+  saveMeetingDraft,
+  saveMeetingRoomMeta,
+  type WorkstationMeetingRoomMeta,
+} from "@/lib/workstationMeeting"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -46,14 +56,19 @@ type PanelMode =
   | null
 
 interface ProjectRoom {
-  name: string
-  participantIds: Set<string>
+  roomName: string
+  roomId: string | null
+  seats: Array<string | null>
 }
 
 interface InviteConfig {
   label: string
   provider: string
   description: string
+}
+
+interface SeatPickerState {
+  seatIndex: number
 }
 
 interface CompanionSlotMeta {
@@ -215,6 +230,50 @@ const SPECIALTY_PLACEHOLDERS: Station[] = [
     route: "/dm?controls=open",
   },
 ]
+
+function getAssignedStationIds(projectRoom: ProjectRoom): string[] {
+  return Array.from(new Set(projectRoom.seats.filter((seatId): seatId is string => Boolean(seatId))))
+}
+
+function isStationAssigned(projectRoom: ProjectRoom, stationId: string): boolean {
+  return projectRoom.seats.includes(stationId)
+}
+
+function assignStationToSeat(
+  projectRoom: ProjectRoom,
+  stationId: string,
+  seatIndex: number,
+): ProjectRoom {
+  const nextSeats = normalizeMeetingSeats(projectRoom.seats).map((seatId) =>
+    seatId === stationId ? null : seatId,
+  )
+  nextSeats[seatIndex] = stationId
+  return {
+    ...projectRoom,
+    seats: nextSeats,
+  }
+}
+
+function removeStationFromSeats(projectRoom: ProjectRoom, stationId: string): ProjectRoom {
+  return {
+    ...projectRoom,
+    seats: normalizeMeetingSeats(projectRoom.seats).map((seatId) =>
+      seatId === stationId ? null : seatId,
+    ),
+  }
+}
+
+function addStationToFirstOpenSeat(projectRoom: ProjectRoom, stationId: string): ProjectRoom {
+  if (isStationAssigned(projectRoom, stationId)) return projectRoom
+  const nextSeats = normalizeMeetingSeats(projectRoom.seats)
+  const firstOpenSeat = nextSeats.findIndex((seatId) => !seatId)
+  if (firstOpenSeat === -1) return projectRoom
+  nextSeats[firstOpenSeat] = stationId
+  return {
+    ...projectRoom,
+    seats: nextSeats,
+  }
+}
 
 // ─── Shared CSS strings ───────────────────────────────────────────────────────
 
@@ -681,6 +740,7 @@ interface StationDetailPanelProps {
   projectRoom: ProjectRoom
   onAddToRoom: (id: string) => void
   onRemoveFromRoom: (id: string) => void
+  availableSeatCount: number
 }
 
 function StationDetailPanel({
@@ -690,6 +750,7 @@ function StationDetailPanel({
   projectRoom,
   onAddToRoom,
   onRemoveFromRoom,
+  availableSeatCount,
 }: StationDetailPanelProps) {
   const {
     accentHex,
@@ -709,8 +770,8 @@ function StationDetailPanel({
   const isSparkbot = id === "sparkbot"
   const isModelOffice = id.startsWith("stack-")
   const isCustomSpecialtyDesk = id === "sb-custom"
-  const isInRoom = projectRoom.participantIds.has(id)
-  const canToggleRoom = !isSparkbot && type !== "table" && type !== "terminal"
+  const isInRoom = isStationAssigned(projectRoom, id)
+  const canToggleRoom = type !== "table" && type !== "terminal"
 
   const handleNavigate = useCallback(() => {
     if (route) onNavigate(route)
@@ -1058,22 +1119,7 @@ function StationDetailPanel({
           >
             Project Room
           </div>
-          {isSparkbot ? (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "8px 10px",
-                backgroundColor: "#0a1120",
-                border: "1px solid #1a2235",
-                borderRadius: 6,
-              }}
-            >
-              <Check size={13} style={{ color: "#4ade80" }} />
-              <span style={{ fontSize: 11, color: "#6b7280" }}>Always at the table</span>
-            </div>
-          ) : isInRoom ? (
+          {isInRoom ? (
             <button
               onClick={() => onRemoveFromRoom(id)}
               style={{
@@ -1098,6 +1144,21 @@ function StationDetailPanel({
               <UserMinus size={12} />
               Leave Table
             </button>
+          ) : availableSeatCount === 0 ? (
+            <div
+              style={{
+                width: "100%",
+                padding: "8px 10px",
+                fontSize: 11,
+                color: "#6b7280",
+                border: "1px solid #1f2937",
+                borderRadius: 6,
+                backgroundColor: "#0a1120",
+                lineHeight: 1.6,
+              }}
+            >
+              All six chairs are filled. Clear a seat or reassign a chair from the table.
+            </div>
           ) : (
             <button
               onClick={() => onAddToRoom(id)}
@@ -1200,6 +1261,9 @@ interface RoundTablePanelProps {
   onAddToRoom: (id: string) => void
   onRemoveFromRoom: (id: string) => void
   eligibleStations: Station[]
+  onPickSeat: (seatIndex: number) => void
+  onLaunchMeeting: () => void
+  launchingMeeting: boolean
 }
 
 function RoundTablePanel({
@@ -1208,11 +1272,17 @@ function RoundTablePanel({
   onAddToRoom,
   onRemoveFromRoom,
   eligibleStations,
+  onPickSeat,
+  onLaunchMeeting,
+  launchingMeeting,
 }: RoundTablePanelProps) {
   const accentHex = ROUND_TABLE.accentHex
-
-  const participants = eligibleStations.filter((s) => projectRoom.participantIds.has(s.id))
-  const available = eligibleStations.filter((s) => !projectRoom.participantIds.has(s.id))
+  const assignedIds = getAssignedStationIds(projectRoom)
+  const participants = assignedIds
+    .map((id) => eligibleStations.find((station) => station.id === id) ?? null)
+    .filter((station): station is Station => Boolean(station))
+  const available = eligibleStations.filter((s) => !assignedIds.includes(s.id))
+  const canLaunchMeeting = participants.length >= 2
 
   return (
     <div
@@ -1259,7 +1329,7 @@ function RoundTablePanel({
             Project Room
           </div>
           <div style={{ fontSize: 10, color: "#6b7280", marginTop: 2 }}>
-            {projectRoom.name}
+            {projectRoom.roomName}
           </div>
         </div>
         <button
@@ -1281,6 +1351,94 @@ function RoundTablePanel({
         >
           <X size={14} />
         </button>
+      </div>
+
+      <div style={{ padding: "14px 16px 0" }}>
+        <div
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            color: "#4b5563",
+            letterSpacing: "0.1em",
+            textTransform: "uppercase",
+            marginBottom: 10,
+          }}
+        >
+          Table Protocol
+        </div>
+        <div
+          style={{
+            border: "1px solid rgba(125,211,252,0.14)",
+            borderRadius: 8,
+            backgroundColor: "rgba(10,17,32,0.72)",
+            padding: "10px 12px",
+          }}
+        >
+          <div style={{ fontSize: 11, color: "#e2e8f0", fontWeight: 700 }}>
+            One at a time
+          </div>
+          <p style={{ fontSize: 10, color: "#94a3b8", lineHeight: 1.6, margin: "6px 0 0" }}>
+            This MVP room launches in turn-taking mode. Keep one speaker active at a time, then
+            hand the floor to the next participant.
+          </p>
+        </div>
+      </div>
+
+      <div style={{ padding: "14px 16px 0" }}>
+        <div
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            color: "#4b5563",
+            letterSpacing: "0.1em",
+            textTransform: "uppercase",
+            marginBottom: 10,
+          }}
+        >
+          Six Chairs
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          {projectRoom.seats.map((seatId, index) => {
+            const station = eligibleStations.find((candidate) => candidate.id === seatId) ?? null
+            const seatAccent = station?.accentHex ?? "rgba(125,211,252,0.28)"
+            return (
+              <button
+                key={`seat-${index}`}
+                type="button"
+                onClick={() => onPickSeat(index)}
+                style={{
+                  border: `1px solid ${station ? `${seatAccent}33` : "rgba(125,211,252,0.16)"}`,
+                  borderRadius: 10,
+                  padding: "10px 12px",
+                  backgroundColor: station ? `${seatAccent}10` : "rgba(10,17,32,0.72)",
+                  textAlign: "left",
+                  cursor: "pointer",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 9,
+                    color: "#94a3b8",
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Chair {index + 1}
+                </div>
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: station ? "#e2e8f0" : "#64748b",
+                    fontWeight: 700,
+                    marginTop: 6,
+                  }}
+                >
+                  {station?.label ?? "Assign participant"}
+                </div>
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {/* Participants section */}
@@ -1371,99 +1529,293 @@ function RoundTablePanel({
         </div>
       </div>
 
-      {/* Divider */}
       {available.length > 0 && (
-        <>
-          <div style={{ height: 1, backgroundColor: "#1a2235", margin: "14px 16px 0" }} />
+        <div style={{ padding: "14px 16px" }}>
+          <div
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              color: "#4b5563",
+              letterSpacing: "0.1em",
+              textTransform: "uppercase",
+              marginBottom: 10,
+            }}
+          >
+            Add from desks
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {available.map((station) => (
+              <button
+                key={station.id}
+                onClick={() => onAddToRoom(station.id)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "8px 10px",
+                  backgroundColor: "transparent",
+                  border: "1px solid #1a2235",
+                  borderRadius: 6,
+                  cursor: "pointer",
+                  textAlign: "left",
+                  transition: "border-color 0.15s",
+                  width: "100%",
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = `${station.accentHex}44` }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#1a2235" }}
+              >
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    backgroundColor: `${station.accentHex}44`,
+                    border: `1px solid ${station.accentHex}66`,
+                    flexShrink: 0,
+                  }}
+                />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: "#cbd5e1",
+                      letterSpacing: "0.05em",
+                      textTransform: "uppercase",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      fontFamily: "monospace",
+                    }}
+                  >
+                    {station.label}
+                  </div>
+                  <div style={{ fontSize: 9, color: "#64748b", marginTop: 1, fontFamily: "monospace" }}>
+                    {station.subtitle}
+                  </div>
+                </div>
+                <ChevronRight size={12} style={{ color: "#374151", flexShrink: 0 }} />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
-          {/* Available section */}
-          <div style={{ padding: "14px 16px" }}>
+      <div
+        style={{
+          padding: 16,
+          marginTop: "auto",
+          display: "flex",
+          flexDirection: "column",
+          gap: 10,
+        }}
+      >
+        <div
+          style={{
+            fontSize: 10,
+            color: "#64748b",
+            lineHeight: 1.6,
+          }}
+        >
+          Launch meeting becomes available once at least two chairs are filled.
+        </div>
+        <button
+          onClick={onLaunchMeeting}
+          disabled={!canLaunchMeeting || launchingMeeting}
+          style={{
+            width: "100%",
+            padding: "10px 0",
+            fontSize: 12,
+            fontWeight: 700,
+            color: canLaunchMeeting && !launchingMeeting ? "#04101d" : "#475569",
+            background: canLaunchMeeting && !launchingMeeting
+              ? "linear-gradient(135deg, rgba(245,158,11,0.94), rgba(249,115,22,0.88), rgba(125,211,252,0.42))"
+              : "#111827",
+            border: "none",
+            borderRadius: 8,
+            cursor: canLaunchMeeting && !launchingMeeting ? "pointer" : "not-allowed",
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            fontFamily: "monospace",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+            boxShadow: canLaunchMeeting && !launchingMeeting
+              ? "0 18px 32px rgba(249,115,22,0.18)"
+              : "none",
+          }}
+        >
+          {launchingMeeting ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Rocket size={13} />}
+          {launchingMeeting ? "Launching…" : "Launch Meeting"}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+interface SeatPickerModalProps {
+  seatIndex: number
+  assignedStation: Station | null
+  availableStations: Station[]
+  onAssign: (stationId: string) => void
+  onClear: () => void
+  onClose: () => void
+}
+
+function SeatPickerModal({
+  seatIndex,
+  assignedStation,
+  availableStations,
+  onAssign,
+  onClear,
+  onClose,
+}: SeatPickerModalProps) {
+  return (
+    <>
+      <div
+        onClick={onClose}
+        style={{
+          position: "fixed",
+          inset: 0,
+          backgroundColor: "rgba(6,10,19,0.82)",
+          zIndex: 62,
+          backdropFilter: "blur(2px)",
+        }}
+      />
+      <div
+        style={{
+          position: "fixed",
+          top: "50%",
+          left: "50%",
+          transform: "translate(-50%, -50%)",
+          zIndex: 63,
+          width: "min(92vw, 420px)",
+          backgroundColor: "#07101e",
+          border: `1px solid ${PLASMA_BORDER}`,
+          borderRadius: 12,
+          boxShadow: "0 0 40px rgba(0,0,0,0.42)",
+          overflow: "hidden",
+          fontFamily: "monospace",
+        }}
+      >
+        <div
+          style={{
+            padding: "14px 16px",
+            borderBottom: "1px solid rgba(99,102,241,0.16)",
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: 12,
+          }}
+        >
+          <div>
             <div
               style={{
                 fontSize: 10,
-                fontWeight: 700,
-                color: "#4b5563",
-                letterSpacing: "0.1em",
+                color: "#8b93ff",
+                letterSpacing: "0.12em",
                 textTransform: "uppercase",
-                marginBottom: 10,
+                fontWeight: 700,
               }}
             >
-              Add to Room
+              Chair {seatIndex + 1}
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {available.map((s) => (
-                <button
-                  key={s.id}
-                  onClick={() => onAddToRoom(s.id)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: "8px 10px",
-                    backgroundColor: "transparent",
-                    border: "1px solid #1a2235",
-                    borderRadius: 6,
-                    cursor: "pointer",
-                    textAlign: "left",
-                    transition: "border-color 0.15s",
-                    width: "100%",
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = `${s.accentHex}44` }}
-                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#1a2235" }}
-                >
-                  <span
-                    style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: "50%",
-                      backgroundColor: `${s.accentHex}44`,
-                      border: `1px solid ${s.accentHex}66`,
-                      flexShrink: 0,
-                    }}
-                  />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 700,
-                        color: "#6b7280",
-                        letterSpacing: "0.05em",
-                        textTransform: "uppercase",
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        fontFamily: "monospace",
-                      }}
-                    >
-                      {s.label}
-                    </div>
-                    <div style={{ fontSize: 9, color: "#374151", marginTop: 1, fontFamily: "monospace" }}>
-                      {s.subtitle}
-                    </div>
-                  </div>
-                  <ChevronRight size={12} style={{ color: "#374151", flexShrink: 0 }} />
-                </button>
-              ))}
+            <div style={{ fontSize: 18, color: "#e2e8f0", fontWeight: 700, marginTop: 6 }}>
+              {assignedStation ? assignedStation.label : "Assign participant"}
             </div>
           </div>
-        </>
-      )}
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              width: 30,
+              height: 30,
+              borderRadius: 999,
+              border: "1px solid rgba(99,102,241,0.16)",
+              backgroundColor: "rgba(7, 13, 28, 0.72)",
+              color: "#94a3b8",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+            aria-label="Close chair picker"
+          >
+            <X size={14} />
+          </button>
+        </div>
 
-      {/* Phase 3 note */}
-      <div
-        style={{
-          margin: "auto 16px 16px",
-          padding: "10px 12px",
-          backgroundColor: "#0a1120",
-          border: "1px solid #1a2235",
-          borderRadius: 6,
-        }}
-      >
-        <p style={{ fontSize: 10, color: "#374151", margin: 0, lineHeight: 1.6 }}>
-          Multi-agent task board, shared file drops, and live coordination wiring in Phase 3.
-        </p>
+        <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+          {assignedStation && (
+            <button
+              type="button"
+              onClick={onClear}
+              style={{
+                border: "1px solid rgba(248,113,113,0.28)",
+                borderRadius: 8,
+                backgroundColor: "rgba(69,10,10,0.28)",
+                color: "#fca5a5",
+                padding: "10px 12px",
+                textAlign: "left",
+                cursor: "pointer",
+                fontSize: 11,
+                letterSpacing: "0.05em",
+                textTransform: "uppercase",
+              }}
+            >
+              Clear this chair
+            </button>
+          )}
+
+          {availableStations.map((station) => (
+            <button
+              key={station.id}
+              type="button"
+              onClick={() => onAssign(station.id)}
+              style={{
+                border: `1px solid ${station.accentHex}22`,
+                borderRadius: 10,
+                backgroundColor: `${station.accentHex}0e`,
+                padding: "10px 12px",
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                textAlign: "left",
+                cursor: "pointer",
+              }}
+            >
+              <span
+                style={{
+                  width: 9,
+                  height: 9,
+                  borderRadius: "50%",
+                  backgroundColor: station.accentHex,
+                  boxShadow: `0 0 10px ${station.accentHex}55`,
+                  flexShrink: 0,
+                }}
+              />
+              <div style={{ minWidth: 0 }}>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "#e2e8f0",
+                    fontWeight: 700,
+                    letterSpacing: "0.05em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  {station.label}
+                </div>
+                <div style={{ fontSize: 10, color: "#64748b", marginTop: 2 }}>
+                  {station.subtitle}
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
       </div>
-    </div>
+    </>
   )
 }
 
@@ -1794,150 +2146,14 @@ function LiveClock() {
   )
 }
 
-function FloorLeadIn({ onNavigate }: { onNavigate: (route: string) => void }) {
-  return (
-    <section
-      style={{
-        border: `1px solid ${PLASMA_BORDER}`,
-        borderRadius: 12,
-        background:
-          "linear-gradient(135deg, rgba(7,16,30,0.96), rgba(10,17,32,0.94), rgba(79,70,229,0.08))",
-        boxShadow: "0 14px 38px rgba(0,0,0,0.32)",
-        padding: "18px 20px",
-        display: "grid",
-        gridTemplateColumns: "1.25fr 0.75fr",
-        gap: 16,
-      }}
-    >
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <div>
-          <div
-            style={{
-              fontSize: 10,
-              color: PLASMA_PRIMARY,
-              letterSpacing: "0.12em",
-              textTransform: "uppercase",
-              fontWeight: 700,
-            }}
-          >
-            Operations Floor
-          </div>
-          <div
-            style={{
-              fontSize: 21,
-              color: "#e5eef7",
-              fontWeight: 700,
-              letterSpacing: "0.03em",
-              marginTop: 6,
-            }}
-          >
-            Spatial office view for Sparkbot and its desks
-          </div>
-          <p style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.75, margin: "10px 0 0" }}>
-            Workstation is the room map around everyday chat. Sparkbot keeps the corner office,
-            companion model desks line the top row, invited collaborators sit on the left wing,
-            and specialty desks stay staged beside the central meeting room.
-          </p>
-        </div>
-      </div>
-
-      <div
-        style={{
-          border: `1px solid ${PLASMA_BORDER}`,
-          borderRadius: 10,
-          backgroundColor: "rgba(8, 18, 32, 0.82)",
-          padding: "14px 16px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 12,
-        }}
-      >
-        <div style={{ fontSize: 10, color: "#4b5563", letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700 }}>
-          Room logic
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {[
-            "Chat remains the everyday home.",
-            "Controls still owns stack setup and channels.",
-            "Advanced internal tooling stays off this public floor plan.",
-          ].map((item) => (
-            <div
-              key={item}
-              style={{
-                display: "flex",
-                gap: 8,
-                alignItems: "flex-start",
-                fontSize: 11,
-                color: "#cbd5e1",
-                lineHeight: 1.55,
-              }}
-            >
-              <span
-                style={{
-                  width: 7,
-                  height: 7,
-                  borderRadius: "50%",
-                  marginTop: 5,
-                  backgroundColor: PLASMA_PRIMARY,
-                  boxShadow: "0 0 8px rgba(129,140,248,0.42)",
-                  flexShrink: 0,
-                }}
-              />
-              <span>{item}</span>
-            </div>
-          ))}
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: "auto" }}>
-          <button
-            onClick={() => onNavigate("/dm")}
-            style={{
-              padding: "10px 12px",
-              borderRadius: 8,
-              border: "none",
-              background:
-                "linear-gradient(135deg, rgba(79,70,229,0.96), rgba(99,102,241,0.9), rgba(56,189,248,0.44))",
-              color: "#04101d",
-              fontSize: 11,
-              fontWeight: 700,
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-              cursor: "pointer",
-              fontFamily: "monospace",
-            }}
-          >
-            Open Chat
-          </button>
-          <button
-            onClick={() => onNavigate("/dm?controls=open")}
-            style={{
-              padding: "10px 12px",
-              borderRadius: 8,
-              border: `1px solid ${PLASMA_BORDER}`,
-              backgroundColor: "transparent",
-              color: "#cbd5e1",
-              fontSize: 11,
-              fontWeight: 700,
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-              cursor: "pointer",
-              fontFamily: "monospace",
-            }}
-          >
-            Open Controls
-          </button>
-        </div>
-      </div>
-    </section>
-  )
-}
-
 interface RoundTableStageProps {
   projectRoom: ProjectRoom
   eligibleStations: Station[]
   isSelected: boolean
   onOpen: () => void
+  onPickSeat: (seatIndex: number) => void
+  onLaunchMeeting: () => void
+  launchingMeeting: boolean
 }
 
 function RoundTableStage({
@@ -1945,17 +2161,19 @@ function RoundTableStage({
   eligibleStations,
   isSelected,
   onOpen,
+  onPickSeat,
+  onLaunchMeeting,
+  launchingMeeting,
 }: RoundTableStageProps) {
-  const participants = eligibleStations.filter((station) =>
-    projectRoom.participantIds.has(station.id),
-  )
+  const participants = projectRoom.seats
+    .map((seatId) => eligibleStations.find((station) => station.id === seatId) ?? null)
+    .filter((station): station is Station => Boolean(station))
   const stagedCount = eligibleStations.filter((station) => station.status !== "empty").length
-  const seatMarkers = new Array(8).fill(null)
+  const canLaunchMeeting = participants.length >= 2
+  const chairAngles = [-130, -65, -15, 15, 65, 130]
 
   return (
-    <button
-      type="button"
-      onClick={onOpen}
+    <div
       style={{
         width: "100%",
         height: "100%",
@@ -1970,7 +2188,6 @@ function RoundTableStage({
         display: "flex",
         flexDirection: "column",
         gap: 16,
-        cursor: "pointer",
         textAlign: "left",
         fontFamily: "monospace",
         position: "relative",
@@ -2013,12 +2230,13 @@ function RoundTableStage({
             {ROUND_TABLE.label}
           </div>
           <p style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.7, margin: "8px 0 0" }}>
-            Team planning, collaboration, and shared workspace for whichever desks need to gather
-            around the same project.
+            Assign desks to any of the six chairs, then launch the room into a live group chat.
           </p>
         </div>
 
-        <div
+        <button
+          type="button"
+          onClick={onOpen}
           style={{
             flexShrink: 0,
             border: "1px solid rgba(125,211,252,0.24)",
@@ -2029,16 +2247,17 @@ function RoundTableStage({
             letterSpacing: "0.08em",
             textTransform: "uppercase",
             backgroundColor: "rgba(10, 17, 32, 0.8)",
+            cursor: "pointer",
           }}
         >
-          {participants.length} at table
-        </div>
+          {participants.length} / {ROUND_TABLE_SEAT_COUNT} seated
+        </button>
       </div>
 
       <div
         style={{
           flex: 1,
-          minHeight: 260,
+          minHeight: 360,
           position: "relative",
           display: "flex",
           alignItems: "center",
@@ -2046,31 +2265,73 @@ function RoundTableStage({
           zIndex: 1,
         }}
       >
-        {seatMarkers.map((_, index) => {
-          const angle = (index / seatMarkers.length) * Math.PI * 2
-          const x = Math.cos(angle) * 168
-          const y = Math.sin(angle) * 110
+        {chairAngles.map((angle, index) => {
+          const radians = (angle * Math.PI) / 180
+          const x = Math.cos(radians) * 190
+          const y = Math.sin(radians) * 136
+          const station = projectRoom.seats[index]
+            ? eligibleStations.find((candidate) => candidate.id === projectRoom.seats[index]) ?? null
+            : null
           return (
-            <span
+            <button
               key={index}
+              type="button"
+              onClick={() => onPickSeat(index)}
               style={{
                 position: "absolute",
                 left: "50%",
                 top: "50%",
-                width: 18,
-                height: 18,
-                marginLeft: -9 + x,
-                marginTop: -9 + y,
-                borderRadius: "50%",
-                border: "1px solid rgba(125,211,252,0.18)",
-                backgroundColor: "rgba(7, 13, 28, 0.86)",
-                boxShadow: "0 0 0 1px rgba(30,41,59,0.26)",
+                width: 108,
+                minHeight: 62,
+                marginLeft: -54 + x,
+                marginTop: -31 + y,
+                borderRadius: 18,
+                border: station
+                  ? `1px solid ${station.accentHex}44`
+                  : "1px solid rgba(125,211,252,0.16)",
+                backgroundColor: station
+                  ? `${station.accentHex}12`
+                  : "rgba(7, 13, 28, 0.84)",
+                boxShadow: station
+                  ? `0 0 0 1px ${station.accentHex}18, 0 16px 26px rgba(15,23,42,0.24)`
+                  : "0 0 0 1px rgba(30,41,59,0.22)",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 4,
+                padding: "10px 8px",
+                cursor: "pointer",
               }}
-            />
+            >
+              <span
+                style={{
+                  fontSize: 9,
+                  color: station ? "#cbd5f5" : "#64748b",
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                }}
+              >
+                Chair {index + 1}
+              </span>
+              <span
+                style={{
+                  fontSize: 11,
+                  color: station ? "#f8fafc" : "#94a3b8",
+                  fontWeight: 700,
+                  textAlign: "center",
+                  lineHeight: 1.3,
+                }}
+              >
+                {station?.label ?? "Assign"}
+              </span>
+            </button>
           )
         })}
 
-        <div
+        <button
+          type="button"
+          onClick={onOpen}
           style={{
             width: 360,
             height: 360,
@@ -2084,6 +2345,7 @@ function RoundTableStage({
             alignItems: "center",
             justifyContent: "center",
             position: "relative",
+            cursor: "pointer",
           }}
         >
           <div
@@ -2115,14 +2377,14 @@ function RoundTableStage({
                 Shared Project Room
               </div>
               <div style={{ fontSize: 18, color: "#f8fafc", fontWeight: 700, marginTop: 8 }}>
-                Collaboration hub
+                Launch hub
               </div>
               <p style={{ fontSize: 11, color: "#cbd5e1", lineHeight: 1.65, margin: "10px 0 0" }}>
-                Open the room to manage who joins the table and how work is staged across desks.
+                Click the table for seat controls, or click any chair directly to assign a desk.
               </p>
             </div>
           </div>
-        </div>
+        </button>
       </div>
 
       <div
@@ -2152,7 +2414,7 @@ function RoundTableStage({
               marginBottom: 10,
             }}
           >
-            At the table
+            Seated participants
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {participants.map((station) => (
@@ -2196,19 +2458,42 @@ function RoundTableStage({
                 fontWeight: 700,
               }}
             >
-              Floor status
+              Meeting rule
             </div>
             <p style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.65, margin: "8px 0 0" }}>
-              {stagedCount} desks are currently staged on this floor. Open the roundtable to manage
-              who is actively seated on the project.
+              {stagedCount} desks are staged on the floor. This room launches in turn-taking mode:
+              one participant speaks at a time.
             </p>
           </div>
-          <div style={{ fontSize: 10, color: "#7dd3fc", letterSpacing: "0.08em", textTransform: "uppercase" }}>
-            Click to open room controls
-          </div>
+          <button
+            type="button"
+            onClick={onLaunchMeeting}
+            disabled={!canLaunchMeeting || launchingMeeting}
+            style={{
+              border: "none",
+              borderRadius: 10,
+              padding: "10px 12px",
+              background: canLaunchMeeting && !launchingMeeting
+                ? "linear-gradient(135deg, rgba(245,158,11,0.94), rgba(249,115,22,0.88), rgba(125,211,252,0.42))"
+                : "rgba(15, 23, 42, 0.92)",
+              color: canLaunchMeeting && !launchingMeeting ? "#04101d" : "#64748b",
+              cursor: canLaunchMeeting && !launchingMeeting ? "pointer" : "not-allowed",
+              fontSize: 10,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              fontWeight: 700,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+            }}
+          >
+            {launchingMeeting ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Rocket size={13} />}
+            {launchingMeeting ? "Launching…" : "Launch Meeting"}
+          </button>
         </div>
       </div>
-    </button>
+    </div>
   )
 }
 
@@ -2220,14 +2505,21 @@ export default function WorkstationPage() {
   // ── State ──────────────────────────────────────────────────────────────────
   const [panel, setPanel] = useState<PanelMode>({ kind: "station", station: MAIN_DESK })
   const [inviteModalTarget, setInviteModalTarget] = useState<Station | null>(null)
-  const [projectRoom, setProjectRoom] = useState<ProjectRoom>({
-    name: "Main Project",
-    participantIds: new Set(["sparkbot"]),
+  const [projectRoom, setProjectRoom] = useState<ProjectRoom>(() => {
+    const draft = loadMeetingDraft()
+    return {
+      roomName: draft.roomName,
+      roomId: draft.roomId,
+      seats: normalizeMeetingSeats(draft.seats),
+    }
   })
   const [configuredInvites, setConfiguredInvites] = useState<Map<string, InviteConfig>>(
     new Map(),
   )
   const [controlsConfig, setControlsConfig] = useState<SparkbotControlsConfig | null>(null)
+  const [infoOpen, setInfoOpen] = useState(false)
+  const [seatPicker, setSeatPicker] = useState<SeatPickerState | null>(null)
+  const [launchingMeeting, setLaunchingMeeting] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -2243,6 +2535,14 @@ export default function WorkstationPage() {
     }
   }, [])
 
+  useEffect(() => {
+    saveMeetingDraft({
+      seats: projectRoom.seats,
+      roomId: projectRoom.roomId,
+      roomName: projectRoom.roomName,
+    })
+  }, [projectRoom])
+
   // ── Handlers ───────────────────────────────────────────────────────────────
   const handleNavigate = useCallback(
     (route: string) => {
@@ -2256,18 +2556,28 @@ export default function WorkstationPage() {
   )
 
   const handleAddToRoom = useCallback((id: string) => {
-    setProjectRoom((prev) => ({
-      ...prev,
-      participantIds: new Set([...prev.participantIds, id]),
-    }))
+    setProjectRoom((prev) => addStationToFirstOpenSeat(prev, id))
   }, [])
 
   const handleRemoveFromRoom = useCallback((id: string) => {
+    setProjectRoom((prev) => removeStationFromSeats(prev, id))
+  }, [])
+
+  const handleAssignSeat = useCallback((seatIndex: number, stationId: string) => {
+    setProjectRoom((prev) => assignStationToSeat(prev, stationId, seatIndex))
+    setSeatPicker(null)
+  }, [])
+
+  const handleClearSeat = useCallback((seatIndex: number) => {
     setProjectRoom((prev) => {
-      const next = new Set(prev.participantIds)
-      next.delete(id)
-      return { ...prev, participantIds: next }
+      const nextSeats = normalizeMeetingSeats(prev.seats)
+      nextSeats[seatIndex] = null
+      return {
+        ...prev,
+        seats: nextSeats,
+      }
     })
+    setSeatPicker(null)
   }, [])
 
   const handleSaveInvite = useCallback((stationId: string, config: InviteConfig) => {
@@ -2276,11 +2586,22 @@ export default function WorkstationPage() {
   }, [])
 
   const handleClosePanel = useCallback(() => setPanel(null), [])
+  const companionModelStations = buildCompanionModelStations(controlsConfig)
+  const resolvedInviteStations = INVITE_DESKS.map((station) =>
+    resolveInviteStation(station, configuredInvites),
+  )
+  const roomEligibleStations = [
+    MAIN_DESK,
+    ...companionModelStations.filter((station) => station.status !== "empty"),
+    ...resolvedInviteStations.filter((station) => station.status !== "empty"),
+    ...SPECIALTY_PLACEHOLDERS.filter((station) => station.status !== "empty"),
+  ]
 
   const handleStationClick = useCallback(
     (station: Station) => {
       // Round Table → open project room panel
       if (station.type === "table") {
+        setInfoOpen(false)
         setPanel((prev) => (prev?.kind === "table" ? null : { kind: "table" }))
         return
       }
@@ -2303,6 +2624,7 @@ export default function WorkstationPage() {
 
       // All other stations (main, configured invite, sparkbud)
       const resolved = resolveInviteStation(station, configuredInvites)
+      setInfoOpen(false)
       setPanel((prev) =>
         prev?.kind === "station" && prev.station.id === resolved.id
           ? null
@@ -2313,18 +2635,114 @@ export default function WorkstationPage() {
   )
 
   const handleBackToDm = useCallback(() => navigate({ to: "/dm" }), [navigate])
+  const handleOpenInfo = useCallback(() => {
+    setPanel(null)
+    setSeatPicker(null)
+    setInfoOpen((prev) => !prev)
+  }, [])
+
+  const handleLaunchMeeting = useCallback(async () => {
+    const assignedStations = getAssignedStationIds(projectRoom)
+    if (assignedStations.length < 2 || launchingMeeting) return
+
+    const assignedSeatMeta = normalizeMeetingSeats(projectRoom.seats)
+      .map((stationId, seatIndex) => {
+        if (!stationId) return null
+        const station = roomEligibleStations.find((candidate) => candidate.id === stationId)
+        if (!station) return null
+        return {
+          seatIndex,
+          stationId,
+          label: station.label,
+          accentHex: station.accentHex,
+        }
+      })
+      .filter((seat): seat is NonNullable<typeof seat> => Boolean(seat))
+
+    setLaunchingMeeting(true)
+    try {
+      let roomId = projectRoom.roomId
+      const roomName = "Roundtable"
+      const description =
+        "Launched from Sparkbot Workstation. Turn-taking mode: one at a time."
+
+      if (!roomId) {
+        const createRes = await fetch("/api/v1/chat/rooms", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ name: roomName, description }),
+        })
+        if (!createRes.ok) {
+          throw new Error("Could not create roundtable room.")
+        }
+        const createdRoom = await createRes.json()
+        roomId = createdRoom.id
+      }
+
+      if (!roomId) {
+        throw new Error("Roundtable room id missing after creation.")
+      }
+
+      const patchRes = await fetch(`/api/v1/chat/rooms/${roomId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          name: roomName,
+          description,
+          meeting_mode_enabled: true,
+          meeting_mode_bots_mention_only: true,
+          meeting_mode_max_bot_msgs_per_min: 1,
+          persona:
+            "Roundtable mode. Use turn-taking. One participant speaks at a time, then hand the floor to the next participant.",
+        }),
+      })
+      if (!patchRes.ok) {
+        throw new Error("Could not prepare meeting room.")
+      }
+
+      await fetch(`/api/v1/chat/rooms/${roomId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          content: `Roundtable launched from Workstation.\n\nProtocol: one at a time.\n\nSeated participants:\n${assignedSeatMeta.map((seat) => `- Chair ${seat.seatIndex + 1}: ${seat.label}`).join("\n")}`,
+        }),
+      }).catch(() => {})
+
+      const meetingMeta: WorkstationMeetingRoomMeta = {
+        roomId,
+        roomName,
+        launchedAt: new Date().toISOString(),
+        protocolLabel: "One at a time",
+        seats: assignedSeatMeta,
+      }
+      saveMeetingRoomMeta(meetingMeta)
+      setProjectRoom((prev) => ({
+        ...prev,
+        roomId,
+        roomName,
+      }))
+      navigate({ to: "/meeting/$roomId", params: { roomId } })
+    } catch (error) {
+      console.error(error)
+    } finally {
+      setLaunchingMeeting(false)
+    }
+  }, [launchingMeeting, navigate, projectRoom, roomEligibleStations])
 
   const panelOpen = panel !== null
-  const companionModelStations = buildCompanionModelStations(controlsConfig)
-  const resolvedInviteStations = INVITE_DESKS.map((station) =>
-    resolveInviteStation(station, configuredInvites),
-  )
-  const roomEligibleStations = [
-    MAIN_DESK,
-    ...companionModelStations.filter((station) => station.status !== "empty"),
-    ...resolvedInviteStations.filter((station) => station.status !== "empty"),
-    ...SPECIALTY_PLACEHOLDERS.filter((station) => station.status !== "empty"),
-  ]
+  const availableSeatCount = projectRoom.seats.filter((seatId) => !seatId).length
+  const seatPickerAssignedStation = seatPicker
+    ? roomEligibleStations.find((station) => station.id === projectRoom.seats[seatPicker.seatIndex]) ?? null
+    : null
+  const seatPickerAvailableStations = seatPicker
+    ? roomEligibleStations.filter((station) => {
+        const assignedSeatIndex = projectRoom.seats.findIndex((seatId) => seatId === station.id)
+        return assignedSeatIndex === -1 || assignedSeatIndex === seatPicker.seatIndex
+      })
+    : []
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -2421,10 +2839,11 @@ export default function WorkstationPage() {
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <SparkbotSurfaceTabs
-              active="workstation"
+              active={infoOpen ? "info" : "workstation"}
               onChat={() => handleNavigate("/dm")}
               onWorkstation={() => handleNavigate("/workstation")}
               onControls={() => handleNavigate("/dm?controls=open")}
+              onInfo={handleOpenInfo}
             />
             <div style={{ width: 1, height: 24, backgroundColor: "rgba(99,102,241,0.16)" }} />
             <LiveClock />
@@ -2457,7 +2876,7 @@ export default function WorkstationPage() {
         <main
           style={{
             flex: 1,
-            padding: "16px 16px 0",
+            padding: "10px 16px 0",
             display: "flex",
             flexDirection: "column",
             gap: 12,
@@ -2467,8 +2886,6 @@ export default function WorkstationPage() {
             transition: "padding-right 0.2s ease",
           }}
         >
-          <FloorLeadIn onNavigate={handleNavigate} />
-
           <section
             style={{
               border: `1px solid ${PLASMA_BORDER}`,
@@ -2483,49 +2900,6 @@ export default function WorkstationPage() {
               marginBottom: 16,
             }}
           >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 16,
-              }}
-            >
-              <div>
-                <div
-                  style={{
-                    fontSize: 10,
-                    color: PLASMA_PRIMARY,
-                    letterSpacing: "0.12em",
-                    textTransform: "uppercase",
-                    fontWeight: 700,
-                  }}
-                >
-                  Office Layout
-                </div>
-                <p style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.7, margin: "8px 0 0" }}>
-                  Sparkbot anchors the floor from the corner office. Companion models line the top
-                  row, invites wait on the left wing, and specialty SparkBud desks stay staged on
-                  the right side of the meeting room.
-                </p>
-              </div>
-              <div
-                style={{
-                  flexShrink: 0,
-                  border: "1px solid rgba(125,211,252,0.18)",
-                  borderRadius: 999,
-                  padding: "6px 10px",
-                  fontSize: 10,
-                  color: "#cbd5f5",
-                  letterSpacing: "0.08em",
-                  textTransform: "uppercase",
-                  backgroundColor: "rgba(7, 13, 28, 0.78)",
-                }}
-              >
-                Spatial workstation
-              </div>
-            </div>
-
             <div
               style={{
                 display: "grid",
@@ -2616,6 +2990,9 @@ export default function WorkstationPage() {
                   eligibleStations={roomEligibleStations}
                   isSelected={panel?.kind === "table"}
                   onOpen={() => handleStationClick(ROUND_TABLE)}
+                  onPickSeat={(seatIndex) => setSeatPicker({ seatIndex })}
+                  onLaunchMeeting={handleLaunchMeeting}
+                  launchingMeeting={launchingMeeting}
                 />
               </div>
 
@@ -2715,6 +3092,7 @@ export default function WorkstationPage() {
             projectRoom={projectRoom}
             onAddToRoom={handleAddToRoom}
             onRemoveFromRoom={handleRemoveFromRoom}
+            availableSeatCount={availableSeatCount}
           />
         )}
         {panel?.kind === "table" && (
@@ -2724,6 +3102,9 @@ export default function WorkstationPage() {
             onAddToRoom={handleAddToRoom}
             onRemoveFromRoom={handleRemoveFromRoom}
             eligibleStations={roomEligibleStations}
+            onPickSeat={(seatIndex) => setSeatPicker({ seatIndex })}
+            onLaunchMeeting={handleLaunchMeeting}
+            launchingMeeting={launchingMeeting}
           />
         )}
         {panel?.kind === "terminal" && (
@@ -2738,6 +3119,28 @@ export default function WorkstationPage() {
             onCancel={() => setInviteModalTarget(null)}
           />
         )}
+        {seatPicker && (
+          <SeatPickerModal
+            seatIndex={seatPicker.seatIndex}
+            assignedStation={seatPickerAssignedStation}
+            availableStations={seatPickerAvailableStations}
+            onAssign={(stationId) => handleAssignSeat(seatPicker.seatIndex, stationId)}
+            onClear={() => handleClearSeat(seatPicker.seatIndex)}
+            onClose={() => setSeatPicker(null)}
+          />
+        )}
+        <SparkbotSurfaceInfoDialog
+          open={infoOpen}
+          title="Workstation"
+          subtitle="A spatial office map around Sparkbot. Chat stays primary, Controls handles setup, and Roundtable launches focused group rooms from the floor."
+          bullets={[
+            "Workstation is the desktop map: desks, offices, and the central meeting table.",
+            "Roundtable is the six-seat launcher for staged desk participants.",
+            "Sparkbot Chat remains the everyday home for normal prompting and conversations.",
+            "Controls still manages providers, models, and safety/configuration settings.",
+          ]}
+          onClose={() => setInfoOpen(false)}
+        />
       </div>
 
       {/* ─── Keyframe animations ──────────────────────────────────────────── */}

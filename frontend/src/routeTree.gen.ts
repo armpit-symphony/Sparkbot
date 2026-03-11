@@ -21,6 +21,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as DmRouteImport } from './routes/dm'
 import { Route as LayoutRouteImport } from './routes/_layout'
 import { Route as LayoutIndexRouteImport } from './routes/_layout/index'
+import { Route as MeetingRoomIdRouteImport } from './routes/meeting.$roomId'
 import { Route as LayoutSettingsRouteImport } from './routes/_layout/settings'
 import { Route as LayoutItemsRouteImport } from './routes/_layout/items'
 import { Route as LayoutChatRouteImport } from './routes/_layout/chat'
@@ -85,6 +86,11 @@ const LayoutIndexRoute = LayoutIndexRouteImport.update({
   path: '/',
   getParentRoute: () => LayoutRoute,
 } as any)
+const MeetingRoomIdRoute = MeetingRoomIdRouteImport.update({
+  id: '/meeting/$roomId',
+  path: '/meeting/$roomId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LayoutSettingsRoute = LayoutSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -122,6 +128,7 @@ export interface FileRoutesByFullPath {
   '/chat': typeof LayoutChatRoute
   '/items': typeof LayoutItemsRoute
   '/settings': typeof LayoutSettingsRoute
+  '/meeting/$roomId': typeof MeetingRoomIdRoute
 }
 export interface FileRoutesByTo {
   '/dm': typeof DmRoute
@@ -138,6 +145,7 @@ export interface FileRoutesByTo {
   '/chat': typeof LayoutChatRoute
   '/items': typeof LayoutItemsRoute
   '/settings': typeof LayoutSettingsRoute
+  '/meeting/$roomId': typeof MeetingRoomIdRoute
   '/': typeof LayoutIndexRoute
 }
 export interface FileRoutesById {
@@ -157,6 +165,7 @@ export interface FileRoutesById {
   '/_layout/chat': typeof LayoutChatRoute
   '/_layout/items': typeof LayoutItemsRoute
   '/_layout/settings': typeof LayoutSettingsRoute
+  '/meeting/$roomId': typeof MeetingRoomIdRoute
   '/_layout/': typeof LayoutIndexRoute
 }
 export interface FileRouteTypes {
@@ -177,6 +186,7 @@ export interface FileRouteTypes {
     | '/chat'
     | '/items'
     | '/settings'
+    | '/meeting/$roomId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/dm'
@@ -193,6 +203,7 @@ export interface FileRouteTypes {
     | '/chat'
     | '/items'
     | '/settings'
+    | '/meeting/$roomId'
     | '/'
   id:
     | '__root__'
@@ -211,6 +222,7 @@ export interface FileRouteTypes {
     | '/_layout/chat'
     | '/_layout/items'
     | '/_layout/settings'
+    | '/meeting/$roomId'
     | '/_layout/'
   fileRoutesById: FileRoutesById
 }
@@ -226,6 +238,7 @@ export interface RootRouteChildren {
   SparkbudResearchRoute: typeof SparkbudResearchRoute
   SparkbudWebmakerRoute: typeof SparkbudWebmakerRoute
   WorkstationRoute: typeof WorkstationRoute
+  MeetingRoomIdRoute: typeof MeetingRoomIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -314,6 +327,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutIndexRouteImport
       parentRoute: typeof LayoutRoute
     }
+    '/meeting/$roomId': {
+      id: '/meeting/$roomId'
+      path: '/meeting/$roomId'
+      fullPath: '/meeting/$roomId'
+      preLoaderRoute: typeof MeetingRoomIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_layout/settings': {
       id: '/_layout/settings'
       path: '/settings'
@@ -376,6 +396,7 @@ const rootRouteChildren: RootRouteChildren = {
   SparkbudResearchRoute: SparkbudResearchRoute,
   SparkbudWebmakerRoute: SparkbudWebmakerRoute,
   WorkstationRoute: WorkstationRoute,
+  MeetingRoomIdRoute: MeetingRoomIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
