@@ -1,4 +1,4 @@
-export const ROUND_TABLE_SEAT_COUNT = 6
+export const ROUND_TABLE_SEAT_COUNT = 8
 
 const WORKSTATION_MEETING_DRAFT_KEY = "sparkbot_workstation_roundtable_draft"
 const WORKSTATION_MEETING_META_PREFIX = "sparkbot_workstation_meeting_room:"

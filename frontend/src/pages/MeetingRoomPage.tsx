@@ -402,7 +402,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
         title="Roundtable Meeting Room"
         subtitle="This room was launched from Workstation as the live group chat version of the central table."
         bullets={[
-          "Roundtable is the live room spawned from the six-seat table in Workstation.",
+          "Roundtable is the live room spawned from the eight-seat table in Workstation.",
           "The current protocol is one at a time: keep a single active speaker and hand the floor forward.",
           "Use Workstation to reseat desks, change the table, or launch again after reconfiguring chairs.",
           "Chat remains the everyday home. This room is the focused collaboration surface.",

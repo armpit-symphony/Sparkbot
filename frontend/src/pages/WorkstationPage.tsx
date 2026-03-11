@@ -1157,7 +1157,7 @@ function StationDetailPanel({
                 lineHeight: 1.6,
               }}
             >
-              All six chairs are filled. Clear a seat or reassign a chair from the table.
+              All eight chairs are filled. Clear a seat or reassign a chair from the table.
             </div>
           ) : (
             <button
@@ -1395,7 +1395,7 @@ function RoundTablePanel({
             marginBottom: 10,
           }}
         >
-          Six Chairs
+          Eight Chairs
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
           {projectRoom.seats.map((seatId, index) => {
@@ -2170,7 +2170,7 @@ function RoundTableStage({
     .filter((station): station is Station => Boolean(station))
   const stagedCount = eligibleStations.filter((station) => station.status !== "empty").length
   const canLaunchMeeting = participants.length >= 2
-  const chairAngles = [-130, -65, -15, 15, 65, 130]
+  const chairAngles = [-148, -108, -62, -18, 18, 62, 108, 148]
 
   return (
     <div
@@ -2230,7 +2230,7 @@ function RoundTableStage({
             {ROUND_TABLE.label}
           </div>
           <p style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.7, margin: "8px 0 0" }}>
-            Assign desks to any of the six chairs, then launch the room into a live group chat.
+            Assign desks to any of the eight chairs, then launch the room into a live group chat.
           </p>
         </div>
 
@@ -3135,7 +3135,7 @@ export default function WorkstationPage() {
           subtitle="A spatial office map around Sparkbot. Chat stays primary, Controls handles setup, and Roundtable launches focused group rooms from the floor."
           bullets={[
             "Workstation is the desktop map: desks, offices, and the central meeting table.",
-            "Roundtable is the six-seat launcher for staged desk participants.",
+            "Roundtable is the eight-seat launcher for staged desk participants.",
             "Sparkbot Chat remains the everyday home for normal prompting and conversations.",
             "Controls still manages providers, models, and safety/configuration settings.",
           ]}
