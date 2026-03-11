@@ -7,6 +7,8 @@ export interface SparkBudLaunchConfig {
   emoji: string
   summary: string
   helperText: string
+  launchModeLabel: string
+  launchOutcomeLabel: string
   defaultPrompt: string
 }
 
@@ -21,6 +23,8 @@ const SPARKBUD_CONFIG: Record<SparkBudLaunchConfig["stationId"], SparkBudLaunchC
     emoji: "🔍",
     summary: "Gather facts, compare sources, call out uncertainty, and return a structured summary with next steps.",
     helperText: "This launch prompt becomes the opening brief sent to @researcher in chat.",
+    launchModeLabel: "Built-in agent",
+    launchOutcomeLabel: "Opens chat with @researcher ready",
     defaultPrompt: `Research brief
 - Goal:
 - Sources or options to compare:
@@ -35,6 +39,8 @@ const SPARKBUD_CONFIG: Record<SparkBudLaunchConfig["stationId"], SparkBudLaunchC
     emoji: "💻",
     summary: "Implement, debug, or refactor with concrete technical output and clear verification steps.",
     helperText: "This launch prompt becomes the opening brief sent to @coder in chat.",
+    launchModeLabel: "Built-in agent",
+    launchOutcomeLabel: "Opens chat with @coder ready",
     defaultPrompt: `Build brief
 - Objective:
 - Codebase or file area:
@@ -49,6 +55,8 @@ const SPARKBUD_CONFIG: Record<SparkBudLaunchConfig["stationId"], SparkBudLaunchC
     emoji: "📊",
     summary: "Break down the problem, surface patterns and tradeoffs, and recommend a decision path.",
     helperText: "This launch prompt becomes the opening brief sent to @analyst in chat.",
+    launchModeLabel: "Built-in agent",
+    launchOutcomeLabel: "Opens chat with @analyst ready",
     defaultPrompt: `Analysis brief
 - Decision or problem:
 - Key signals or data:
@@ -63,6 +71,8 @@ const SPARKBUD_CONFIG: Record<SparkBudLaunchConfig["stationId"], SparkBudLaunchC
     emoji: "🤖",
     summary: "Define a specialist role in plain language, then launch it as a named custom agent for this workspace.",
     helperText: "This prompt becomes the specialist's behavior profile. After launch, the agent opens in chat ready for @mention use.",
+    launchModeLabel: "Custom agent",
+    launchOutcomeLabel: "Creates a named specialist for this workspace",
     defaultPrompt: `You are a custom SparkBud specialist.
 
 Role:

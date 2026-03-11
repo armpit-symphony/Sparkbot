@@ -230,9 +230,8 @@ const SPECIALTY_PLACEHOLDERS: Station[] = [
     icon: Plus,
     accentHex: "#7dd3fc",
     description:
-      "A reserved specialty slot for a future custom SparkBud. Keep the desk visible now, then define the role when you know the workflow.",
-    capabilities: ["Reserved slot", "Custom role", "Future wiring"],
-    route: "/dm?controls=open",
+      "Use this desk to define a specialist in plain language, set its launch prompt, and create a named custom SparkBud for the current workspace.",
+    capabilities: ["Custom role", "Editable prompt", "Named specialist"],
   },
 ]
 
@@ -792,6 +791,15 @@ function StationDetailPanel({
     setLaunchError("")
   }, [sparkBudLaunchConfig, station.id])
 
+  const resetLaunchPrompt = useCallback(() => {
+    if (!sparkBudLaunchConfig) return
+    setLaunchPrompt(sparkBudLaunchConfig.defaultPrompt)
+    if (sparkBudLaunchConfig.defaultHandle) {
+      setLaunchAgentName(sparkBudLaunchConfig.defaultHandle)
+    }
+    setLaunchError("")
+  }, [sparkBudLaunchConfig])
+
   const handleNavigate = useCallback(() => {
     if (route) onNavigate(route)
   }, [route, onNavigate])
@@ -1265,6 +1273,36 @@ function StationDetailPanel({
               <p style={{ fontSize: 10, color: "#9ca3af", lineHeight: 1.6, margin: 0 }}>
                 {sparkBudLaunchConfig.summary}
               </p>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+                <span
+                  style={{
+                    fontSize: 9,
+                    color: accentHex,
+                    border: `1px solid ${accentHex}33`,
+                    borderRadius: 999,
+                    padding: "3px 8px",
+                    letterSpacing: "0.05em",
+                    textTransform: "uppercase",
+                    backgroundColor: `${accentHex}10`,
+                  }}
+                >
+                  {sparkBudLaunchConfig.launchModeLabel}
+                </span>
+                <span
+                  style={{
+                    fontSize: 9,
+                    color: "#cbd5f5",
+                    border: "1px solid rgba(125,211,252,0.18)",
+                    borderRadius: 999,
+                    padding: "3px 8px",
+                    letterSpacing: "0.05em",
+                    textTransform: "uppercase",
+                    backgroundColor: "rgba(10,17,32,0.72)",
+                  }}
+                >
+                  {sparkBudLaunchConfig.launchOutcomeLabel}
+                </span>
+              </div>
             </div>
 
             {sparkBudLaunchConfig.launchMode === "custom" && (
@@ -1309,19 +1347,46 @@ function StationDetailPanel({
             )}
 
             <div>
-              <label
+              <div
                 style={{
-                  display: "block",
-                  fontSize: 10,
-                  color: "#4b5563",
-                  letterSpacing: "0.08em",
-                  textTransform: "uppercase",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 8,
                   marginBottom: 6,
-                  fontWeight: 700,
                 }}
               >
-                Preloaded launch prompt
-              </label>
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: 10,
+                    color: "#4b5563",
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                    fontWeight: 700,
+                  }}
+                >
+                  Preloaded launch prompt
+                </label>
+                <button
+                  type="button"
+                  onClick={resetLaunchPrompt}
+                  style={{
+                    background: "none",
+                    border: "1px solid #1f2937",
+                    borderRadius: 999,
+                    padding: "3px 8px",
+                    cursor: "pointer",
+                    fontSize: 9,
+                    color: "#94a3b8",
+                    letterSpacing: "0.06em",
+                    textTransform: "uppercase",
+                    fontFamily: "monospace",
+                  }}
+                >
+                  Reset default
+                </button>
+              </div>
               <textarea
                 value={launchPrompt}
                 onChange={(event) => setLaunchPrompt(event.target.value)}
@@ -1348,6 +1413,11 @@ function StationDetailPanel({
             <p style={{ fontSize: 10, color: "#94a3b8", lineHeight: 1.6, margin: "8px 0 0" }}>
               {sparkBudLaunchConfig.helperText}
             </p>
+            {sparkBudLaunchConfig.launchMode === "custom" && (
+              <p style={{ fontSize: 10, color: "#64748b", lineHeight: 1.6, margin: "6px 0 0" }}>
+                Handles must be lowercase and unique within this workspace.
+              </p>
+            )}
 
             {launchError && (
               <div
