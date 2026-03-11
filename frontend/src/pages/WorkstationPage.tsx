@@ -2876,7 +2876,7 @@ export default function WorkstationPage() {
         <main
           style={{
             flex: 1,
-            padding: "10px 16px 0",
+            padding: "10px 16px 16px",
             display: "flex",
             flexDirection: "column",
             gap: 12,
@@ -3063,25 +3063,6 @@ export default function WorkstationPage() {
             </div>
           </section>
         </main>
-
-        {/* ─── Footer bar ─────────────────────────────────────────────── */}
-        <footer
-          style={{
-            height: 36,
-            borderTop: "1px solid #0d1f35",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: "#060a13",
-            flexShrink: 0,
-            zIndex: 10,
-            position: "relative",
-          }}
-        >
-          <span style={{ fontSize: 10, color: "#1e3a52", letterSpacing: "0.08em" }}>
-            SparkPit Labs · Workstation is the desktop overview around Chat and Controls
-          </span>
-        </footer>
 
         {/* ─── Side panels ─────────────────────────────────────────────── */}
         {panel?.kind === "station" && (

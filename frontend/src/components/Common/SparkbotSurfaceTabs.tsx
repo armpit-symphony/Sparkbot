@@ -1,7 +1,7 @@
 type SparkbotSurfaceTab = "chat" | "workstation" | "controls" | "info"
 
 interface SparkbotSurfaceTabsProps {
-  active: SparkbotSurfaceTab
+  active?: SparkbotSurfaceTab
   onChat: () => void
   onWorkstation: () => void
   onControls: () => void

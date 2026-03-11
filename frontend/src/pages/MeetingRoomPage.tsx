@@ -173,7 +173,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
 
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <SparkbotSurfaceTabs
-              active={infoOpen ? "info" : "chat"}
+              active={infoOpen ? "info" : undefined}
               onChat={() => navigate({ to: "/dm" })}
               onWorkstation={() => navigate({ to: "/workstation" })}
               onControls={() => navigate({ to: "/dm", search: { controls: "open" } })}
