@@ -36,6 +36,9 @@ dist/
 dist
 frontend/build/
 frontend/dist/
+src-tauri/target/
+src-tauri/binaries/*
+!src-tauri/binaries/.gitkeep
 
 # Environment files
 *.env

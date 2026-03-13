@@ -1,0 +1,35 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Sparkbot Local",
+  "version": "1.3.0",
+  "identifier": "com.sparkpitlabs.sparkbot.local",
+  "build": {
+    "beforeBuildCommand": "bun run desktop:frontend:build",
+    "beforeDevCommand": "bun run desktop:frontend:dev",
+    "devUrl": "http://127.0.0.1:5173",
+    "frontendDist": "../frontend/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Sparkbot Local",
+        "width": 1440,
+        "height": 960,
+        "minWidth": 1100,
+        "minHeight": 760,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "nsis",
+    "externalBin": [
+      "binaries/sparkbot-backend"
+    ]
+  }
+}
