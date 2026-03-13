@@ -12,6 +12,7 @@ import {
   buildChatEntryHref,
   resolveChatEntryTarget,
 } from "@/lib/sparkbotControls"
+import { apiFetch } from "@/lib/apiBase"
 import { handleError } from "@/utils"
 import useCustomToast from "./useCustomToast"
 
@@ -66,7 +67,7 @@ const useAuth = () => {
 
   // Chat login using passphrase — sets HttpOnly cookie server-side
   const chatLogin = async (data: { passphrase: string }) => {
-    const response = await fetch("/api/v1/chat/users/login", {
+    const response = await apiFetch("/api/v1/chat/users/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
@@ -96,7 +97,7 @@ const useAuth = () => {
     localStorage.removeItem("access_token")
     sessionStorage.removeItem("chat_auth")
     // Clear server-side HttpOnly cookie
-    fetch("/api/v1/chat/users/session", { method: "DELETE", credentials: "include" }).catch(() => {})
+    apiFetch("/api/v1/chat/users/session", { method: "DELETE", credentials: "include" }).catch(() => {})
     navigate({ to: "/login" })
   }
 

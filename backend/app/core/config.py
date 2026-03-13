@@ -1,5 +1,6 @@
 import secrets
 import warnings
+from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from pydantic import (
@@ -57,11 +58,25 @@ class Settings(BaseSettings):
     POSTGRES_PASSWORD: str = ""
     POSTGRES_DB: str = ""
 
+    # Base directory for local data files (SQLite DB, uploads, guardian vault).
+    # When empty (default), files are written relative to the working directory,
+    # which matches the current Docker behavior.
+    # For v1 local Windows installs: set to %APPDATA%\Sparkbot (or equivalent).
+    SPARKBOT_DATA_DIR: str = ""
+
+    # v1 Local mode: disables bridge services (Telegram, Discord, WhatsApp) and
+    # advanced features (live terminal) that are not needed for a standalone
+    # local install. Default False preserves the existing hosted server behavior.
+    V1_LOCAL_MODE: bool = False
+
     @computed_field  # type: ignore[prop-decorator]
     @property
     def SQLALCHEMY_DATABASE_URI(self) -> str:
         if self.DATABASE_TYPE == "sqlite":
-            return f"sqlite:///{self.PROJECT_NAME.lower().replace(' ', '_')}.db"
+            db_name = f"{self.PROJECT_NAME.lower().replace(' ', '_')}.db"
+            if self.SPARKBOT_DATA_DIR:
+                return f"sqlite:///{Path(self.SPARKBOT_DATA_DIR) / db_name}"
+            return f"sqlite:///{db_name}"
         return PostgresDsn.build(
             scheme="postgresql+psycopg",
             username=self.POSTGRES_USER,

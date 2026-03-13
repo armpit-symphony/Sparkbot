@@ -1,5 +1,6 @@
 // WebSocket client for real-time chat
 
+import { apiWebSocketUrl } from "@/lib/apiBase"
 import type { Message, WebSocketMessage } from "./types"
 
 type WebSocketHandler = (data: WebSocketMessage) => void
@@ -25,7 +26,7 @@ class ChatWebSocket {
 
   constructor(config: WebSocketConfig = {}) {
     this.config = {
-      url: config.url || `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/api/v1/chat/ws`,
+      url: config.url || apiWebSocketUrl("/api/v1/chat/ws"),
       autoReconnect: config.autoReconnect ?? true,
       reconnectInterval: config.reconnectInterval ?? 3000,
       onMessage: config.onMessage || (() => {}),

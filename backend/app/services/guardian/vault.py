@@ -57,6 +57,9 @@ def _data_root() -> Path:
     root = os.getenv("SPARKBOT_GUARDIAN_DATA_DIR", "").strip()
     if root:
         return Path(root).expanduser()
+    app_root = os.getenv("SPARKBOT_DATA_DIR", "").strip()
+    if app_root:
+        return Path(app_root).expanduser() / "guardian"
     return Path(__file__).resolve().parents[3] / "data" / "guardian"
 
 

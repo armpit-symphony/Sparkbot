@@ -21,7 +21,9 @@ import {
   CONTROLS_SEARCH_VALUE,
   isControlsSearchOpen,
 } from "@/lib/sparkbotControls"
+import { apiFetch, apiUrl } from "@/lib/apiBase"
 import { consumeSparkBudChatLaunchDraft } from "@/lib/sparkbudLaunch"
+import { isV1LocalMode } from "@/lib/v1Local"
 
 // ─── Confirm modal ────────────────────────────────────────────────────────────
 
@@ -184,10 +186,40 @@ interface ModelsControlsConfig {
     id: string
     label: string
     configured: boolean
+    reachable?: boolean | null
+    models_available?: boolean | null
+    available_models?: string[]
     models: string[]
+  }>
+  default_selection: {
+    provider: string
+    model: string
+    label?: string
+  }
+  local_runtime: {
+    default_local_model: string
+    base_url: string
+  }
+  routing_policy?: {
+    default_provider_authoritative: boolean
+    cross_provider_fallback: boolean
+  }
+  agent_overrides: Record<string, { route: "default" | "openrouter" | "local"; model?: string }>
+  available_agents: Array<{
+    name: string
+    emoji: string
+    description: string
+    is_builtin?: boolean
   }>
   /** Friendly label for each model ID — auto-populated from backend AVAILABLE_MODELS */
   model_labels?: Record<string, string>
+  ollama_status?: {
+    reachable: boolean
+    base_url: string
+    models: string[]
+    model_ids?: string[]
+    models_available?: boolean
+  }
   comms: {
     telegram: {
       configured: boolean
@@ -229,11 +261,34 @@ interface ModelStackForm {
 }
 
 interface ProviderTokenDrafts {
+  openrouter_api_key: string
   openai_api_key: string
   anthropic_api_key: string
   google_api_key: string
   groq_api_key: string
   minimax_api_key: string
+}
+
+interface DefaultModelSelectionForm {
+  provider: "openrouter" | "ollama"
+  model: string
+}
+
+interface RoutingPolicyForm {
+  crossProviderFallback: boolean
+}
+
+interface AgentRoutingOverride {
+  route: "default" | "openrouter" | "local"
+  model: string
+}
+
+interface OpenRouterModelRecord {
+  id: string
+  raw_id: string
+  label: string
+  context_length?: number
+  pricing?: Record<string, string>
 }
 
 interface CommsForm {
@@ -274,73 +329,9 @@ interface OllamaStatus {
   reachable: boolean
   base_url: string
   models: string[]
+  model_ids?: string[]
+  models_available?: boolean
 }
-
-interface OllamaPreset {
-  modelId: string
-  name: string
-  description: string
-  ram: string
-  tier: "low" | "normal" | "strong"
-}
-
-// Flat lookup for all local model details
-const OLLAMA_MODEL_INFO: Record<string, { name: string; ram: string; description: string }> = {
-  "ollama/llama3.2:1b":    { name: "Llama 3.2 1B",    ram: "~1 GB",   description: "Fast, very low memory"              },
-  "ollama/llama3.2:3b":    { name: "Llama 3.2 3B",    ram: "~2 GB",   description: "Fast and balanced"                  },
-  "ollama/phi4-mini":      { name: "Phi-4 Mini",      ram: "~2.5 GB", description: "Best quality/speed balance"         },
-  "ollama/phi3.5":         { name: "Phi 3.5",         ram: "~2 GB",   description: "Reasoning-focused"                  },
-  "ollama/gemma2:2b":      { name: "Gemma 2 2B",      ram: "~1.6 GB", description: "Compact quality"                    },
-  "ollama/gemma2:9b":      { name: "Gemma 2 9B",      ram: "~5.5 GB", description: "Strong quality, larger"             },
-  "ollama/granite3.3:2b":  { name: "Granite 3.3 2B",  ram: "~1.5 GB", description: "Long-context, compact"              },
-  "ollama/granite3.3:8b":  { name: "Granite 3.3 8B",  ram: "~4.9 GB", description: "Long-context, stronger"             },
-  "ollama/mistral:7b":     { name: "Mistral 7B",      ram: "~4.1 GB", description: "Strong quality, good reasoning"     },
-  "ollama/falcon3:1b":     { name: "Falcon3 1B",      ram: "~0.6 GB", description: "Ultra-light, fastest"               },
-  "ollama/falcon3:3b":     { name: "Falcon3 3B",      ram: "~1.7 GB", description: "Light and capable"                  },
-  "ollama/falcon3:7b":     { name: "Falcon3 7B",      ram: "~4 GB",   description: "Powerful, strong reasoning"         },
-}
-
-interface TierConfig {
-  id: "low" | "normal" | "strong"
-  label: string
-  sublabel: string
-  recommended?: boolean
-  primaryModel: string
-  primaryName: string
-  primaryRam: string
-  alternates: string[]
-}
-
-const TIER_CONFIGS: TierConfig[] = [
-  {
-    id: "low",
-    label: "Low machine",
-    sublabel: "Older laptops, low-memory systems, or the easiest lightweight start",
-    primaryModel: "ollama/llama3.2:1b",
-    primaryName: "Llama 3.2 1B",
-    primaryRam: "~1 GB",
-    alternates: ["ollama/gemma2:2b", "ollama/falcon3:1b"],
-  },
-  {
-    id: "normal",
-    label: "Normal machine",
-    sublabel: "Best default for most people",
-    recommended: true,
-    primaryModel: "ollama/phi4-mini",
-    primaryName: "Phi-4 Mini",
-    primaryRam: "~2.5 GB",
-    alternates: ["ollama/phi3.5", "ollama/llama3.2:3b", "ollama/granite3.3:2b"],
-  },
-  {
-    id: "strong",
-    label: "Strong machine",
-    sublabel: "Better desktops and home servers for stronger local quality",
-    primaryModel: "ollama/mistral:7b",
-    primaryName: "Mistral 7B",
-    primaryRam: "~4.1 GB",
-    alternates: ["ollama/gemma2:9b", "ollama/falcon3:7b", "ollama/granite3.3:8b"],
-  },
-]
 
 // Built-in agents — mirrors backend agents.py (shown before API loads)
 const BUILTIN_AGENTS: Agent[] = [
@@ -589,7 +580,7 @@ function SearchPanel({ roomId, onClose }: SearchPanelProps) {
     if (trimmed.length < 2) { setResults([]); setSearched(false); return }
     setSearching(true)
     try {
-      const res = await fetch(`/api/v1/chat/messages/${roomId}/search?q=${encodeURIComponent(trimmed)}&limit=30`, {
+      const res = await apiFetch(`/api/v1/chat/messages/${roomId}/search?q=${encodeURIComponent(trimmed)}&limit=30`, {
         credentials: "include",
       })
       if (res.ok) {
@@ -665,10 +656,18 @@ interface SparkbotSettingsDialogProps {
   dashboardSummary: ControlsDashboardSummary | null
   modelsConfig: ModelsControlsConfig | null
   modelStack: ModelStackForm
+  defaultSelection: DefaultModelSelectionForm
+  routingPolicy: RoutingPolicyForm
+  localDefaultModel: string
+  agentOverrides: Record<string, AgentRoutingOverride>
+  openRouterModels: OpenRouterModelRecord[]
   providerDrafts: ProviderTokenDrafts
   commsForm: CommsForm
   savingModelStack: boolean
   savingProviderTokens: boolean
+  savingDefaultSelection: boolean
+  savingAgentOverrides: boolean
+  loadingOpenRouterModels: boolean
   savingComms: boolean
   tokenGuardianMode: string
   savingTokenGuardianMode: boolean
@@ -684,11 +683,18 @@ interface SparkbotSettingsDialogProps {
   onRefresh: () => void
   onToggleExecution: (enabled: boolean) => void
   onModelStackChange: (field: keyof ModelStackForm, value: string) => void
+  onDefaultSelectionChange: (field: keyof DefaultModelSelectionForm, value: string) => void
+  onLocalDefaultModelChange: (value: string) => void
+  onAgentOverrideChange: (agentName: string, field: keyof AgentRoutingOverride, value: string) => void
   onProviderDraftChange: (field: keyof ProviderTokenDrafts, value: string) => void
   onCommsTextChange: (section: keyof CommsForm, field: string, value: string) => void
   onCommsToggleChange: (section: keyof CommsForm, field: string, value: boolean) => void
   onSaveModelStack: () => void
   onSaveProviderTokens: () => void
+  onSaveDefaultSelection: () => void
+  onRoutingPolicyChange: (value: boolean) => void
+  onSaveAgentOverrides: () => void
+  onLoadOpenRouterModels: () => void
   onSaveComms: () => void
   onTokenGuardianModeChange: (value: string) => void
   onSaveTokenGuardianMode: () => void
@@ -719,14 +725,11 @@ interface SparkbotSettingsDialogProps {
   onSpawnPromptChange: (v: string) => void
   onSpawnAgent: () => void
   onDeleteAgent: (name: string) => void
-  aiSourceMode: "cloud" | "local" | "hybrid"
-  onAiSourceModeChange: (mode: "cloud" | "local" | "hybrid") => void
   ollamaStatus: OllamaStatus | null
   ollamaBaseUrl: string
   ollamaLoading: boolean
   onCheckOllamaStatus: () => void
   onOllamaBaseUrlChange: (url: string) => void
-  onApplyLocalModel: (preset: OllamaPreset) => void
 }
 
 const TASK_TOOL_OPTIONS = [
@@ -757,10 +760,18 @@ function SparkbotSettingsDialog({
   dashboardSummary,
   modelsConfig,
   modelStack,
+  defaultSelection,
+  routingPolicy,
+  localDefaultModel,
+  agentOverrides,
+  openRouterModels,
   providerDrafts,
   commsForm,
   savingModelStack,
   savingProviderTokens,
+  savingDefaultSelection,
+  savingAgentOverrides,
+  loadingOpenRouterModels,
   savingComms,
   tokenGuardianMode,
   savingTokenGuardianMode,
@@ -776,11 +787,18 @@ function SparkbotSettingsDialog({
   onRefresh,
   onToggleExecution,
   onModelStackChange,
+  onDefaultSelectionChange,
+  onLocalDefaultModelChange,
+  onAgentOverrideChange,
   onProviderDraftChange,
   onCommsTextChange,
   onCommsToggleChange,
   onSaveModelStack,
   onSaveProviderTokens,
+  onSaveDefaultSelection,
+  onRoutingPolicyChange,
+  onSaveAgentOverrides,
+  onLoadOpenRouterModels,
   onSaveComms,
   onTokenGuardianModeChange,
   onSaveTokenGuardianMode,
@@ -811,71 +829,110 @@ function SparkbotSettingsDialog({
   onSpawnPromptChange,
   onSpawnAgent,
   onDeleteAgent,
-  aiSourceMode,
-  onAiSourceModeChange,
   ollamaStatus,
   ollamaBaseUrl,
   ollamaLoading,
   onCheckOllamaStatus,
   onOllamaBaseUrlChange,
-  onApplyLocalModel,
 }: SparkbotSettingsDialogProps) {
-  const [expandedTiers, setExpandedTiers] = useState<Set<string>>(new Set())
+  const localModelOptions = Array.from(
+    new Set(
+      [
+        localDefaultModel,
+        ...(ollamaStatus?.models ?? []).map((modelName) =>
+          modelName.startsWith("ollama/") ? modelName : `ollama/${modelName}`,
+        ),
+      ].filter(Boolean),
+    ),
+  )
+  const stackModelOptions = Array.from(
+    new Set(
+      [
+        ...Object.keys(modelsConfig?.model_labels ?? {}),
+        ...openRouterModels.map((model) => model.id),
+        ...localModelOptions,
+        modelStack.primary,
+        modelStack.backup_1,
+        modelStack.backup_2,
+        modelStack.heavy_hitter,
+      ].filter(Boolean),
+    ),
+  )
+  const modelOptionLabel = (modelId: string) =>
+    modelsConfig?.model_labels?.[modelId]
+    ?? openRouterModels.find((model) => model.id === modelId)?.label
+    ?? modelId.replace("ollama/", "")
 
-  function toggleTier(id: string) {
-    setExpandedTiers(prev => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
+  const hasOpenRouterConfigured = Boolean(
+    modelsConfig?.providers.find((provider) => provider.id === "openrouter")?.configured,
+  )
+  const ollamaProvider = modelsConfig?.providers.find((provider) => provider.id === "ollama")
+  const routingAgents = modelsConfig?.available_agents ?? []
+  const showAdvancedControls = !isV1LocalMode
 
-  function isModelInstalled(modelId: string): boolean {
-    if (!ollamaStatus?.reachable) return false
-    const localName = modelId.replace("ollama/", "")
-    return ollamaStatus.models.some(
-      (m) => m === localName || m === `${localName}:latest`
-    )
-  }
-
-  const configuredProviderCount = modelsConfig?.providers.filter((provider) => provider.configured).length ?? 0
+  const readyProviderCount = modelsConfig?.providers.filter(
+    (provider) => provider.configured || provider.models_available === true,
+  ).length ?? 0
   const enabledChannelCount = [
     Boolean(commsForm.telegram.enabled && modelsConfig?.comms.telegram.configured),
     Boolean(commsForm.discord.enabled && modelsConfig?.comms.discord.configured),
     Boolean(commsForm.whatsapp.enabled && modelsConfig?.comms.whatsapp.configured),
     Boolean(commsForm.github.enabled && modelsConfig?.comms.github.configured),
   ].filter(Boolean).length
-  const onboardingSteps = [
-    {
-      title: "Connect AI (cloud or local)",
-      done: configuredProviderCount > 0,
-      detail: configuredProviderCount > 0
-        ? `${configuredProviderCount} provider${configuredProviderCount === 1 ? "" : "s"} configured`
-        : "Add a cloud API key, or set up a free local model via Ollama — no key needed",
-    },
-    {
-      title: "Pick your model stack",
-      done: Boolean(modelStack.primary && modelStack.heavy_hitter),
-      detail: modelStack.primary
-        ? `Primary: ${modelStack.primary}`
-        : "Choose a primary model and a heavy hitter",
-    },
-    {
-      title: "Turn on one channel",
-      done: enabledChannelCount > 0,
-      detail: enabledChannelCount > 0
-        ? `${enabledChannelCount} channel${enabledChannelCount === 1 ? "" : "s"} enabled`
-        : "Enable Telegram, Discord, WhatsApp, or GitHub after adding credentials",
-    },
-    {
-      title: "Keep write actions gated",
-      done: !room?.execution_allowed,
-      detail: room?.execution_allowed
-        ? "Execution gate is on for this room. Turn it off unless you need machine operations."
-        : "Recommended default for personal use: execution gate stays off",
-    },
-  ]
+  const onboardingSteps = showAdvancedControls
+    ? [
+        {
+          title: "Connect AI (cloud or local)",
+          done: readyProviderCount > 0,
+          detail: readyProviderCount > 0
+            ? `${readyProviderCount} provider path${readyProviderCount === 1 ? "" : "s"} ready`
+            : "Add a cloud API key, or set up a free local model via Ollama — no key needed",
+        },
+        {
+          title: "Choose your default model",
+          done: Boolean(defaultSelection.model),
+          detail: defaultSelection.model
+            ? `${defaultSelection.provider === "openrouter" ? "Cloud" : "Local"} default: ${modelsConfig?.model_labels?.[defaultSelection.model] ?? defaultSelection.model}`
+            : "Choose OpenRouter cloud AI or a local Ollama model",
+        },
+        {
+          title: "Turn on one channel",
+          done: enabledChannelCount > 0,
+          detail: enabledChannelCount > 0
+            ? `${enabledChannelCount} channel${enabledChannelCount === 1 ? "" : "s"} enabled`
+            : "Enable Telegram, Discord, WhatsApp, or GitHub after adding credentials",
+        },
+        {
+          title: "Keep write actions gated",
+          done: !room?.execution_allowed,
+          detail: room?.execution_allowed
+            ? "Execution gate is on for this room. Turn it off unless you need machine operations."
+            : "Recommended default for personal use: execution gate stays off",
+        },
+      ]
+    : [
+        {
+          title: "Connect AI (cloud or local)",
+          done: readyProviderCount > 0,
+          detail: readyProviderCount > 0
+            ? `${readyProviderCount} AI path${readyProviderCount === 1 ? "" : "s"} ready`
+            : "Add OpenRouter for cloud AI, or keep one Ollama model on this machine",
+        },
+        {
+          title: "Choose your default model",
+          done: Boolean(defaultSelection.model),
+          detail: defaultSelection.model
+            ? `Default: ${modelsConfig?.model_labels?.[defaultSelection.model] ?? defaultSelection.model}`
+            : "Pick the model Sparkbot should use for everyday chat",
+        },
+        {
+          title: "Optional agent override",
+          done: Object.values(agentOverrides).some((override) => override.route !== "default"),
+          detail: Object.values(agentOverrides).some((override) => override.route !== "default")
+            ? "One or more agents have an override path saved"
+            : "Force a selected agent to local or OpenRouter only when you need it",
+        },
+      ]
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -885,7 +942,9 @@ function SparkbotSettingsDialog({
             <div className="space-y-1">
               <DialogTitle>Sparkbot Controls</DialogTitle>
               <DialogDescription>
-                Room execution gate, function routing, dashboard access, and Task Guardian schedules.
+                {showAdvancedControls
+                  ? "Room execution gate, function routing, dashboard access, and Task Guardian schedules."
+                  : "Connect your AI model, choose a default, and optionally keep selected agents local on this machine."}
               </DialogDescription>
             </div>
             <button
@@ -931,36 +990,48 @@ function SparkbotSettingsDialog({
                 <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Start here</div>
                 <div className="mt-2 space-y-1.5 text-xs">
                   <div className="flex gap-2"><span className="font-semibold text-primary shrink-0">1.</span> Connect AI: paste a cloud API key below, <strong>or</strong> set up a free local model via Ollama — no key needed.</div>
-                  <div className="flex gap-2"><span className="font-semibold text-primary shrink-0">2.</span> Pick your model stack — primary for everyday chat, heavy hitter for long tasks.</div>
-                  <div className="flex gap-2"><span className="font-semibold text-primary shrink-0">3.</span> Enable one comms channel so reminders reach you on Telegram, Discord, or WhatsApp.</div>
-                  <div className="flex gap-2"><span className="font-semibold text-primary shrink-0">4.</span> Ask for a morning brief, set a reminder, or search your inbox.</div>
+                  <div className="flex gap-2"><span className="font-semibold text-primary shrink-0">2.</span> Pick the default model Sparkbot should use for everyday chat.</div>
+                  <div className="flex gap-2"><span className="font-semibold text-primary shrink-0">3.</span> If you want mixed mode, force one selected agent to local or OpenRouter only.</div>
+                  {showAdvancedControls ? (
+                    <div className="flex gap-2"><span className="font-semibold text-primary shrink-0">4.</span> Enable one comms channel so reminders reach you on Telegram, Discord, or WhatsApp.</div>
+                  ) : null}
                 </div>
               </div>
               <div className="rounded-lg border bg-background/60 px-3 py-3">
-                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Good first prompts</div>
+                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                  {showAdvancedControls ? "Good first prompts" : "Good first checks"}
+                </div>
                 <div className="mt-2 space-y-2 text-xs text-muted-foreground">
-                  <div><code className="rounded bg-muted px-1 py-0.5">Give me a morning brief for today.</code></div>
-                  <div><code className="rounded bg-muted px-1 py-0.5">Remind me every weekday at 8am to check priorities.</code></div>
-                  <div><code className="rounded bg-muted px-1 py-0.5">Summarize my unread inbox.</code></div>
-                  <div><code className="rounded bg-muted px-1 py-0.5">What's the price of bitcoin right now?</code></div>
-                  <div><code className="rounded bg-muted px-1 py-0.5">Show me anything waiting on my approval.</code></div>
+                  <div><code className="rounded bg-muted px-1 py-0.5">Reply with the single word HELLO.</code></div>
+                  <div><code className="rounded bg-muted px-1 py-0.5">@researcher Reply with the single word LOCAL.</code></div>
+                  <div><code className="rounded bg-muted px-1 py-0.5">@coder Reply with the single word CLOUD.</code></div>
+                  {showAdvancedControls ? (
+                    <>
+                      <div><code className="rounded bg-muted px-1 py-0.5">Give me a morning brief for today.</code></div>
+                      <div><code className="rounded bg-muted px-1 py-0.5">Show me anything waiting on my approval.</code></div>
+                    </>
+                  ) : null}
                 </div>
               </div>
               <div className="rounded-lg border border-emerald-500/20 bg-emerald-50/30 dark:bg-emerald-950/20 px-3 py-3">
-                <div className="text-[11px] uppercase tracking-wide text-emerald-700 dark:text-emerald-400">How Sparkbot protects you</div>
+                <div className="text-[11px] uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
+                  {showAdvancedControls ? "How Sparkbot protects you" : "Simple mode"}
+                </div>
                 <div className="mt-2 space-y-2 text-xs text-muted-foreground">
                   <div>
-                    <span className="font-medium text-foreground">Write actions always confirm.</span>{" "}
-                    Sending email, posting to Slack, or creating calendar events always shows a modal — Sparkbot cannot act without your approval.
+                    <span className="font-medium text-foreground">Chat stays primary.</span>{" "}
+                    Controls is for setup and model routing. Everyday use should happen back in the main chat.
                   </div>
                   <div>
-                    <span className="font-medium text-foreground">Execution gate = opt-in only.</span>{" "}
-                    Server commands and SSH tools are disabled by default. Turn on the room execution gate only when you need them.
+                    <span className="font-medium text-foreground">Cloud and local can coexist.</span>{" "}
+                    Use OpenRouter as the default path, then keep one local Ollama model ready for private or specialist work.
                   </div>
-                  <div>
-                    <span className="font-medium text-foreground">Token Guardian shadow mode</span>{" "}
-                    observes routing decisions silently — it never switches models on its own until you flip to live mode.
-                  </div>
+                  {showAdvancedControls ? (
+                    <div>
+                      <span className="font-medium text-foreground">Execution gate = opt-in only.</span>{" "}
+                      Server commands and SSH tools are disabled by default. Turn on the room execution gate only when you need them.
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -994,7 +1065,7 @@ function SparkbotSettingsDialog({
             </div>
           </section>
 
-          <div className="grid gap-4 lg:grid-cols-2">
+          {showAdvancedControls ? <div className="grid gap-4 lg:grid-cols-2">
           <section className="rounded-xl border p-4">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
@@ -1051,10 +1122,10 @@ function SparkbotSettingsDialog({
             {/* Health tiles */}
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
               {/* LLM */}
-              <div className={`rounded-lg px-3 py-3 ${configuredProviderCount > 0 ? "bg-emerald-50/50 dark:bg-emerald-950/30 border border-emerald-500/20" : "bg-amber-50/50 dark:bg-amber-950/30 border border-amber-500/20"}`}>
+              <div className={`rounded-lg px-3 py-3 ${readyProviderCount > 0 ? "bg-emerald-50/50 dark:bg-emerald-950/30 border border-emerald-500/20" : "bg-amber-50/50 dark:bg-amber-950/30 border border-amber-500/20"}`}>
                 <div className="text-[11px] uppercase tracking-wide text-muted-foreground">LLM</div>
-                <div className={`mt-1 text-sm font-semibold ${configuredProviderCount > 0 ? "text-emerald-700 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`}>
-                  {configuredProviderCount > 0 ? `${configuredProviderCount} provider${configuredProviderCount > 1 ? "s" : ""}` : "No provider"}
+                <div className={`mt-1 text-sm font-semibold ${readyProviderCount > 0 ? "text-emerald-700 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`}>
+                  {readyProviderCount > 0 ? `${readyProviderCount} provider path${readyProviderCount > 1 ? "s" : ""}` : "No provider"}
                 </div>
                 <div className="mt-0.5 text-[11px] text-muted-foreground truncate">
                   {modelStack.primary || "No model selected"}
@@ -1136,9 +1207,9 @@ function SparkbotSettingsDialog({
               </div>
             </div>
           </section>
-          </div>
+          </div> : null}
 
-          <section className="rounded-xl border p-4">
+          {showAdvancedControls ? <section className="rounded-xl border p-4">
             <div className="mb-3">
               <h2 className="text-sm font-semibold">Function routing</h2>
               <p className="text-xs text-muted-foreground">
@@ -1205,352 +1276,380 @@ function SparkbotSettingsDialog({
                 {savingTokenGuardianMode ? "Saving..." : "Save routing mode"}
               </button>
             </div>
-          </section>
+          </section> : null}
 
           <section className="rounded-xl border p-4">
-            <div className="mb-3">
-              <h2 className="text-sm font-semibold">Models</h2>
-              <p className="text-xs text-muted-foreground">
-                Set Sparkbot&apos;s primary model, backup chain, and heavy hitter for harder work.
-              </p>
-            </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              {[
-                ["primary", "Primary"],
-                ["backup_1", "1st backup"],
-                ["backup_2", "2nd backup"],
-                ["heavy_hitter", "Heavy hitter"],
-              ].map(([field, label]) => (
-                <label key={field} className="space-y-1">
-                  <div className="text-xs font-medium text-muted-foreground">{label}</div>
-                  <select
-                    value={modelStack[field as keyof ModelStackForm]}
-                    onChange={(e) => onModelStackChange(field as keyof ModelStackForm, e.target.value)}
-                    className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
-                  >
-                    {Array.from(new Set(modelsConfig?.providers.flatMap((provider) => provider.models) ?? [])).map((model) => (
-                      <option key={model} value={model}>
-                        {modelsConfig?.model_labels?.[model] ?? model}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ))}
-            </div>
-            <div className="mt-3 flex items-center justify-between gap-3">
-              <div className="text-xs text-muted-foreground">
-                Active now: <span className="font-medium text-foreground">{modelsConfig?.active_model ?? "unknown"}</span>
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold">AI setup</h2>
+                <p className="text-xs text-muted-foreground">
+                  OpenRouter is the easiest cloud setup. Ollama keeps local models available on this machine for private or selective agent use.
+                </p>
               </div>
               <button
                 type="button"
-                onClick={onSaveModelStack}
-                disabled={savingModelStack}
-                className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50"
+                onClick={onLoadOpenRouterModels}
+                disabled={loadingOpenRouterModels}
+                className="rounded-md border px-3 py-1.5 text-xs hover:bg-muted disabled:opacity-50"
               >
-                {savingModelStack ? "Saving..." : "Save model stack"}
+                {loadingOpenRouterModels ? "Refreshing..." : "Refresh OpenRouter models"}
               </button>
             </div>
-          </section>
 
-          <section className="rounded-xl border p-4">
-            <div className="mb-3">
-              <h2 className="text-sm font-semibold">Provider onboarding</h2>
-              <p className="text-xs text-muted-foreground">
-                Paste API tokens once, then choose the matching models above. Or run models locally with Ollama — no API key needed.
-              </p>
-            </div>
-
-            {/* AI Source selector */}
-            <div className="mb-4 flex gap-2">
-              {(["cloud", "local", "hybrid"] as const).map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => onAiSourceModeChange(mode)}
-                  className={`rounded-md px-3 py-1.5 text-xs font-medium border transition-colors ${aiSourceMode === mode ? "bg-primary text-primary-foreground border-primary" : "bg-muted/40 text-muted-foreground border-transparent hover:border-border"}`}
-                >
-                  {mode === "cloud" ? "☁ Cloud providers" : mode === "local" ? "🖥 Local (Ollama)" : "⚡ Hybrid"}
-                </button>
-              ))}
-            </div>
-
-            {/* Cloud provider cards */}
-            {(aiSourceMode === "cloud" || aiSourceMode === "hybrid") && (
-              <div className="grid gap-3 md:grid-cols-2 mb-4">
-                {modelsConfig?.providers.filter((p) => p.id !== "ollama").map((provider) => {
-                  const field = `${provider.id}_api_key` as keyof ProviderTokenDrafts
-                  return (
-                    <div key={provider.id} className="rounded-lg border bg-muted/40 px-3 py-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="text-sm font-medium">{provider.label}</div>
-                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${provider.configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
-                          {provider.configured ? "Configured" : "Missing"}
-                        </span>
-                      </div>
-                      <div className="mt-0.5 text-[10px] text-muted-foreground/70">Sends prompts to external API · No data stored by Sparkbot</div>
-                      <div className="mt-1 text-xs text-muted-foreground">
-                        {provider.models.join(", ")}
-                      </div>
-                      <input
-                        type="password"
-                        value={providerDrafts[field]}
-                        onChange={(e) => onProviderDraftChange(field, e.target.value)}
-                        placeholder={`Paste ${provider.label} token`}
-                        className="mt-3 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
-                      />
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-            {(aiSourceMode === "cloud" || aiSourceMode === "hybrid") && (
-              <div className="mb-4 flex justify-end">
-                <button
-                  type="button"
-                  onClick={onSaveProviderTokens}
-                  disabled={savingProviderTokens}
-                  className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50"
-                >
-                  {savingProviderTokens ? "Saving..." : "Save provider tokens"}
-                </button>
-              </div>
-            )}
-
-            {/* Ollama local model section */}
-            {(aiSourceMode === "local" || aiSourceMode === "hybrid") && (
-              <div className="rounded-lg border bg-muted/20 p-4">
-                {/* Helper copy */}
-                <p className="mb-3 text-xs text-muted-foreground">
-                  Don't have an API key yet? SparkBot can run locally through Ollama. Pick the option that fits your machine, get SparkBot working first, and add cloud providers later if you want.
-                </p>
-
-                {/* Server URL + Check + status badge */}
-                <div className="mb-4 flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={ollamaBaseUrl}
-                    onChange={(e) => onOllamaBaseUrlChange(e.target.value)}
-                    placeholder="http://localhost:11434"
-                    className="flex-1 rounded-md border bg-background px-3 py-2 text-sm outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={onCheckOllamaStatus}
-                    disabled={ollamaLoading}
-                    className="rounded-md border px-3 py-2 text-xs font-medium hover:bg-muted disabled:opacity-50 shrink-0"
-                  >
-                    {ollamaLoading ? "Checking…" : "Check"}
-                  </button>
-                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${ollamaStatus?.reachable ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
-                    {ollamaStatus === null ? "Unknown" : ollamaStatus.reachable ? "● Running" : "○ Not found"}
-                  </span>
-                </div>
-
-                {/* Ollama not reachable warning */}
-                {ollamaStatus && !ollamaStatus.reachable && (
-                  <div className="mb-4 rounded-md border border-amber-500/30 bg-amber-50/20 dark:bg-amber-950/20 px-3 py-3">
-                    <p className="text-xs font-medium text-amber-700 dark:text-amber-400">Ollama not detected at {ollamaBaseUrl}</p>
-                    <p className="mt-1 text-[11px] text-muted-foreground">
-                      Install Ollama from <span className="font-mono">ollama.com</span>, then run one of these to download a model and start chatting:
-                    </p>
-                    <div className="mt-2 space-y-1.5">
-                      {(["llama3.2:1b", "phi4-mini", "mistral:7b"] as const).map((m) => (
-                        <div key={m} className="flex items-center gap-2">
-                          <code className="flex-1 rounded bg-muted px-2 py-1 text-[11px] font-mono">{`ollama run ${m}`}</code>
-                          <button
-                            type="button"
-                            onClick={() => navigator.clipboard.writeText(`ollama run ${m}`)}
-                            className="rounded border px-2 py-1 text-[10px] hover:bg-muted shrink-0"
-                          >
-                            Copy
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Installed models compact row */}
-                {ollamaStatus?.reachable && ollamaStatus.models.length > 0 && (
-                  <div className="mb-3 flex flex-wrap items-center gap-1.5">
-                    <span className="text-[10px] text-muted-foreground">Installed:</span>
-                    {ollamaStatus.models.map((m) => (
-                      <span key={m} className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
-                        {m}
-                      </span>
+            <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+              <div className="space-y-4">
+                <div className="rounded-lg border bg-muted/30 p-4">
+                  <div className="mb-3 flex flex-wrap gap-2">
+                    {([
+                      ["openrouter", "Fastest setup: OpenRouter"],
+                      ["ollama", "Private/local: Ollama on this machine"],
+                    ] as const).map(([providerId, label]) => (
+                      <button
+                        key={providerId}
+                        type="button"
+                        onClick={() => onDefaultSelectionChange("provider", providerId)}
+                        className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                          defaultSelection.provider === providerId
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-border bg-background hover:bg-muted"
+                        }`}
+                      >
+                        {label}
+                      </button>
                     ))}
                   </div>
-                )}
 
-                {/* Ollama reachable but no models */}
-                {ollamaStatus?.reachable && ollamaStatus.models.length === 0 && (
-                  <div className="mb-4 rounded-md border bg-muted/30 px-3 py-3">
-                    <p className="text-xs font-medium">No models installed yet</p>
-                    <p className="mt-0.5 text-[11px] text-muted-foreground">Run one of these in a terminal to download your first model:</p>
-                    <div className="mt-2 space-y-1.5">
-                      {(["llama3.2:1b", "phi4-mini", "mistral:7b"] as const).map((m) => (
-                        <div key={m} className="flex items-center gap-2">
-                          <code className="flex-1 rounded bg-muted px-2 py-1 text-[11px] font-mono">{`ollama run ${m}`}</code>
-                          <button
-                            type="button"
-                            onClick={() => navigator.clipboard.writeText(`ollama run ${m}`)}
-                            className="rounded border px-2 py-1 text-[10px] hover:bg-muted shrink-0"
-                          >
-                            Copy
-                          </button>
-                        </div>
-                      ))}
+                  {defaultSelection.provider === "openrouter" ? (
+                    <div className="space-y-3">
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-muted-foreground">OpenRouter API key</label>
+                        <input
+                          type="password"
+                          value={providerDrafts.openrouter_api_key}
+                          onChange={(e) => onProviderDraftChange("openrouter_api_key", e.target.value)}
+                          placeholder={hasOpenRouterConfigured ? "Saved already. Paste a new key only if you want to replace it." : "Paste OpenRouter API key"}
+                          className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                        />
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          Recommended cloud path for v1 Local: one key, broad model choice, simple setup.
+                        </p>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-muted-foreground">Default cloud model</label>
+                        <select
+                          value={defaultSelection.provider === "openrouter" ? defaultSelection.model : ""}
+                          onChange={(e) => onDefaultSelectionChange("model", e.target.value)}
+                          className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                        >
+                          <option value="">Choose an OpenRouter model</option>
+                          {openRouterModels.map((model) => (
+                            <option key={model.id} value={model.id}>
+                              {model.label}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          Sparkbot will use this as the main cloud model for everyday chat unless an agent override says otherwise.
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  ) : (
+                    <div className="space-y-3">
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-muted-foreground">Default local model</label>
+                        <select
+                          value={defaultSelection.provider === "ollama" ? defaultSelection.model : localDefaultModel}
+                          onChange={(e) => {
+                            onLocalDefaultModelChange(e.target.value)
+                            onDefaultSelectionChange("model", e.target.value)
+                          }}
+                          className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                        >
+                          <option value="">Choose a downloaded Ollama model</option>
+                          {localModelOptions.map((model) => (
+                            <option key={model} value={model}>
+                              {modelsConfig?.model_labels?.[model] ?? model.replace("ollama/", "")}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          Sparkbot will use this local model by default. Keep Ollama running on this machine.
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
-                {/* 3 Tier cards */}
+                  <div className="mt-4 rounded-lg border bg-background/60 px-3 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-medium">Default provider is authoritative</div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          Everyday chat stays on your chosen default provider. Cross-provider fallback stays off unless you explicitly allow it.
+                        </div>
+                      </div>
+                      <label className="flex items-center gap-2 text-xs font-medium">
+                        <input
+                          type="checkbox"
+                          checked={routingPolicy.crossProviderFallback}
+                          onChange={(e) => onRoutingPolicyChange(e.target.checked)}
+                        />
+                        Allow cross-provider fallback
+                      </label>
+                    </div>
+                    <p className="mt-2 text-[11px] text-muted-foreground">
+                      {routingPolicy.crossProviderFallback
+                        ? "Sparkbot may fall back to another provider if your default provider cannot satisfy a default-route request."
+                        : "Sparkbot will only try models on your chosen default provider for normal everyday chat."}
+                    </p>
+                  </div>
+
+                  <div className="mt-4 flex justify-end gap-2">
+                    {defaultSelection.provider === "openrouter" ? (
+                      <button
+                        type="button"
+                        onClick={onSaveProviderTokens}
+                        disabled={savingProviderTokens}
+                        className="rounded-md border px-4 py-2 text-sm hover:bg-muted disabled:opacity-50"
+                      >
+                        {savingProviderTokens ? "Saving key..." : "Save OpenRouter key"}
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={onSaveDefaultSelection}
+                      disabled={savingDefaultSelection}
+                      className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50"
+                    >
+                      {savingDefaultSelection ? "Saving default..." : "Save default model"}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border bg-muted/20 p-4">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold">Local AI on this machine</h3>
+                      <p className="text-xs text-muted-foreground">
+                        Keep local models visible even when OpenRouter is your default so selected agents can stay local.
+                      </p>
+                    </div>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${ollamaStatus?.reachable ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
+                      {ollamaStatus === null ? "Unknown" : ollamaStatus.reachable ? "● Running" : "○ Not found"}
+                    </span>
+                  </div>
+
+                  <div className="mb-3 flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={ollamaBaseUrl}
+                      onChange={(e) => onOllamaBaseUrlChange(e.target.value)}
+                      placeholder="http://localhost:11434"
+                      className="flex-1 rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={onCheckOllamaStatus}
+                      disabled={ollamaLoading}
+                      className="rounded-md border px-3 py-2 text-xs font-medium hover:bg-muted disabled:opacity-50"
+                    >
+                      {ollamaLoading ? "Checking..." : "Refresh"}
+                    </button>
+                  </div>
+
+                  <div className="mb-3 flex flex-wrap gap-1.5">
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${ollamaProvider?.configured ? "bg-sky-500/15 text-sky-700 dark:text-sky-400" : "bg-muted text-muted-foreground"}`}>
+                      {ollamaProvider?.configured ? "Saved for local routing" : "No saved local route yet"}
+                    </span>
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${ollamaStatus?.reachable ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
+                      {ollamaStatus?.reachable ? "Runtime reachable now" : "Runtime not reachable"}
+                    </span>
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${ollamaStatus?.models_available ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
+                      {ollamaStatus?.models_available ? "Local model downloaded" : "No downloaded model yet"}
+                    </span>
+                  </div>
+
+                  {ollamaStatus?.reachable ? (
+                    <>
+                      <div className="mb-3">
+                        <label className="mb-1 block text-xs font-medium text-muted-foreground">Preferred local model</label>
+                        <select
+                          value={localDefaultModel}
+                          onChange={(e) => onLocalDefaultModelChange(e.target.value)}
+                          className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                        >
+                          <option value="">Choose a local model</option>
+                          {localModelOptions.map((model) => (
+                            <option key={model} value={model}>
+                              {modelsConfig?.model_labels?.[model] ?? model.replace("ollama/", "")}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-[10px] text-muted-foreground">Downloaded:</span>
+                        {ollamaStatus.models.length > 0 ? ollamaStatus.models.map((model) => (
+                          <span key={model} className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
+                            {model}
+                          </span>
+                        )) : (
+                          <span className="text-xs text-muted-foreground">No local models downloaded yet.</span>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="rounded-md border border-amber-500/30 bg-amber-50/20 dark:bg-amber-950/20 px-3 py-3">
+                      <p className="text-xs font-medium text-amber-700 dark:text-amber-400">Ollama not detected at {ollamaBaseUrl}</p>
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        Install Ollama from <span className="font-mono">ollama.com</span>, then download a model like <code className="rounded bg-muted px-1 py-0.5">ollama run phi4-mini</code>.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-lg border bg-muted/20 p-4">
+                  <div className="mb-3">
+                    <h3 className="text-sm font-semibold">Four-model stack</h3>
+                    <p className="text-xs text-muted-foreground">
+                      Keep the original primary, backup, and heavy-hitter stack available for legacy routing and manual model switching.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {([
+                      ["primary", "Primary"],
+                      ["backup_1", "Backup 1"],
+                      ["backup_2", "Backup 2"],
+                      ["heavy_hitter", "Heavy hitter"],
+                    ] as const).map(([field, label]) => (
+                      <div key={field}>
+                        <label className="mb-1 block text-xs font-medium text-muted-foreground">{label}</label>
+                        <select
+                          value={modelStack[field]}
+                          onChange={(e) => onModelStackChange(field, e.target.value)}
+                          className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                        >
+                          <option value="">Choose a model</option>
+                          {stackModelOptions.map((modelId) => (
+                            <option key={`${field}-${modelId}`} value={modelId}>
+                              {modelOptionLabel(modelId)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-3 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={onSaveModelStack}
+                      disabled={savingModelStack}
+                      className="rounded-md border px-4 py-2 text-sm hover:bg-muted disabled:opacity-50"
+                    >
+                      {savingModelStack ? "Saving stack..." : "Save stack"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-lg border bg-background/70 p-4">
+                <div className="mb-3">
+                  <h3 className="text-sm font-semibold">Agent overrides</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Keep Sparkbot on the default path, or force selected agents to use OpenRouter or a local model.
+                  </p>
+                </div>
                 <div className="space-y-3">
-                  {TIER_CONFIGS.map((tier) => {
-                    const primaryInstalled = isModelInstalled(tier.primaryModel)
-                    const localPrimary = tier.primaryModel.replace("ollama/", "")
-                    const isExpanded = expandedTiers.has(tier.id)
+                  {routingAgents.map((agent) => {
+                    const override = agentOverrides[agent.name] ?? { route: "default", model: "" }
+                    const route = override.route
+                    const modelValue = override.model ?? ""
+                    const selectedModel = route === "openrouter"
+                      ? modelValue || modelsConfig?.default_selection.model || ""
+                      : route === "local"
+                        ? modelValue || localDefaultModel
+                        : modelsConfig?.default_selection.model || ""
 
                     return (
-                      <div
-                        key={tier.id}
-                        className={`rounded-lg border p-3 ${tier.recommended ? "border-primary/40 bg-primary/5 dark:bg-primary/10" : "bg-background/60"}`}
-                      >
-                        {/* Tier header */}
-                        <div className="mb-2 flex items-start justify-between gap-2">
+                      <div key={agent.name} className="rounded-lg border bg-muted/30 px-3 py-3">
+                        <div className="mb-2 flex items-center gap-2">
+                          <span className="text-base">{agent.emoji}</span>
                           <div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-sm font-semibold">{tier.label}</span>
-                              {tier.recommended && (
-                                <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold text-primary">
-                                  Best for most people
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-[11px] text-muted-foreground">{tier.sublabel}</div>
+                            <div className="text-sm font-medium">{agent.name === "sparkbot" ? "Sparkbot main chat" : `@${agent.name}`}</div>
+                            <div className="text-[11px] text-muted-foreground">{agent.description}</div>
                           </div>
-                          {tier.recommended && <span className="text-amber-500 text-base leading-none shrink-0">★</span>}
                         </div>
+                        <div className="grid gap-2">
+                          <select
+                            value={route}
+                            onChange={(e) => onAgentOverrideChange(agent.name, "route", e.target.value)}
+                            className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                          >
+                            <option value="default">Use default</option>
+                            <option value="openrouter">Force OpenRouter</option>
+                            <option value="local">Force local</option>
+                          </select>
 
-                        {/* Primary model row */}
-                        <div className="flex items-center gap-2 rounded-md border bg-background px-3 py-2">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="text-xs font-semibold">{tier.primaryName}</span>
-                              <span className="text-[10px] text-muted-foreground">{tier.primaryRam}</span>
-                              {primaryInstalled && (
-                                <span className="rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-600">
-                                  Installed
-                                </span>
-                              )}
-                            </div>
-                            {!primaryInstalled && (
-                              <div className="mt-0.5 text-[10px] text-muted-foreground font-mono">
-                                ollama run {localPrimary}
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            {!primaryInstalled && (
-                              <button
-                                type="button"
-                                onClick={() => navigator.clipboard.writeText(`ollama run ${localPrimary}`)}
-                                className="rounded border px-2 py-1 text-[10px] hover:bg-muted"
-                              >
-                                Copy
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => onApplyLocalModel({
-                                modelId: tier.primaryModel,
-                                name: tier.primaryName,
-                                description: tier.sublabel,
-                                ram: tier.primaryRam,
-                                tier: tier.id,
-                              })}
-                              className={`rounded px-2 py-1 text-[10px] font-medium shrink-0 ${primaryInstalled ? "bg-primary text-primary-foreground hover:opacity-90" : "border hover:bg-muted"}`}
+                          {route !== "default" && (
+                            <select
+                              value={selectedModel}
+                              onChange={(e) => onAgentOverrideChange(agent.name, "model", e.target.value)}
+                              className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
                             >
-                              {primaryInstalled ? "Use this model" : "Set up this model"}
-                            </button>
-                          </div>
+                              <option value="">
+                                {route === "openrouter" ? "Use default OpenRouter model" : "Use preferred local model"}
+                              </option>
+                              {(route === "openrouter" ? openRouterModels.map((model) => model.id) : localModelOptions).map((modelId) => (
+                                <option key={modelId} value={modelId}>
+                                  {route === "openrouter"
+                                    ? openRouterModels.find((model) => model.id === modelId)?.label ?? modelId
+                                    : modelsConfig?.model_labels?.[modelId] ?? modelId.replace("ollama/", "")}
+                                </option>
+                              ))}
+                            </select>
+                          )}
                         </div>
-
-                        {/* Alternates toggle */}
-                        <button
-                          type="button"
-                          onClick={() => toggleTier(tier.id)}
-                          className="mt-2 text-[10px] text-muted-foreground hover:text-foreground"
-                        >
-                          {isExpanded ? "▲ Hide other options" : `▼ Other options for this tier (${tier.alternates.length})`}
-                        </button>
-
-                        {/* Alternates list */}
-                        {isExpanded && (
-                          <div className="mt-2 space-y-1.5">
-                            {tier.alternates.map((modelId) => {
-                              const info = OLLAMA_MODEL_INFO[modelId]
-                              const localName = modelId.replace("ollama/", "")
-                              const installed = isModelInstalled(modelId)
-                              if (!info) return null
-                              return (
-                                <div key={modelId} className="flex items-center gap-2 rounded border bg-muted/30 px-2 py-1.5">
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-1.5 flex-wrap">
-                                      <span className="text-[11px] font-medium">{info.name}</span>
-                                      <span className="text-[10px] text-muted-foreground">{info.ram}</span>
-                                      {installed && (
-                                        <span className="rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-600">
-                                          Installed
-                                        </span>
-                                      )}
-                                    </div>
-                                    <div className="text-[10px] text-muted-foreground">{info.description}</div>
-                                  </div>
-                                  <div className="flex gap-1 shrink-0">
-                                    <button
-                                      type="button"
-                                      onClick={() => navigator.clipboard.writeText(`ollama run ${localName}`)}
-                                      className="rounded border px-1.5 py-1 text-[10px] hover:bg-muted"
-                                    >
-                                      Copy
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => onApplyLocalModel({
-                                        modelId,
-                                        name: info.name,
-                                        description: info.description,
-                                        ram: info.ram,
-                                        tier: tier.id,
-                                      })}
-                                      className="rounded border px-1.5 py-1 text-[10px] hover:bg-muted"
-                                    >
-                                      Use
-                                    </button>
-                                  </div>
-                                </div>
-                              )
-                            })}
-                          </div>
-                        )}
                       </div>
                     )
                   })}
                 </div>
 
-                {/* Ollama install hint when status unknown */}
-                {ollamaStatus === null && (
-                  <div className="mt-3 rounded-md bg-muted/30 px-3 py-2 text-[10px] text-muted-foreground">
-                    Click <strong>Check</strong> above to see if Ollama is running. Install from{" "}
-                    <span className="font-mono">ollama.com</span> if needed.
-                  </div>
-                )}
+                <div className="mt-4 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={onSaveAgentOverrides}
+                    disabled={savingAgentOverrides}
+                    className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50"
+                  >
+                    {savingAgentOverrides ? "Saving overrides..." : "Save agent overrides"}
+                  </button>
+                </div>
               </div>
-            )}
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              <div className="rounded-lg border bg-background/60 px-3 py-3">
+                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Recommended setup</div>
+                <div className="mt-2 text-xs text-muted-foreground">
+                  Use OpenRouter as the default cloud path, then keep one local Ollama model ready for private or specialist work.
+                </div>
+              </div>
+              <div className="rounded-lg border bg-background/60 px-3 py-3">
+                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Mixed mode</div>
+                <div className="mt-2 text-xs text-muted-foreground">
+                  Default to OpenRouter for everyday chat, then force selected agents to local when you want work kept on this machine.
+                </div>
+              </div>
+              <div className="rounded-lg border bg-background/60 px-3 py-3">
+                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Current default</div>
+                <div className="mt-2 text-xs text-muted-foreground">
+                  {modelsConfig?.default_selection.label ?? modelsConfig?.default_selection.model ?? "No default selected"}
+                </div>
+              </div>
+            </div>
           </section>
 
-          <section className="rounded-xl border p-4">
+          {showAdvancedControls ? <section className="rounded-xl border p-4">
             <div className="mb-3">
               <h2 className="text-sm font-semibold">Comms</h2>
               <p className="text-xs text-muted-foreground">
@@ -1755,9 +1854,9 @@ function SparkbotSettingsDialog({
                 {savingComms ? "Saving..." : "Save comms"}
               </button>
             </div>
-          </section>
+          </section> : null}
 
-          <section className="rounded-xl border p-4">
+          {showAdvancedControls ? <section className="rounded-xl border p-4">
             <div className="mb-3">
               <h2 className="text-sm font-semibold">Spawn Agent</h2>
               <p className="text-xs text-muted-foreground">
@@ -1883,9 +1982,9 @@ function SparkbotSettingsDialog({
                 ))}
               </div>
             </div>
-          </section>
+          </section> : null}
 
-          <section className="rounded-xl border p-4">
+          {showAdvancedControls ? <section className="rounded-xl border p-4">
             <div className="mb-3">
               <h2 className="text-sm font-semibold">Task Guardian</h2>
               <p className="text-xs text-muted-foreground">
@@ -1988,9 +2087,9 @@ function SparkbotSettingsDialog({
                 ))}
               </div>
             </div>
-          </section>
+          </section> : null}
 
-          <section className="rounded-xl border p-4">
+          {showAdvancedControls ? <section className="rounded-xl border p-4">
             <div className="mb-3">
               <h2 className="text-sm font-semibold">Available skills</h2>
               <p className="text-xs text-muted-foreground">
@@ -2025,9 +2124,9 @@ function SparkbotSettingsDialog({
                 ))}
               </div>
             )}
-          </section>
+          </section> : null}
 
-          <section className="rounded-xl border p-4">
+          {showAdvancedControls ? <section className="rounded-xl border p-4">
             <h2 className="mb-3 text-sm font-semibold">Recent Approval / Policy Decisions</h2>
             <div className="space-y-2">
               {policyEntries.length === 0 ? (
@@ -2047,7 +2146,7 @@ function SparkbotSettingsDialog({
                 )
               })}
             </div>
-          </section>
+          </section> : null}
 
           {(loading || error) && (
             <div className="rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground">
@@ -2098,7 +2197,18 @@ function SparkbotDmPage() {
   const [modelsConfig, setModelsConfig] = useState<ModelsControlsConfig | null>(null)
   const [tokenGuardianMode, setTokenGuardianMode] = useState("shadow")
   const [savingTokenGuardianMode, setSavingTokenGuardianMode] = useState(false)
-  const [aiSourceMode, setAiSourceMode] = useState<"cloud" | "local" | "hybrid">("cloud")
+  const [, setAiSourceMode] = useState<"cloud" | "local" | "hybrid">("cloud")
+  const [defaultSelection, setDefaultSelection] = useState<DefaultModelSelectionForm>({
+    provider: "openrouter",
+    model: "",
+  })
+  const [routingPolicy, setRoutingPolicy] = useState<RoutingPolicyForm>({
+    crossProviderFallback: false,
+  })
+  const [localDefaultModel, setLocalDefaultModel] = useState("ollama/phi4-mini")
+  const [agentOverrides, setAgentOverrides] = useState<Record<string, AgentRoutingOverride>>({})
+  const [openRouterModels, setOpenRouterModels] = useState<OpenRouterModelRecord[]>([])
+  const [loadingOpenRouterModels, setLoadingOpenRouterModels] = useState(false)
   const [ollamaStatus, setOllamaStatus] = useState<OllamaStatus | null>(null)
   const [ollamaBaseUrl, setOllamaBaseUrl] = useState("http://localhost:11434")
   const [ollamaLoading, setOllamaLoading] = useState(false)
@@ -2109,6 +2219,7 @@ function SparkbotDmPage() {
     heavy_hitter: "gpt-4.5",
   })
   const [providerDrafts, setProviderDrafts] = useState<ProviderTokenDrafts>({
+    openrouter_api_key: "",
     openai_api_key: "",
     anthropic_api_key: "",
     google_api_key: "",
@@ -2130,6 +2241,8 @@ function SparkbotDmPage() {
   })
   const [savingModelStack, setSavingModelStack] = useState(false)
   const [savingProviderTokens, setSavingProviderTokens] = useState(false)
+  const [savingDefaultSelection, setSavingDefaultSelection] = useState(false)
+  const [savingAgentOverrides, setSavingAgentOverrides] = useState(false)
   const [savingComms, setSavingComms] = useState(false)
   const [policyEntries, setPolicyEntries] = useState<PolicyEntry[]>([])
   const [guardianTasks, setGuardianTasks] = useState<GuardianTaskRecord[]>([])
@@ -2152,6 +2265,9 @@ function SparkbotDmPage() {
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const controlsRequested = isControlsSearchOpen(
     ((routerState.location as { searchStr?: string }).searchStr) ?? window.location.search
+  )
+  const pageHasOpenRouterConfigured = Boolean(
+    modelsConfig?.providers.find((provider) => provider.id === "openrouter")?.configured,
   )
 
   // ── Reply / edit state ───────────────────────────────────────────────────────
@@ -2187,6 +2303,25 @@ function SparkbotDmPage() {
     setModelsConfig(config)
     setTokenGuardianMode(config.token_guardian_mode || "shadow")
     setModelStack(config.stack)
+    setDefaultSelection({
+      provider: config.default_selection?.provider === "ollama" ? "ollama" : "openrouter",
+      model: config.default_selection?.model || "",
+    })
+    setRoutingPolicy({
+      crossProviderFallback: Boolean(config.routing_policy?.cross_provider_fallback),
+    })
+    setLocalDefaultModel(config.local_runtime?.default_local_model || "ollama/phi4-mini")
+    setAgentOverrides(
+      Object.fromEntries(
+        (config.available_agents ?? []).map((agent) => [
+          agent.name,
+          {
+            route: config.agent_overrides?.[agent.name]?.route ?? "default",
+            model: config.agent_overrides?.[agent.name]?.model ?? "",
+          },
+        ]),
+      ),
+    )
     setCommsForm({
       telegram: {
         bot_token: "",
@@ -2213,6 +2348,16 @@ function SparkbotDmPage() {
         enabled: Boolean(config.comms.github.enabled),
       },
     })
+    setOllamaBaseUrl(config.local_runtime?.base_url || "http://localhost:11434")
+    if (config.ollama_status) {
+      setOllamaStatus({
+        reachable: Boolean(config.ollama_status.reachable),
+        base_url: config.ollama_status.base_url || config.local_runtime?.base_url || "http://localhost:11434",
+        models: config.ollama_status.models ?? [],
+        model_ids: config.ollama_status.model_ids ?? [],
+        models_available: Boolean(config.ollama_status.models_available),
+      })
+    }
     if (controlsOnboardingComplete(config)) {
       localStorage.setItem(CONTROLS_ONBOARDING_KEY, "true")
     } else {
@@ -2259,23 +2404,23 @@ function SparkbotDmPage() {
         window.location.href = "/login"; return
       }
       try {
-        const res = await fetch("/api/v1/chat/users/bootstrap", { method: "POST", credentials: "include" })
+        const res = await apiFetch("/api/v1/chat/users/bootstrap", { method: "POST", credentials: "include" })
         if (!res.ok) { window.location.href = "/login"; return }
         const boot = await res.json()
         setRoomId(boot.room_id)
-        const roomRes = await fetch(`/api/v1/chat/rooms/${boot.room_id}`, { credentials: "include" })
+        const roomRes = await apiFetch(`/api/v1/chat/rooms/${boot.room_id}`, { credentials: "include" })
         if (roomRes.ok) {
           const room = await roomRes.json()
           setRoomInfo(room)
           setRoomPersona(room.persona ?? "")
         }
-        const msgsRes = await fetch(`/api/v1/chat/rooms/${boot.room_id}/messages`, { credentials: "include" })
+        const msgsRes = await apiFetch(`/api/v1/chat/rooms/${boot.room_id}/messages`, { credentials: "include" })
         if (msgsRes.ok) {
           const d = await msgsRes.json()
           setMessages(d.messages ?? d.items ?? (Array.isArray(d) ? d : []))
         }
         try {
-          const modelsConfigRes = await fetch("/api/v1/chat/models/config", { credentials: "include" })
+          const modelsConfigRes = await apiFetch("/api/v1/chat/models/config", { credentials: "include" })
           if (modelsConfigRes.ok) {
             const config = await modelsConfigRes.json()
             applyControlsConfig(config)
@@ -2293,7 +2438,7 @@ function SparkbotDmPage() {
               sessionStorage.setItem(CONTROLS_AUTOOPEN_KEY, "true")
               setMessages(prev => [
                 ...prev,
-                systemMsg("Welcome to Sparkbot. Start by adding your model provider key and model stack in **Sparkbot Controls**."),
+                systemMsg("Welcome to Sparkbot. Open **Sparkbot Controls** to connect cloud AI or choose a local model on this machine."),
               ])
             }
           }
@@ -2302,7 +2447,7 @@ function SparkbotDmPage() {
         }
         // Load agent list (falls back to BUILTIN_AGENTS if request fails)
         try {
-          const agentsRes = await fetch("/api/v1/chat/agents", { credentials: "include" })
+          const agentsRes = await apiFetch("/api/v1/chat/agents", { credentials: "include" })
           if (agentsRes.ok) { const ag = await agentsRes.json(); setAgents(ag.agents ?? BUILTIN_AGENTS) }
         } catch { /* keep built-ins */ }
       } catch (e) { console.error(e) } finally { setLoading(false) }
@@ -2316,12 +2461,12 @@ function SparkbotDmPage() {
     setSettingsError("")
     try {
       const [roomRes, policyRes, tasksRes, runsRes, dashboardRes, modelsConfigRes] = await Promise.all([
-        fetch(`/api/v1/chat/rooms/${roomId}`, { credentials: "include" }),
-        fetch(`/api/v1/chat/audit?limit=10&room_id=${roomId}&tool=policy_decision`, { credentials: "include" }),
-        fetch(`/api/v1/chat/rooms/${roomId}/guardian/tasks?limit=20`, { credentials: "include" }),
-        fetch(`/api/v1/chat/rooms/${roomId}/guardian/runs?limit=10`, { credentials: "include" }),
-        fetch("/api/v1/chat/dashboard/summary", { credentials: "include" }),
-        fetch("/api/v1/chat/models/config", { credentials: "include" }),
+        apiFetch(`/api/v1/chat/rooms/${roomId}`, { credentials: "include" }),
+        apiFetch(`/api/v1/chat/audit?limit=10&room_id=${roomId}&tool=policy_decision`, { credentials: "include" }),
+        apiFetch(`/api/v1/chat/rooms/${roomId}/guardian/tasks?limit=20`, { credentials: "include" }),
+        apiFetch(`/api/v1/chat/rooms/${roomId}/guardian/runs?limit=10`, { credentials: "include" }),
+        apiFetch("/api/v1/chat/dashboard/summary", { credentials: "include" }),
+        apiFetch("/api/v1/chat/models/config", { credentials: "include" }),
       ])
 
       if (roomRes.ok) {
@@ -2356,12 +2501,12 @@ function SparkbotDmPage() {
       }
       // Fetch skill list (best-effort)
       try {
-        const skillsRes = await fetch("/api/v1/chat/skills", { credentials: "include" })
+        const skillsRes = await apiFetch("/api/v1/chat/skills", { credentials: "include" })
         if (skillsRes.ok) { const d = await skillsRes.json(); setSkills(d.skills ?? []) }
       } catch { /* skills endpoint unavailable — ignore */ }
       // Check Ollama status (best-effort)
       try {
-        const ollamaRes = await fetch("/api/v1/chat/ollama/status", { credentials: "include" })
+        const ollamaRes = await apiFetch("/api/v1/chat/ollama/status", { credentials: "include" })
         if (ollamaRes.ok) {
           const data: OllamaStatus = await ollamaRes.json()
           setOllamaStatus(data)
@@ -2375,18 +2520,39 @@ function SparkbotDmPage() {
     }
   }, [roomId, applyControlsConfig])
 
+  const loadOpenRouterModels = useCallback(async () => {
+    setLoadingOpenRouterModels(true)
+    try {
+      const response = await apiFetch("/api/v1/chat/openrouter/models", { credentials: "include" })
+      if (!response.ok) {
+        throw new Error("Could not load OpenRouter models.")
+      }
+      const data = await response.json()
+      setOpenRouterModels(data.models ?? [])
+    } catch {
+      setOpenRouterModels([])
+    } finally {
+      setLoadingOpenRouterModels(false)
+    }
+  }, [])
+
   useEffect(() => {
     if (settingsOpen) {
       refreshControls()
     }
   }, [settingsOpen, refreshControls])
 
+  useEffect(() => {
+    if (!settingsOpen) return
+    loadOpenRouterModels()
+  }, [settingsOpen, loadOpenRouterModels])
+
   const toggleExecutionGate = useCallback(async (enabled: boolean) => {
     if (!roomId) return
     setSavingExecution(true)
     setSettingsError("")
     try {
-      const res = await fetch(`/api/v1/chat/rooms/${roomId}`, {
+      const res = await apiFetch(`/api/v1/chat/rooms/${roomId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -2411,7 +2577,7 @@ function SparkbotDmPage() {
     setSavingPersona(true)
     setSettingsError("")
     try {
-      const res = await fetch(`/api/v1/chat/rooms/${roomId}`, {
+      const res = await apiFetch(`/api/v1/chat/rooms/${roomId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -2438,7 +2604,7 @@ function SparkbotDmPage() {
     setSpawning(true)
     setSettingsError("")
     try {
-      const res = await fetch("/api/v1/chat/agents", {
+      const res = await apiFetch("/api/v1/chat/agents", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -2459,7 +2625,7 @@ function SparkbotDmPage() {
     setDeletingAgent(name)
     setSettingsError("")
     try {
-      const res = await fetch(`/api/v1/chat/agents/${name}`, { method: "DELETE", credentials: "include" })
+      const res = await apiFetch(`/api/v1/chat/agents/${name}`, { method: "DELETE", credentials: "include" })
       if (!res.ok) {
         const data = await res.json().catch(() => ({ detail: "Could not delete agent." }))
         setSettingsError(data.detail ?? "Could not delete agent.")
@@ -2469,30 +2635,67 @@ function SparkbotDmPage() {
     } catch { setSettingsError("Could not delete agent.") } finally { setDeletingAgent(null) }
   }, [])
 
-  const saveModelStack = useCallback(async () => {
-    setSavingModelStack(true)
-    setSettingsError("")
-    try {
-      const res = await fetch("/api/v1/chat/models/config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ stack: modelStack }),
-      })
-      const data = await res.json().catch(() => ({ detail: "Could not save model stack." }))
-      if (!res.ok) {
-        setSettingsError(data.detail ?? "Could not save model stack.")
-      } else {
-        applyControlsConfig(data)
-        await refreshControls()
-        setMessages(prev => [...prev, systemMsg("Model stack updated.")])
-      }
-    } catch {
-      setSettingsError("Could not save model stack.")
-    } finally {
-      setSavingModelStack(false)
+  const handleDefaultSelectionChange = useCallback((field: keyof DefaultModelSelectionForm, value: string) => {
+    if (field === "provider") {
+      const nextProvider = value === "ollama" ? "ollama" : "openrouter"
+      setDefaultSelection((prev) => ({
+        provider: nextProvider,
+        model: nextProvider === "ollama"
+          ? localDefaultModel
+          : prev.model.startsWith("openrouter/") ? prev.model : "",
+      }))
+      return
     }
-  }, [applyControlsConfig, modelStack, refreshControls])
+    setDefaultSelection((prev) => ({ ...prev, [field]: value }))
+  }, [localDefaultModel])
+
+  const handleLocalDefaultModelChange = useCallback((value: string) => {
+    setLocalDefaultModel(value)
+    setDefaultSelection((prev) => (
+      prev.provider === "ollama"
+        ? { ...prev, model: value }
+        : prev
+    ))
+  }, [])
+
+  const handleRoutingPolicyChange = useCallback((value: boolean) => {
+    setRoutingPolicy({ crossProviderFallback: value })
+  }, [])
+
+  const handleModelStackChange = useCallback((field: keyof ModelStackForm, value: string) => {
+    setModelStack((prev) => ({ ...prev, [field]: value }))
+  }, [])
+
+  const handleAgentOverrideChange = useCallback((
+    agentName: string,
+    field: keyof AgentRoutingOverride,
+    value: string,
+  ) => {
+    setAgentOverrides((prev) => {
+      const current = prev[agentName] ?? { route: "default", model: "" }
+      if (field === "route") {
+        const nextRoute = value as AgentRoutingOverride["route"]
+        return {
+          ...prev,
+          [agentName]: {
+            route: nextRoute,
+            model: nextRoute === "default"
+              ? ""
+              : nextRoute === "local"
+                ? current.model.startsWith("ollama/") ? current.model : ""
+                : current.model.startsWith("openrouter/") ? current.model : "",
+          },
+        }
+      }
+      return {
+        ...prev,
+        [agentName]: {
+          ...current,
+          [field]: value,
+        },
+      }
+    })
+  }, [])
 
   const saveProviderTokens = useCallback(async () => {
     const payload = Object.fromEntries(
@@ -2505,7 +2708,7 @@ function SparkbotDmPage() {
     setSavingProviderTokens(true)
     setSettingsError("")
     try {
-      const res = await fetch("/api/v1/chat/models/config", {
+      const res = await apiFetch("/api/v1/chat/models/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -2518,12 +2721,16 @@ function SparkbotDmPage() {
         applyControlsConfig(data)
         await refreshControls()
         setProviderDrafts({
+          openrouter_api_key: "",
           openai_api_key: "",
           anthropic_api_key: "",
           google_api_key: "",
           groq_api_key: "",
           minimax_api_key: "",
         })
+        if (payload.openrouter_api_key) {
+          await loadOpenRouterModels()
+        }
         setMessages(prev => [...prev, systemMsg("Provider tokens saved.")])
       }
     } catch {
@@ -2531,13 +2738,166 @@ function SparkbotDmPage() {
     } finally {
       setSavingProviderTokens(false)
     }
-  }, [applyControlsConfig, providerDrafts, refreshControls])
+  }, [applyControlsConfig, loadOpenRouterModels, providerDrafts, refreshControls])
+
+  const saveModelStack = useCallback(async () => {
+    if (!modelStack.primary.trim() || !modelStack.heavy_hitter.trim()) {
+      setSettingsError("Choose at least the primary and heavy-hitter models before saving the stack.")
+      return
+    }
+
+    setSavingModelStack(true)
+    setSettingsError("")
+    try {
+      const res = await apiFetch("/api/v1/chat/models/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ stack: modelStack }),
+      })
+      const data = await res.json().catch(() => ({ detail: "Could not save model stack." }))
+      if (!res.ok) {
+        setSettingsError(data.detail ?? "Could not save model stack.")
+      } else {
+        applyControlsConfig(data)
+        await refreshControls()
+        setMessages((prev) => [...prev, systemMsg("Four-model stack saved.")])
+      }
+    } catch {
+      setSettingsError("Could not save model stack.")
+    } finally {
+      setSavingModelStack(false)
+    }
+  }, [applyControlsConfig, modelStack, refreshControls])
+
+  const saveDefaultSelection = useCallback(async () => {
+    const chosenDefaultModel = defaultSelection.provider === "ollama"
+      ? localDefaultModel
+      : defaultSelection.model.trim()
+    const chosenLocalModel = localDefaultModel.trim()
+
+    if (!chosenDefaultModel) {
+      setSettingsError(defaultSelection.provider === "openrouter"
+        ? "Choose an OpenRouter model before saving the default."
+        : "Choose a local Ollama model before saving the default.")
+      return
+    }
+    if (!chosenLocalModel) {
+      setSettingsError("Choose a preferred local model so local overrides have something to use.")
+      return
+    }
+    if (defaultSelection.provider === "openrouter" && !pageHasOpenRouterConfigured && !providerDrafts.openrouter_api_key.trim()) {
+      setSettingsError("Save an OpenRouter API key before using OpenRouter as the default.")
+      return
+    }
+
+    setSavingDefaultSelection(true)
+    setSettingsError("")
+    try {
+      const res = await apiFetch("/api/v1/chat/models/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          default_selection: {
+            provider: defaultSelection.provider,
+            model: chosenDefaultModel,
+          },
+          routing_policy: {
+            cross_provider_fallback: routingPolicy.crossProviderFallback,
+          },
+          local_runtime: {
+            default_local_model: chosenLocalModel,
+          },
+        }),
+      })
+      const data = await res.json().catch(() => ({ detail: "Could not save default model." }))
+      if (!res.ok) {
+        setSettingsError(data.detail ?? "Could not save default model.")
+      } else {
+        applyControlsConfig(data)
+        await refreshControls()
+        setMessages((prev) => [
+          ...prev,
+          systemMsg(
+            defaultSelection.provider === "openrouter"
+              ? `Default cloud model set to **${chosenDefaultModel}**. ${routingPolicy.crossProviderFallback ? "Cross-provider fallback is enabled." : "Everyday chat will stay on your chosen cloud provider."}`
+              : `Default local model set to **${chosenDefaultModel}**. ${routingPolicy.crossProviderFallback ? "Cross-provider fallback is enabled." : "Everyday chat will stay local unless you change the policy."}`,
+          ),
+        ])
+      }
+    } catch {
+      setSettingsError("Could not save default model.")
+    } finally {
+      setSavingDefaultSelection(false)
+    }
+  }, [
+    applyControlsConfig,
+    defaultSelection,
+    routingPolicy.crossProviderFallback,
+    localDefaultModel,
+    pageHasOpenRouterConfigured,
+    providerDrafts.openrouter_api_key,
+    refreshControls,
+  ])
+
+  const saveAgentOverrides = useCallback(async () => {
+    const routingAgents = modelsConfig?.available_agents ?? []
+    if (!routingAgents.length) {
+      setSettingsError("No agents are available for override routing yet.")
+      return
+    }
+
+    const payload = Object.fromEntries(
+      routingAgents.map((agent) => {
+        const override = agentOverrides[agent.name] ?? { route: "default", model: "" }
+        if (override.route === "openrouter") {
+          const overrideModel = override.model.trim()
+          return [agent.name, {
+            route: "openrouter",
+            model: overrideModel && overrideModel !== defaultSelection.model ? overrideModel : "",
+          }]
+        }
+        if (override.route === "local") {
+          const overrideModel = override.model.trim()
+          return [agent.name, {
+            route: "local",
+            model: overrideModel && overrideModel !== localDefaultModel ? overrideModel : "",
+          }]
+        }
+        return [agent.name, { route: "default", model: "" }]
+      }),
+    )
+
+    setSavingAgentOverrides(true)
+    setSettingsError("")
+    try {
+      const res = await apiFetch("/api/v1/chat/models/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ agent_overrides: payload }),
+      })
+      const data = await res.json().catch(() => ({ detail: "Could not save agent overrides." }))
+      if (!res.ok) {
+        setSettingsError(data.detail ?? "Could not save agent overrides.")
+      } else {
+        applyControlsConfig(data)
+        await refreshControls()
+        setMessages((prev) => [...prev, systemMsg("Agent routing overrides updated.")])
+      }
+    } catch {
+      setSettingsError("Could not save agent overrides.")
+    } finally {
+      setSavingAgentOverrides(false)
+    }
+  }, [agentOverrides, applyControlsConfig, defaultSelection.model, localDefaultModel, modelsConfig?.available_agents, refreshControls])
 
   const saveComms = useCallback(async () => {
     setSavingComms(true)
     setSettingsError("")
     try {
-      const res = await fetch("/api/v1/chat/models/config", {
+      const res = await apiFetch("/api/v1/chat/models/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -2562,7 +2922,7 @@ function SparkbotDmPage() {
     setSavingTokenGuardianMode(true)
     setSettingsError("")
     try {
-      const res = await fetch("/api/v1/chat/models/config", {
+      const res = await apiFetch("/api/v1/chat/models/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -2586,7 +2946,7 @@ function SparkbotDmPage() {
   const checkOllamaStatus = useCallback(async () => {
     setOllamaLoading(true)
     try {
-      const res = await fetch("/api/v1/chat/ollama/status", { credentials: "include" })
+      const res = await apiFetch("/api/v1/chat/ollama/status", { credentials: "include" })
       if (res.ok) {
         const data: OllamaStatus = await res.json()
         setOllamaStatus(data)
@@ -2600,44 +2960,6 @@ function SparkbotDmPage() {
       setOllamaLoading(false)
     }
   }, [ollamaBaseUrl])
-
-  const applyLocalModel = useCallback(async (preset: OllamaPreset) => {
-    // In Hybrid mode, preserve an already-configured cloud heavy_hitter
-    const preserveHeavyHitter =
-      aiSourceMode === "hybrid" &&
-      Boolean(modelStack.heavy_hitter) &&
-      !modelStack.heavy_hitter.startsWith("ollama/")
-    const newStack = {
-      ...modelStack,
-      primary: preset.modelId,
-      heavy_hitter: preserveHeavyHitter ? modelStack.heavy_hitter : preset.modelId,
-    }
-    setModelStack(newStack)
-    try {
-      const res = await fetch("/api/v1/chat/models/config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          stack: newStack,
-          providers: { ollama_base_url: ollamaBaseUrl },
-        }),
-      })
-      const data = await res.json().catch(() => null)
-      if (res.ok && data) {
-        applyControlsConfig(data)
-        setMessages(prev => [...prev, systemMsg(`Local model set to **${preset.name}**. Make sure Ollama is running with \`ollama run ${preset.modelId.replace("ollama/", "")}\`.`)])
-      } else {
-        setSettingsError("Could not apply local model.")
-      }
-    } catch {
-      setSettingsError("Could not apply local model.")
-    }
-  }, [modelStack, ollamaBaseUrl, aiSourceMode, applyControlsConfig])
-
-  const handleModelStackChange = useCallback((field: keyof ModelStackForm, value: string) => {
-    setModelStack(prev => ({ ...prev, [field]: value }))
-  }, [])
 
   const handleProviderDraftChange = useCallback((field: keyof ProviderTokenDrafts, value: string) => {
     setProviderDrafts(prev => ({ ...prev, [field]: value }))
@@ -2669,7 +2991,7 @@ function SparkbotDmPage() {
     setSettingsError("")
     try {
       const parsedArgs = taskArgs.trim() ? JSON.parse(taskArgs) : {}
-      const res = await fetch(`/api/v1/chat/rooms/${roomId}/guardian/tasks`, {
+      const res = await apiFetch(`/api/v1/chat/rooms/${roomId}/guardian/tasks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -2700,7 +3022,7 @@ function SparkbotDmPage() {
     if (!roomId) return
     setSettingsError("")
     try {
-      const res = await fetch(`/api/v1/chat/rooms/${roomId}/guardian/tasks/${taskId}`, {
+      const res = await apiFetch(`/api/v1/chat/rooms/${roomId}/guardian/tasks/${taskId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -2722,7 +3044,7 @@ function SparkbotDmPage() {
     if (!roomId) return
     setSettingsError("")
     try {
-      const res = await fetch(`/api/v1/chat/rooms/${roomId}/guardian/tasks/${taskId}/run`, {
+      const res = await apiFetch(`/api/v1/chat/rooms/${roomId}/guardian/tasks/${taskId}/run`, {
         method: "POST",
         credentials: "include",
       })
@@ -2767,7 +3089,7 @@ function SparkbotDmPage() {
 
     if (cmd === "/audit") {
       if (!roomId) return true
-      fetch(`/api/v1/chat/audit?limit=10&room_id=${roomId}`, { credentials: "include" })
+      apiFetch(`/api/v1/chat/audit?limit=10&room_id=${roomId}`, { credentials: "include" })
         .then(r => r.json())
         .then(data => {
           const items: any[] = data.items ?? []
@@ -2834,7 +3156,7 @@ function SparkbotDmPage() {
     if (cmd === "/model") {
       if (!args) {
         // List available models
-        fetch("/api/v1/chat/models", { credentials: "include" })
+        apiFetch("/api/v1/chat/models", { credentials: "include" })
           .then(r => r.json())
           .then(data => {
             const lines = data.models.map((m: { id: string; description: string; active: boolean }) =>
@@ -2846,7 +3168,7 @@ function SparkbotDmPage() {
         return true
       }
       // Set model
-      fetch("/api/v1/chat/model", {
+      apiFetch("/api/v1/chat/model", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -2867,7 +3189,7 @@ function SparkbotDmPage() {
 
     if (cmd === "/memory") {
       if (!args || args === "list") {
-        fetch("/api/v1/chat/memory/", { credentials: "include" })
+        apiFetch("/api/v1/chat/memory/", { credentials: "include" })
           .then(r => r.json())
           .then(data => {
             if (!data.memories?.length) {
@@ -2883,7 +3205,7 @@ function SparkbotDmPage() {
         return true
       }
       if (args === "clear") {
-        fetch("/api/v1/chat/memory/", { method: "DELETE", credentials: "include" })
+        apiFetch("/api/v1/chat/memory/", { method: "DELETE", credentials: "include" })
           .then(r => r.json())
           .then(d => setMessages(prev => [...prev, systemMsg(`Cleared ${d.cleared} memories.`)]))
           .catch(() => setMessages(prev => [...prev, systemMsg("⚠️ Could not clear memories.")]))
@@ -2896,7 +3218,7 @@ function SparkbotDmPage() {
     if (cmd === "/tasks") {
       if (!roomId) { setMessages(prev => [...prev, systemMsg("⚠️ Room not loaded yet.")]); return true }
       const filter = args === "done" ? "done" : args === "all" ? "all" : "open"
-      fetch(`/api/v1/chat/rooms/${roomId}/tasks?filter=${filter}`, { credentials: "include" })
+      apiFetch(`/api/v1/chat/rooms/${roomId}/tasks?filter=${filter}`, { credentials: "include" })
         .then(r => r.json())
         .then(data => {
           if (!data.tasks?.length) {
@@ -2917,7 +3239,7 @@ function SparkbotDmPage() {
 
     if (cmd === "/remind") {
       if (!roomId) { setMessages(prev => [...prev, systemMsg("⚠️ Room not loaded yet.")]); return true }
-      fetch(`/api/v1/chat/rooms/${roomId}/reminders?status=pending`, { credentials: "include" })
+      apiFetch(`/api/v1/chat/rooms/${roomId}/reminders?status=pending`, { credentials: "include" })
         .then(r => r.json())
         .then(data => {
           if (!data.reminders?.length) {
@@ -3011,7 +3333,7 @@ function SparkbotDmPage() {
       form.append("file", file)
       form.append("caption", caption)
 
-      const res = await fetch(`/api/v1/chat/rooms/${roomId}/upload`, {
+      const res = await apiFetch(`/api/v1/chat/rooms/${roomId}/upload`, {
         method: "POST",
         credentials: "include",
         body: form,
@@ -3039,7 +3361,7 @@ function SparkbotDmPage() {
             if (ev.type === "human_message") {
               // Update human message to show the actual image/file
               const fileContent = isImage
-                ? `![${file.name}](/api/v1/chat/rooms/${roomId}/uploads/${ev.message_id}/${file.name})\n\n${caption}`
+                ? `![${file.name}](${apiUrl(`/api/v1/chat/rooms/${roomId}/uploads/${ev.message_id}/${file.name}`)})\n\n${caption}`
                 : humanContent
               setMessages(prev => prev.map(m => m.id === tempHumanId ? { ...m, id: ev.message_id, content: fileContent } : m))
             } else if (ev.type === "token") {
@@ -3049,7 +3371,7 @@ function SparkbotDmPage() {
               if (ev.file_url && isImage) {
                 setMessages(prev => prev.map(m =>
                   m.sender_type === "HUMAN" && m.content.startsWith("📷")
-                    ? { ...m, content: `![${file.name}](${ev.file_url})${caption ? `\n\n${caption}` : ""}` }
+                    ? { ...m, content: `![${file.name}](${apiUrl(ev.file_url)})${caption ? `\n\n${caption}` : ""}` }
                     : m
                 ))
               }
@@ -3070,7 +3392,7 @@ function SparkbotDmPage() {
 
   const playTTS = useCallback(async (text: string) => {
     try {
-      const res = await fetch("/api/v1/chat/voice/tts", {
+      const res = await apiFetch("/api/v1/chat/voice/tts", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -3101,7 +3423,7 @@ function SparkbotDmPage() {
       const form = new FormData()
       form.append("audio", blob, "recording.webm")
 
-      const res = await fetch(`/api/v1/chat/rooms/${roomId}/voice`, {
+      const res = await apiFetch(`/api/v1/chat/rooms/${roomId}/voice`, {
         method: "POST",
         credentials: "include",
         body: form,
@@ -3173,7 +3495,7 @@ function SparkbotDmPage() {
     try {
       const form = new FormData()
       form.append("audio", blob, "recording.webm")
-      const res = await fetch(`/api/v1/chat/rooms/${roomId}/voice/transcribe`, {
+      const res = await apiFetch(`/api/v1/chat/rooms/${roomId}/voice/transcribe`, {
         method: "POST",
         credentials: "include",
         body: form,
@@ -3248,7 +3570,7 @@ function SparkbotDmPage() {
     ])
 
     try {
-      const res = await fetch(`/api/v1/chat/rooms/${roomId}/messages/stream`, {
+      const res = await apiFetch(`/api/v1/chat/rooms/${roomId}/messages/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -3319,7 +3641,7 @@ function SparkbotDmPage() {
       { id: tempBotId, content: "", created_at: new Date().toISOString(), sender_type: "BOT", isStreaming: true },
     ])
     try {
-      const res = await fetch(`/api/v1/chat/rooms/${roomId}/messages/stream`, {
+      const res = await apiFetch(`/api/v1/chat/rooms/${roomId}/messages/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -3361,7 +3683,7 @@ function SparkbotDmPage() {
     const trimmed = editContent.trim()
     if (!trimmed || !roomId) { setEditingId(null); return }
     try {
-      const res = await fetch(`/api/v1/chat/messages/${roomId}/message/${msgId}`, {
+      const res = await apiFetch(`/api/v1/chat/messages/${roomId}/message/${msgId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -3403,10 +3725,18 @@ function SparkbotDmPage() {
         dashboardSummary={controlsDashboard}
         modelsConfig={modelsConfig}
         modelStack={modelStack}
+        defaultSelection={defaultSelection}
+        routingPolicy={routingPolicy}
+        localDefaultModel={localDefaultModel}
+        agentOverrides={agentOverrides}
+        openRouterModels={openRouterModels}
         providerDrafts={providerDrafts}
         commsForm={commsForm}
         savingModelStack={savingModelStack}
         savingProviderTokens={savingProviderTokens}
+        savingDefaultSelection={savingDefaultSelection}
+        savingAgentOverrides={savingAgentOverrides}
+        loadingOpenRouterModels={loadingOpenRouterModels}
         savingComms={savingComms}
         tokenGuardianMode={tokenGuardianMode}
         savingTokenGuardianMode={savingTokenGuardianMode}
@@ -3422,11 +3752,18 @@ function SparkbotDmPage() {
         onRefresh={refreshControls}
         onToggleExecution={toggleExecutionGate}
         onModelStackChange={handleModelStackChange}
+        onDefaultSelectionChange={handleDefaultSelectionChange}
+        onLocalDefaultModelChange={handleLocalDefaultModelChange}
+        onAgentOverrideChange={handleAgentOverrideChange}
         onProviderDraftChange={handleProviderDraftChange}
         onCommsTextChange={handleCommsTextChange}
         onCommsToggleChange={handleCommsToggleChange}
         onSaveModelStack={saveModelStack}
         onSaveProviderTokens={saveProviderTokens}
+        onSaveDefaultSelection={saveDefaultSelection}
+        onRoutingPolicyChange={handleRoutingPolicyChange}
+        onSaveAgentOverrides={saveAgentOverrides}
+        onLoadOpenRouterModels={loadOpenRouterModels}
         onSaveComms={saveComms}
         onTokenGuardianModeChange={setTokenGuardianMode}
         onSaveTokenGuardianMode={saveTokenGuardianMode}
@@ -3457,14 +3794,11 @@ function SparkbotDmPage() {
         onSpawnPromptChange={setSpawnPrompt}
         onSpawnAgent={spawnAgent}
         onDeleteAgent={deleteAgent}
-        aiSourceMode={aiSourceMode}
-        onAiSourceModeChange={setAiSourceMode}
         ollamaStatus={ollamaStatus}
         ollamaBaseUrl={ollamaBaseUrl}
         ollamaLoading={ollamaLoading}
         onCheckOllamaStatus={checkOllamaStatus}
         onOllamaBaseUrlChange={setOllamaBaseUrl}
-        onApplyLocalModel={applyLocalModel}
       />
 
       {/* Search overlay */}
@@ -3503,7 +3837,7 @@ function SparkbotDmPage() {
             <SparkbotSurfaceTabs
               active={controlsRequested ? "controls" : "chat"}
               onChat={() => navigate({ to: "/dm" })}
-              onWorkstation={() => navigate({ to: "/workstation" })}
+              onWorkstation={() => navigate({ to: isV1LocalMode ? "/dm" : "/workstation" })}
               onControls={() => openControlsPanel()}
             />
             <button
@@ -3516,7 +3850,7 @@ function SparkbotDmPage() {
             <button onClick={() => {
               localStorage.removeItem("access_token")
               sessionStorage.removeItem("chat_auth")
-              fetch("/api/v1/chat/users/session", { method: "DELETE", credentials: "include" }).finally(() => { window.location.href = "/login" })
+              apiFetch("/api/v1/chat/users/session", { method: "DELETE", credentials: "include" }).finally(() => { window.location.href = "/login" })
             }} className="rounded-full border border-[rgba(99,102,241,0.14)] bg-[rgba(7,13,28,0.76)] px-3 py-2 text-xs font-medium tracking-[0.08em] text-slate-300 transition-all hover:border-[rgba(129,140,248,0.24)] hover:bg-[rgba(79,70,229,0.08)] hover:text-slate-50">
               Logout
             </button>
@@ -3527,7 +3861,7 @@ function SparkbotDmPage() {
       {/* Messages */}
       <div className="flex-1 overflow-auto px-4 py-4 space-y-2">
         {messages.length === 0 ? (
-          (modelsConfig?.providers.filter((p) => p.configured).length ?? 0) === 0 ? (
+          (modelsConfig?.providers.filter((p) => p.configured || p.models_available === true).length ?? 0) === 0 ? (
             <div className="flex flex-col items-center justify-center h-full gap-4 py-12 text-center px-4">
               <div className="flex size-14 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-500">
                 <svg xmlns="http://www.w3.org/2000/svg" className="size-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
@@ -3535,7 +3869,7 @@ function SparkbotDmPage() {
               <div className="space-y-1">
                 <p className="text-sm font-semibold">No AI provider connected</p>
                 <p className="text-xs text-muted-foreground max-w-xs">
-                  Sparkbot needs an AI provider to respond. Add a cloud API key (OpenAI, Anthropic…) or set up a local model via Ollama — both work.
+                  Sparkbot needs a model before it can reply. Connect cloud AI in Controls, or use a local Ollama model on this machine.
                 </p>
               </div>
               <div className="flex flex-col gap-2 sm:flex-row">
@@ -3547,13 +3881,13 @@ function SparkbotDmPage() {
                       "linear-gradient(135deg, rgba(79,70,229,0.96), rgba(99,102,241,0.9), rgba(56,189,248,0.48))",
                   }}
                 >
-                  Add cloud API key
+                  Connect cloud AI
                 </button>
                 <button
                   onClick={() => openControlsPanel("local")}
                   className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-muted"
                 >
-                  Set up local model
+                  Use local AI on this machine
                 </button>
               </div>
             </div>

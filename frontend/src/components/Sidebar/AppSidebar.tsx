@@ -9,6 +9,7 @@ import {
   SidebarHeader,
 } from "@/components/ui/sidebar"
 import useAuth from "@/hooks/useAuth"
+import { isV1LocalMode } from "@/lib/v1Local"
 import { type Item, Main } from "./Main"
 import { User } from "./User"
 
@@ -22,10 +23,13 @@ const baseItems: Item[] = [
 
 export function AppSidebar() {
   const { user: currentUser } = useAuth()
+  const visibleBaseItems = isV1LocalMode
+    ? baseItems.filter((item) => item.path !== "/workstation")
+    : baseItems
 
   const items = currentUser?.is_superuser
-    ? [...baseItems, { icon: Users, title: "Admin", path: "/admin" }]
-    : baseItems
+    ? [...visibleBaseItems, { icon: Users, title: "Admin", path: "/admin" }]
+    : visibleBaseItems
 
   return (
     <Sidebar collapsible="icon">

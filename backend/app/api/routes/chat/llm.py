@@ -10,7 +10,8 @@ import os
 import re
 import time
 import uuid as _uuid_module
-from typing import AsyncGenerator
+from datetime import datetime, timezone
+from typing import Any, AsyncGenerator
 
 import litellm
 
@@ -22,6 +23,11 @@ PRIMARY_MODEL_ENV = "SPARKBOT_MODEL"
 BACKUP_MODEL_1_ENV = "SPARKBOT_BACKUP_MODEL_1"
 BACKUP_MODEL_2_ENV = "SPARKBOT_BACKUP_MODEL_2"
 HEAVY_HITTER_MODEL_ENV = "SPARKBOT_HEAVY_HITTER_MODEL"
+DEFAULT_PROVIDER_ENV = "SPARKBOT_DEFAULT_PROVIDER"
+OPENROUTER_DEFAULT_MODEL_ENV = "SPARKBOT_OPENROUTER_MODEL"
+LOCAL_DEFAULT_MODEL_ENV = "SPARKBOT_LOCAL_MODEL"
+AGENT_MODEL_OVERRIDES_ENV = "SPARKBOT_AGENT_MODEL_OVERRIDES_JSON"
+DEFAULT_CROSS_PROVIDER_FALLBACK_ENV = "SPARKBOT_DEFAULT_CROSS_PROVIDER_FALLBACK"
 _HEAVY_HITTER_CLASSIFICATIONS = {"coding", "creative", "data_analysis", "reasoning"}
 
 SYSTEM_PROMPT = (
@@ -43,6 +49,7 @@ SYSTEM_PROMPT = (
 
 # Curated model list — only show what's actually usable given configured keys
 AVAILABLE_MODELS: dict[str, str] = {
+    "openrouter/openai/gpt-4o-mini": "OpenRouter · GPT-4o Mini — easy cloud default",
     "gpt-4o-mini":                   "GPT-4o Mini — fast, cost-effective (default)",
     "gpt-4o":                        "GPT-4o — most capable OpenAI model",
     "gpt-4.5":                       "GPT-4.5 — OpenAI advanced reasoning model",
@@ -78,6 +85,10 @@ _user_models: dict[str, str] = {}
 # Pending confirmations: confirm_id -> {tool, args, user_id, room_id, created_at}
 _pending: dict[str, dict] = {}
 _PENDING_TTL = 600  # 10 minutes
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
 
 
 def _pending_ttl_cleanup() -> None:
@@ -224,18 +235,156 @@ async def get_ollama_status() -> dict:
             if resp.status_code == 200:
                 data = resp.json()
                 models = [m["name"] for m in data.get("models", [])]
-                return {"reachable": True, "base_url": base_url, "models": models}
+                model_ids = [
+                    name if name.startswith("ollama/") else f"ollama/{name}"
+                    for name in models
+                ]
+                return {
+                    "reachable": True,
+                    "base_url": base_url,
+                    "models": models,
+                    "model_ids": model_ids,
+                    "models_available": bool(model_ids),
+                }
     except Exception:
         pass
-    return {"reachable": False, "base_url": base_url, "models": []}
+    return {
+        "reachable": False,
+        "base_url": base_url,
+        "models": [],
+        "model_ids": [],
+        "models_available": False,
+    }
+
+
+def is_valid_model(model: str) -> bool:
+    normalized = (model or "").strip()
+    if not normalized:
+        return False
+    if normalized in AVAILABLE_MODELS:
+        return True
+    if normalized.startswith("openrouter/"):
+        return True
+    if normalized.startswith("ollama/"):
+        return True
+    return False
+
+
+def model_label(model: str) -> str:
+    normalized = (model or "").strip()
+    if normalized in AVAILABLE_MODELS:
+        return AVAILABLE_MODELS[normalized]
+    if normalized.startswith("openrouter/"):
+        slug = normalized.removeprefix("openrouter/")
+        return f"OpenRouter · {slug}"
+    if normalized.startswith("ollama/"):
+        slug = normalized.removeprefix("ollama/")
+        return f"Local Ollama · {slug}"
+    return normalized
 
 
 def _default_model() -> str:
-    return os.getenv(PRIMARY_MODEL_ENV, os.getenv("OPENAI_MODEL", "gpt-4o-mini")).strip() or "gpt-4o-mini"
+    return (
+        os.getenv(PRIMARY_MODEL_ENV, os.getenv("OPENAI_MODEL", "gpt-4o-mini")).strip()
+        or "gpt-4o-mini"
+    )
+
+
+def get_default_provider() -> str:
+    explicit = os.getenv(DEFAULT_PROVIDER_ENV, "").strip().lower()
+    if explicit:
+        return explicit
+    return model_provider(_default_model())
+
+
+def get_openrouter_default_model() -> str:
+    configured = os.getenv(OPENROUTER_DEFAULT_MODEL_ENV, "").strip()
+    if configured:
+        return configured
+    primary = _default_model()
+    if model_provider(primary) == "openrouter":
+        return primary
+    return "openrouter/openai/gpt-4o-mini"
+
+
+def get_local_default_model() -> str:
+    configured = os.getenv(LOCAL_DEFAULT_MODEL_ENV, "").strip()
+    if configured:
+        return configured
+    primary = _default_model()
+    if model_provider(primary) == "ollama":
+        return primary
+    return "ollama/phi4-mini"
+
+
+def default_cross_provider_fallback_enabled() -> bool:
+    raw = os.getenv(DEFAULT_CROSS_PROVIDER_FALLBACK_ENV, "").strip().lower()
+    if raw:
+        return raw in {"1", "true", "yes", "on"}
+    # Local installs should fail within the chosen provider unless the user
+    # explicitly opts into cross-provider fallback.
+    return os.getenv("V1_LOCAL_MODE", "false").strip().lower() not in {"1", "true", "yes", "on"}
+
+
+def get_agent_model_overrides() -> dict[str, dict[str, str]]:
+    raw = os.getenv(AGENT_MODEL_OVERRIDES_ENV, "").strip()
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    cleaned: dict[str, dict[str, str]] = {}
+    for key, value in parsed.items():
+        if not isinstance(value, dict):
+            continue
+        route = str(value.get("route") or "default").strip().lower()
+        model = str(value.get("model") or "").strip()
+        if route not in {"default", "openrouter", "local"}:
+            continue
+        cleaned[str(key).strip().lower()] = {"route": route, "model": model}
+    return cleaned
+
+
+def get_agent_route_context(
+    *,
+    default_model: str,
+    agent_name: str | None = None,
+) -> dict[str, Any]:
+    overrides = get_agent_model_overrides()
+    effective_agent = (agent_name or "sparkbot").strip().lower()
+    override = overrides.get(effective_agent)
+
+    route = str((override or {}).get("route") or "default").strip().lower()
+    if route not in {"default", "openrouter", "local"}:
+        route = "default"
+
+    chosen_model = default_model
+    if route == "openrouter":
+        chosen_model = str((override or {}).get("model") or "").strip() or get_openrouter_default_model()
+    elif route == "local":
+        chosen_model = str((override or {}).get("model") or "").strip() or get_local_default_model()
+
+    return {
+        "agent_name": effective_agent,
+        "route": route,
+        "provider_locked": route in {"openrouter", "local"},
+        "model": chosen_model,
+        "requested_provider": model_provider(chosen_model),
+        "cross_provider_fallback": (
+            default_cross_provider_fallback_enabled()
+            if route == "default"
+            else False
+        ),
+    }
 
 
 def model_provider(model: str) -> str:
     normalized = (model or "").strip()
+    if normalized.startswith("openrouter/"):
+        return "openrouter"
     if normalized.startswith("gpt-"):
         return "openai"
     if normalized.startswith("claude"):
@@ -253,6 +402,8 @@ def model_provider(model: str) -> str:
 
 def model_is_configured(model: str) -> bool:
     provider = model_provider(model)
+    if provider == "openrouter":
+        return bool(os.getenv("OPENROUTER_API_KEY", "").strip())
     if provider == "openai":
         return bool(os.getenv("OPENAI_API_KEY", "").strip())
     if provider == "anthropic":
@@ -297,7 +448,7 @@ def set_model_stack(
         "heavy_hitter": (heavy_hitter or "").strip(),
     }
     for key, model in stack.items():
-        if model and model not in AVAILABLE_MODELS:
+        if model and not is_valid_model(model):
             raise ValueError(f"Unknown model '{model}' for {key}.")
 
     non_empty = [model for model in stack.values() if model]
@@ -315,13 +466,167 @@ def set_model_stack(
     return stack
 
 
-def _candidate_models(primary_model: str, route_payload: dict | None = None) -> list[str]:
+def _annotate_route_payload(
+    route_payload: dict[str, Any] | None,
+    *,
+    route_context: dict[str, Any],
+    current_model: str,
+    applied_model: str | None = None,
+) -> dict[str, Any]:
+    payload = dict(route_payload or {})
+    payload["route"] = route_context["route"]
+    payload["provider_locked"] = bool(route_context["provider_locked"])
+    payload["requested_provider"] = route_context["requested_provider"]
+    payload["requested_model"] = route_context["model"]
+    payload["current_model"] = current_model
+    resolved_applied = (applied_model or payload.get("applied_model") or current_model).strip()
+    payload["applied_model"] = resolved_applied
+    payload["applied_provider"] = model_provider(resolved_applied)
+    return payload
+
+
+def _locked_route_payload(
+    *,
+    message: str,
+    route_context: dict[str, Any],
+) -> dict[str, Any]:
+    model_name = str(route_context["model"]).strip()
+    return {
+        "timestamp": _utc_now_iso(),
+        "query": message,
+        "classification": "forced_provider",
+        "confidence": 1.0,
+        "threshold": 1.0,
+        "selected_model": model_name,
+        "fallback_triggered": False,
+        "fallback_reason": None,
+        "optimization": None,
+        "estimated_cost": 0.0,
+        "status": "locked",
+        "mode": "locked",
+        "current_model": model_name,
+        "estimated_tokens": None,
+        "estimated_current_cost": 0.0,
+        "estimated_savings": 0.0,
+        "would_switch_models": False,
+        "configured_models": [model_name],
+        "allowed_live_models": [model_name],
+        "live_ready": True,
+        "selected_model_supported": is_valid_model(model_name),
+        "selected_model_configured": model_is_configured(model_name),
+        "selected_model_allowed": True,
+        "candidate_models": [model_name],
+        "applied_model": model_name,
+        "applied_provider": route_context["requested_provider"],
+        "live_routed": False,
+        "route": route_context["route"],
+        "provider_locked": True,
+        "requested_provider": route_context["requested_provider"],
+        "requested_model": model_name,
+    }
+
+
+def _provider_authoritative_route_payload(
+    *,
+    message: str,
+    route_context: dict[str, Any],
+) -> dict[str, Any]:
+    model_name = str(route_context["model"]).strip()
+    provider_name = str(route_context["requested_provider"]).strip()
+    return {
+        "timestamp": _utc_now_iso(),
+        "query": message,
+        "classification": "default_provider_authoritative",
+        "confidence": 1.0,
+        "threshold": 1.0,
+        "selected_model": model_name,
+        "fallback_triggered": False,
+        "fallback_reason": None,
+        "optimization": None,
+        "estimated_cost": 0.0,
+        "status": "provider_default",
+        "mode": "provider_default",
+        "current_model": model_name,
+        "estimated_tokens": None,
+        "estimated_current_cost": 0.0,
+        "estimated_savings": 0.0,
+        "would_switch_models": False,
+        "configured_models": [model_name],
+        "allowed_live_models": [model_name],
+        "live_ready": True,
+        "selected_model_supported": is_valid_model(model_name),
+        "selected_model_configured": model_is_configured(model_name),
+        "selected_model_allowed": True,
+        "candidate_models": [model_name],
+        "applied_model": model_name,
+        "applied_provider": provider_name,
+        "live_routed": False,
+        "route": "default",
+        "provider_locked": False,
+        "requested_provider": provider_name,
+        "requested_model": model_name,
+        "cross_provider_fallback": bool(route_context.get("cross_provider_fallback")),
+        "provider_authoritative": True,
+    }
+
+
+async def _ensure_locked_route_ready(route_context: dict[str, Any]) -> None:
+    route = str(route_context.get("route") or "default").strip().lower()
+    model_name = str(route_context.get("model") or "").strip()
+    if route == "openrouter":
+        if not os.getenv("OPENROUTER_API_KEY", "").strip():
+            raise RuntimeError(
+                "OpenRouter is forced for this agent, but no OpenRouter API key is saved in Controls."
+            )
+        return
+    if route == "local":
+        ollama_status = await get_ollama_status()
+        if not ollama_status.get("reachable"):
+            raise RuntimeError(
+                f"Local Ollama is forced for this agent, but Ollama is not reachable at {ollama_status['base_url']}."
+            )
+        if model_name not in set(ollama_status.get("model_ids") or []):
+            raise RuntimeError(
+                f"Local Ollama is forced for this agent, but model '{model_name}' is not downloaded on this machine."
+            )
+
+
+def _format_locked_route_error(route_context: dict[str, Any], error: Exception) -> str:
+    route = str(route_context.get("route") or "default").strip().lower()
+    model_name = str(route_context.get("model") or "").strip()
+    if route == "openrouter":
+        return (
+            f"OpenRouter is forced for this agent, but model '{model_name}' could not run. "
+            f"Fix the OpenRouter setup or change this agent back to Use default. Details: {error}"
+        )
+    if route == "local":
+        return (
+            f"Local Ollama is forced for this agent, but model '{model_name}' could not run. "
+            f"Make sure Ollama is running and the model is downloaded, or change this agent back to Use default. Details: {error}"
+        )
+    return str(error)
+
+
+def _candidate_models(
+    primary_model: str,
+    route_payload: dict | None = None,
+    route_context: dict[str, Any] | None = None,
+) -> list[str]:
+    if route_context and route_context.get("provider_locked"):
+        return [primary_model]
+
     stack = get_model_stack()
     candidates: list[str] = []
+    requested_provider = str((route_context or {}).get("requested_provider") or model_provider(primary_model)).strip()
+    allow_cross_provider = bool((route_context or {}).get("cross_provider_fallback"))
 
     def add(model_name: str) -> None:
         normalized = (model_name or "").strip()
-        if normalized and normalized in AVAILABLE_MODELS and normalized not in candidates:
+        if not normalized:
+            return
+        if not allow_cross_provider and model_provider(normalized) != requested_provider:
+            return
+        if normalized and is_valid_model(normalized) and normalized not in candidates:
             candidates.append(normalized)
 
     add(primary_model)
@@ -333,22 +638,46 @@ def _candidate_models(primary_model: str, route_payload: dict | None = None) -> 
     if classification not in _HEAVY_HITTER_CLASSIFICATIONS:
         add(stack["heavy_hitter"])
 
-    return [candidate for candidate in candidates if model_is_configured(candidate)] or [primary_model]
+    filtered = [candidate for candidate in candidates if model_is_configured(candidate)]
+    if filtered:
+        return filtered
+    return [primary_model]
 
 
 async def _acompletion_with_fallback(
     *,
     model: str,
     route_payload: dict | None = None,
+    route_context: dict[str, Any] | None = None,
     **kwargs,
 ):
     last_error: Exception | None = None
     chosen_candidate = model
     errors: list[str] = []
-    for candidate in _candidate_models(model, route_payload):
+    route_mode = str((route_context or {}).get("route") or "default")
+    requested_provider = str((route_context or {}).get("requested_provider") or model_provider(model))
+    candidates = _candidate_models(model, route_payload, route_context=route_context)
+    log.info(
+        "LLM route start: route=%s requested_provider=%s requested_model=%s cross_provider_fallback=%s candidates=%s",
+        route_mode,
+        requested_provider,
+        model,
+        bool((route_context or {}).get("cross_provider_fallback")),
+        candidates,
+    )
+    for candidate in candidates:
         try:
             chosen_candidate = candidate
             response = await litellm.acompletion(model=candidate, **kwargs)
+            log.info(
+                "LLM route applied: route=%s requested_provider=%s requested_model=%s cross_provider_fallback=%s applied_provider=%s applied_model=%s",
+                route_mode,
+                requested_provider,
+                model,
+                bool((route_context or {}).get("cross_provider_fallback")),
+                model_provider(candidate),
+                candidate,
+            )
             if candidate != model:
                 log.warning(
                     "LLM fallback succeeded: requested=%s applied=%s prior_errors=%s",
@@ -360,12 +689,22 @@ async def _acompletion_with_fallback(
         except Exception as exc:
             last_error = exc
             errors.append(f"{candidate}: {type(exc).__name__}: {exc}")
+            if route_context and route_context.get("provider_locked"):
+                friendly_error = _format_locked_route_error(route_context, exc)
+                log.error(
+                    "LLM locked route failed: route=%s requested_provider=%s requested_model=%s error=%s",
+                    route_mode,
+                    requested_provider,
+                    model,
+                    friendly_error,
+                )
+                raise RuntimeError(friendly_error) from exc
             continue
     if last_error is not None:
         log.error(
             "LLM completion failed for all candidates: requested=%s candidates=%s errors=%s",
             model,
-            _candidate_models(model, route_payload),
+            candidates,
             errors,
         )
         raise last_error
@@ -374,15 +713,25 @@ async def _acompletion_with_fallback(
     return chosen_candidate, response
 
 
-def get_model(user_id: str | None = None) -> str:
+def resolve_model_for_agent(
+    *,
+    default_model: str,
+    agent_name: str | None = None,
+) -> str:
+    return get_agent_route_context(default_model=default_model, agent_name=agent_name)["model"]
+
+
+def get_model(user_id: str | None = None, agent_name: str | None = None) -> str:
     if user_id and user_id in _user_models:
-        return _user_models[user_id]
-    return _default_model()
+        base = _user_models[user_id]
+    else:
+        base = _default_model()
+    return resolve_model_for_agent(default_model=base, agent_name=agent_name)
 
 
 def set_model(user_id: str, model: str) -> str:
     """Set model preference for a user. Returns the model string."""
-    if model not in AVAILABLE_MODELS:
+    if not is_valid_model(model):
         raise ValueError(f"Unknown model '{model}'. Available: {', '.join(AVAILABLE_MODELS)}")
     _user_models[user_id] = model
     return model
@@ -412,15 +761,46 @@ def _should_nudge_server_read(message: str) -> bool:
     return bool(_SERVER_READ_HINT_RE.search((message or "").strip()))
 
 
+def _available_models_for_default_route(route_context: dict[str, Any]) -> set[str]:
+    requested_provider = str(route_context.get("requested_provider") or "").strip()
+    allow_cross_provider = bool(route_context.get("cross_provider_fallback"))
+    dynamic_same_provider = {
+        str(route_context.get("model") or "").strip(),
+        _default_model(),
+        get_openrouter_default_model(),
+        get_local_default_model(),
+        *get_model_stack().values(),
+    }
+    if allow_cross_provider:
+        return {
+            model_name
+            for model_name in {*(set(AVAILABLE_MODELS)), *dynamic_same_provider}
+            if model_name
+        }
+    return {
+        model_name.strip()
+        for model_name in {*(set(AVAILABLE_MODELS)), *dynamic_same_provider}
+        if model_provider(model_name) == requested_provider
+    }
+
+
 async def stream_chat(
     messages: list[dict],
     user_id: str | None = None,
     model: str | None = None,
+    agent_name: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """Stream chat completion tokens. Yields text deltas."""
-    chosen = model or get_model(user_id)
+    base_model = model or get_model(user_id)
+    route_context = get_agent_route_context(default_model=base_model, agent_name=agent_name)
+    chosen = route_context["model"]
+    if route_context["provider_locked"]:
+        await _ensure_locked_route_ready(route_context)
+    elif route_context["route"] == "default" and not route_context.get("cross_provider_fallback"):
+        chosen = route_context["model"]
     _, response = await _acompletion_with_fallback(
         model=chosen,
+        route_context=route_context,
         messages=messages,
         stream=True,
         temperature=0.2,
@@ -467,7 +847,9 @@ async def stream_chat_with_tools(
         verify_interactive_tool_run,
     )
 
-    chosen = model or get_model(user_id)
+    base_model = model or get_model(user_id)
+    route_context = get_agent_route_context(default_model=base_model, agent_name=agent_name)
+    chosen = route_context["model"]
     msgs = list(messages)
     latest_user_message = next(
         (
@@ -479,17 +861,37 @@ async def stream_chat_with_tools(
     )
 
     if latest_user_message:
-        try:
-            from app.services.guardian.token_guardian import route_model
-
-            routed_model, route_payload = route_model(
-                latest_user_message,
-                chosen,
-                available_models=set(AVAILABLE_MODELS),
+        if route_context["provider_locked"]:
+            await _ensure_locked_route_ready(route_context)
+            route_payload = _locked_route_payload(
+                message=latest_user_message,
+                route_context=route_context,
             )
-            chosen = routed_model
-        except Exception:
-            route_payload = None
+        else:
+            available_models = _available_models_for_default_route(route_context)
+            try:
+                from app.services.guardian.token_guardian import route_model
+
+                routed_model, route_payload = route_model(
+                    latest_user_message,
+                    chosen,
+                    available_models=available_models,
+                )
+                chosen = routed_model
+                route_payload = _annotate_route_payload(
+                    route_payload,
+                    route_context=route_context,
+                    current_model=route_context["model"],
+                    applied_model=chosen,
+                )
+                route_payload["cross_provider_fallback"] = bool(route_context.get("cross_provider_fallback"))
+                route_payload["provider_authoritative"] = not bool(route_context.get("cross_provider_fallback"))
+            except Exception:
+                route_payload = _provider_authoritative_route_payload(
+                    message=latest_user_message,
+                    route_context=route_context,
+                )
+                chosen = route_context["model"]
     else:
         route_payload = None
 
@@ -577,6 +979,7 @@ async def stream_chat_with_tools(
         chosen, response = await _acompletion_with_fallback(
             model=chosen,
             route_payload=route_payload,
+            route_context=route_context,
             messages=msgs,
             tools=TOOL_DEFINITIONS,
             tool_choice=tool_choice,
@@ -825,6 +1228,7 @@ async def stream_chat_with_tools(
             chosen, stream = await _acompletion_with_fallback(
                 model=chosen,
                 route_payload=route_payload,
+                route_context=route_context,
                 messages=msgs,
                 stream=True,
                 temperature=0.2,

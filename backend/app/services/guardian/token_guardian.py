@@ -230,6 +230,7 @@ def route_model(
     payload["selected_model_supported"] = not available_models or str(payload.get("selected_model") or "") in set(available_models)
     payload["selected_model_configured"] = str(payload.get("selected_model") or "") in set(configured_models)
     payload["selected_model_allowed"] = str(payload.get("selected_model") or "") in set(allowed_models)
+    payload.setdefault("fallback_reason", None)
 
     chosen_model = current_model
     if mode == "live":

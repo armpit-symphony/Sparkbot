@@ -10,9 +10,15 @@ from app.api.deps import get_db
 from app.api.routes.chat.reminders import reminder_scheduler
 from app.core.config import settings
 from app.services.guardian.task_guardian import task_guardian_scheduler
-from app.services.telegram_bridge import telegram_polling_loop
-from app.services.discord_bridge import discord_bot_task
-from app.services.whatsapp_bridge import register_whatsapp_bridge
+
+# Bridge services are optional integrations. They are skipped in V1_LOCAL_MODE
+# (standalone local install) to avoid importing heavy optional dependencies and
+# to prevent bridge import errors from blocking startup.
+# The hosted server (V1_LOCAL_MODE=False, the default) loads them as before.
+if not settings.V1_LOCAL_MODE:
+    from app.services.telegram_bridge import telegram_polling_loop
+    from app.services.discord_bridge import discord_bot_task
+    from app.services.whatsapp_bridge import register_whatsapp_bridge
 
 
 def custom_generate_unique_id(route: APIRoute) -> str:
@@ -63,8 +69,10 @@ app.add_middleware(_SecurityHeadersMiddleware)
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
-# WhatsApp webhook routes mounted here (before uvicorn starts serving)
-register_whatsapp_bridge(app, get_db)
+# WhatsApp webhook routes mounted here (before uvicorn starts serving).
+# Skipped in V1_LOCAL_MODE — no bridge tokens expected for local installs.
+if not settings.V1_LOCAL_MODE:
+    register_whatsapp_bridge(app, get_db)
 
 
 @app.on_event("startup")
@@ -73,10 +81,12 @@ async def _start_background_guardians() -> None:
         app.state.reminder_scheduler_task = asyncio.create_task(reminder_scheduler())
     if not getattr(app.state, "task_guardian_scheduler_task", None):
         app.state.task_guardian_scheduler_task = asyncio.create_task(task_guardian_scheduler(get_db))
-    if not getattr(app.state, "telegram_poller_task", None):
-        app.state.telegram_poller_task = asyncio.create_task(telegram_polling_loop(get_db))
-    if not getattr(app.state, "discord_bot_task", None):
-        app.state.discord_bot_task = asyncio.create_task(discord_bot_task(get_db))
+    # Bridge tasks only start when not in V1_LOCAL_MODE.
+    if not settings.V1_LOCAL_MODE:
+        if not getattr(app.state, "telegram_poller_task", None):
+            app.state.telegram_poller_task = asyncio.create_task(telegram_polling_loop(get_db))
+        if not getattr(app.state, "discord_bot_task", None):
+            app.state.discord_bot_task = asyncio.create_task(discord_bot_task(get_db))
 
     # Load custom agents persisted in DB into the runtime registry
     try:
@@ -103,7 +113,10 @@ async def _start_background_guardians() -> None:
 
 @app.on_event("shutdown")
 async def _stop_background_guardians() -> None:
-    for attr in ("reminder_scheduler_task", "task_guardian_scheduler_task", "telegram_poller_task", "discord_bot_task"):
+    cancel_attrs = ["reminder_scheduler_task", "task_guardian_scheduler_task"]
+    if not settings.V1_LOCAL_MODE:
+        cancel_attrs += ["telegram_poller_task", "discord_bot_task"]
+    for attr in cancel_attrs:
         task = getattr(app.state, attr, None)
         if task:
             task.cancel()

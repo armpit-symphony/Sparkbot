@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 import re
+import json
 from pathlib import Path
 from typing import Any
 
@@ -20,28 +21,42 @@ from pydantic import BaseModel, Field
 
 from app.api.deps import CurrentChatUser, SessionDep
 from app.api.routes.chat.agents import BUILT_IN_AGENTS, get_all_agents, register_agent, unregister_agent
+from app.core.config import settings
 from app.api.routes.chat.llm import (
+    AGENT_MODEL_OVERRIDES_ENV,
     AVAILABLE_MODELS,
     BACKUP_MODEL_1_ENV,
     BACKUP_MODEL_2_ENV,
+    DEFAULT_CROSS_PROVIDER_FALLBACK_ENV,
+    DEFAULT_PROVIDER_ENV,
     HEAVY_HITTER_MODEL_ENV,
+    LOCAL_DEFAULT_MODEL_ENV,
+    OPENROUTER_DEFAULT_MODEL_ENV,
     PRIMARY_MODEL_ENV,
+    default_cross_provider_fallback_enabled,
+    get_agent_model_overrides,
+    get_default_provider,
+    get_local_default_model,
     get_model,
     get_model_stack,
+    get_ollama_status,
+    get_openrouter_default_model,
+    is_valid_model,
+    model_label,
     model_is_configured,
     model_provider,
     set_model,
     set_model_stack,
 )
-from app.services.discord_bridge import get_status as get_discord_status
-from app.services.github_bridge import get_status as get_github_status
-from app.services.telegram_bridge import get_status as get_telegram_status
-from app.services.whatsapp_bridge import get_status as get_whatsapp_status
+# Bridge status imports are deferred to avoid loading bridge libraries
+# (discord.py, pywa, etc.) when V1_LOCAL_MODE is active.
+# In V1_LOCAL_MODE the comms status section returns None for all bridges.
 
 router = APIRouter(tags=["chat-model"])
 
 _ENV_UPDATE_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=")
 _PROVIDER_ENV_KEYS = {
+    "openrouter_api_key": "OPENROUTER_API_KEY",
     "openai_api_key": "OPENAI_API_KEY",
     "anthropic_api_key": "ANTHROPIC_API_KEY",
     "google_api_key": "GOOGLE_API_KEY",
@@ -99,13 +114,14 @@ def _apply_env_updates(updates: dict[str, str]) -> None:
         os.environ[key] = _sanitize_env_value(value)
 
 
-def _provider_catalog() -> list[dict[str, Any]]:
+def _provider_catalog(ollama_status: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     models_by_provider: dict[str, list[str]] = {}
     for model in AVAILABLE_MODELS:
         provider = model_provider(model)
         models_by_provider.setdefault(provider, []).append(model)
 
     ordered = [
+        ("openrouter", "OpenRouter", "OPENROUTER_API_KEY"),
         ("openai", "OpenAI", "OPENAI_API_KEY"),
         ("anthropic", "Anthropic", "ANTHROPIC_API_KEY"),
         ("google", "Google", "GOOGLE_API_KEY"),
@@ -119,40 +135,106 @@ def _provider_catalog() -> list[dict[str, Any]]:
                 "id": provider_id,
                 "label": label,
                 "configured": bool(os.getenv(env_key, "").strip()),
+                "reachable": None,
+                "models_available": None,
+                "available_models": [],
                 "models": sorted(models_by_provider.get(provider_id, [])),
             }
         )
-    # Ollama is configured if OLLAMA_API_BASE is set or any ollama/ model is selected as primary
+    ollama_status = ollama_status or {
+        "reachable": False,
+        "models_available": False,
+        "models": [],
+    }
+    # Ollama is "configured" when the user has actually selected local usage,
+    # while reachability/models_available reflect live runtime status now.
     primary_model = get_model_stack().get("primary", "")
-    ollama_base = os.environ.get("OLLAMA_API_BASE", "")
-    ollama_configured = bool(ollama_base) or primary_model.startswith("ollama/")
+    saved_local_model = bool(os.getenv(LOCAL_DEFAULT_MODEL_ENV, "").strip())
+    agent_local_override = any(
+        str((value or {}).get("route") or "").strip().lower() == "local"
+        for value in get_agent_model_overrides().values()
+    )
+    ollama_configured = saved_local_model or primary_model.startswith("ollama/") or agent_local_override
     items.append(
         {
             "id": "ollama",
             "label": "Local (Ollama)",
             "configured": ollama_configured,
+            "reachable": bool(ollama_status.get("reachable")),
+            "models_available": bool(ollama_status.get("models_available")),
+            "available_models": list(ollama_status.get("model_ids") or []),
             "models": sorted(models_by_provider.get("ollama", [])),
         }
     )
     return items
 
 
-def _build_controls_config(current_user: CurrentChatUser, notices: list[str] | None = None) -> dict[str, Any]:
+def _build_comms_status() -> dict[str, Any]:
+    """Return bridge comms status. Imports bridge modules lazily so that
+    discord.py / pywa / telegram are not loaded in V1_LOCAL_MODE."""
+    if settings.V1_LOCAL_MODE:
+        return {"telegram": None, "discord": None, "whatsapp": None, "github": None}
+    from app.services.discord_bridge import get_status as get_discord_status
+    from app.services.github_bridge import get_status as get_github_status
+    from app.services.telegram_bridge import get_status as get_telegram_status
+    from app.services.whatsapp_bridge import get_status as get_whatsapp_status
+    return {
+        "telegram": get_telegram_status(),
+        "discord": get_discord_status(),
+        "whatsapp": get_whatsapp_status(),
+        "github": get_github_status(),
+    }
+
+
+async def _build_controls_config(current_user: CurrentChatUser, notices: list[str] | None = None) -> dict[str, Any]:
+    ollama_status = await get_ollama_status()
     return {
         "active_model": get_model(str(current_user.id)),
         "stack": get_model_stack(),
+        "default_selection": {
+            "provider": get_default_provider(),
+            "model": get_model(),
+            "label": model_label(get_model()),
+        },
+        "local_runtime": {
+            "default_local_model": get_local_default_model(),
+            "base_url": os.getenv("OLLAMA_API_BASE", "http://localhost:11434").strip() or "http://localhost:11434",
+        },
+        "routing_policy": {
+            "default_provider_authoritative": True,
+            "cross_provider_fallback": default_cross_provider_fallback_enabled(),
+        },
+        "agent_overrides": get_agent_model_overrides(),
+        "available_agents": [
+            {
+                "name": "sparkbot",
+                "emoji": "S",
+                "description": "Main everyday Sparkbot chat",
+                "is_builtin": True,
+            },
+            *[
+                {
+                    "name": name,
+                    "emoji": info["emoji"],
+                    "description": info["description"],
+                    "is_builtin": name in BUILT_IN_AGENTS,
+                }
+                for name, info in get_all_agents().items()
+            ],
+        ],
         "token_guardian_mode": os.getenv("SPARKBOT_TOKEN_GUARDIAN_MODE", "shadow").strip().lower() or "shadow",
-        "providers": _provider_catalog(),
+        "providers": _provider_catalog(ollama_status=ollama_status),
         # Friendly label for every model — keyed by model ID so the frontend
         # can show "GPT-5 Mini — fast…" instead of a raw model string.
         # Auto-updates whenever AVAILABLE_MODELS is updated; no frontend change needed.
-        "model_labels": dict(AVAILABLE_MODELS),
-        "comms": {
-            "telegram": get_telegram_status(),
-            "discord": get_discord_status(),
-            "whatsapp": get_whatsapp_status(),
-            "github": get_github_status(),
+        "model_labels": {
+            **dict(AVAILABLE_MODELS),
+            get_model(): model_label(get_model()),
+            get_openrouter_default_model(): model_label(get_openrouter_default_model()),
+            get_local_default_model(): model_label(get_local_default_model()),
         },
+        "comms": _build_comms_status(),
+        "ollama_status": ollama_status,
         "notices": notices or [],
     }
 
@@ -169,12 +251,21 @@ class ModelStackInput(BaseModel):
 
 
 class ProviderSecretsInput(BaseModel):
+    openrouter_api_key: str | None = None
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None
     google_api_key: str | None = None
     groq_api_key: str | None = None
     minimax_api_key: str | None = None
     ollama_base_url: str | None = None
+
+
+class LocalRuntimeInput(BaseModel):
+    default_local_model: str | None = None
+
+
+class RoutingPolicyInput(BaseModel):
+    cross_provider_fallback: bool | None = None
 
 
 class TelegramConfigInput(BaseModel):
@@ -214,6 +305,10 @@ class CommsConfigInput(BaseModel):
 
 class ControlsConfigUpdate(BaseModel):
     stack: ModelStackInput | None = None
+    default_selection: dict[str, str] | None = None
+    local_runtime: LocalRuntimeInput | None = None
+    routing_policy: RoutingPolicyInput | None = None
+    agent_overrides: dict[str, dict[str, str]] | None = None
     providers: ProviderSecretsInput | None = None
     comms: CommsConfigInput | None = None
     token_guardian_mode: str | None = Field(default=None, pattern="^(off|shadow|live)$")
@@ -225,8 +320,8 @@ def list_models(current_user: CurrentChatUser) -> dict:
     active = get_model(str(current_user.id))
     return {
         "models": [
-            {"id": k, "description": v, "active": k == active, "configured": model_is_configured(k), "provider": model_provider(k)}
-            for k, v in AVAILABLE_MODELS.items()
+            {"id": k, "description": model_label(k), "active": k == active, "configured": model_is_configured(k), "provider": model_provider(k)}
+            for k in AVAILABLE_MODELS
         ],
         "active": active,
     }
@@ -236,7 +331,7 @@ def list_models(current_user: CurrentChatUser) -> dict:
 def get_current_model(current_user: CurrentChatUser) -> dict:
     """Return the active model for the current user."""
     model = get_model(str(current_user.id))
-    return {"model": model, "description": AVAILABLE_MODELS.get(model, model)}
+    return {"model": model, "description": model_label(model)}
 
 
 @router.get("/agents")
@@ -323,24 +418,60 @@ def set_current_model(body: ModelSelect, current_user: CurrentChatUser) -> dict:
         chosen = set_model(str(current_user.id), body.model)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    return {"model": chosen, "description": AVAILABLE_MODELS[chosen]}
+    return {"model": chosen, "description": model_label(chosen)}
 
 
 @router.get("/models/config")
-def get_models_config(current_user: CurrentChatUser) -> dict[str, Any]:
+async def get_models_config(current_user: CurrentChatUser) -> dict[str, Any]:
     _require_operator(current_user)
-    return _build_controls_config(current_user)
+    return await _build_controls_config(current_user)
 
 
 @router.get("/ollama/status")
 async def ollama_status(current_user: CurrentChatUser) -> dict:
     """Check Ollama server connectivity and list available local models."""
-    from app.api.routes.chat.llm import get_ollama_status
     return await get_ollama_status()
 
 
+@router.get("/openrouter/models")
+async def openrouter_models(current_user: CurrentChatUser) -> dict[str, Any]:
+    _require_operator(current_user)
+    import httpx
+
+    headers = {"Accept": "application/json"}
+    api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get("https://openrouter.ai/api/v1/models", headers=headers)
+            response.raise_for_status()
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Could not load OpenRouter models: {exc}")
+
+    payload = response.json()
+    rows: list[dict[str, Any]] = []
+    for item in payload.get("data", []):
+        raw_id = str(item.get("id") or "").strip()
+        if not raw_id:
+            continue
+        rows.append(
+            {
+                "id": f"openrouter/{raw_id}",
+                "raw_id": raw_id,
+                "label": str(item.get("name") or raw_id),
+                "context_length": item.get("context_length"),
+                "pricing": item.get("pricing") or {},
+            }
+        )
+
+    rows.sort(key=lambda item: str(item.get("label") or item["raw_id"]).lower())
+    return {"models": rows}
+
+
 @router.post("/models/config")
-def update_models_config(body: ControlsConfigUpdate, current_user: CurrentChatUser) -> dict[str, Any]:
+async def update_models_config(body: ControlsConfigUpdate, current_user: CurrentChatUser) -> dict[str, Any]:
     _require_operator(current_user)
 
     env_updates: dict[str, str] = {}
@@ -367,6 +498,63 @@ def update_models_config(body: ControlsConfigUpdate, current_user: CurrentChatUs
             }
         )
         notices.append("Model stack updated for Sparkbot.")
+
+    if body.default_selection is not None:
+        provider = str(body.default_selection.get("provider") or "").strip().lower()
+        model = str(body.default_selection.get("model") or "").strip()
+        if provider not in {"openrouter", "ollama", "openai", "anthropic", "google", "groq", "minimax"}:
+            raise HTTPException(status_code=400, detail="Unknown default provider.")
+        if not is_valid_model(model):
+            raise HTTPException(status_code=400, detail=f"Unknown model '{model}'.")
+        actual_provider = model_provider(model)
+        if provider == "ollama":
+            provider = "ollama"
+        if provider != actual_provider:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Model '{model}' does not match provider '{provider}'.",
+            )
+        env_updates[DEFAULT_PROVIDER_ENV] = provider
+        env_updates[PRIMARY_MODEL_ENV] = model
+        if provider == "openrouter":
+            env_updates[OPENROUTER_DEFAULT_MODEL_ENV] = model
+        if provider == "ollama":
+            env_updates[LOCAL_DEFAULT_MODEL_ENV] = model
+        notices.append(f"Default model set to {model_label(model)}.")
+
+    if body.local_runtime is not None and body.local_runtime.default_local_model is not None:
+        local_model = str(body.local_runtime.default_local_model or "").strip()
+        if not local_model:
+            raise HTTPException(status_code=400, detail="Default local model cannot be empty.")
+        if not is_valid_model(local_model) or model_provider(local_model) != "ollama":
+            raise HTTPException(status_code=400, detail=f"Local runtime model '{local_model}' must be an Ollama model.")
+        env_updates[LOCAL_DEFAULT_MODEL_ENV] = local_model
+        notices.append(f"Preferred local model set to {model_label(local_model)}.")
+
+    if body.routing_policy is not None and body.routing_policy.cross_provider_fallback is not None:
+        enabled = bool(body.routing_policy.cross_provider_fallback)
+        env_updates[DEFAULT_CROSS_PROVIDER_FALLBACK_ENV] = "true" if enabled else "false"
+        if enabled:
+            notices.append("Cross-provider fallback enabled for the default route.")
+        else:
+            notices.append("Default provider is now authoritative for everyday chat.")
+
+    if body.agent_overrides is not None:
+        cleaned: dict[str, dict[str, str]] = {}
+        for agent_name, value in body.agent_overrides.items():
+            route = str((value or {}).get("route") or "default").strip().lower()
+            model = str((value or {}).get("model") or "").strip()
+            if route not in {"default", "openrouter", "local"}:
+                raise HTTPException(status_code=400, detail=f"Invalid route for agent '{agent_name}'.")
+            if model and not is_valid_model(model):
+                raise HTTPException(status_code=400, detail=f"Unknown model '{model}' for agent '{agent_name}'.")
+            if route == "openrouter" and model and model_provider(model) != "openrouter":
+                raise HTTPException(status_code=400, detail=f"Agent '{agent_name}' must use an OpenRouter model.")
+            if route == "local" and model and model_provider(model) != "ollama":
+                raise HTTPException(status_code=400, detail=f"Agent '{agent_name}' must use a local Ollama model.")
+            cleaned[agent_name.strip().lower()] = {"route": route, "model": model}
+        env_updates[AGENT_MODEL_OVERRIDES_ENV] = json.dumps(cleaned, separators=(",", ":"))
+        notices.append("Agent routing overrides updated.")
 
     if body.providers is not None:
         for field_name, env_key in _PROVIDER_ENV_KEYS.items():
@@ -438,6 +626,6 @@ def update_models_config(body: ControlsConfigUpdate, current_user: CurrentChatUs
     elif body.providers is not None:
         notices.append("Provider tokens are live in the current process and persisted for restart.")
 
-    response = _build_controls_config(current_user, notices=notices)
+    response = await _build_controls_config(current_user, notices=notices)
     response["restart_required"] = restart_required
     return response

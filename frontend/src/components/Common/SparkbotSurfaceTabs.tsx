@@ -1,3 +1,5 @@
+import { isV1LocalMode } from "@/lib/v1Local"
+
 type SparkbotSurfaceTab = "chat" | "workstation" | "controls" | "info"
 
 interface SparkbotSurfaceTabsProps {
@@ -45,7 +47,11 @@ const TAB_CONFIG: Array<{
 export default function SparkbotSurfaceTabs(props: SparkbotSurfaceTabsProps) {
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
-      {TAB_CONFIG.filter((tab) => tab.id !== "info" || props.onInfo).map((tab) => {
+      {TAB_CONFIG.filter((tab) => {
+        if (tab.id === "info" && !props.onInfo) return false
+        if (tab.id === "workstation" && isV1LocalMode) return false
+        return true
+      }).map((tab) => {
         const isActive = props.active === tab.id
 
         return (

@@ -1,20 +1,59 @@
+import { apiFetch } from "@/lib/apiBase"
+
 export const CONTROLS_ONBOARDING_KEY = "sparkbot_controls_onboarded"
 export const CONTROLS_AUTOOPEN_KEY = "sparkbot_controls_autoshown"
 export const CONTROLS_SEARCH_VALUE = "open"
 
 export interface SparkbotControlsConfig {
+  active_model: string
   stack: {
     primary: string
     backup_1: string
     backup_2: string
     heavy_hitter: string
   }
+  default_selection: {
+    provider: string
+    model: string
+    label?: string
+  }
+  local_runtime: {
+    default_local_model: string
+    base_url: string
+  }
+  routing_policy?: {
+    default_provider_authoritative: boolean
+    cross_provider_fallback: boolean
+  }
+  agent_overrides: Record<
+    string,
+    {
+      route: "default" | "openrouter" | "local"
+      model?: string
+    }
+  >
+  available_agents: Array<{
+    name: string
+    emoji: string
+    description: string
+    is_builtin?: boolean
+  }>
   providers: Array<{
     id: string
     label: string
     configured: boolean
+    reachable?: boolean | null
+    models_available?: boolean | null
+    available_models?: string[]
     models: string[]
   }>
+  ollama_status?: {
+    reachable: boolean
+    base_url: string
+    models: string[]
+    model_ids?: string[]
+    models_available?: boolean
+  }
 }
 
 export interface ChatEntryTarget {
@@ -26,13 +65,15 @@ export interface ChatEntryTarget {
 
 export function controlsOnboardingComplete(config: SparkbotControlsConfig | null): boolean {
   if (!config) return false
-  const configuredProviders = config.providers.filter((provider) => provider.configured).length
-  return configuredProviders > 0 && Boolean(config.stack.primary) && Boolean(config.stack.heavy_hitter)
+  const usableProviders = config.providers.filter(
+    (provider) => provider.configured || provider.models_available === true,
+  ).length
+  return usableProviders > 0 && Boolean(config.default_selection?.model)
 }
 
 export async function fetchControlsConfig(): Promise<SparkbotControlsConfig | null> {
   try {
-    const response = await fetch("/api/v1/chat/models/config", {
+    const response = await apiFetch("/api/v1/chat/models/config", {
       credentials: "include",
     })
     if (!response.ok) return null

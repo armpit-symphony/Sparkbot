@@ -11,9 +11,10 @@ import { ApiError, OpenAPI } from "./client"
 import { ThemeProvider } from "./components/theme-provider"
 import { Toaster } from "./components/ui/sonner"
 import "./index.css"
+import { getApiBase } from "./lib/apiBase"
 import { routeTree } from "./routeTree.gen"
 
-OpenAPI.BASE = import.meta.env.VITE_API_URL
+OpenAPI.BASE = getApiBase()
 OpenAPI.TOKEN = async () => {
   return localStorage.getItem("access_token") || ""
 }
