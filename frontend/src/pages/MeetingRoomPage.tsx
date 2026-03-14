@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import { ArrowLeft, Info, Loader2, Users } from "lucide-react"
 import SparkbotSurfaceTabs from "@/components/Common/SparkbotSurfaceTabs"
@@ -41,6 +41,8 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
     content_markdown: string
     created_at: string
   } | null>(null)
+  const [streamingToken, setStreamingToken] = useState("")
+  const streamAbortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     setMeetingMeta(loadMeetingRoomMeta(roomId))
@@ -88,11 +90,9 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
     }
 
     loadRoomState()
-    const pollId = window.setInterval(loadRoomState, 3000)
 
     return () => {
       cancelled = true
-      window.clearInterval(pollId)
     }
   }, [roomId])
 
@@ -101,29 +101,73 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
     [meetingMeta],
   )
 
+  const reloadMessages = async () => {
+    const res = await fetch(`/api/v1/chat/rooms/${roomId}/messages`, { credentials: "include" })
+    if (res.ok) {
+      const data = await res.json()
+      setMessages(data.messages ?? [])
+    }
+  }
+
   async function handleSendMessage(content: string) {
     if (!content.trim() || sending) return
+
+    // Cancel any in-flight stream
+    streamAbortRef.current?.abort()
+    const abort = new AbortController()
+    streamAbortRef.current = abort
+
     setSending(true)
+    setStreamingToken("")
+    setInputValue("")
+
     try {
-      const response = await fetch(`/api/v1/chat/rooms/${roomId}/messages`, {
+      const response = await fetch(`/api/v1/chat/rooms/${roomId}/messages/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
+        signal: abort.signal,
         body: JSON.stringify({ content: content.trim() }),
       })
-      if (!response.ok) {
+
+      if (!response.ok || !response.body) {
         throw new Error("Could not send meeting message.")
       }
-      setInputValue("")
-      const messagesRes = await fetch(`/api/v1/chat/rooms/${roomId}/messages`, {
-        credentials: "include",
-      })
-      if (messagesRes.ok) {
-        const messageData = await messagesRes.json()
-        setMessages(messageData.messages ?? [])
+
+      // Read the SSE stream and accumulate tokens into the typing indicator
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let accumulated = ""
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunk = decoder.decode(value, { stream: true })
+        for (const line of chunk.split("\n")) {
+          if (!line.startsWith("data: ")) continue
+          try {
+            const evt = JSON.parse(line.slice(6))
+            if (evt.type === "token") {
+              accumulated += evt.token
+              setStreamingToken(accumulated)
+            } else if (evt.type === "done" || evt.type === "error") {
+              break
+            }
+          } catch {
+            // malformed SSE line — ignore
+          }
+        }
+      }
+    } catch (err) {
+      if ((err as Error).name !== "AbortError") {
+        console.error("Meeting stream error:", err)
       }
     } finally {
+      setStreamingToken("")
       setSending(false)
+      // Reload to show the saved human + bot messages
+      await reloadMessages()
     }
   }
 
@@ -488,12 +532,41 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                   typingUsers={[]}
                   className="flex-1"
                 />
+                {streamingToken && (
+                  <div
+                    style={{
+                      padding: "8px 16px",
+                      margin: "0 0 2px",
+                      fontSize: 13,
+                      color: "#a5b4fc",
+                      borderTop: "1px solid rgba(99,102,241,0.10)",
+                      whiteSpace: "pre-wrap",
+                      lineHeight: 1.6,
+                      fontStyle: "italic",
+                    }}
+                  >
+                    {streamingToken}
+                    <span style={{ animation: "blink 1s step-end infinite", opacity: 0.7 }}>▌</span>
+                  </div>
+                )}
+                <div
+                  style={{
+                    padding: "4px 16px 2px",
+                    fontSize: 10,
+                    color: "#475569",
+                    letterSpacing: "0.05em",
+                  }}
+                >
+                  {seatedParticipants.length > 0
+                    ? `Call on a participant: ${seatedParticipants.map((s) => `@${s.label.toLowerCase().replace(/\s+/g, "")}`).join("  ")}`
+                    : "Type your message and the roundtable moderator will respond."}
+                </div>
                 <ChatInput
                   value={inputValue}
                   onChange={setInputValue}
                   onSubmit={handleSendMessage}
                   isLoading={sending}
-                  placeholder="Send the next turn into the roundtable..."
+                  placeholder="Send the next turn into the roundtable…"
                 />
               </>
             )}
