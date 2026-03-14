@@ -3837,7 +3837,7 @@ function SparkbotDmPage() {
             <SparkbotSurfaceTabs
               active={controlsRequested ? "controls" : "chat"}
               onChat={() => navigate({ to: "/dm" })}
-              onWorkstation={() => navigate({ to: isV1LocalMode ? "/dm" : "/workstation" })}
+              onWorkstation={() => navigate({ to: "/workstation" })}
               onControls={() => openControlsPanel()}
             />
             <button
