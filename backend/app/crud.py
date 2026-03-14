@@ -243,10 +243,12 @@ def add_chat_room_member(
 
 
 def get_chat_room_member(session: Session, room_id: uuid.UUID, user_id: uuid.UUID) -> Optional[ChatRoomMember]:
+    # Use scalars().first() instead of scalar_one_or_none() to be robust against
+    # any duplicate rows that may exist from a prior double-insert bug.
     return session.execute(
         select(ChatRoomMember)
         .where(ChatRoomMember.room_id == room_id, ChatRoomMember.user_id == user_id)
-    ).scalar_one_or_none()
+    ).scalars().first()
 
 
 def get_chat_room_members(session: Session, room_id: uuid.UUID) -> list[ChatRoomMember]:

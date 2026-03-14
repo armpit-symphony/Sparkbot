@@ -127,23 +127,13 @@ def create_chat_room_endpoint(
     current_user: CurrentChatUser,
 ) -> Any:
     """Create a new chat room."""
+    # create_chat_room already adds the creator as OWNER via add_chat_room_member
     room = create_chat_room(
         session=session,
         name=room_in.name,
         description=room_in.description,
         created_by=current_user.id,
     )
-    
-    # Auto-add creator as OWNER member
-    from app.models import ChatRoomMember, RoomRole
-    member = ChatRoomMember(
-        room_id=room.id,
-        user_id=current_user.id,
-        role=RoomRole.OWNER,
-    )
-    session.add(member)
-    session.commit()
-    
     return room
 
 

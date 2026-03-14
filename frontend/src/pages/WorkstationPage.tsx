@@ -3079,18 +3079,32 @@ export default function WorkstationPage() {
       const description =
         "Launched from Sparkbot Workstation. Turn-taking mode: one at a time."
 
-      if (!roomId) {
-        const createRes = await fetch("/api/v1/chat/rooms", {
+      const createRoom = async (): Promise<string> => {
+        const createRes = await fetch("/api/v1/chat/rooms/", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
           body: JSON.stringify({ name: roomName, description }),
         })
-        if (!createRes.ok) {
-          throw new Error("Could not create roundtable room.")
+        if (!createRes.ok) throw new Error("Could not create roundtable room.")
+        const created = await createRes.json()
+        return created.id as string
+      }
+
+      // If we have a stale roomId from a previous session, verify it still exists.
+      // If not (404) or not ours (403), create a fresh room.
+      if (roomId) {
+        const checkRes = await fetch(`/api/v1/chat/rooms/${roomId}`, {
+          credentials: "include",
+        })
+        if (!checkRes.ok) {
+          roomId = null
+          setProjectRoom((prev) => ({ ...prev, roomId: null }))
         }
-        const createdRoom = await createRes.json()
-        roomId = createdRoom.id
+      }
+
+      if (!roomId) {
+        roomId = await createRoom()
       }
 
       if (!roomId) {
@@ -3115,19 +3129,64 @@ export default function WorkstationPage() {
         throw new Error("Could not prepare meeting room.")
       }
 
+      const launchedAt = new Date()
+      const participantLines = assignedSeatMeta
+        .map((seat) => `- Chair ${seat.seatIndex + 1}: ${seat.label}`)
+        .join("\n")
+
+      // Post a system message into the room summarising the launch
       await fetch(`/api/v1/chat/rooms/${roomId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          content: `Roundtable launched from Workstation.\n\nProtocol: one at a time.\n\nSeated participants:\n${assignedSeatMeta.map((seat) => `- Chair ${seat.seatIndex + 1}: ${seat.label}`).join("\n")}`,
+          content: `Roundtable launched from Workstation.\n\nProtocol: one at a time.\n\nSeated participants:\n${participantLines}`,
+        }),
+      }).catch(() => {})
+
+      // Create the initial Guardian meeting artifact (markdown scaffold)
+      const artifactMarkdown = [
+        `# Roundtable Meeting — ${launchedAt.toISOString().replace("T", " ").slice(0, 16)} UTC`,
+        "",
+        "## Purpose",
+        "_To be defined by participants._",
+        "",
+        "## Participants",
+        ...assignedSeatMeta.map((seat) => `- **Chair ${seat.seatIndex + 1}:** ${seat.label}`),
+        "",
+        "## Agenda",
+        "- _To be defined._",
+        "",
+        "## Discussion",
+        "_Meeting in progress._",
+        "",
+        "## Decisions",
+        "- _None recorded yet._",
+        "",
+        "## Action Items",
+        "- [ ] _None recorded yet._",
+        "",
+        "## Open Questions",
+        "- _None recorded yet._",
+        "",
+        "## Next Steps",
+        "- _To be determined._",
+      ].join("\n")
+
+      await fetch(`/api/v1/chat/rooms/${roomId}/artifacts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          type: "notes",
+          content_markdown: artifactMarkdown,
         }),
       }).catch(() => {})
 
       const meetingMeta: WorkstationMeetingRoomMeta = {
         roomId,
         roomName,
-        launchedAt: new Date().toISOString(),
+        launchedAt: launchedAt.toISOString(),
         protocolLabel: "One at a time",
         seats: assignedSeatMeta,
       }
