@@ -21,11 +21,13 @@ from app.crud import (
     create_chat_room,
     create_chat_room_invite,
     create_chat_message,
+    create_chat_meeting_artifact,
     delete_expired_chat_invites,
     get_chat_room_by_id,
     get_chat_room_member,
     get_chat_room_members,
     get_chat_messages,
+    get_chat_meeting_artifacts,
     get_user_chat_rooms,
     remove_chat_room_member,
     use_chat_invite,
@@ -33,6 +35,8 @@ from app.crud import (
 )
 from app.models import ChatMessage, ChatRoom, ChatRoomInvite, ChatRoomMember, ChatUser, RoomRole, UserType
 from app.schemas.chat import (
+    MeetingArtifactCreate,
+    MeetingArtifactResponse,
     MessageCreate,
     MessageListResponse,
     MessageResponse,
@@ -964,3 +968,71 @@ async def stream_room_message(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+# ── Meeting Artifacts ──────────────────────────────────────────────────────────
+
+from fastapi import Query as _Query
+
+
+@router.get("/{room_id}/artifacts", response_model=list[MeetingArtifactResponse])
+def list_meeting_artifacts(
+    room_id: UUID,
+    session: SessionDep,
+    current_user: CurrentChatUser,
+    artifact_type: str | None = _Query(None, alias="type"),
+    limit: int = 20,
+) -> Any:
+    """List meeting artifacts for a room. Requires membership."""
+    _require_room_access(session, room_id, current_user)
+    artifacts = get_chat_meeting_artifacts(session=session, room_id=room_id, limit=limit)
+    if artifact_type:
+        artifacts = [a for a in artifacts if a.type.value == artifact_type]
+    return artifacts
+
+
+@router.post("/{room_id}/artifacts", response_model=MeetingArtifactResponse)
+def create_meeting_artifact_endpoint(
+    room_id: UUID,
+    artifact_in: MeetingArtifactCreate,
+    session: SessionDep,
+    current_user: CurrentChatUser,
+) -> Any:
+    """Manually create a meeting artifact. OWNER/MOD only."""
+    membership = _require_room_access(session, room_id, current_user)
+    if membership.role.value not in ("OWNER", "MOD"):
+        raise HTTPException(status_code=403, detail="Only OWNERs and MODs can create artifacts")
+    artifact = create_chat_meeting_artifact(
+        session=session,
+        room_id=room_id,
+        created_by_user_id=current_user.id,
+        type=artifact_in.type.value,
+        content_markdown=artifact_in.content_markdown,
+        window_start_ts=artifact_in.window_start_ts,
+        window_end_ts=artifact_in.window_end_ts,
+    )
+    return artifact
+
+
+@router.post("/{room_id}/artifacts/generate")
+async def generate_meeting_notes_endpoint(
+    room_id: UUID,
+    session: SessionDep,
+    current_user: CurrentChatUser,
+) -> Any:
+    """LLM-generate meeting notes from room transcript. OWNER/MOD only."""
+    membership = _require_room_access(session, room_id, current_user)
+    if membership.role.value not in ("OWNER", "MOD"):
+        raise HTTPException(status_code=403, detail="Only OWNERs and MODs can generate notes")
+    from datetime import timezone as _tz
+    from app.services.guardian.meeting_recorder import generate_meeting_notes
+    from app.api.routes.chat.llm import get_model
+    model = get_model(str(current_user.id))
+    result = await generate_meeting_notes(
+        session=session,
+        room_id=room_id,
+        user_id=current_user.id,
+        model=model,
+        window_end_ts=datetime.now(_tz.utc),
+    )
+    return result

@@ -1579,6 +1579,7 @@ interface RoundTablePanelProps {
   onPickSeat: (seatIndex: number) => void
   onLaunchMeeting: () => void
   launchingMeeting: boolean
+  meetingLaunchError?: string | null
 }
 
 function RoundTablePanel({
@@ -1590,6 +1591,7 @@ function RoundTablePanel({
   onPickSeat,
   onLaunchMeeting,
   launchingMeeting,
+  meetingLaunchError,
 }: RoundTablePanelProps) {
   const accentHex = ROUND_TABLE.accentHex
   const assignedIds = getAssignedStationIds(projectRoom)
@@ -1964,6 +1966,11 @@ function RoundTablePanel({
           {launchingMeeting ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Rocket size={13} />}
           {launchingMeeting ? "Launching…" : "Launch Meeting"}
         </button>
+        {meetingLaunchError && (
+          <p style={{ marginTop: 6, fontSize: 11, color: "#f87171", lineHeight: 1.5 }}>
+            {meetingLaunchError}
+          </p>
+        )}
       </div>
     </div>
   )
@@ -2497,6 +2504,7 @@ interface RoundTableStageProps {
   onPickSeat: (seatIndex: number) => void
   onLaunchMeeting: () => void
   launchingMeeting: boolean
+  meetingLaunchError?: string | null
 }
 
 function RoundTableStage({
@@ -2507,6 +2515,7 @@ function RoundTableStage({
   onPickSeat,
   onLaunchMeeting,
   launchingMeeting,
+  meetingLaunchError,
 }: RoundTableStageProps) {
   const participants = projectRoom.seats
     .map((seatId) => eligibleStations.find((station) => station.id === seatId) ?? null)
@@ -2834,6 +2843,11 @@ function RoundTableStage({
             {launchingMeeting ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Rocket size={13} />}
             {launchingMeeting ? "Launching…" : "Launch Meeting"}
           </button>
+          {meetingLaunchError && (
+            <p style={{ marginTop: 8, fontSize: 11, color: "#f87171", lineHeight: 1.5 }}>
+              {meetingLaunchError}
+            </p>
+          )}
         </div>
       </div>
     </div>
@@ -2864,6 +2878,7 @@ export default function WorkstationPage() {
   const [seatPicker, setSeatPicker] = useState<SeatPickerState | null>(null)
   const [launchingSparkBudId, setLaunchingSparkBudId] = useState<string | null>(null)
   const [launchingMeeting, setLaunchingMeeting] = useState(false)
+  const [meetingLaunchError, setMeetingLaunchError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -3056,6 +3071,7 @@ export default function WorkstationPage() {
       })
       .filter((seat): seat is NonNullable<typeof seat> => Boolean(seat))
 
+    setMeetingLaunchError(null)
     setLaunchingMeeting(true)
     try {
       let roomId = projectRoom.roomId
@@ -3124,6 +3140,7 @@ export default function WorkstationPage() {
       navigate({ to: "/meeting/$roomId", params: { roomId } })
     } catch (error) {
       console.error(error)
+      setMeetingLaunchError(error instanceof Error ? error.message : "Could not launch meeting. Check console.")
     } finally {
       setLaunchingMeeting(false)
     }
@@ -3396,6 +3413,7 @@ export default function WorkstationPage() {
                   onPickSeat={(seatIndex) => setSeatPicker({ seatIndex })}
                   onLaunchMeeting={handleLaunchMeeting}
                   launchingMeeting={launchingMeeting}
+                  meetingLaunchError={meetingLaunchError}
                 />
               </div>
 
@@ -3491,6 +3509,7 @@ export default function WorkstationPage() {
             onPickSeat={(seatIndex) => setSeatPicker({ seatIndex })}
             onLaunchMeeting={handleLaunchMeeting}
             launchingMeeting={launchingMeeting}
+            meetingLaunchError={meetingLaunchError}
           />
         )}
         {panel?.kind === "terminal" && (

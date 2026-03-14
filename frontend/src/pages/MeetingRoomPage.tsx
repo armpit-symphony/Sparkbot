@@ -35,9 +35,27 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
   const [sending, setSending] = useState(false)
   const [infoOpen, setInfoOpen] = useState(false)
   const [meetingMeta, setMeetingMeta] = useState<WorkstationMeetingRoomMeta | null>(null)
+  const [generatingNotes, setGeneratingNotes] = useState(false)
+  const [latestArtifact, setLatestArtifact] = useState<{
+    id: string
+    content_markdown: string
+    created_at: string
+  } | null>(null)
 
   useEffect(() => {
     setMeetingMeta(loadMeetingRoomMeta(roomId))
+  }, [roomId])
+
+  useEffect(() => {
+    if (!roomId) return
+    fetch(`/api/v1/chat/rooms/${roomId}/artifacts?type=notes&limit=1`, {
+      credentials: "include",
+    })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((artifacts: Array<{ id: string; content_markdown: string; created_at: string }>) => {
+        if (artifacts.length > 0) setLatestArtifact(artifacts[0])
+      })
+      .catch(() => {})
   }, [roomId])
 
   useEffect(() => {
@@ -106,6 +124,24 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
       }
     } finally {
       setSending(false)
+    }
+  }
+
+  async function handleGenerateNotes() {
+    if (generatingNotes) return
+    setGeneratingNotes(true)
+    try {
+      const res = await fetch(`/api/v1/chat/rooms/${roomId}/artifacts/generate`, {
+        method: "POST",
+        credentials: "include",
+      })
+      if (!res.ok) throw new Error("Could not generate notes")
+      const artifact = await res.json()
+      setLatestArtifact(artifact)
+    } catch (err) {
+      console.error("Generate notes error:", err)
+    } finally {
+      setGeneratingNotes(false)
     }
   }
 
@@ -319,6 +355,74 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
               <Users size={14} />
               Back to Workstation
             </button>
+
+            {/* Meeting Notes */}
+            <div
+              style={{
+                borderTop: "1px solid rgba(99,102,241,0.16)",
+                paddingTop: 12,
+                marginTop: 4,
+              }}
+            >
+              <button
+                type="button"
+                onClick={handleGenerateNotes}
+                disabled={generatingNotes}
+                style={{
+                  width: "100%",
+                  borderRadius: 8,
+                  border: "1px solid rgba(99,102,241,0.3)",
+                  backgroundColor: "rgba(49,46,129,0.2)",
+                  padding: "8px 12px",
+                  fontSize: 11,
+                  color: "#a5b4fc",
+                  cursor: generatingNotes ? "not-allowed" : "pointer",
+                  opacity: generatingNotes ? 0.5 : 1,
+                  transition: "background 0.15s",
+                  letterSpacing: "0.06em",
+                }}
+              >
+                {generatingNotes ? "Generating notes…" : "Generate Meeting Notes"}
+              </button>
+              {latestArtifact && (
+                <div
+                  style={{
+                    marginTop: 10,
+                    borderRadius: 8,
+                    border: "1px solid rgba(99,102,241,0.16)",
+                    backgroundColor: "rgba(7,13,28,0.6)",
+                    padding: 10,
+                  }}
+                >
+                  <p
+                    style={{
+                      marginBottom: 6,
+                      fontSize: 9,
+                      fontWeight: 700,
+                      letterSpacing: "0.1em",
+                      textTransform: "uppercase",
+                      color: "#64748b",
+                    }}
+                  >
+                    Meeting Notes · {new Date(latestArtifact.created_at).toLocaleTimeString()}
+                  </p>
+                  <pre
+                    style={{
+                      maxHeight: 256,
+                      overflowY: "auto",
+                      whiteSpace: "pre-wrap",
+                      fontSize: 11,
+                      color: "#cbd5e1",
+                      lineHeight: 1.6,
+                      margin: 0,
+                      fontFamily: "inherit",
+                    }}
+                  >
+                    {latestArtifact.content_markdown}
+                  </pre>
+                </div>
+              )}
+            </div>
           </aside>
 
           <section

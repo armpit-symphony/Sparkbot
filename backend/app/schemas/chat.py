@@ -61,6 +61,7 @@ class RoomUpdate(BaseModel):
     meeting_mode_enabled: Optional[bool] = None
     meeting_mode_bots_mention_only: Optional[bool] = None
     meeting_mode_max_bot_msgs_per_min: Optional[int] = None
+    meeting_mode_note_taker_bot_slug: Optional[str] = Field(None, max_length=50)
 
 
 class RoomResponse(RoomBase):
