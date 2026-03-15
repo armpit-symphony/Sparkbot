@@ -601,6 +601,8 @@ async def _execute_internal_tool(task: GuardianTask, session: Session) -> tuple[
 
 
 async def run_task_once(task: GuardianTask, session: Session) -> dict[str, Any]:
+    from app.services.guardian.spine import ingest_task_guardian_result
+
     execution_status, output = await _execute_internal_tool(task, session)
     verification = verify_task_run(
         task_name=task.name,
@@ -675,6 +677,23 @@ async def run_task_once(task: GuardianTask, session: Session) -> dict[str, Any]:
         )
     if verification.recommended_next_action:
         content += f"\n\nNext action: {verification.recommended_next_action}"
+
+    try:
+        ingest_task_guardian_result(
+            room_id=task.room_id,
+            guardian_task_id=task.id,
+            task_name=task.name,
+            tool_name=task.tool_name,
+            verification_status=verification.status,
+            summary=verification.summary,
+            recommended_next_action=verification.recommended_next_action,
+            output_excerpt=excerpt,
+            user_id=task.user_id,
+            escalated=followup["escalated"],
+        )
+    except Exception:
+        pass
+
     msg = create_chat_message(
         session=session,
         room_id=uuid.UUID(task.room_id),

@@ -204,6 +204,19 @@ def create_chat_room(
     
     # Auto-add creator as OWNER
     add_chat_room_member(session, room.id, created_by, role="OWNER")
+
+    try:
+        from app.services.guardian.spine import emit_room_lifecycle_event
+
+        emit_room_lifecycle_event(
+            room_id=str(room.id),
+            actor_id=str(created_by),
+            event_type="room.created",
+            room_name=room.name,
+            description=room.description,
+        )
+    except Exception:
+        pass
     
     return room
 
@@ -304,6 +317,28 @@ def create_chat_message(
         room.updated_at = datetime.now(timezone.utc)
         session.add(room)
         session.commit()
+
+    try:
+        from app.services.guardian.spine import capture_message, emit_worker_status_event
+
+        sender = get_chat_user_by_id(session, sender_id)
+        capture_message(
+            session=session,
+            message=message,
+            room_name=room.name if room else str(room_id),
+            sender_username=sender.username if sender else None,
+        )
+        if sender and sender.type == UserType.BOT and sender.username and sender.username.startswith("agent_"):
+            emit_worker_status_event(
+                room_id=str(room_id),
+                actor_id=str(sender_id),
+                worker_name=sender.username.removeprefix("agent_"),
+                source_ref=f"room-{room_id}-msg-{message.id}",
+                status_text=content,
+                session=session,
+            )
+    except Exception:
+        pass
     
     return message
 
@@ -452,6 +487,28 @@ def create_chat_meeting_artifact(
     session.add(artifact)
     session.commit()
     session.refresh(artifact)
+    try:
+        from app.services.guardian.spine import capture_meeting_artifact
+        from app.services.guardian.spine import emit_meeting_output_event
+
+        room = get_chat_room_by_id(session, room_id)
+        creator = get_chat_user_by_id(session, created_by_user_id)
+        capture_meeting_artifact(
+            session=session,
+            artifact=artifact,
+            room_name=room.name if room else str(room_id),
+            created_by_username=creator.username if creator else None,
+        )
+        emit_meeting_output_event(
+            room_id=str(room_id),
+            actor_id=str(created_by_user_id),
+            artifact_type=type,
+            artifact_id=str(artifact.id),
+            content_markdown=content_markdown,
+            session=session,
+        )
+    except Exception:
+        pass
     return artifact
 
 
@@ -534,6 +591,15 @@ def create_task(
     session.add(task)
     session.commit()
     session.refresh(task)
+    # Canonical task lifecycle writes should go through the Spine-backed adapter.
+    from app.services.guardian.task_master_adapter import task_master_spine
+
+    task_master_spine.register_created_task(
+        session=session,
+        task=task,
+        actor_id=str(created_by),
+        summary=description or title,
+    )
     return task
 
 
@@ -557,11 +623,14 @@ def complete_task(session: Session, task_id: uuid.UUID) -> Optional[ChatTask]:
     task = session.get(ChatTask, task_id)
     if not task:
         return None
-    task.status = TaskStatus.DONE
-    task.updated_at = datetime.now(timezone.utc)
-    session.add(task)
-    session.commit()
-    session.refresh(task)
+    from app.services.guardian.task_master_adapter import task_master_spine
+
+    task = task_master_spine.complete_task(
+        session=session,
+        task=task,
+        actor_id=str(task.created_by),
+        summary=task.description or task.title,
+    )
     return task
 
 
@@ -571,18 +640,30 @@ def assign_task(
     task = session.get(ChatTask, task_id)
     if not task:
         return None
-    task.assigned_to = assigned_to
-    task.updated_at = datetime.now(timezone.utc)
-    session.add(task)
-    session.commit()
-    session.refresh(task)
+    from app.services.guardian.task_master_adapter import task_master_spine
+
+    task = task_master_spine.assign_existing_task(
+        session=session,
+        task=task,
+        assigned_to=assigned_to,
+        actor_id=str(task.created_by),
+        summary=task.description or task.title,
+    )
     return task
 
 
-def delete_task(session: Session, task_id: uuid.UUID) -> bool:
+def delete_task(session: Session, task_id: uuid.UUID, *, actor_id: uuid.UUID | None = None) -> bool:
     task = session.get(ChatTask, task_id)
     if not task:
         return False
+    from app.services.guardian.task_master_adapter import task_master_spine
+
+    task_master_spine.archive_deleted_task(
+        session=session,
+        task=task,
+        actor_id=str(actor_id or task.created_by),
+        summary=task.description or task.title,
+    )
     session.delete(task)
     session.commit()
     return True

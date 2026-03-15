@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import time
 from dataclasses import dataclass
@@ -39,7 +40,8 @@ class PendingApproval:
 
 
 def _data_root() -> Path:
-    root = Path(__file__).resolve().parents[4] / "data" / "guardian"
+    root_env = os.getenv("SPARKBOT_GUARDIAN_DATA_DIR", "").strip()
+    root = Path(root_env).expanduser() if root_env else Path(__file__).resolve().parents[4] / "data" / "guardian"
     root.mkdir(parents=True, exist_ok=True)
     return root
 
@@ -85,6 +87,20 @@ def store_pending_approval(
             """,
             (confirm_id, tool_name, payload, user_id, room_id, now, expires_at),
         )
+    try:
+        from app.services.guardian.spine import emit_approval_event
+
+        emit_approval_event(
+            room_id=room_id,
+            source_ref=confirm_id,
+            event_type="approval.required",
+            tool_name=tool_name,
+            confirm_id=confirm_id,
+            user_id=user_id,
+            payload={"expires_at": expires_at, "approval_state": "required", "tool_args": tool_args or {}},
+        )
+    except Exception:
+        pass
 
 
 def consume_pending_approval(confirm_id: str) -> dict[str, Any] | None:
@@ -107,13 +123,28 @@ def consume_pending_approval(confirm_id: str) -> dict[str, Any] | None:
     except Exception:
         tool_args = {}
 
-    return {
+    payload = {
         "tool": str(row["tool_name"]),
         "args": tool_args,
         "user_id": row["user_id"],
         "room_id": row["room_id"],
         "created_at": float(row["created_at"]),
     }
+    try:
+        from app.services.guardian.spine import emit_approval_event
+
+        emit_approval_event(
+            room_id=payload["room_id"],
+            source_ref=confirm_id,
+            event_type="approval.granted",
+            tool_name=payload["tool"],
+            confirm_id=confirm_id,
+            user_id=payload["user_id"],
+            payload={"created_at": payload["created_at"], "tool_args": tool_args},
+        )
+    except Exception:
+        pass
+    return payload
 
 
 def get_pending_approval(confirm_id: str) -> PendingApproval | None:
@@ -133,11 +164,38 @@ def discard_pending_approval(confirm_id: str) -> bool:
     _init_store()
     with _conn() as conn:
         _prune_expired(conn)
+        row = conn.execute(
+            "SELECT * FROM pending_approvals WHERE confirm_id = ?",
+            (confirm_id,),
+        ).fetchone()
         result = conn.execute(
             "DELETE FROM pending_approvals WHERE confirm_id = ?",
             (confirm_id,),
         )
-        return result.rowcount > 0
+        deleted = result.rowcount > 0
+    if deleted and row:
+        tool_args: dict[str, Any]
+        try:
+            tool_args = json.loads(str(row["tool_args_json"]) or "{}")
+            if not isinstance(tool_args, dict):
+                tool_args = {}
+        except Exception:
+            tool_args = {}
+        try:
+            from app.services.guardian.spine import emit_approval_event
+
+            emit_approval_event(
+                room_id=row["room_id"],
+                source_ref=confirm_id,
+                event_type="approval.discarded",
+                tool_name=str(row["tool_name"]),
+                confirm_id=confirm_id,
+                user_id=row["user_id"],
+                payload={"tool_args": tool_args},
+            )
+        except Exception:
+            pass
+    return deleted
 
 
 def list_pending_approvals(

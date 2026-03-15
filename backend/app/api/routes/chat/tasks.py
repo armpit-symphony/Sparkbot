@@ -143,13 +143,13 @@ def update_room_task(
     if task_in.status == "done":
         task = complete_task(session, task_id)
     elif task_in.status == "open":
-        from app.models import TaskStatus as TS
-        from datetime import timezone
-        task.status = TS.OPEN
-        task.updated_at = datetime.now(timezone.utc)
-        session.add(task)
-        session.commit()
-        session.refresh(task)
+        from app.services.guardian.task_master_adapter import task_master_spine
+        task = task_master_spine.reopen_task(
+            session=session,
+            task=task,
+            actor_id=str(current_user.id),
+            summary=task.description or task.title,
+        )
 
     if "assigned_to" in task_in.model_fields_set:
         new_assignee = uuid.UUID(task_in.assigned_to) if task_in.assigned_to else None
@@ -173,5 +173,5 @@ def delete_room_task(
     if not task or task.room_id != room_id:
         raise HTTPException(status_code=404, detail="Task not found")
 
-    delete_task(session, task_id)
+    delete_task(session, task_id, actor_id=current_user.id)
     return {"deleted": str(task_id)}

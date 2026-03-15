@@ -1028,6 +1028,8 @@ async def stream_room_message(
         )
 
         async def breakglass_pin_stream():
+            from app.services.guardian.spine import emit_breakglass_event
+
             confirm_id = str(pending_pin_state.get("confirm_id") or "").strip() or None
             lower_content = stripped_content.lower()
             sanitized_human = "/breakglass cancel" if lower_content in {"/cancel", "/deny", "no"} else "/breakglass PIN"
@@ -1044,6 +1046,12 @@ async def stream_room_message(
 
             if lower_content in {"/cancel", "/deny", "no"}:
                 _pop_breakglass_pin_state(user_id=user_id_str, room_id=room_id)
+                emit_breakglass_event(
+                    room_id=str(room_id),
+                    user_id=user_id_str,
+                    event_type="breakglass.cancelled",
+                    confirm_id=confirm_id,
+                )
                 msg = (
                     "Breakglass request cancelled. "
                     "If you still want to run the waiting privileged action, type `/breakglass` again."
@@ -1079,6 +1087,13 @@ async def stream_room_message(
                     )
                 except Exception:
                     pass
+                emit_breakglass_event(
+                    room_id=str(room_id),
+                    user_id=user_id_str,
+                    event_type="breakglass.opened",
+                    confirm_id=confirm_id,
+                    payload={"session_id": priv_session.session_id},
+                )
                 if confirm_id:
                     async for event in _stream_confirmed_tool(
                         confirm_id,
@@ -1105,6 +1120,12 @@ async def stream_room_message(
                     )
                 except Exception:
                     pass
+                emit_breakglass_event(
+                    room_id=str(room_id),
+                    user_id=user_id_str,
+                    event_type="breakglass.pin_failed",
+                    confirm_id=confirm_id,
+                )
                 msg = "Incorrect operator PIN. Try again, or reply `NO` to cancel."
 
             bot_user = _get_or_create_agent_bot_user(session, "sparkbot")
@@ -1243,6 +1264,8 @@ async def stream_room_message(
         )
 
         async def breakglass_stream():
+            from app.services.guardian.spine import emit_breakglass_event
+
             yield f"data: {json.dumps({'type': 'human_message', 'message_id': human_msg_id})}\n\n"
             priv_session = get_active_session(user_id_str)
             pending_confirm_id = _latest_privileged_pending_approval_id(session=session, room_id=room_id)
@@ -1269,6 +1292,12 @@ async def stream_room_message(
                         )
                     except Exception:
                         pass
+                    emit_breakglass_event(
+                        room_id=str(room_id),
+                        user_id=user_id_str,
+                        event_type="breakglass.closed",
+                        payload={"session_id": priv_session.session_id},
+                    )
                     msg = "Breakglass mode is now closed."
                 else:
                     msg = "Breakglass mode is not currently active."
@@ -1289,6 +1318,12 @@ async def stream_room_message(
                 _set_breakglass_pin_state(
                     user_id=user_id_str,
                     room_id=room_id,
+                    confirm_id=pending_confirm_id,
+                )
+                emit_breakglass_event(
+                    room_id=str(room_id),
+                    user_id=user_id_str,
+                    event_type="breakglass.requested",
                     confirm_id=pending_confirm_id,
                 )
                 msg = (

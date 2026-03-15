@@ -81,6 +81,7 @@ For versioned or tag-bound packaging instructions, see [docs/public-downloads.md
 
 ### March 15, 2026
 
+- **Guardian Spine became a background operating subsystem.** It now acts as Sparkbot’s canonical cross-guardian catalog and history layer: structured subsystem events, canonical projects/tasks/events/handoffs/approvals, project lineage and dependencies, Task Master-oriented queue views, operator-global inspection routes, and explicit Memory/Executive/Approval/Task Guardian hooks.
 - **Roundtable became instance-based and autonomous.** Launching Roundtable now creates a fresh meeting room, meetings can continue chair-led without manual user turns between speakers, and the UI exposes ongoing meetings with end/delete controls.
 - **Sparkbot can inspect its own safe runtime state from chat.** Asking what stack/provider/model it is running now returns live operational state such as provider/model routing, Token Guardian mode, fallback status, agent overrides, Ollama reachability, and breakglass status without exposing secrets.
 - **Breakglass works naturally from chat again.** When a task crosses a privileged boundary, Sparkbot now asks for `/breakglass`, prompts for the PIN in chat, resumes the waiting action after approval, and supports `/breakglass close`.
@@ -165,6 +166,7 @@ Browser
 - **Streaming responses** — token-by-token SSE (`/messages/stream`), typing cursor, no waiting
 - **Conversation context** — last 20 messages passed as history on every LLM call
 - **Safe self-inspection** — Sparkbot can answer chat questions about its current provider/model stack, Token Guardian mode, routing, Ollama reachability, and breakglass status using live backend state
+- **Guardian Spine task capture** — actionable chat and meeting language is normalized into canonical tracked work with event history, approval state, handoff notes, and markdown mirrors under the guardian data directory
 - **Markdown rendering** — headings, lists, bold, tables, code blocks in bot replies
 - **Syntax highlighting** — fenced code blocks with language detection (oneDark theme)
 - **Copy-code button** — one click to clipboard on every code block
@@ -193,6 +195,131 @@ Record a voice message directly in the browser — no extra packages needed.
 | 🔊 Volume2 | voice mode on | Toggle off |
 
 Voice mode preference is persisted in `localStorage`.
+
+### Guardian Spine
+
+Guardian Spine is Sparkbot’s background operating subsystem for cross-guardian coordination. It is not just a room-task feature.
+
+Current backend role:
+
+- catalog actionable work from chat messages, agent outputs, meeting artifacts, and room task lifecycle changes
+- accept structured subsystem events from other guardians and internal systems
+- maintain canonical projects, tasks, task events, project events, handoffs, approvals, lineage, dependencies, and related-work links
+- preserve source traceability across chat, meeting, task, memory, executive, approval, and system-originated events
+- expose queryable state for Task Master, other guardians, and backend inspection routes
+- act as the shared backend operating substrate for work-state across rooms, projects, guardians, and Task Master
+
+Structured subsystem event contract:
+
+- `SpineSourceReference`
+- `SpineProjectInput`
+- `SpineTaskInput`
+- `SpineSubsystemEvent`
+
+Built-in integration hooks:
+
+- `ingest_subsystem_event(...)`
+- `ingest_memory_signal(...)`
+- `ingest_executive_decision(...)`
+- `emit_approval_event(...)`
+- `emit_breakglass_event(...)`
+- `ingest_task_guardian_result(...)`
+- `emit_task_master_action(...)`
+- `emit_room_lifecycle_event(...)`
+- `emit_project_lifecycle_event(...)`
+- `emit_handoff_event(...)`
+- `emit_meeting_output_event(...)`
+- `emit_worker_status_event(...)`
+
+Task Master contract:
+
+- `TaskMasterSpineAdapter` is the primary backend adapter for execution/assignment logic over Spine
+- Task Master should read queues and workload state from Spine first, then round-trip assignment/status actions back into Spine
+- explicit task lifecycle mutations now route through the adapter for create, assign, complete, reopen, and delete/archive flows in the room task surface
+- canonical task mutation paths now fail closed instead of silently swallowing adapter errors in the room task CRUD path
+- Task Master is not a competing source of truth; Guardian Spine remains the canonical catalog/history layer
+
+Current built-in producers that emit into Spine:
+
+- chat message and meeting-artifact intake
+- room task lifecycle sync and Task Master-style task actions
+- Executive guardian decisions
+- approval store/consume/discard events
+- breakglass request/open/close/failure events
+- Task Guardian verifier/run outcomes
+- room lifecycle creation events
+- structured meeting summary/decision/action-item events
+- worker agent status/progress events from agent-style room messages
+- explicit handoff events
+- explicit project lifecycle events
+
+Task Master-facing derived views now available in the backend:
+
+- open queue
+- blocked queue
+- orphan queue
+- approval-waiting queue
+- stale queue
+- recently resurfaced queue
+- assignment-ready queue
+- project workload summary
+- missing-source-traceability queue
+- missing-project-linkage queue
+- executive-directive queue
+- recent cross-room events
+- high-priority blocked tasks
+- high-priority approval-waiting tasks
+- stale unowned tasks
+- unassigned executive directives
+- resurfaced tasks without follow-up
+- missing durable linkage
+- fragmentation indicators
+
+Read-only room inspection routes:
+
+- `GET /api/v1/chat/rooms/{room_id}/spine/overview`
+- `GET /api/v1/chat/rooms/{room_id}/spine/tasks`
+- `GET /api/v1/chat/rooms/{room_id}/spine/tasks/orphaned`
+- `GET /api/v1/chat/rooms/{room_id}/spine/tasks/{task_id}/lineage`
+- `GET /api/v1/chat/rooms/{room_id}/spine/tasks/{task_id}/approvals`
+- `GET /api/v1/chat/rooms/{room_id}/spine/events`
+- `GET /api/v1/chat/rooms/{room_id}/spine/handoffs`
+- `GET /api/v1/chat/rooms/{room_id}/spine/projects`
+- `GET /api/v1/chat/rooms/{room_id}/spine/projects/{project_id}/tasks`
+- `GET /api/v1/chat/rooms/{room_id}/spine/projects/{project_id}/handoffs`
+- `GET /api/v1/chat/rooms/{room_id}/spine/projects/{project_id}/events`
+- `GET /api/v1/chat/rooms/{room_id}/spine/task-master/overview`
+
+Read-only operator/global inspection routes:
+
+- `GET /api/v1/chat/spine/operator/producers`
+- `GET /api/v1/chat/spine/operator/events/recent`
+- `GET /api/v1/chat/spine/operator/queues/open`
+- `GET /api/v1/chat/spine/operator/queues/blocked`
+- `GET /api/v1/chat/spine/operator/queues/approval-waiting`
+- `GET /api/v1/chat/spine/operator/queues/stale`
+- `GET /api/v1/chat/spine/operator/queues/orphaned`
+- `GET /api/v1/chat/spine/operator/queues/missing-source`
+- `GET /api/v1/chat/spine/operator/queues/missing-project`
+- `GET /api/v1/chat/spine/operator/queues/resurfaced`
+- `GET /api/v1/chat/spine/operator/queues/executive-directives`
+- `GET /api/v1/chat/spine/operator/projects`
+- `GET /api/v1/chat/spine/operator/projects/workload`
+- `GET /api/v1/chat/spine/operator/task-master/overview`
+- `GET /api/v1/chat/spine/operator/signals/high-priority-blocked`
+- `GET /api/v1/chat/spine/operator/signals/high-priority-approval`
+- `GET /api/v1/chat/spine/operator/signals/stale-unowned`
+- `GET /api/v1/chat/spine/operator/signals/unassigned-executive`
+- `GET /api/v1/chat/spine/operator/signals/resurfaced-no-followup`
+- `GET /api/v1/chat/spine/operator/signals/missing-durable-linkage`
+- `GET /api/v1/chat/spine/operator/signals/fragmentation`
+
+Canonical rule:
+
+- Guardian Spine’s structured store is the source of truth.
+- Markdown mirrors under the guardian data directory are secondary audit/handoff mirrors, not the canonical writer.
+- Other guardians may observe, emit events, propose changes, and query state, but they should not silently maintain conflicting canonical work-state truth when Spine already models that domain.
+- Remaining intentional exceptions are internal mirror-sync helpers inside Spine itself and low-level canonical-writer functions inside the Spine service; those are implementation details, not alternate sources of truth.
 
 **SSE protocol for voice** (superset of `/messages/stream`):
 ```
