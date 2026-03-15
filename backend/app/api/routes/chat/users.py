@@ -21,6 +21,7 @@ from app.core.config import settings
 from app.core.security import create_access_token, get_password_hash
 from app.models import ChatUser, UserType
 from app.schemas.chat import ChatUserCreate, ChatUserResponse, ChatUserUpdate
+from app.services.guardian import get_guardian_suite
 
 router = APIRouter(prefix="/users", tags=["chat-users"])
 
@@ -234,8 +235,7 @@ def update_chat_user(
     user = session.get(ChatUser, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    from app.services.guardian.auth import is_operator_identity
-    if user.id != current_user.id and not is_operator_identity(
+    if user.id != current_user.id and not get_guardian_suite().auth.is_operator_identity(
         username=current_user.username, user_type=current_user.type
     ):
         raise HTTPException(status_code=403, detail="Cannot modify another user's account")
@@ -271,8 +271,7 @@ def delete_chat_user(
     user = session.get(ChatUser, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    from app.services.guardian.auth import is_operator_identity
-    if user.id != current_user.id and not is_operator_identity(
+    if user.id != current_user.id and not get_guardian_suite().auth.is_operator_identity(
         username=current_user.username, user_type=current_user.type
     ):
         raise HTTPException(status_code=403, detail="Cannot delete another user's account")

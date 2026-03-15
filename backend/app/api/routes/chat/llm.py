@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from typing import Any, AsyncGenerator
 
 import litellm
+from app.services.guardian import get_guardian_suite
 
 litellm.drop_params = True  # ignore unsupported params instead of erroring
 
@@ -176,24 +177,18 @@ def consume_pending(confirm_id: str) -> dict | None:
     entry = _pending.pop(confirm_id, None)
     if entry and time.time() - entry["created_at"] > _PENDING_TTL:
         try:
-            from app.services.guardian.pending_approvals import discard_pending_approval
-
-            discard_pending_approval(confirm_id)
+            get_guardian_suite().pending_approvals.discard_pending_approval(confirm_id)
         except Exception:
             pass
         return None
     if entry:
         try:
-            from app.services.guardian.pending_approvals import discard_pending_approval
-
-            discard_pending_approval(confirm_id)
+            get_guardian_suite().pending_approvals.discard_pending_approval(confirm_id)
         except Exception:
             pass
         return entry
     try:
-        from app.services.guardian.pending_approvals import consume_pending_approval
-
-        return consume_pending_approval(confirm_id)
+        return get_guardian_suite().pending_approvals.consume_pending_approval(confirm_id)
     except Exception:
         return None
 
@@ -201,9 +196,7 @@ def consume_pending(confirm_id: str) -> dict | None:
 def discard_pending(confirm_id: str) -> None:
     _pending.pop(confirm_id, None)
     try:
-        from app.services.guardian.pending_approvals import discard_pending_approval
-
-        discard_pending_approval(confirm_id)
+        get_guardian_suite().pending_approvals.discard_pending_approval(confirm_id)
     except Exception:
         pass
 
@@ -955,13 +948,7 @@ async def stream_chat_with_tools(
         _email_configured_smtp,
         _google_configured,
     )
-    from app.services.guardian.executive import exec_with_guard
-    from app.services.guardian.policy import decide_tool_use
-    from app.services.guardian.verifier import (
-        format_verifier_note,
-        should_verify_interactive_tool_run,
-        verify_interactive_tool_run,
-    )
+    guardian_suite = get_guardian_suite()
 
     base_model = model or get_model(user_id)
     route_context = get_agent_route_context(default_model=base_model, agent_name=agent_name)
@@ -986,9 +973,7 @@ async def stream_chat_with_tools(
         else:
             available_models = _available_models_for_default_route(route_context)
             try:
-                from app.services.guardian.token_guardian import route_model
-
-                routed_model, route_payload = route_model(
+                routed_model, route_payload = guardian_suite.token_guardian.route_model(
                     latest_user_message,
                     chosen,
                     available_models=available_models,
@@ -1144,7 +1129,7 @@ async def stream_chat_with_tools(
                 except Exception:
                     tool_args = {}
 
-                decision = decide_tool_use(
+                decision = guardian_suite.policy.decide_tool_use(
                     tool_name,
                     tool_args if isinstance(tool_args, dict) else {},
                     room_execution_allowed=room_execution_allowed,
@@ -1178,11 +1163,11 @@ async def stream_chat_with_tools(
                 if decision.action == "deny":
                     result = f"POLICY DENIED: {decision.reason}"
                     verification = None
-                    if should_verify_interactive_tool_run(
+                    if guardian_suite.verifier.should_verify_interactive_tool_run(
                         action_type=decision.action_type,
                         high_risk=decision.high_risk,
                     ):
-                        verification = verify_interactive_tool_run(
+                        verification = guardian_suite.verifier.verify_interactive_tool_run(
                             tool_name=tool_name,
                             output=result,
                             execution_status="denied",
@@ -1199,7 +1184,7 @@ async def stream_chat_with_tools(
                         "role": "tool",
                         "tool_call_id": tc.id,
                         "content": (
-                            f"{result}\n\n{format_verifier_note(verification)}"
+                            f"{result}\n\n{guardian_suite.verifier.format_verifier_note(verification)}"
                             if verification is not None
                             else result
                         ),
@@ -1218,9 +1203,7 @@ async def stream_chat_with_tools(
                     }
                     _pending[confirm_id] = pending_entry
                     try:
-                        from app.services.guardian.pending_approvals import store_pending_approval
-
-                        store_pending_approval(
+                        guardian_suite.pending_approvals.store_pending_approval(
                             confirm_id=confirm_id,
                             tool_name=tool_name,
                             tool_args=tool_args if isinstance(tool_args, dict) else {},
@@ -1262,9 +1245,7 @@ async def stream_chat_with_tools(
                             }
                             _pending[confirm_id] = pending_entry
                             try:
-                                from app.services.guardian.pending_approvals import store_pending_approval
-
-                                store_pending_approval(
+                                guardian_suite.pending_approvals.store_pending_approval(
                                     confirm_id=confirm_id,
                                     tool_name=tool_name,
                                     tool_args=tool_args if isinstance(tool_args, dict) else {},
@@ -1283,7 +1264,7 @@ async def stream_chat_with_tools(
 
                 yield {"type": "tool_start", "tool": tool_name, "input": tool_args}
 
-                result = await exec_with_guard(
+                result = await guardian_suite.executive.exec_with_guard(
                     tool_name=tool_name,
                     action_type=decision.action_type,
                     expected_outcome=f"Successful tool execution for {tool_name}",
@@ -1302,11 +1283,11 @@ async def stream_chat_with_tools(
                     },
                 )
                 verification = None
-                if should_verify_interactive_tool_run(
+                if guardian_suite.verifier.should_verify_interactive_tool_run(
                     action_type=decision.action_type,
                     high_risk=decision.high_risk,
                 ):
-                    verification = verify_interactive_tool_run(
+                    verification = guardian_suite.verifier.verify_interactive_tool_run(
                         tool_name=tool_name,
                         output=str(result),
                         execution_status="success",
@@ -1329,12 +1310,11 @@ async def stream_chat_with_tools(
                     try:
                         import uuid as _uuid
                         from app.crud import create_audit_log
-                        from app.services.guardian.memory import remember_tool_event
                         redacted_input, redacted_result = redact_tool_call_for_audit(
                             tool_name, tool_args, result
                         )
                         if verification is not None:
-                            redacted_result = f"{redacted_result}\n\n{format_verifier_note(verification)}"
+                            redacted_result = f"{redacted_result}\n\n{guardian_suite.verifier.format_verifier_note(verification)}"
                         create_audit_log(
                             session=db_session,
                             tool_name=tool_name,
@@ -1347,7 +1327,7 @@ async def stream_chat_with_tools(
                         )
                         if user_id and room_id:
                             parsed_input = json.loads(redacted_input)
-                            remember_tool_event(
+                            guardian_suite.memory.remember_tool_event(
                                 user_id=user_id,
                                 room_id=room_id,
                                 tool_name=tool_name,
@@ -1361,7 +1341,7 @@ async def stream_chat_with_tools(
                     "role": "tool",
                     "tool_call_id": tc.id,
                     "content": (
-                        f"{result}\n\n{format_verifier_note(verification)}"
+                        f"{result}\n\n{guardian_suite.verifier.format_verifier_note(verification)}"
                         if verification is not None
                         else result
                     ),  # full plaintext for LLM context only

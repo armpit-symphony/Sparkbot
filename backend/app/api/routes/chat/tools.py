@@ -23,6 +23,8 @@ from urllib.parse import urlparse, urlunparse
 
 import httpx
 
+from app.services.guardian import get_guardian_suite
+
 # ─── Slack config ─────────────────────────────────────────────────────────────
 
 _SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN", "").strip()
@@ -4142,13 +4144,10 @@ async def _guardian_schedule_task(
 ) -> str:
     if not room_id or not user_id:
         return "Task Guardian unavailable (no room or user context)."
-    from app.services.guardian.task_guardian import (
-        WRITE_TASK_TOOLS,
-        TASK_GUARDIAN_WRITE_ENABLED,
-        schedule_task,
-    )
+    task_guardian = get_guardian_suite().task_guardian
+    WRITE_TASK_TOOLS = task_guardian.WRITE_TASK_TOOLS
 
-    if tool_name in WRITE_TASK_TOOLS and not TASK_GUARDIAN_WRITE_ENABLED:
+    if tool_name in task_guardian.WRITE_TASK_TOOLS and not task_guardian.TASK_GUARDIAN_WRITE_ENABLED:
         return (
             f"'{tool_name}' is a write-action tool. "
             "Scheduled write tasks are disabled by default. "
@@ -4156,7 +4155,7 @@ async def _guardian_schedule_task(
         )
 
     try:
-        task = schedule_task(
+        task = task_guardian.schedule_task(
             name=name,
             tool_name=tool_name,
             tool_args=tool_args or {},
@@ -4178,9 +4177,7 @@ async def _guardian_schedule_task(
 async def _guardian_list_tasks(room_id: Optional[str], limit: int = 10) -> str:
     if not room_id:
         return "Task Guardian unavailable (no room context)."
-    from app.services.guardian.task_guardian import list_tasks
-
-    tasks = list_tasks(room_id=room_id, limit=limit)
+    tasks = get_guardian_suite().task_guardian.list_tasks(room_id=room_id, limit=limit)
     if not tasks:
         return "No Task Guardian jobs configured for this room."
 
@@ -4205,9 +4202,7 @@ async def _guardian_list_tasks(room_id: Optional[str], limit: int = 10) -> str:
 async def _guardian_list_runs(room_id: Optional[str], limit: int = 10) -> str:
     if not room_id:
         return "Task Guardian unavailable (no room context)."
-    from app.services.guardian.task_guardian import list_runs
-
-    runs = list_runs(room_id=room_id, limit=limit)
+    runs = get_guardian_suite().task_guardian.list_runs(room_id=room_id, limit=limit)
     if not runs:
         return "No Task Guardian runs recorded for this room yet."
 
@@ -4222,13 +4217,12 @@ async def _guardian_list_runs(room_id: Optional[str], limit: int = 10) -> str:
 async def _guardian_run_task(task_id: str, room_id: Optional[str], session) -> str:
     if not room_id or session is None:
         return "Task Guardian unavailable (no room/session context)."
-    from app.services.guardian.task_guardian import get_task, run_task_once
-
-    task = get_task(task_id)
+    task_guardian = get_guardian_suite().task_guardian
+    task = task_guardian.get_task(task_id)
     if not task or task.room_id != room_id:
         return f"Task Guardian job '{task_id}' not found in this room."
 
-    result = await run_task_once(task, session)
+    result = await task_guardian.run_task_once(task, session)
     return (
         f"Task Guardian job `{task.name}` ran with status {result['status'].upper()}.\n\n"
         f"{result['output']}"
@@ -4248,13 +4242,12 @@ async def _guardian_run_task(task_id: str, room_id: Optional[str], session) -> s
 async def _guardian_pause_task(task_id: str, enabled: bool, room_id: Optional[str]) -> str:
     if not room_id:
         return "Task Guardian unavailable (no room context)."
-    from app.services.guardian.task_guardian import get_task, set_task_enabled
-
-    task = get_task(task_id)
+    task_guardian = get_guardian_suite().task_guardian
+    task = task_guardian.get_task(task_id)
     if not task or task.room_id != room_id:
         return f"Task Guardian job '{task_id}' not found in this room."
 
-    ok = set_task_enabled(task_id, enabled)
+    ok = task_guardian.set_task_enabled(task_id, enabled)
     if not ok:
         return f"Task Guardian job '{task_id}' not found."
     return f"Task Guardian job `{task.name}` is now {'enabled' if enabled else 'paused'}."
@@ -4383,10 +4376,9 @@ async def _remember_fact(fact: str, user_id: Optional[str], session) -> str:
     if not user_id or session is None:
         return "Memory unavailable (no session context)."
     from app.crud import add_user_memory
-    from app.services.guardian.memory import remember_fact
     mem = add_user_memory(session, uuid.UUID(user_id), fact)
     try:
-        remember_fact(user_id=user_id, fact=mem.fact, memory_id=str(mem.id))
+        get_guardian_suite().memory.remember_fact(user_id=user_id, fact=mem.fact, memory_id=str(mem.id))
     except Exception:
         pass
     return f"Remembered: {mem.fact}"
@@ -4396,11 +4388,10 @@ async def _forget_fact(memory_id: str, user_id: Optional[str], session) -> str:
     if not user_id or session is None:
         return "Memory unavailable (no session context)."
     from app.crud import delete_user_memory
-    from app.services.guardian.memory import delete_fact_memory
     ok = delete_user_memory(session, uuid.UUID(memory_id), uuid.UUID(user_id))
     if ok:
         try:
-            delete_fact_memory(user_id=user_id, memory_id=memory_id)
+            get_guardian_suite().memory.delete_fact_memory(user_id=user_id, memory_id=memory_id)
         except Exception:
             pass
     return "Forgotten." if ok else "Memory not found or not yours."
@@ -4662,8 +4653,7 @@ async def execute_tool(
     # ── Vault tools ──────────────────────────────────────────────────────────
     if name == "vault_list_secrets":
         try:
-            from app.services.guardian.vault import vault_list
-            entries = vault_list()
+            entries = get_guardian_suite().vault.vault_list()
             if not entries:
                 return "The Guardian Vault is empty. No secrets stored."
             lines = [f"Guardian Vault — {len(entries)} secret(s):"]
@@ -4678,34 +4668,31 @@ async def execute_tool(
 
     if name == "vault_use_secret":
         try:
-            from app.services.guardian.vault import vault_use
             alias = str(args.get("alias", "")).strip()
             if not alias:
                 return "Error: alias is required."
-            plaintext = vault_use(alias, user_id=user_id or "", operator=user_id or "system")
+            plaintext = get_guardian_suite().vault.vault_use(alias, user_id=user_id or "", operator=user_id or "system")
             return plaintext
         except Exception as exc:
             return f"Vault error: {exc}"
 
     if name == "vault_reveal_secret":
         try:
-            from app.services.guardian.vault import vault_reveal
             alias = str(args.get("alias", "")).strip()
             if not alias:
                 return "Error: alias is required."
-            plaintext = vault_reveal(alias, user_id=user_id or "", operator=user_id or "system")
+            plaintext = get_guardian_suite().vault.vault_reveal(alias, user_id=user_id or "", operator=user_id or "system")
             return f"Secret: {alias}\nValue: {plaintext}"
         except Exception as exc:
             return f"Vault error: {exc}"
 
     if name == "vault_add_secret":
         try:
-            from app.services.guardian.vault import vault_add
             alias = str(args.get("alias", "")).strip()
             value = str(args.get("value", ""))
             if not alias or not value:
                 return "Error: alias and value are required."
-            result = vault_add(
+            result = get_guardian_suite().vault.vault_add(
                 alias=alias,
                 value=value,
                 category=str(args.get("category", "general")),
@@ -4719,12 +4706,11 @@ async def execute_tool(
 
     if name == "vault_update_secret":
         try:
-            from app.services.guardian.vault import vault_update
             alias = str(args.get("alias", "")).strip()
             value = str(args.get("value", ""))
             if not alias or not value:
                 return "Error: alias and value are required."
-            vault_update(
+            get_guardian_suite().vault.vault_update(
                 alias=alias,
                 value=value,
                 operator=user_id or "system",
@@ -4737,11 +4723,10 @@ async def execute_tool(
 
     if name == "vault_delete_secret":
         try:
-            from app.services.guardian.vault import vault_delete
             alias = str(args.get("alias", "")).strip()
             if not alias:
                 return "Error: alias is required."
-            ok = vault_delete(alias, operator=user_id or "system")
+            ok = get_guardian_suite().vault.vault_delete(alias, operator=user_id or "system")
             return f"Secret '{alias}' deleted." if ok else f"Secret '{alias}' not found."
         except Exception as exc:
             return f"Vault error: {exc}"

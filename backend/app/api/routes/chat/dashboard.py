@@ -12,9 +12,7 @@ from sqlalchemy import func, select
 from app.api.deps import CurrentChatUser, SessionDep
 from app.crud import create_audit_log, create_chat_message, get_chat_room_by_id, get_chat_room_member, get_user_chat_rooms
 from app.models import AuditLog, ChatMeetingArtifact, ChatTask, Reminder, ReminderStatus, RoomRole, TaskStatus, ChatUser, UserType
-from app.services.guardian.pending_approvals import get_pending_approval, list_pending_approvals
-from app.services.guardian.task_guardian import TASK_GUARDIAN_ENABLED, list_tasks as list_guardian_tasks
-from app.services.guardian.token_guardian import get_token_guardian_stats
+from app.services.guardian import get_guardian_suite
 
 router = APIRouter(tags=["chat-dashboard"])
 
@@ -169,7 +167,7 @@ def _approval_preview(tool_args_json: str) -> str:
 
 
 def _ensure_approval_access(session: SessionDep, confirm_id: str, current_user: CurrentChatUser):
-    pending = get_pending_approval(confirm_id)
+    pending = get_guardian_suite().pending_approvals.get_pending_approval(confirm_id)
     if not pending:
         return None, None, None
     if not pending.room_id:
@@ -198,15 +196,7 @@ async def _execute_dashboard_approval(
         serialize_tool_args_for_audit,
     )
     from app.api.routes.chat.tools import execute_tool
-    from app.services.guardian.auth import is_operator_identity, is_operator_privileged
-    from app.services.guardian.executive import exec_with_guard
-    from app.services.guardian.memory import remember_tool_event
-    from app.services.guardian.policy import decide_tool_use
-    from app.services.guardian.verifier import (
-        format_verifier_note,
-        should_verify_interactive_tool_run,
-        verify_interactive_tool_run,
-    )
+    guardian_suite = get_guardian_suite()
 
     pending = consume_pending(confirm_id)
     if not pending:
@@ -229,12 +219,12 @@ async def _execute_dashboard_approval(
     user_id_str = str(current_user.id)
 
     room = get_chat_room_by_id(session, room_uuid) if room_uuid else None
-    decision = decide_tool_use(
+    decision = guardian_suite.policy.decide_tool_use(
         tool_name,
         tool_args,
         room_execution_allowed=room.execution_allowed if room else None,
-        is_operator=is_operator_identity(username=current_user.username, user_type=current_user.type),
-        is_privileged=is_operator_privileged(user_id_str),
+        is_operator=guardian_suite.auth.is_operator_identity(username=current_user.username, user_type=current_user.type),
+        is_privileged=guardian_suite.auth.is_operator_privileged(user_id_str),
     )
     create_audit_log(
         session=session,
@@ -257,7 +247,7 @@ async def _execute_dashboard_approval(
         result = f"POLICY DENIED: {decision.reason}"
         verification = None
     else:
-        result = await exec_with_guard(
+        result = await guardian_suite.executive.exec_with_guard(
             tool_name=tool_name,
             action_type=decision.action_type,
             expected_outcome=f"Confirmed dashboard execution for {tool_name}",
@@ -271,11 +261,11 @@ async def _execute_dashboard_approval(
             metadata={"room_id": room_id, "user_id": user_id_str, "confirmed": True, "source": "dashboard"},
         )
         verification = None
-        if should_verify_interactive_tool_run(
+        if guardian_suite.verifier.should_verify_interactive_tool_run(
             action_type=decision.action_type,
             high_risk=decision.high_risk,
         ):
-            verification = verify_interactive_tool_run(
+            verification = guardian_suite.verifier.verify_interactive_tool_run(
                 tool_name=tool_name,
                 output=str(result),
                 execution_status="success",
@@ -283,10 +273,10 @@ async def _execute_dashboard_approval(
 
     outward_result = mask_tool_result_for_external(tool_name, tool_args, result)
     if verification is not None:
-        outward_result = f"{outward_result}\n\n{format_verifier_note(verification)}"
+            outward_result = f"{outward_result}\n\n{guardian_suite.verifier.format_verifier_note(verification)}"
     redacted_input, redacted_result = redact_tool_call_for_audit(tool_name, tool_args, result)
     if verification is not None:
-        redacted_result = f"{redacted_result}\n\n{format_verifier_note(verification)}"
+            redacted_result = f"{redacted_result}\n\n{guardian_suite.verifier.format_verifier_note(verification)}"
     create_audit_log(
         session=session,
         tool_name=tool_name,
@@ -298,7 +288,7 @@ async def _execute_dashboard_approval(
     )
     if room_uuid:
         try:
-            remember_tool_event(
+            guardian_suite.memory.remember_tool_event(
                 user_id=user_id_str,
                 room_id=room_id,
                 tool_name=tool_name,
@@ -375,7 +365,7 @@ async def _load_inbox_summary() -> DashboardInboxSummary:
 
 
 def _build_token_guardian_summary(session: SessionDep, room_ids: list[Any], now: datetime) -> DashboardTokenGuardianSummary:
-    stats = get_token_guardian_stats()
+    stats = get_guardian_suite().token_guardian.get_token_guardian_stats()
     audit_window = now - timedelta(hours=24)
     routing_entries = list(
         session.execute(
@@ -468,11 +458,12 @@ async def get_dashboard_summary(
     ]
 
     if not room_ids:
+        token_stats = get_guardian_suite().token_guardian.get_token_guardian_stats()
         token_guardian = DashboardTokenGuardianSummary(
-            mode=get_token_guardian_stats().get("mode", "off"),
-            live_ready=bool(get_token_guardian_stats().get("live_ready")),
-            configured_models=list(get_token_guardian_stats().get("configured_models") or []),
-            allowed_live_models=list(get_token_guardian_stats().get("allowed_live_models") or []),
+            mode=token_stats.get("mode", "off"),
+            live_ready=bool(token_stats.get("live_ready")),
+            configured_models=list(token_stats.get("configured_models") or []),
+            allowed_live_models=list(token_stats.get("allowed_live_models") or []),
             total_tokens=0,
             total_cost=0.0,
             requests=0,
@@ -496,7 +487,7 @@ async def get_dashboard_summary(
                 pending_approvals=0,
                 guardian_jobs=0,
                 guardian_jobs_enabled=0,
-                task_guardian_enabled=TASK_GUARDIAN_ENABLED,
+                task_guardian_enabled=get_guardian_suite().task_guardian.TASK_GUARDIAN_ENABLED,
                 token_guardian_mode=token_guardian.mode,
             ),
             today=DashboardToday(
@@ -564,7 +555,7 @@ async def get_dashboard_summary(
         .limit(5)
     ).all()
 
-    pending_approvals = list_pending_approvals(
+    pending_approvals = get_guardian_suite().pending_approvals.list_pending_approvals(
         room_ids=room_id_strings,
         limit=8,
     )
@@ -587,7 +578,7 @@ async def get_dashboard_summary(
     guardian_jobs_total = 0
     guardian_jobs_enabled = 0
     for room in rooms:
-        room_tasks = list_guardian_tasks(room_id=str(room.id), limit=4)
+        room_tasks = get_guardian_suite().task_guardian.list_tasks(room_id=str(room.id), limit=4)
         guardian_jobs_total += len(room_tasks)
         guardian_jobs_enabled += sum(1 for task in room_tasks if bool(task.enabled))
         for task in room_tasks[:2]:
@@ -617,7 +608,7 @@ async def get_dashboard_summary(
         pending_approvals=len(approval_items),
         guardian_jobs=guardian_jobs_total,
         guardian_jobs_enabled=guardian_jobs_enabled,
-        task_guardian_enabled=TASK_GUARDIAN_ENABLED,
+        task_guardian_enabled=get_guardian_suite().task_guardian.TASK_GUARDIAN_ENABLED,
         token_guardian_mode=token_guardian.mode,
     )
     today = DashboardToday(

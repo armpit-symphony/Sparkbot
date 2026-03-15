@@ -9,7 +9,7 @@ from app.api.main import api_router
 from app.api.deps import get_db
 from app.api.routes.chat.reminders import reminder_scheduler
 from app.core.config import settings
-from app.services.guardian.task_guardian import task_guardian_scheduler
+from app.services.guardian import get_guardian_suite
 
 # Bridge services are optional integrations. They are skipped in V1_LOCAL_MODE
 # (standalone local install) to avoid importing heavy optional dependencies and
@@ -77,10 +77,13 @@ if not settings.V1_LOCAL_MODE:
 
 @app.on_event("startup")
 async def _start_background_guardians() -> None:
+    guardian_suite = get_guardian_suite()
     if not getattr(app.state, "reminder_scheduler_task", None):
         app.state.reminder_scheduler_task = asyncio.create_task(reminder_scheduler())
     if not getattr(app.state, "task_guardian_scheduler_task", None):
-        app.state.task_guardian_scheduler_task = asyncio.create_task(task_guardian_scheduler(get_db))
+        app.state.task_guardian_scheduler_task = asyncio.create_task(
+            guardian_suite.task_guardian.task_guardian_scheduler(get_db)
+        )
     # Bridge tasks only start when not in V1_LOCAL_MODE.
     if not settings.V1_LOCAL_MODE:
         if not getattr(app.state, "telegram_poller_task", None):
@@ -99,8 +102,7 @@ async def _start_background_guardians() -> None:
 
     # Initialize Guardian Vault DB (creates tables if not present)
     try:
-        from app.services.guardian.vault import init_vault_db
-        init_vault_db()
+        guardian_suite.vault.init_vault_db()
     except Exception as exc:
         import logging as _logging
         _logging.getLogger(__name__).warning("Guardian Vault init warning: %s", exc)

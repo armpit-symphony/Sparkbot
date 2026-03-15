@@ -15,23 +15,17 @@ from pydantic import BaseModel, Field
 from app.api.deps import CurrentChatUser, SessionDep
 from app.crud import get_chat_room_by_id, get_chat_room_member
 from app.models import RoomRole
-from app.services.guardian.task_guardian import (
-    get_task,
-    list_runs,
-    list_tasks,
-    run_task_once,
-    schedule_task,
-    set_task_enabled,
-    set_write_enabled,
-)
+from app.services.guardian import get_guardian_suite
+from app.services.guardian.task_guardian import set_write_enabled
 
 router = APIRouter(tags=["chat-guardian"])
 
 
 def _require_guardian_operator(current_user: CurrentChatUser) -> None:
-    from app.services.guardian.auth import is_operator_identity
-
-    if not is_operator_identity(username=current_user.username, user_type=current_user.type):
+    if not get_guardian_suite().auth.is_operator_identity(
+        username=current_user.username,
+        user_type=current_user.type,
+    ):
         raise HTTPException(status_code=403, detail="Guardian operator access required.")
 
 
@@ -44,10 +38,8 @@ class BreakGlassRequest(BaseModel):
 @router.get("/guardian/breakglass/status")
 def breakglass_status(current_user: CurrentChatUser) -> dict[str, Any]:
     """Return current privileged session status for the calling user."""
-    from app.services.guardian.auth import get_active_session
-
     _require_guardian_operator(current_user)
-    session = get_active_session(str(current_user.id))
+    session = get_guardian_suite().auth.get_active_session(str(current_user.id))
     if session:
         return {
             "active": True,
@@ -65,19 +57,15 @@ def breakglass_open(
     session: SessionDep,
 ) -> dict[str, Any]:
     """Open a privileged break-glass session using the operator PIN."""
-    from app.services.guardian.auth import (
-        is_locked_out,
-        open_privileged_session,
-        verify_pin,
-    )
     from app.crud import create_audit_log
 
     _require_guardian_operator(current_user)
     user_id = str(current_user.id)
-    if is_locked_out(user_id):
+    guardian_suite = get_guardian_suite()
+    if guardian_suite.auth.is_locked_out(user_id):
         raise HTTPException(status_code=429, detail="Too many failed PIN attempts. Try again in 5 minutes.")
 
-    if not verify_pin(user_id, body.pin):
+    if not guardian_suite.auth.verify_pin(user_id, body.pin):
         try:
             create_audit_log(
                 session=session,
@@ -90,7 +78,7 @@ def breakglass_open(
             pass
         raise HTTPException(status_code=401, detail="Incorrect PIN.")
 
-    priv_session = open_privileged_session(user_id, operator=str(current_user.username))
+    priv_session = guardian_suite.auth.open_privileged_session(user_id, operator=str(current_user.username))
     try:
         create_audit_log(
             session=session,
@@ -116,13 +104,13 @@ def breakglass_close(
     session: SessionDep,
 ) -> dict[str, Any]:
     """Explicitly close the privileged session."""
-    from app.services.guardian.auth import close_privileged_session, get_active_session
     from app.crud import create_audit_log
 
     _require_guardian_operator(current_user)
     user_id = str(current_user.id)
-    priv_session = get_active_session(user_id)
-    close_privileged_session(user_id)
+    guardian_suite = get_guardian_suite()
+    priv_session = guardian_suite.auth.get_active_session(user_id)
+    guardian_suite.auth.close_privileged_session(user_id)
     if priv_session:
         try:
             create_audit_log(
@@ -152,8 +140,7 @@ def vault_list_endpoint(current_user: CurrentChatUser) -> dict[str, Any]:
     """List all vault secret aliases and metadata (no plaintext values)."""
     _require_guardian_operator(current_user)
     try:
-        from app.services.guardian.vault import vault_list
-        entries = vault_list()
+        entries = get_guardian_suite().vault.vault_list()
         return {"items": entries, "count": len(entries)}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
@@ -166,20 +153,19 @@ def vault_add_endpoint(
     session: SessionDep,
 ) -> dict[str, Any]:
     """Add an encrypted secret to the vault. Requires break-glass privileged mode."""
-    from app.services.guardian.auth import get_active_session
     from app.crud import create_audit_log
 
     _require_guardian_operator(current_user)
     user_id = str(current_user.id)
-    priv_session = get_active_session(user_id)
+    guardian_suite = get_guardian_suite()
+    priv_session = guardian_suite.auth.get_active_session(user_id)
     if not priv_session:
         raise HTTPException(
             status_code=403,
             detail="Break-glass privileged mode required. POST to /guardian/breakglass with your PIN first.",
         )
     try:
-        from app.services.guardian.vault import vault_add
-        result = vault_add(
+        result = guardian_suite.vault.vault_add(
             alias=body.alias,
             value=body.value,
             category=body.category,
@@ -212,20 +198,19 @@ def vault_delete_endpoint(
     session: SessionDep,
 ) -> dict[str, Any]:
     """Delete a vault secret. Requires break-glass privileged mode."""
-    from app.services.guardian.auth import get_active_session
     from app.crud import create_audit_log
 
     _require_guardian_operator(current_user)
     user_id = str(current_user.id)
-    priv_session = get_active_session(user_id)
+    guardian_suite = get_guardian_suite()
+    priv_session = guardian_suite.auth.get_active_session(user_id)
     if not priv_session:
         raise HTTPException(
             status_code=403,
             detail="Break-glass privileged mode required. POST to /guardian/breakglass with your PIN first.",
         )
     try:
-        from app.services.guardian.vault import vault_delete
-        ok = vault_delete(
+        ok = guardian_suite.vault.vault_delete(
             alias=alias,
             operator=str(current_user.username),
             session_id=priv_session.session_id,
@@ -283,7 +268,7 @@ def list_room_guardian_tasks(
     limit: int = 20,
 ) -> dict[str, Any]:
     _require_room_access(session, room_id, current_user)
-    tasks = list_tasks(room_id=str(room_id), limit=limit)
+    tasks = get_guardian_suite().task_guardian.list_tasks(room_id=str(room_id), limit=limit)
     return {
         "items": [
             {
@@ -318,7 +303,7 @@ def list_room_guardian_runs(
     limit: int = 20,
 ) -> dict[str, Any]:
     _require_room_access(session, room_id, current_user)
-    runs = list_runs(room_id=str(room_id), limit=limit)
+    runs = get_guardian_suite().task_guardian.list_runs(room_id=str(room_id), limit=limit)
     return {
         "items": [
             {
@@ -350,7 +335,7 @@ def create_room_guardian_task(
     _require_room_operator(membership.role)
 
     try:
-        task = schedule_task(
+        task = get_guardian_suite().task_guardian.schedule_task(
             name=task_in.name.strip(),
             tool_name=task_in.tool_name.strip(),
             tool_args=task_in.tool_args,
@@ -375,11 +360,12 @@ def update_room_guardian_task(
     _, membership = _require_room_access(session, room_id, current_user)
     _require_room_operator(membership.role)
 
-    task = get_task(task_id)
+    guardian_suite = get_guardian_suite()
+    task = guardian_suite.task_guardian.get_task(task_id)
     if not task or task.room_id != str(room_id):
         raise HTTPException(status_code=404, detail="Task Guardian job not found")
 
-    if not set_task_enabled(task_id, task_in.enabled):
+    if not guardian_suite.task_guardian.set_task_enabled(task_id, task_in.enabled):
         raise HTTPException(status_code=404, detail="Task Guardian job not found")
 
     return {"task_id": task_id, "enabled": task_in.enabled}
@@ -395,11 +381,12 @@ async def run_room_guardian_task(
     _, membership = _require_room_access(session, room_id, current_user)
     _require_room_operator(membership.role)
 
-    task = get_task(task_id)
+    guardian_suite = get_guardian_suite()
+    task = guardian_suite.task_guardian.get_task(task_id)
     if not task or task.room_id != str(room_id):
         raise HTTPException(status_code=404, detail="Task Guardian job not found")
 
-    result = await run_task_once(task, session)
+    result = await guardian_suite.task_guardian.run_task_once(task, session)
     return result
 
 

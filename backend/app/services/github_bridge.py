@@ -32,6 +32,7 @@ from app.crud import (
     get_user_memories,
 )
 from app.models import ChatUser, UserType
+from app.services.guardian import get_guardian_suite
 
 logger = logging.getLogger(__name__)
 
@@ -467,7 +468,7 @@ async def _run_room_prompt(
 ) -> dict[str, Any]:
     from app.api.routes.chat.agents import get_agent, resolve_agent_from_message
     from app.api.routes.chat.llm import SYSTEM_PROMPT, stream_chat_with_tools
-    from app.services.guardian.memory import build_memory_context, remember_chat_message
+    guardian_suite = get_guardian_suite()
 
     room_uuid = uuid.UUID(room_id)
     user_uuid = uuid.UUID(user_id)
@@ -495,7 +496,7 @@ async def _run_room_prompt(
 
     agent_name, agent_content = resolve_agent_from_message(content)
     try:
-        remember_chat_message(user_id=user_id, room_id=room_id, role="user", content=agent_content)
+        guardian_suite.memory.remember_chat_message(user_id=user_id, room_id=room_id, role="user", content=agent_content)
     except Exception:
         pass
 
@@ -522,13 +523,12 @@ async def _run_room_prompt(
         system_prompt = base_prompt
 
     try:
-        memory_context = build_memory_context(user_id=user_id, room_id=room_id, query=agent_content)
+        memory_context = guardian_suite.memory.build_memory_context(user_id=user_id, room_id=room_id, query=agent_content)
     except Exception:
         memory_context = ""
     if memory_context:
         system_prompt += f"\n\n{memory_context}"
 
-    from app.services.guardian.auth import is_operator_privileged, is_operator_user_id
     full_text = ""
     async for event in stream_chat_with_tools(
         [{"role": "system", "content": system_prompt}] + openai_history,
@@ -537,8 +537,8 @@ async def _run_room_prompt(
         room_id=room_id,
         agent_name=agent_name,
         room_execution_allowed=room.execution_allowed,
-        is_operator=is_operator_user_id(session, user_id),
-        is_privileged=is_operator_privileged(user_id),
+        is_operator=guardian_suite.auth.is_operator_user_id(session, user_id),
+        is_privileged=guardian_suite.auth.is_operator_privileged(user_id),
     ):
         event_type = event.get("type")
         if event_type == "token":
@@ -585,7 +585,7 @@ async def _run_room_prompt(
         },
     )
     try:
-        remember_chat_message(user_id=user_id, room_id=room_id, role="assistant", content=final_text)
+        guardian_suite.memory.remember_chat_message(user_id=user_id, room_id=room_id, role="assistant", content=final_text)
     except Exception:
         pass
     await _broadcast_room_message(room_id, str(bot_msg.id), final_text, bot_user.username, "BOT")
@@ -607,10 +607,7 @@ async def _execute_pending_confirmation(
         serialize_tool_args_for_audit,
     )
     from app.api.routes.chat.tools import execute_tool
-    from app.services.guardian.auth import is_operator_privileged, is_operator_user_id
-    from app.services.guardian.executive import exec_with_guard
-    from app.services.guardian.memory import remember_tool_event
-    from app.services.guardian.policy import decide_tool_use
+    guardian_suite = get_guardian_suite()
 
     pending = consume_pending(confirm_id)
     if not pending:
@@ -623,12 +620,12 @@ async def _execute_pending_confirmation(
     if not room:
         return "Linked room not found."
 
-    decision = decide_tool_use(
+    decision = guardian_suite.policy.decide_tool_use(
         tool_name,
         tool_args,
         room_execution_allowed=room.execution_allowed,
-        is_operator=is_operator_user_id(session, user_id),
-        is_privileged=is_operator_privileged(user_id),
+        is_operator=guardian_suite.auth.is_operator_user_id(session, user_id),
+        is_privileged=guardian_suite.auth.is_operator_privileged(user_id),
     )
     create_audit_log(
         session=session,
@@ -648,7 +645,7 @@ async def _execute_pending_confirmation(
     if decision.action == "deny":
         result = f"POLICY DENIED: {decision.reason}"
     else:
-        result = await exec_with_guard(
+        result = await guardian_suite.executive.exec_with_guard(
             tool_name=tool_name,
             action_type=decision.action_type,
             expected_outcome=f"Confirmed GitHub execution for {tool_name}",
@@ -674,7 +671,7 @@ async def _execute_pending_confirmation(
         model=None,
     )
     try:
-        remember_tool_event(
+        guardian_suite.memory.remember_tool_event(
             user_id=user_id,
             room_id=room_id,
             tool_name=tool_name,

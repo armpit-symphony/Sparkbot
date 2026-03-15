@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 from app.api.deps import CurrentChatUser, SessionDep
 from app.api.routes.chat.agents import BUILT_IN_AGENTS, get_all_agents, register_agent, unregister_agent
 from app.core.config import settings
+from app.services.guardian import get_guardian_suite
 from app.api.routes.chat.llm import (
     AGENT_MODEL_OVERRIDES_ENV,
     AVAILABLE_MODELS,
@@ -79,9 +80,7 @@ def _env_path() -> Path:
 
 
 def _require_operator(current_user: CurrentChatUser) -> None:
-    from app.services.guardian.auth import is_operator_identity
-
-    if not current_user or not is_operator_identity(
+    if not current_user or not get_guardian_suite().auth.is_operator_identity(
         username=current_user.username,
         user_type=current_user.type,
     ):

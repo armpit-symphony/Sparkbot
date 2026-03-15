@@ -52,6 +52,7 @@ from app.schemas.chat import (
     RoomResponse,
     RoomUpdate,
 )
+from app.services.guardian import get_guardian_suite
 
 router = APIRouter(prefix="/rooms", tags=["chat-rooms"])
 
@@ -885,14 +886,7 @@ async def stream_room_message(
             serialize_tool_args_for_audit,
         )
         from app.api.routes.chat.tools import execute_tool
-        from app.services.guardian.executive import exec_with_guard
-        from app.services.guardian.auth import is_operator_identity, is_operator_privileged
-        from app.services.guardian.policy import decide_tool_use
-        from app.services.guardian.verifier import (
-            format_verifier_note,
-            should_verify_interactive_tool_run,
-            verify_interactive_tool_run,
-        )
+        guardian_suite = get_guardian_suite()
 
         pending = consume_pending(confirm_id)
         if not pending:
@@ -902,16 +896,14 @@ async def stream_room_message(
         tool_name = pending["tool"]
         tool_args = pending["args"]
         user_id_str = str(current_user.id)
-        user_is_operator = is_operator_identity(username=current_user.username, user_type=current_user.type)
-        user_is_privileged = is_operator_privileged(user_id_str)
+        user_is_operator = guardian_suite.auth.is_operator_identity(username=current_user.username, user_type=current_user.type)
+        user_is_privileged = guardian_suite.auth.is_operator_privileged(user_id_str)
 
         try:
             from app.api.deps import get_db as _get_db
             from app.crud import create_audit_log
-            from app.services.guardian.memory import remember_tool_event
-
             db2 = next(_get_db())
-            decision = decide_tool_use(
+            decision = guardian_suite.policy.decide_tool_use(
                 tool_name,
                 tool_args if isinstance(tool_args, dict) else {},
                 room_execution_allowed=room.execution_allowed,
@@ -937,7 +929,7 @@ async def stream_room_message(
                 verification = None
                 result = f"POLICY DENIED: {decision.reason}"
             else:
-                result = await exec_with_guard(
+                result = await guardian_suite.executive.exec_with_guard(
                     tool_name=tool_name,
                     action_type=decision.action_type,
                     expected_outcome=f"Confirmed tool execution for {tool_name}",
@@ -951,23 +943,23 @@ async def stream_room_message(
                     metadata={"room_id": str(room_id), "user_id": user_id_str, "confirmed": True},
                 )
                 verification = None
-                if should_verify_interactive_tool_run(
+                if guardian_suite.verifier.should_verify_interactive_tool_run(
                     action_type=decision.action_type,
                     high_risk=decision.high_risk,
                 ):
-                    verification = verify_interactive_tool_run(
+                    verification = guardian_suite.verifier.verify_interactive_tool_run(
                         tool_name=tool_name,
                         output=str(result),
                         execution_status="success",
                     )
             outward_result = mask_tool_result_for_external(tool_name, tool_args, result)
             if verification is not None:
-                outward_result = f"{outward_result}\n\n{format_verifier_note(verification)}"
+                outward_result = f"{outward_result}\n\n{guardian_suite.verifier.format_verifier_note(verification)}"
             if prelude:
                 outward_result = f"{prelude}\n\n{outward_result}"
             redacted_input, redacted_result = redact_tool_call_for_audit(tool_name, tool_args, result)
             if verification is not None:
-                redacted_result = f"{redacted_result}\n\n{format_verifier_note(verification)}"
+                redacted_result = f"{redacted_result}\n\n{guardian_suite.verifier.format_verifier_note(verification)}"
             create_audit_log(
                 session=db2,
                 tool_name=tool_name,
@@ -978,7 +970,7 @@ async def stream_room_message(
                 model=None,
             )
             try:
-                remember_tool_event(
+                guardian_suite.memory.remember_tool_event(
                     user_id=user_id_str,
                     room_id=str(room_id),
                     tool_name=tool_name,
@@ -1163,10 +1155,10 @@ async def stream_room_message(
     # Detect @agentname routing before building the LLM prompt.
     from app.api.routes.chat.agents import resolve_agent_from_message, get_agent
     agent_name, agent_content = resolve_agent_from_message(message_in.content)
-    from app.services.guardian.memory import build_memory_context, remember_chat_message
+    guardian_suite = get_guardian_suite()
 
     try:
-        remember_chat_message(
+        guardian_suite.memory.remember_chat_message(
             user_id=str(current_user.id),
             room_id=str(room_id),
             role="user",
@@ -1243,7 +1235,7 @@ async def stream_room_message(
         system_prompt = base_prompt
 
     try:
-        memory_context = build_memory_context(
+        memory_context = guardian_suite.memory.build_memory_context(
             user_id=str(current_user.id),
             room_id=str(room_id),
             query=agent_content,
@@ -1268,23 +1260,18 @@ async def stream_room_message(
     _breakglass_content = (message_in.content or "").strip()
     if _breakglass_content.lower() in {"/breakglass", "/breakglass close"}:
         from app.crud import create_audit_log
-        from app.services.guardian.auth import (
-            close_privileged_session,
-            get_active_session,
-            is_operator_identity,
-        )
 
         async def breakglass_stream():
             from app.services.guardian.spine import emit_breakglass_event
 
             yield f"data: {json.dumps({'type': 'human_message', 'message_id': human_msg_id})}\n\n"
-            priv_session = get_active_session(user_id_str)
+            priv_session = guardian_suite.auth.get_active_session(user_id_str)
             pending_confirm_id = _latest_privileged_pending_approval_id(session=session, room_id=room_id)
-            if not is_operator_identity(username=current_user.username, user_type=current_user.type):
-                msg = "Breakglass is restricted to configured Sparkbot operators."
+            if not guardian_suite.auth.is_operator_identity(username=current_user.username, user_type=current_user.type):
+                msg = "Break-glass is restricted to configured Sparkbot operators."
             elif _breakglass_content.lower() == "/breakglass close":
                 if priv_session:
-                    close_privileged_session(user_id_str)
+                    guardian_suite.auth.close_privileged_session(user_id_str)
                     _pop_breakglass_pin_state(user_id=user_id_str, room_id=room_id)
                     try:
                         create_audit_log(
@@ -1361,10 +1348,8 @@ async def stream_room_message(
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
 
-    from app.services.guardian.auth import is_operator_identity as _is_operator_identity
-    from app.services.guardian.auth import is_operator_privileged as _is_priv
-    _user_is_operator = _is_operator_identity(username=current_user.username, user_type=current_user.type)
-    _user_is_privileged = _is_priv(user_id_str)
+    _user_is_operator = guardian_suite.auth.is_operator_identity(username=current_user.username, user_type=current_user.type)
+    _user_is_privileged = guardian_suite.auth.is_operator_privileged(user_id_str)
 
     async def event_stream():
         from app.api.deps import get_db
@@ -1472,7 +1457,7 @@ async def stream_room_message(
             )
             bot_reply_id = str(bot_reply.id)  # capture before session closes
             try:
-                remember_chat_message(
+                guardian_suite.memory.remember_chat_message(
                     user_id=user_id_str,
                     room_id=str(room_id),
                     role="assistant",
@@ -1915,7 +1900,7 @@ async def stream_room_message(
                         )
                         agent_msg_id = str(bot_msg.id)  # capture before session closes
                         try:
-                            remember_chat_message(user_id=user_id_str, room_id=str(room_id), role="assistant", content=agent_full_text)
+                            guardian_suite.memory.remember_chat_message(user_id=user_id_str, room_id=str(room_id), role="assistant", content=agent_full_text)
                         except Exception:
                             pass
                         db2.close()
@@ -2010,10 +1995,9 @@ async def generate_meeting_notes_endpoint(
     if membership.role.value not in ("OWNER", "MOD"):
         raise HTTPException(status_code=403, detail="Only OWNERs and MODs can generate notes")
     from datetime import timezone as _tz
-    from app.services.guardian.meeting_recorder import generate_meeting_notes
     from app.api.routes.chat.llm import get_model
     model = get_model(str(current_user.id))
-    result = await generate_meeting_notes(
+    result = await get_guardian_suite().meeting_recorder.generate_meeting_notes(
         session=session,
         room_id=room_id,
         user_id=current_user.id,
