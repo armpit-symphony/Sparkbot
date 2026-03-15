@@ -239,6 +239,42 @@ async def _build_controls_config(current_user: CurrentChatUser, notices: list[st
     }
 
 
+async def build_safe_runtime_state(current_user: CurrentChatUser) -> dict[str, Any]:
+    """Return a safe runtime/config snapshot suitable for chat self-inspection."""
+    from app.services.guardian.auth import get_active_session
+
+    config = await _build_controls_config(current_user)
+    provider_flags = {
+        str(item.get("id")): {
+            "configured": bool(item.get("configured")),
+            "reachable": item.get("reachable"),
+            "models_available": item.get("models_available"),
+        }
+        for item in list(config.get("providers") or [])
+    }
+    active_session = get_active_session(str(current_user.id))
+    default_provider = str((config.get("default_selection") or {}).get("provider") or "")
+    return {
+        "assistant_name": "Sparkbot",
+        "active_model": str(config.get("active_model") or ""),
+        "default_selection": config.get("default_selection") or {},
+        "model_stack": config.get("stack") or {},
+        "local_runtime": config.get("local_runtime") or {},
+        "default_route_mode": "local" if default_provider == "ollama" else "cloud",
+        "routing_policy": config.get("routing_policy") or {},
+        "token_guardian_mode": str(config.get("token_guardian_mode") or "unknown"),
+        "agent_overrides": config.get("agent_overrides") or {},
+        "ollama_status": config.get("ollama_status") or {},
+        "openrouter_configured": bool((provider_flags.get("openrouter") or {}).get("configured")),
+        "providers": provider_flags,
+        "breakglass": {
+            "active": active_session is not None,
+            "ttl_remaining": active_session.ttl_remaining() if active_session else 0,
+            "scopes": list(active_session.scopes) if active_session else [],
+        },
+    }
+
+
 class ModelSelect(BaseModel):
     model: str
 

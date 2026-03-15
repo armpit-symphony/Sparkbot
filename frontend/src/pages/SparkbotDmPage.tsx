@@ -366,6 +366,7 @@ interface SlashCommand {
 
 const COMMANDS: SlashCommand[] = [
   { name: "/help",    description: "Show available commands" },
+  { name: "/breakglass", description: "Open or close privileged mode — /breakglass | /breakglass close" },
   { name: "/clear",   description: "Clear visible chat history" },
   { name: "/new",     description: "Start a fresh conversation" },
   { name: "/export",  description: "Download conversation as Markdown" },
@@ -2245,6 +2246,7 @@ function SparkbotDmPage() {
   const [meeting, setMeeting] = useState<MeetingState>(emptyMeeting())
   const [uploading, setUploading] = useState(false)
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null)
+  const [awaitingBreakglassPin, setAwaitingBreakglassPin] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsLoading, setSettingsLoading] = useState(false)
   const [settingsError, setSettingsError] = useState("")
@@ -2344,6 +2346,29 @@ function SparkbotDmPage() {
   const [spawnPrompt, setSpawnPrompt] = useState("")
   const [spawning, setSpawning] = useState(false)
   const [deletingAgent, setDeletingAgent] = useState<string | null>(null)
+
+  const syncBreakglassPinState = useCallback((text: string) => {
+    const lower = text.toLowerCase()
+    if (
+      lower.includes("please enter your pin") ||
+      lower.includes("enter your operator pin") ||
+      lower.includes("incorrect operator pin")
+    ) {
+      setAwaitingBreakglassPin(true)
+      return
+    }
+    if (
+      lower.includes("requires breakglass approval") ||
+      lower.includes("breakglass approved") ||
+      lower.includes("breakglass mode is now closed") ||
+      lower.includes("breakglass mode is not currently active") ||
+      lower.includes("breakglass request cancelled") ||
+      lower.includes("too many failed pin attempts") ||
+      lower.includes("breakglass is restricted")
+    ) {
+      setAwaitingBreakglassPin(false)
+    }
+  }, [])
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }) }, [messages])
   useEffect(() => {
@@ -3554,10 +3579,22 @@ function SparkbotDmPage() {
             } else if (ev.type === "confirm_required") {
               setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, content: "", isStreaming: false, toolActivity: undefined } : m))
               setPendingConfirm({ confirmId: ev.confirm_id, tool: ev.tool, input: ev.input ?? {} })
+              setAwaitingBreakglassPin(false)
+              setSending(false)
+              return
+            } else if (ev.type === "privileged_required") {
+              setMessages(prev => prev.map(m => m.id === tempBotId ? {
+                ...m,
+                content: "This action requires breakglass approval. Type `/breakglass` to continue, then enter your PIN.",
+                isStreaming: false,
+                toolActivity: undefined,
+              } : m))
+              setAwaitingBreakglassPin(false)
               setSending(false)
               return
             } else if (ev.type === "done") {
               setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, id: ev.message_id, isStreaming: false, toolActivity: undefined } : m))
+              syncBreakglassPinState(botFullText)
               if (voiceMode && botFullText) {
                 playTTS(botFullText)
               }
@@ -3572,7 +3609,7 @@ function SparkbotDmPage() {
     } finally {
       setSending(false)
     }
-  }, [roomId, voiceMode, playTTS])
+  }, [roomId, voiceMode, playTTS, syncBreakglassPinState])
 
   // ── Voice quick-capture (transcribe-only — pastes text to input) ─────────────
 
@@ -3637,7 +3674,8 @@ function SparkbotDmPage() {
     setShowCommands(false)
     setShowAgentPicker(false)
 
-    if (content.startsWith("/")) {
+    const isBackendSlashCommand = /^\/breakglass(?:\s+close)?$/i.test(content)
+    if (content.startsWith("/") && !isBackendSlashCommand) {
       if (handleCommand(content)) return
       setMessages(prev => [...prev, systemMsg(`Unknown command: **${content.split(" ")[0]}**\nType **/help** for available commands.`)])
       return
@@ -3650,9 +3688,12 @@ function SparkbotDmPage() {
 
     const tempHumanId = `temp-human-${Date.now()}`
     const tempBotId = `temp-bot-${Date.now()}`
+    const maskedBreakglassInput = awaitingBreakglassPin && !isBackendSlashCommand
+      ? (/^(?:no|\/cancel|\/deny)$/i.test(content) ? "/breakglass cancel" : "/breakglass PIN")
+      : content
     setMessages(prev => [
       ...prev,
-      { id: tempHumanId, content, created_at: new Date().toISOString(), sender_type: "HUMAN", reply_to_id: replyId ?? undefined },
+      { id: tempHumanId, content: maskedBreakglassInput, created_at: new Date().toISOString(), sender_type: "HUMAN", reply_to_id: replyId ?? undefined },
       { id: tempBotId, content: "", created_at: new Date().toISOString(), sender_type: "BOT", isStreaming: true },
     ])
 
@@ -3673,6 +3714,7 @@ function SparkbotDmPage() {
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
       let buffer = ""
+      let botFullText = ""
 
       while (true) {
         const { done, value } = await reader.read()
@@ -3694,15 +3736,28 @@ function SparkbotDmPage() {
             } else if (ev.type === "tool_done") {
               setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, toolActivity: undefined } : m))
             } else if (ev.type === "token") {
+              botFullText += ev.token
               setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, content: m.content + ev.token } : m))
             } else if (ev.type === "confirm_required") {
               // Pause streaming and show confirmation modal
               setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, content: "", isStreaming: false, toolActivity: undefined } : m))
               setPendingConfirm({ confirmId: ev.confirm_id, tool: ev.tool, input: ev.input ?? {} })
+              setAwaitingBreakglassPin(false)
+              setSending(false)
+              return
+            } else if (ev.type === "privileged_required") {
+              setMessages(prev => prev.map(m => m.id === tempBotId ? {
+                ...m,
+                content: "This action requires breakglass approval. Type `/breakglass` to continue, then enter your PIN.",
+                isStreaming: false,
+                toolActivity: undefined,
+              } : m))
+              setAwaitingBreakglassPin(false)
               setSending(false)
               return
             } else if (ev.type === "done") {
               setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, id: ev.message_id, isStreaming: false, toolActivity: undefined, agent: ev.agent } : m))
+              syncBreakglassPinState(botFullText)
             } else if (ev.type === "error") {
               setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, content: `⚠️ ${ev.error}`, isStreaming: false, toolActivity: undefined } : m))
             }
@@ -3714,7 +3769,7 @@ function SparkbotDmPage() {
     } finally {
       setSending(false)
     }
-  }, [inputValue, roomId, sending, handleCommand, captureMeetingItem, agents, replyingTo])
+  }, [inputValue, roomId, sending, handleCommand, captureMeetingItem, agents, replyingTo, awaitingBreakglassPin, syncBreakglassPinState])
 
   // ── Confirmation handlers ────────────────────────────────────────────────────
 

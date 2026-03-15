@@ -6,6 +6,7 @@ Handles room CRUD and membership management.
 import json
 import os
 import re
+import time
 from datetime import datetime, timezone
 from typing import Any, Optional
 from uuid import UUID
@@ -80,6 +81,9 @@ _MEETING_STATUS_VALUES = {
     "blocked",
     "looping",
 }
+
+_BREAKGLASS_PIN_TTL_SECONDS = max(60, min(int(os.getenv("SPARKBOT_PIN_PROMPT_TTL_SECONDS", "300")), 1800))
+_AWAITING_BREAKGLASS_PIN: dict[str, dict[str, Any]] = {}
 
 
 def _agent_label(agent_name: str, agent_info: Optional[dict[str, Any]] = None) -> str:
@@ -179,6 +183,140 @@ def _meeting_artifact_markdown(objective: str, status: str, content: str) -> str
         f"## Objective\n{objective.strip() or '(none noted)'}\n\n"
         f"## Outcome\n{content.strip() or '(none noted)'}\n"
     )
+
+
+def _breakglass_state_key(*, user_id: str, room_id: UUID) -> str:
+    return f"{user_id}:{room_id}"
+
+
+def _prune_breakglass_pin_state(*, state_key: str | None = None) -> None:
+    now = time.time()
+    stale_keys = [
+        key
+        for key, state in _AWAITING_BREAKGLASS_PIN.items()
+        if now - float(state.get("created_at", 0.0)) > _BREAKGLASS_PIN_TTL_SECONDS
+    ]
+    if state_key and state_key in stale_keys:
+        _AWAITING_BREAKGLASS_PIN.pop(state_key, None)
+        stale_keys.remove(state_key)
+    for key in stale_keys:
+        _AWAITING_BREAKGLASS_PIN.pop(key, None)
+
+
+def _set_breakglass_pin_state(
+    *,
+    user_id: str,
+    room_id: UUID,
+    confirm_id: str | None,
+) -> None:
+    _prune_breakglass_pin_state()
+    _AWAITING_BREAKGLASS_PIN[_breakglass_state_key(user_id=user_id, room_id=room_id)] = {
+        "confirm_id": confirm_id,
+        "created_at": time.time(),
+    }
+
+
+def _pop_breakglass_pin_state(*, user_id: str, room_id: UUID) -> dict[str, Any] | None:
+    _prune_breakglass_pin_state(state_key=_breakglass_state_key(user_id=user_id, room_id=room_id))
+    return _AWAITING_BREAKGLASS_PIN.pop(_breakglass_state_key(user_id=user_id, room_id=room_id), None)
+
+
+def _peek_breakglass_pin_state(*, user_id: str, room_id: UUID) -> dict[str, Any] | None:
+    key = _breakglass_state_key(user_id=user_id, room_id=room_id)
+    _prune_breakglass_pin_state(state_key=key)
+    return _AWAITING_BREAKGLASS_PIN.get(key)
+
+
+def _latest_privileged_pending_approval_id(*, session: Session, room_id: UUID) -> str | None:
+    try:
+        messages, _, _ = get_chat_messages(session=session, room_id=room_id, limit=20)
+    except Exception:
+        return None
+    for message in reversed(messages):
+        meta_json = message.meta_json or {}
+        if not isinstance(meta_json, dict) or not meta_json.get("privileged_required"):
+            continue
+        confirm_id = str(meta_json.get("confirm_id") or "").strip()
+        if confirm_id:
+            return confirm_id
+    return None
+
+
+def _looks_like_self_inspection_query(content: str) -> bool:
+    normalized = (content or "").strip().lower()
+    if not normalized:
+        return False
+    patterns = (
+        r"\b(ai stack|model stack|runtime state|safe operational state)\b",
+        r"\bwhat (?:ai )?(?:stack|model|provider|route)\b",
+        r"\bwhat are you running\b",
+        r"\btoken guardian\b",
+        r"\bcross[- ]provider fallback\b",
+        r"\bdefault (?:provider|model|route)\b",
+        r"\bagent overrides?\b",
+        r"\bollama\b",
+        r"\bopenrouter\b",
+        r"\bbreakglass|break-glass\b",
+        r"\bprovider/model\b",
+    )
+    return any(re.search(pattern, normalized) for pattern in patterns)
+
+
+def _render_runtime_state_markdown(runtime_state: dict[str, Any]) -> str:
+    default_selection = runtime_state.get("default_selection") or {}
+    model_stack = runtime_state.get("model_stack") or {}
+    routing_policy = runtime_state.get("routing_policy") or {}
+    agent_overrides = runtime_state.get("agent_overrides") or {}
+    breakglass = runtime_state.get("breakglass") or {}
+    ollama_status = runtime_state.get("ollama_status") or {}
+    providers = runtime_state.get("providers") or {}
+
+    def _bool_label(value: Any, *, yes: str = "on", no: str = "off", unknown: str = "unknown") -> str:
+        if value is None:
+            return unknown
+        return yes if bool(value) else no
+
+    override_lines = []
+    for agent_name, override in agent_overrides.items():
+        route = str((override or {}).get("route") or "default")
+        model = str((override or {}).get("model") or "").strip()
+        override_lines.append(f"- `{agent_name}`: `{route}`{f' via `{model}`' if model else ''}")
+    if not override_lines:
+        override_lines.append("- none")
+
+    provider_lines = []
+    for provider_name in ("ollama", "openrouter", "openai", "anthropic", "google", "groq", "minimax"):
+        info = providers.get(provider_name)
+        if not info:
+            continue
+        provider_lines.append(
+            f"- `{provider_name}`: configured={_bool_label(info.get('configured'), yes='yes', no='no')} "
+            f"reachable={_bool_label(info.get('reachable'), yes='yes', no='no')} "
+            f"models_available={_bool_label(info.get('models_available'), yes='yes', no='no')}"
+        )
+
+    lines = [
+        "## Sparkbot Runtime State",
+        f"- active model: `{runtime_state.get('active_model') or 'unknown'}`",
+        f"- primary stack model: `{model_stack.get('primary') or 'unknown'}`",
+        f"- backup stack model 1: `{model_stack.get('backup_1') or 'none'}`",
+        f"- backup stack model 2: `{model_stack.get('backup_2') or 'none'}`",
+        f"- heavy-hitter model: `{model_stack.get('heavy_hitter') or 'unknown'}`",
+        f"- default provider: `{default_selection.get('provider') or 'unknown'}`",
+        f"- default model: `{default_selection.get('model') or 'unknown'}`",
+        f"- default route mode: `{runtime_state.get('default_route_mode') or 'unknown'}`",
+        f"- Token Guardian: `{runtime_state.get('token_guardian_mode') or 'unknown'}`",
+        f"- cross-provider fallback: `{_bool_label(routing_policy.get('cross_provider_fallback'))}`",
+        f"- Ollama reachable: `{_bool_label(ollama_status.get('reachable'), yes='yes', no='no')}`",
+        f"- Ollama base URL: `{ollama_status.get('base_url') or runtime_state.get('local_runtime', {}).get('base_url') or 'unknown'}`",
+        f"- OpenRouter configured: `{_bool_label(runtime_state.get('openrouter_configured'), yes='yes', no='no')}`",
+        f"- breakglass active: `{_bool_label(breakglass.get('active'), yes='yes', no='no')}`",
+    ]
+    if breakglass.get("active"):
+        lines.append(f"- breakglass TTL remaining: `{int(breakglass.get('ttl_remaining') or 0)}` seconds")
+
+    lines.extend(["", "## Agent Overrides", *override_lines, "", "## Provider Status", *(provider_lines or ["- none"])])
+    return "\n".join(lines)
 
 
 def _require_room_access(
@@ -735,9 +873,11 @@ async def stream_room_message(
     if membership.role == RoomRole.VIEWER:
         raise HTTPException(status_code=403, detail="VIEWERs cannot send messages")
     room = get_chat_room_by_id(session, room_id)
+    user_id_str = str(current_user.id)
+    raw_content = message_in.content or ""
+    stripped_content = raw_content.strip()
 
-    # ── Confirmed write-tool execution path ───────────────────────────────────
-    if message_in.confirm_id:
+    async def _stream_confirmed_tool(confirm_id: str, *, prelude: str | None = None):
         from app.api.routes.chat.llm import (
             consume_pending,
             mask_tool_result_for_external,
@@ -754,9 +894,10 @@ async def stream_room_message(
             verify_interactive_tool_run,
         )
 
-        pending = consume_pending(message_in.confirm_id)
+        pending = consume_pending(confirm_id)
         if not pending:
-            raise HTTPException(status_code=400, detail="Confirmation expired or invalid")
+            yield f"data: {json.dumps({'type': 'error', 'error': 'Confirmation expired or invalid'})}\n\n"
+            return
 
         tool_name = pending["tool"]
         tool_args = pending["args"]
@@ -764,111 +905,224 @@ async def stream_room_message(
         user_is_operator = is_operator_identity(username=current_user.username, user_type=current_user.type)
         user_is_privileged = is_operator_privileged(user_id_str)
 
-        async def confirmed_stream():
-            try:
-                from app.api.deps import get_db as _get_db
-                from app.crud import create_audit_log
-                from app.services.guardian.memory import remember_tool_event
-                db2 = next(_get_db())
-                decision = decide_tool_use(
-                    tool_name,
-                    tool_args if isinstance(tool_args, dict) else {},
-                    room_execution_allowed=room.execution_allowed,
-                    is_operator=user_is_operator,
-                    is_privileged=user_is_privileged,
-                )
-                create_audit_log(
-                    session=db2,
-                    tool_name="policy_decision",
-                    tool_input=json.dumps(
-                        {
-                            "tool_name": tool_name,
-                            "tool_args": json.loads(serialize_tool_args_for_audit(tool_name, tool_args)),
-                            "confirmed": True,
-                        }
-                    ),
-                    tool_result=decision.to_json(),
-                    user_id=current_user.id,
-                    room_id=room_id,
-                    model=None,
-                )
-                if decision.action == "deny":
-                    verification = None
-                    result = f"POLICY DENIED: {decision.reason}"
-                else:
-                    result = await exec_with_guard(
-                        tool_name=tool_name,
-                        action_type=decision.action_type,
-                        expected_outcome=f"Confirmed tool execution for {tool_name}",
-                        perform_fn=lambda: execute_tool(
-                            tool_name,
-                            tool_args,
-                            user_id=user_id_str,
-                            session=db2,
-                            room_id=str(room_id),
-                        ),
-                        metadata={"room_id": str(room_id), "user_id": user_id_str, "confirmed": True},
-                    )
-                    verification = None
-                    if should_verify_interactive_tool_run(
-                        action_type=decision.action_type,
-                        high_risk=decision.high_risk,
-                    ):
-                        verification = verify_interactive_tool_run(
-                            tool_name=tool_name,
-                            output=str(result),
-                            execution_status="success",
-                        )
-                outward_result = mask_tool_result_for_external(tool_name, tool_args, result)
-                if verification is not None:
-                    outward_result = f"{outward_result}\n\n{format_verifier_note(verification)}"
-                redacted_input, redacted_result = redact_tool_call_for_audit(tool_name, tool_args, result)
-                if verification is not None:
-                    redacted_result = f"{redacted_result}\n\n{format_verifier_note(verification)}"
-                create_audit_log(
-                    session=db2,
+        try:
+            from app.api.deps import get_db as _get_db
+            from app.crud import create_audit_log
+            from app.services.guardian.memory import remember_tool_event
+
+            db2 = next(_get_db())
+            decision = decide_tool_use(
+                tool_name,
+                tool_args if isinstance(tool_args, dict) else {},
+                room_execution_allowed=room.execution_allowed,
+                is_operator=user_is_operator,
+                is_privileged=user_is_privileged,
+            )
+            create_audit_log(
+                session=db2,
+                tool_name="policy_decision",
+                tool_input=json.dumps(
+                    {
+                        "tool_name": tool_name,
+                        "tool_args": json.loads(serialize_tool_args_for_audit(tool_name, tool_args)),
+                        "confirmed": True,
+                    }
+                ),
+                tool_result=decision.to_json(),
+                user_id=current_user.id,
+                room_id=room_id,
+                model=None,
+            )
+            if decision.action == "deny":
+                verification = None
+                result = f"POLICY DENIED: {decision.reason}"
+            else:
+                result = await exec_with_guard(
                     tool_name=tool_name,
-                    tool_input=redacted_input,
-                    tool_result=redacted_result,
-                    user_id=current_user.id,
-                    room_id=room_id,
-                    model=None,
+                    action_type=decision.action_type,
+                    expected_outcome=f"Confirmed tool execution for {tool_name}",
+                    perform_fn=lambda: execute_tool(
+                        tool_name,
+                        tool_args,
+                        user_id=user_id_str,
+                        session=db2,
+                        room_id=str(room_id),
+                    ),
+                    metadata={"room_id": str(room_id), "user_id": user_id_str, "confirmed": True},
+                )
+                verification = None
+                if should_verify_interactive_tool_run(
+                    action_type=decision.action_type,
+                    high_risk=decision.high_risk,
+                ):
+                    verification = verify_interactive_tool_run(
+                        tool_name=tool_name,
+                        output=str(result),
+                        execution_status="success",
+                    )
+            outward_result = mask_tool_result_for_external(tool_name, tool_args, result)
+            if verification is not None:
+                outward_result = f"{outward_result}\n\n{format_verifier_note(verification)}"
+            if prelude:
+                outward_result = f"{prelude}\n\n{outward_result}"
+            redacted_input, redacted_result = redact_tool_call_for_audit(tool_name, tool_args, result)
+            if verification is not None:
+                redacted_result = f"{redacted_result}\n\n{format_verifier_note(verification)}"
+            create_audit_log(
+                session=db2,
+                tool_name=tool_name,
+                tool_input=redacted_input,
+                tool_result=redacted_result,
+                user_id=current_user.id,
+                room_id=room_id,
+                model=None,
+            )
+            try:
+                remember_tool_event(
+                    user_id=user_id_str,
+                    room_id=str(room_id),
+                    tool_name=tool_name,
+                    args=tool_args if isinstance(tool_args, dict) else {},
+                    result=redacted_result,
+                )
+            except Exception:
+                pass
+            bot_user2 = db2.exec(select(ChatUser).where(ChatUser.username == "sparkbot")).scalar_one_or_none()
+            if not bot_user2:
+                bot_user2 = ChatUser(username="sparkbot", type=UserType.BOT, hashed_password="")
+                db2.add(bot_user2)
+                db2.commit()
+                db2.refresh(bot_user2)
+            bot_reply2 = create_chat_message(
+                session=db2,
+                room_id=room_id,
+                sender_id=bot_user2.id,
+                content=outward_result,
+                sender_type="BOT",
+            )
+            done_id = str(bot_reply2.id)
+            db2.close()
+            for chunk in [outward_result[i:i+80] for i in range(0, len(outward_result), 80)]:
+                yield f"data: {json.dumps({'type': 'token', 'token': chunk})}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'message_id': done_id})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+
+    # ── Confirmed write-tool execution path ───────────────────────────────────
+    if message_in.confirm_id:
+        return StreamingResponse(
+            _stream_confirmed_tool(message_in.confirm_id),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    pending_pin_state = _peek_breakglass_pin_state(user_id=user_id_str, room_id=room_id)
+    if pending_pin_state and stripped_content and stripped_content.lower() not in {"/breakglass", "/breakglass close"}:
+        from app.crud import create_audit_log
+        from app.services.guardian.auth import (
+            get_active_session,
+            is_locked_out,
+            is_operator_identity,
+            open_privileged_session,
+            verify_pin,
+        )
+
+        async def breakglass_pin_stream():
+            confirm_id = str(pending_pin_state.get("confirm_id") or "").strip() or None
+            lower_content = stripped_content.lower()
+            sanitized_human = "/breakglass cancel" if lower_content in {"/cancel", "/deny", "no"} else "/breakglass PIN"
+            human_msg = create_chat_message(
+                session=session,
+                room_id=room_id,
+                sender_id=current_user.id,
+                content=sanitized_human,
+                sender_type=current_user.type.value if hasattr(current_user.type, "value") else "HUMAN",
+                reply_to_id=message_in.reply_to_id,
+                meta_json={"breakglass_pin_submission": True},
+            )
+            yield f"data: {json.dumps({'type': 'human_message', 'message_id': str(human_msg.id)})}\n\n"
+
+            if lower_content in {"/cancel", "/deny", "no"}:
+                _pop_breakglass_pin_state(user_id=user_id_str, room_id=room_id)
+                msg = (
+                    "Breakglass request cancelled. "
+                    "If you still want to run the waiting privileged action, type `/breakglass` again."
+                    if confirm_id
+                    else "Breakglass request cancelled."
+                )
+            elif not is_operator_identity(username=current_user.username, user_type=current_user.type):
+                _pop_breakglass_pin_state(user_id=user_id_str, room_id=room_id)
+                msg = "Breakglass is restricted to configured Sparkbot operators."
+            elif is_locked_out(user_id_str):
+                _pop_breakglass_pin_state(user_id=user_id_str, room_id=room_id)
+                msg = "Too many failed PIN attempts. Wait 5 minutes, then type `/breakglass` to try again."
+            elif verify_pin(user_id_str, stripped_content):
+                _pop_breakglass_pin_state(user_id=user_id_str, room_id=room_id)
+                priv_session = get_active_session(user_id_str) or open_privileged_session(
+                    user_id_str,
+                    operator=str(current_user.username or user_id_str),
                 )
                 try:
-                    remember_tool_event(
-                        user_id=user_id_str,
-                        room_id=str(room_id),
-                        tool_name=tool_name,
-                        args=tool_args if isinstance(tool_args, dict) else {},
-                        result=redacted_result,
+                    create_audit_log(
+                        session=session,
+                        tool_name="breakglass_session_open",
+                        tool_input=json.dumps(
+                            {
+                                "operator": str(current_user.username or user_id_str),
+                                "session_id": priv_session.session_id,
+                                "room_id": str(room_id),
+                            }
+                        ),
+                        tool_result="ok",
+                        user_id=current_user.id,
+                        room_id=room_id,
                     )
                 except Exception:
                     pass
-                # Save bot reply
-                bot_user2 = db2.exec(select(ChatUser).where(ChatUser.username == "sparkbot")).scalar_one_or_none()
-                if not bot_user2:
-                    bot_user2 = ChatUser(username="sparkbot", type=UserType.BOT, hashed_password="")
-                    db2.add(bot_user2)
-                    db2.commit()
-                    db2.refresh(bot_user2)
-                bot_reply2 = create_chat_message(
-                    session=db2,
-                    room_id=room_id,
-                    sender_id=bot_user2.id,
-                    content=outward_result,
-                    sender_type="BOT",
+                if confirm_id:
+                    async for event in _stream_confirmed_tool(
+                        confirm_id,
+                        prelude="Breakglass approved for this action.",
+                    ):
+                        yield event
+                    return
+                ttl_min = max(1, priv_session.ttl_remaining() // 60)
+                msg = (
+                    f"Breakglass approved. Privileged mode is active for {ttl_min} minute(s).\n\n"
+                    "Scope: `vault`, `service_control`.\n"
+                    "Send your privileged request as a new message, or use `/breakglass close` to exit."
                 )
-                done_id = str(bot_reply2.id)
-                db2.close()
-                # Stream result as tokens then done
-                for chunk in [outward_result[i:i+80] for i in range(0, len(outward_result), 80)]:
-                    yield f"data: {json.dumps({'type': 'token', 'token': chunk})}\n\n"
-                yield f"data: {json.dumps({'type': 'done', 'message_id': done_id})}\n\n"
-            except Exception as e:
-                yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+            else:
+                _set_breakglass_pin_state(user_id=user_id_str, room_id=room_id, confirm_id=confirm_id)
+                try:
+                    create_audit_log(
+                        session=session,
+                        tool_name="breakglass_pin_failed",
+                        tool_input=json.dumps({"operator": str(current_user.username or user_id_str), "room_id": str(room_id)}),
+                        tool_result="failed",
+                        user_id=current_user.id,
+                        room_id=room_id,
+                    )
+                except Exception:
+                    pass
+                msg = "Incorrect operator PIN. Try again, or reply `NO` to cancel."
+
+            bot_user = _get_or_create_agent_bot_user(session, "sparkbot")
+            bot_msg = create_chat_message(
+                session=session,
+                room_id=room_id,
+                sender_id=bot_user.id,
+                content=msg,
+                sender_type="BOT",
+                reply_to_id=human_msg.id,
+                meta_json={"breakglass": True, "confirm_id": confirm_id} if confirm_id else {"breakglass": True},
+            )
+            for chunk in _chunk_text(msg):
+                yield f"data: {json.dumps({'type': 'token', 'token': chunk})}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'message_id': str(bot_msg.id)})}\n\n"
 
         return StreamingResponse(
-            confirmed_stream(),
+            breakglass_pin_stream(),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
@@ -899,6 +1153,42 @@ async def stream_room_message(
         )
     except Exception:
         pass
+
+    if _looks_like_self_inspection_query(agent_content):
+        from app.api.routes.chat.model import build_safe_runtime_state
+
+        async def runtime_state_stream():
+            yield f"data: {json.dumps({'type': 'human_message', 'message_id': human_msg_id})}\n\n"
+            runtime_state = await build_safe_runtime_state(current_user)
+            runtime_text = _render_runtime_state_markdown(runtime_state)
+            bot_user = _get_or_create_agent_bot_user(session, "sparkbot")
+            bot_msg = create_chat_message(
+                session=session,
+                room_id=room_id,
+                sender_id=bot_user.id,
+                content=runtime_text,
+                sender_type="BOT",
+                reply_to_id=human_msg_uuid,
+                meta_json={"safe_runtime_state": True},
+            )
+            try:
+                remember_chat_message(
+                    user_id=user_id_str,
+                    room_id=str(room_id),
+                    role="assistant",
+                    content=runtime_text,
+                )
+            except Exception:
+                pass
+            for chunk in _chunk_text(runtime_text):
+                yield f"data: {json.dumps({'type': 'token', 'token': chunk})}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'message_id': str(bot_msg.id)})}\n\n"
+
+        return StreamingResponse(
+            runtime_state_stream(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     # Build conversation history (before this message)
     history_msgs, _, _ = get_chat_messages(session=session, room_id=room_id, limit=20)
@@ -942,11 +1232,10 @@ async def stream_room_message(
     if memory_context:
         system_prompt += f"\n\n{memory_context}"
 
-    user_id_str = str(current_user.id)
-
     # Check for /breakglass slash command before routing to LLM
     _breakglass_content = (message_in.content or "").strip()
     if _breakglass_content.lower() in {"/breakglass", "/breakglass close"}:
+        from app.crud import create_audit_log
         from app.services.guardian.auth import (
             close_privileged_session,
             get_active_session,
@@ -955,37 +1244,69 @@ async def stream_room_message(
 
         async def breakglass_stream():
             yield f"data: {json.dumps({'type': 'human_message', 'message_id': human_msg_id})}\n\n"
-            session = get_active_session(user_id_str)
+            priv_session = get_active_session(user_id_str)
+            pending_confirm_id = _latest_privileged_pending_approval_id(session=session, room_id=room_id)
             if not is_operator_identity(username=current_user.username, user_type=current_user.type):
-                msg = "Break-glass is restricted to configured Sparkbot operators."
+                msg = "Breakglass is restricted to configured Sparkbot operators."
             elif _breakglass_content.lower() == "/breakglass close":
-                if session:
+                if priv_session:
                     close_privileged_session(user_id_str)
-                    msg = "Break-glass mode is now closed."
+                    _pop_breakglass_pin_state(user_id=user_id_str, room_id=room_id)
+                    try:
+                        create_audit_log(
+                            session=session,
+                            tool_name="breakglass_session_close",
+                            tool_input=json.dumps(
+                                {
+                                    "operator": str(current_user.username or user_id_str),
+                                    "session_id": priv_session.session_id,
+                                    "room_id": str(room_id),
+                                }
+                            ),
+                            tool_result="ok",
+                            user_id=current_user.id,
+                            room_id=room_id,
+                        )
+                    except Exception:
+                        pass
+                    msg = "Breakglass mode is now closed."
                 else:
-                    msg = "Break-glass mode is not currently active."
-            elif session:
-                ttl_min = session.ttl_remaining() // 60
-                msg = f"Break-glass mode is already active. Session expires in {ttl_min} minute(s). Use /breakglass close to end it."
-            else:
+                    msg = "Breakglass mode is not currently active."
+            elif priv_session and pending_confirm_id:
+                async for event in _stream_confirmed_tool(
+                    pending_confirm_id,
+                    prelude="Breakglass already active. Continuing the waiting privileged action.",
+                ):
+                    yield event
+                return
+            elif priv_session:
+                ttl_min = max(1, priv_session.ttl_remaining() // 60)
                 msg = (
-                    "To open break-glass privileged mode, POST to /api/v1/chat/guardian/breakglass "
-                    "with your operator PIN, or use the Telegram bot: send /breakglass and enter your PIN."
+                    f"Breakglass mode is already active. Session expires in {ttl_min} minute(s). "
+                    "Use `/breakglass close` to end it."
                 )
-            from app.api.deps import get_db as _get_db
-            db2 = next(_get_db())
-            from sqlmodel import select as _sel
-            from app.models import ChatUser, UserType
-            from app.crud import create_chat_message as _ccm
-            bot_u = db2.exec(_sel(ChatUser).where(ChatUser.username == "sparkbot")).scalar_one_or_none()
-            if not bot_u:
-                bot_u = ChatUser(username="sparkbot", type=UserType.BOT, hashed_password="")
-                db2.add(bot_u)
-                db2.commit()
-                db2.refresh(bot_u)
-            bot_msg = _ccm(session=db2, room_id=room_id, sender_id=bot_u.id, content=msg, sender_type="BOT")
-            db2.close()
-            yield f"data: {json.dumps({'type': 'token', 'token': msg})}\n\n"
+            else:
+                _set_breakglass_pin_state(
+                    user_id=user_id_str,
+                    room_id=room_id,
+                    confirm_id=pending_confirm_id,
+                )
+                msg = (
+                    "Breakglass requested. Please enter your PIN.\n\n"
+                    "Reply `NO` to cancel."
+                )
+            bot_u = _get_or_create_agent_bot_user(session, "sparkbot")
+            bot_msg = create_chat_message(
+                session=session,
+                room_id=room_id,
+                sender_id=bot_u.id,
+                content=msg,
+                sender_type="BOT",
+                reply_to_id=human_msg_uuid,
+                meta_json={"breakglass": True, "confirm_id": pending_confirm_id} if pending_confirm_id else {"breakglass": True},
+            )
+            for chunk in _chunk_text(msg):
+                yield f"data: {json.dumps({'type': 'token', 'token': chunk})}\n\n"
             yield f"data: {json.dumps({'type': 'done', 'message_id': str(bot_msg.id)})}\n\n"
 
         return StreamingResponse(
@@ -1005,7 +1326,8 @@ async def stream_room_message(
         yield f"data: {json.dumps({'type': 'human_message', 'message_id': human_msg_id})}\n\n"
 
         full_text = ""
-        awaiting_confirmation = False
+        confirm_event = None
+        privileged_event = None
         routing_payload = None
         try:
             from app.api.routes.chat.llm import stream_chat_with_tools
@@ -1029,20 +1351,65 @@ async def stream_room_message(
                 elif event["type"] in ("tool_start", "tool_done"):
                     yield f"data: {json.dumps(event)}\n\n"
                 elif event["type"] == "confirm_required":
-                    awaiting_confirmation = True
+                    confirm_event = event
                     yield f"data: {json.dumps(event)}\n\n"
                     break
                 elif event["type"] == "privileged_required":
-                    awaiting_confirmation = True
-                    yield f"data: {json.dumps(event)}\n\n"
+                    privileged_event = event
                     break
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
             return
 
-        if awaiting_confirmation:
+        if confirm_event:
             db.close()
             return
+
+        if privileged_event:
+            prompt_text = (
+                "This action requires breakglass approval. "
+                "Type `/breakglass` to continue, then enter your PIN."
+            )
+            try:
+                bot_user = _get_or_create_agent_bot_user(db, agent_name or "sparkbot")
+                meta_json: dict[str, Any] = {
+                    "privileged_required": True,
+                    "confirm_id": privileged_event.get("confirm_id"),
+                    "tool": privileged_event.get("tool"),
+                    "risk": privileged_event.get("risk"),
+                }
+                if agent_name:
+                    meta_json["agent"] = agent_name
+                bot_reply = create_chat_message(
+                    session=db,
+                    room_id=room_id,
+                    sender_id=bot_user.id,
+                    content=prompt_text,
+                    sender_type="BOT",
+                    reply_to_id=human_msg_uuid,
+                    meta_json=meta_json,
+                )
+                try:
+                    remember_chat_message(
+                        user_id=user_id_str,
+                        room_id=str(room_id),
+                        role="assistant",
+                        content=prompt_text,
+                    )
+                except Exception:
+                    pass
+                db.close()
+                for chunk in _chunk_text(prompt_text):
+                    yield f"data: {json.dumps({'type': 'token', 'token': chunk})}\n\n"
+                done_event: dict[str, Any] = {"type": "done", "message_id": str(bot_reply.id)}
+                if agent_name:
+                    done_event["agent"] = agent_name
+                yield f"data: {json.dumps(done_event)}\n\n"
+                return
+            except Exception as e:
+                db.close()
+                yield f"data: {json.dumps({'type': 'error', 'error': f'Save failed: {e}'})}\n\n"
+                return
 
         # Save completed bot message — use per-agent bot user when agent is named
         try:

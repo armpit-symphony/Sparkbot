@@ -79,6 +79,12 @@ For versioned or tag-bound packaging instructions, see [docs/public-downloads.md
 
 ## Recent Milestones
 
+### March 15, 2026
+
+- **Roundtable became instance-based and autonomous.** Launching Roundtable now creates a fresh meeting room, meetings can continue chair-led without manual user turns between speakers, and the UI exposes ongoing meetings with end/delete controls.
+- **Sparkbot can inspect its own safe runtime state from chat.** Asking what stack/provider/model it is running now returns live operational state such as provider/model routing, Token Guardian mode, fallback status, agent overrides, Ollama reachability, and breakglass status without exposing secrets.
+- **Breakglass works naturally from chat again.** When a task crosses a privileged boundary, Sparkbot now asks for `/breakglass`, prompts for the PIN in chat, resumes the waiting action after approval, and supports `/breakglass close`.
+
 ### March 8-10, 2026
 
 - **Public release discipline matured.** Sparkbot now ships from a tracked packaging flow with committed-source bundles, checksums, release notes, and traceable public tags through `v1.3.0`.
@@ -158,6 +164,7 @@ Browser
 ### Chat
 - **Streaming responses** — token-by-token SSE (`/messages/stream`), typing cursor, no waiting
 - **Conversation context** — last 20 messages passed as history on every LLM call
+- **Safe self-inspection** — Sparkbot can answer chat questions about its current provider/model stack, Token Guardian mode, routing, Ollama reachability, and breakglass status using live backend state
 - **Markdown rendering** — headings, lists, bold, tables, code blocks in bot replies
 - **Syntax highlighting** — fenced code blocks with language detection (oneDark theme)
 - **Copy-code button** — one click to clipboard on every code block
@@ -224,6 +231,8 @@ Up to 12,000 characters (~3k tokens) are sent to the LLM. Large documents are tr
 | `/export` | Download conversation as `.md` |
 | `/search <query>` | Search message history with highlighting |
 | `/meeting start\|stop\|notes` | Meeting mode — capture notes, decisions, actions |
+| `/breakglass` | Open privileged mode from chat; Sparkbot prompts for your operator PIN |
+| `/breakglass close` | Close the current privileged session |
 | `/model` | List available AI models |
 | `/model <id>` | Switch to a different AI model |
 | `/memory` | List stored facts the bot remembers about you |
@@ -241,6 +250,20 @@ Activated with `/meeting start`. While active, prefix messages with:
 - `action:` → added as an action item
 
 `/meeting stop` exports the full notes as a dated `.md` file.
+
+### Roundtable
+- Roundtable launches a fresh meeting instance each time instead of reusing one long-running chat.
+- Meeting rooms can run in autonomous chair-led mode: framing, specialist perspectives, synthesis, optional refinement, then a final recommendation or action plan.
+- The owner can still interrupt at any time, but the room no longer waits for a user reply between every bot turn.
+- The meeting stops when it is solved, blocked, looping, ready for approval, or needs owner input.
+- The Roundtable UI includes a meetings manager so ongoing meetings can be opened, ended, or deleted.
+
+### Breakglass From Chat
+- Privileged actions do not silently fail or dump users into an API-only workflow.
+- If a task requires elevated approval, Sparkbot replies in chat with a breakglass prompt.
+- Send `/breakglass`, enter the operator PIN, and Sparkbot continues the waiting privileged action after approval.
+- PIN submissions are handled as chat approval input and are not stored in plaintext chat history.
+- Use `/breakglass close` to end the privileged session explicitly.
 
 ### Skill Plugin System
 Drop a `.py` file into `backend/skills/` and it auto-loads on the next restart — no other files need editing.
