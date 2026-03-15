@@ -1216,4 +1216,83 @@ across reloads, then restore the original state.
    - `pyinstaller --distpath src-tauri/binaries sparkbot-backend.spec`
    - `cargo tauri dev --config src-tauri/tauri.conf.json`
 
-*End of sparkbotv1_logbook_handoff.md — 2026-03-12*
+---
+
+## Update — 2026-03-14 00:12 UTC
+
+### Objective
+
+Append the current release-program truth after repo/live parity restoration,
+desktop packaging proof, first real installer build, GitHub draft-release
+upload, and checksum verification.
+
+### Findings
+
+- The live repo checkout and GitHub `main` now match.
+- The current committed source-of-truth commit is:
+  - `f284d43f281c42eda21d69518be853129456e391`
+- Packaging should now be built only from committed repo truth, not stale local
+  artifacts.
+- The Tauri desktop scaffold is working.
+- `cargo tauri dev` compiled and launched `sparkbot.exe` successfully.
+- Prior exit-code false alarms were caused by forced task termination, not app
+  crashes.
+- The backend sidecar packaging path was proven sufficiently to produce release
+  bundles.
+- Fresh Windows installer artifacts were built from the current committed source:
+  - NSIS: `Sparkbot_1.3.0_x64-setup.exe`
+  - NSIS SHA256:
+    `244010B3514B23247907D72B005CAEA597982CFDB7568E5B578392DBE0F82B89`
+  - MSI: `Sparkbot_1.3.0_x64_en-US.msi`
+  - MSI SHA256:
+    `587ADB089F18309BC33C03C7AB9EF886D756F4136D152005025BE9C8FE0E8933`
+- A GitHub draft release exists for `sparkbot-v1.3.0`.
+- Both installer assets are uploaded there.
+- GitHub asset digests match the local Windows-built checksums.
+- The release remains draft/unpublished on purpose.
+- The release is not yet public.
+- `sparkpitlabs.com/sparkbot` is not updated yet.
+- Sparkbot is not yet declared market-ready.
+- Final Sparkbot polish notes are still pending before any public release or
+  website update.
+
+### Changes Made
+
+- Appended this release-state handoff entry.
+- Preserved the release as draft/unpublished.
+- Made no publish, website, or product-code changes in this pass.
+
+### Verification Performed
+
+- Recorded the already-established release-track facts:
+  - source-of-truth commit pinned to
+    `f284d43f281c42eda21d69518be853129456e391`
+  - `cargo tauri dev` proof compiled and launched `sparkbot.exe`
+  - fresh NSIS/MSI artifacts and SHA256 values captured
+  - GitHub draft release exists with both assets uploaded
+  - GitHub asset digests matched the local Windows-built checksums
+- This pass was documentation/state sync only:
+  - no rebuild
+  - no multi-machine re-test
+  - no publication
+  - no website update
+
+### Unresolved Items
+
+1. Final Sparkbot polish notes still need to be applied.
+2. A fresh installer rebuild from updated committed source is still required
+   after that polish pass.
+3. Multi-machine re-testing is still required before publication.
+4. The GitHub release intentionally remains draft/unpublished.
+5. The website intentionally remains unchanged.
+6. Sparkbot should not yet be described as public-ready or market-ready.
+
+### Recommended Next Action
+
+1. apply final Sparkbot polish notes
+2. rebuild fresh installer from updated committed source
+3. re-test on multiple machines
+4. only then update GitHub release/publication state
+5. only then update `sparkpitlabs.com/sparkbot`
+
+*End of sparkbotv1_logbook_handoff.md — 2026-03-14*

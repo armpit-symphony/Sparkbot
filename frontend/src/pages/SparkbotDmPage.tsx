@@ -270,7 +270,7 @@ interface ProviderTokenDrafts {
 }
 
 interface DefaultModelSelectionForm {
-  provider: "openrouter" | "ollama"
+  provider: "openrouter" | "ollama" | "openai" | "anthropic" | "google" | "groq" | "minimax"
   model: string
 }
 
@@ -866,6 +866,17 @@ function SparkbotSettingsDialog({
   const hasOpenRouterConfigured = Boolean(
     modelsConfig?.providers.find((provider) => provider.id === "openrouter")?.configured,
   )
+  const directProviderLabel: Record<string, string> = {
+    openai: "OpenAI", anthropic: "Anthropic", google: "Google", groq: "Groq", minimax: "MiniMax",
+  }
+  const directProviderKeyField: Record<string, keyof ProviderTokenDrafts> = {
+    openai: "openai_api_key", anthropic: "anthropic_api_key",
+    google: "google_api_key", groq: "groq_api_key", minimax: "minimax_api_key",
+  }
+  const directProviderIsConfigured = (id: string) =>
+    Boolean(modelsConfig?.providers.find((p) => p.id === id)?.configured)
+  const directProviderModels = (id: string): string[] =>
+    modelsConfig?.providers.find((p) => p.id === id)?.models ?? []
   const ollamaProvider = modelsConfig?.providers.find((provider) => provider.id === "ollama")
   const routingAgents = modelsConfig?.available_agents ?? []
   const showAdvancedControls = !isV1LocalMode
@@ -1283,7 +1294,7 @@ function SparkbotSettingsDialog({
               <div>
                 <h2 className="text-sm font-semibold">AI setup</h2>
                 <p className="text-xs text-muted-foreground">
-                  OpenRouter is the easiest cloud setup. Ollama keeps local models available on this machine for private or selective agent use.
+                  Choose your default AI provider. OpenRouter is the easiest all-in-one cloud path. Use direct keys for OpenAI, Anthropic, Google, Groq, or MiniMax. Ollama runs models privately on this machine.
                 </p>
               </div>
               <button
@@ -1301,9 +1312,14 @@ function SparkbotSettingsDialog({
                 <div className="rounded-lg border bg-muted/30 p-4">
                   <div className="mb-3 flex flex-wrap gap-2">
                     {([
-                      ["openrouter", "Fastest setup: OpenRouter"],
-                      ["ollama", "Private/local: Ollama on this machine"],
-                    ] as const).map(([providerId, label]) => (
+                      ["openrouter", "OpenRouter"],
+                      ["openai", "OpenAI direct"],
+                      ["anthropic", "Anthropic direct"],
+                      ["google", "Google direct"],
+                      ["groq", "Groq direct"],
+                      ["minimax", "MiniMax direct"],
+                      ["ollama", "Local (Ollama)"],
+                    ] as [string, string][]).map(([providerId, label]) => (
                       <button
                         key={providerId}
                         type="button"
@@ -1331,7 +1347,7 @@ function SparkbotSettingsDialog({
                           className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
                         />
                         <p className="mt-1 text-[11px] text-muted-foreground">
-                          Recommended cloud path for v1 Local: one key, broad model choice, simple setup.
+                          Recommended cloud path: one key, broad model choice, simple setup.
                         </p>
                       </div>
                       <div>
@@ -1350,6 +1366,44 @@ function SparkbotSettingsDialog({
                         </select>
                         <p className="mt-1 text-[11px] text-muted-foreground">
                           Sparkbot will use this as the main cloud model for everyday chat unless an agent override says otherwise.
+                        </p>
+                      </div>
+                    </div>
+                  ) : directProviderKeyField[defaultSelection.provider] !== undefined ? (
+                    <div className="space-y-3">
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                          {directProviderLabel[defaultSelection.provider]} API key
+                        </label>
+                        <input
+                          type="password"
+                          value={providerDrafts[directProviderKeyField[defaultSelection.provider]]}
+                          onChange={(e) => onProviderDraftChange(directProviderKeyField[defaultSelection.provider], e.target.value)}
+                          placeholder={directProviderIsConfigured(defaultSelection.provider)
+                            ? "Saved. Paste a new key only if replacing."
+                            : `Paste ${directProviderLabel[defaultSelection.provider]} API key`}
+                          className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                        />
+                        {directProviderIsConfigured(defaultSelection.provider) && (
+                          <p className="mt-1 text-[11px] text-emerald-600">Key saved and active.</p>
+                        )}
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-muted-foreground">Default model</label>
+                        <select
+                          value={defaultSelection.model}
+                          onChange={(e) => onDefaultSelectionChange("model", e.target.value)}
+                          className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                        >
+                          <option value="">Choose a {directProviderLabel[defaultSelection.provider]} model</option>
+                          {directProviderModels(defaultSelection.provider).map((model) => (
+                            <option key={model} value={model}>
+                              {modelsConfig?.model_labels?.[model] ?? model}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          Sparkbot will use this {directProviderLabel[defaultSelection.provider]} model for everyday chat.
                         </p>
                       </div>
                     </div>
@@ -1404,14 +1458,16 @@ function SparkbotSettingsDialog({
                   </div>
 
                   <div className="mt-4 flex justify-end gap-2">
-                    {defaultSelection.provider === "openrouter" ? (
+                    {(defaultSelection.provider === "openrouter" || directProviderKeyField[defaultSelection.provider] !== undefined) ? (
                       <button
                         type="button"
                         onClick={onSaveProviderTokens}
                         disabled={savingProviderTokens}
                         className="rounded-md border px-4 py-2 text-sm hover:bg-muted disabled:opacity-50"
                       >
-                        {savingProviderTokens ? "Saving key..." : "Save OpenRouter key"}
+                        {savingProviderTokens
+                          ? "Saving key..."
+                          : `Save ${directProviderLabel[defaultSelection.provider] ?? "OpenRouter"} key`}
                       </button>
                     ) : null}
                     <button
@@ -2303,8 +2359,10 @@ function SparkbotDmPage() {
     setModelsConfig(config)
     setTokenGuardianMode(config.token_guardian_mode || "shadow")
     setModelStack(config.stack)
+    const _validProviders = new Set(["openrouter", "ollama", "openai", "anthropic", "google", "groq", "minimax"])
+    const _savedProvider = config.default_selection?.provider ?? "openrouter"
     setDefaultSelection({
-      provider: config.default_selection?.provider === "ollama" ? "ollama" : "openrouter",
+      provider: (_validProviders.has(_savedProvider) ? _savedProvider : "openrouter") as DefaultModelSelectionForm["provider"],
       model: config.default_selection?.model || "",
     })
     setRoutingPolicy({
@@ -2637,12 +2695,15 @@ function SparkbotDmPage() {
 
   const handleDefaultSelectionChange = useCallback((field: keyof DefaultModelSelectionForm, value: string) => {
     if (field === "provider") {
-      const nextProvider = value === "ollama" ? "ollama" : "openrouter"
+      const _validProviders = new Set(["openrouter", "ollama", "openai", "anthropic", "google", "groq", "minimax"])
+      const nextProvider = (_validProviders.has(value) ? value : "openrouter") as DefaultModelSelectionForm["provider"]
       setDefaultSelection((prev) => ({
         provider: nextProvider,
         model: nextProvider === "ollama"
           ? localDefaultModel
-          : prev.model.startsWith("openrouter/") ? prev.model : "",
+          : nextProvider === "openrouter" && prev.model.startsWith("openrouter/")
+          ? prev.model
+          : "",
       }))
       return
     }
@@ -2777,9 +2838,18 @@ function SparkbotDmPage() {
     const chosenLocalModel = localDefaultModel.trim()
 
     if (!chosenDefaultModel) {
-      setSettingsError(defaultSelection.provider === "openrouter"
-        ? "Choose an OpenRouter model before saving the default."
-        : "Choose a local Ollama model before saving the default.")
+      const _PROVIDER_NAMES: Record<string, string> = {
+        openrouter: "OpenRouter", ollama: "Ollama", openai: "OpenAI",
+        anthropic: "Anthropic", google: "Google", groq: "Groq", minimax: "MiniMax",
+      }
+      const _pName = _PROVIDER_NAMES[defaultSelection.provider] ?? defaultSelection.provider
+      setSettingsError(
+        defaultSelection.provider === "openrouter"
+          ? "Choose an OpenRouter model before saving the default."
+          : defaultSelection.provider === "ollama"
+          ? "Choose a local Ollama model before saving the default."
+          : `Choose a ${_pName} model before saving the default.`,
+      )
       return
     }
     if (!chosenLocalModel) {
@@ -2789,6 +2859,22 @@ function SparkbotDmPage() {
     if (defaultSelection.provider === "openrouter" && !pageHasOpenRouterConfigured && !providerDrafts.openrouter_api_key.trim()) {
       setSettingsError("Save an OpenRouter API key before using OpenRouter as the default.")
       return
+    }
+    const _DIRECT_KEY_FIELDS: Record<string, keyof ProviderTokenDrafts> = {
+      openai: "openai_api_key", anthropic: "anthropic_api_key",
+      google: "google_api_key", groq: "groq_api_key", minimax: "minimax_api_key",
+    }
+    const _DIRECT_NAMES: Record<string, string> = {
+      openai: "OpenAI", anthropic: "Anthropic", google: "Google", groq: "Groq", minimax: "MiniMax",
+    }
+    const _directKeyField = _DIRECT_KEY_FIELDS[defaultSelection.provider]
+    if (_directKeyField) {
+      const _isConfigured = Boolean(modelsConfig?.providers?.find(p => p.id === defaultSelection.provider)?.configured)
+      if (!_isConfigured && !providerDrafts[_directKeyField].trim()) {
+        const _name = _DIRECT_NAMES[defaultSelection.provider] ?? defaultSelection.provider
+        setSettingsError(`Save a ${_name} API key before using ${_name} as the default.`)
+        return
+      }
     }
 
     setSavingDefaultSelection(true)
@@ -2820,9 +2906,9 @@ function SparkbotDmPage() {
         setMessages((prev) => [
           ...prev,
           systemMsg(
-            defaultSelection.provider === "openrouter"
-              ? `Default cloud model set to **${chosenDefaultModel}**. ${routingPolicy.crossProviderFallback ? "Cross-provider fallback is enabled." : "Everyday chat will stay on your chosen cloud provider."}`
-              : `Default local model set to **${chosenDefaultModel}**. ${routingPolicy.crossProviderFallback ? "Cross-provider fallback is enabled." : "Everyday chat will stay local unless you change the policy."}`,
+            defaultSelection.provider === "ollama"
+              ? `Default local model set to **${chosenDefaultModel}**. ${routingPolicy.crossProviderFallback ? "Cross-provider fallback is enabled." : "Everyday chat will stay local unless you change the policy."}`
+              : `Default model set to **${chosenDefaultModel}**. ${routingPolicy.crossProviderFallback ? "Cross-provider fallback is enabled." : "Everyday chat will stay on your chosen provider."}`,
           ),
         ])
       }
@@ -2836,8 +2922,9 @@ function SparkbotDmPage() {
     defaultSelection,
     routingPolicy.crossProviderFallback,
     localDefaultModel,
+    modelsConfig,
     pageHasOpenRouterConfigured,
-    providerDrafts.openrouter_api_key,
+    providerDrafts,
     refreshControls,
   ])
 
