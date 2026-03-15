@@ -192,7 +192,7 @@ async def _build_controls_config(current_user: CurrentChatUser, notices: list[st
         "active_model": get_model(str(current_user.id)),
         "stack": get_model_stack(),
         "default_selection": {
-            "provider": get_default_provider(),
+            "provider": model_provider(get_model()) or get_default_provider(),
             "model": get_model(),
             "label": model_label(get_model()),
         },
@@ -489,14 +489,18 @@ async def update_models_config(body: ControlsConfigUpdate, current_user: Current
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
-        env_updates.update(
-            {
-                PRIMARY_MODEL_ENV: stack["primary"],
-                BACKUP_MODEL_1_ENV: stack["backup_1"],
-                BACKUP_MODEL_2_ENV: stack["backup_2"],
-                HEAVY_HITTER_MODEL_ENV: stack["heavy_hitter"],
-            }
-        )
+        _new_primary_provider = model_provider(stack["primary"])
+        _stack_env: dict[str, str] = {
+            PRIMARY_MODEL_ENV: stack["primary"],
+            BACKUP_MODEL_1_ENV: stack["backup_1"],
+            BACKUP_MODEL_2_ENV: stack["backup_2"],
+            HEAVY_HITTER_MODEL_ENV: stack["heavy_hitter"],
+        }
+        if _new_primary_provider:
+            _stack_env[DEFAULT_PROVIDER_ENV] = _new_primary_provider
+        if _new_primary_provider == "openrouter":
+            _stack_env[OPENROUTER_DEFAULT_MODEL_ENV] = stack["primary"]
+        env_updates.update(_stack_env)
         notices.append("Model stack updated for Sparkbot.")
 
     if body.default_selection is not None:

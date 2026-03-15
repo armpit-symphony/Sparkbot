@@ -101,6 +101,8 @@ def _model_is_configured(model: str) -> bool:
         return bool(os.getenv("GROQ_API_KEY", "").strip())
     if normalized.startswith("minimax/"):
         return bool(os.getenv("MINIMAX_API_KEY", "").strip())
+    if normalized.startswith("openrouter/"):
+        return bool(os.getenv("OPENROUTER_API_KEY", "").strip())
     return True
 
 
