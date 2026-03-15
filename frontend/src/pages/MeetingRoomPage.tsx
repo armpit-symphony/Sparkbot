@@ -5,7 +5,13 @@ import SparkbotSurfaceTabs from "@/components/Common/SparkbotSurfaceTabs"
 import SparkbotSurfaceInfoDialog from "@/components/Common/SparkbotSurfaceInfoDialog"
 import ChatInput from "@/components/chat/ChatInput"
 import ChatWindow from "@/components/chat/ChatWindow"
-import { loadMeetingRoomMeta, type WorkstationMeetingRoomMeta } from "@/lib/workstationMeeting"
+import {
+  deleteMeetingRoomMeta,
+  launchMeetingRoom,
+  listMeetingRoomMetas,
+  loadMeetingRoomMeta,
+  type WorkstationMeetingRoomMeta,
+} from "@/lib/workstationMeeting"
 import type { Message, User } from "@/lib/chat/types"
 
 interface MeetingRoomPageProps {
@@ -23,6 +29,16 @@ interface RoomDetail {
 
 interface RoomMemberMeResponse {
   user: User
+}
+
+interface MeetingListItem {
+  id: string
+  name: string
+  description?: string
+  created_at: string
+  updated_at: string
+  meeting_mode_enabled: boolean
+  meta: WorkstationMeetingRoomMeta | null
 }
 
 export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
@@ -44,7 +60,11 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
   const [streamingToken, setStreamingToken] = useState("")
   const [streamingAgent, setStreamingAgent] = useState<string | null>(null)
   const [streamError, setStreamError] = useState("")
+  const [sidebarTab, setSidebarTab] = useState<"current" | "meetings">("current")
+  const [meetingRooms, setMeetingRooms] = useState<MeetingListItem[]>([])
+  const [meetingActionId, setMeetingActionId] = useState<string | null>(null)
   const streamAbortRef = useRef<AbortController | null>(null)
+  const activeStreamIdRef = useRef(0)
 
   useEffect(() => {
     setMeetingMeta(loadMeetingRoomMeta(roomId))
@@ -86,6 +106,9 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
           const membership = (await meRes.json()) as RoomMemberMeResponse
           setCurrentUser(membership.user ?? null)
         }
+        if (!cancelled) {
+          await reloadMeetingRooms()
+        }
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -103,21 +126,137 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
     [meetingMeta],
   )
 
+  const reloadMeetingRooms = async () => {
+    const res = await fetch("/api/v1/chat/rooms/", { credentials: "include" })
+    if (!res.ok) return
+    const rooms = await res.json()
+    const metaIndex = new Map(listMeetingRoomMetas().map((meta) => [meta.roomId, meta]))
+    const nextRooms = (Array.isArray(rooms) ? rooms : [])
+      .filter((candidate) => candidate.meeting_mode_enabled)
+      .map((candidate) => ({
+        id: candidate.id,
+        name: candidate.name,
+        description: candidate.description,
+        created_at: candidate.created_at,
+        updated_at: candidate.updated_at,
+        meeting_mode_enabled: candidate.meeting_mode_enabled,
+        meta: metaIndex.get(candidate.id) ?? null,
+      }))
+      .sort(
+        (left, right) =>
+          Date.parse(right.updated_at || right.created_at || "") -
+          Date.parse(left.updated_at || left.created_at || ""),
+      )
+    setMeetingRooms(nextRooms)
+  }
+
   const reloadMessages = async () => {
-    const res = await fetch(`/api/v1/chat/rooms/${roomId}/messages`, { credentials: "include" })
-    if (res.ok) {
-      const data = await res.json()
+    const [messagesRes, artifactRes] = await Promise.all([
+      fetch(`/api/v1/chat/rooms/${roomId}/messages`, { credentials: "include" }),
+      fetch(`/api/v1/chat/rooms/${roomId}/artifacts?type=notes&limit=1`, { credentials: "include" }),
+    ])
+    if (messagesRes.ok) {
+      const data = await messagesRes.json()
       setMessages(data.messages ?? [])
+    }
+    if (artifactRes.ok) {
+      const artifacts = await artifactRes.json()
+      setLatestArtifact(artifacts?.[0] ?? null)
+    }
+    await reloadMeetingRooms()
+  }
+
+  async function handleStartFreshMeeting() {
+    if (meetingActionId || seatedParticipants.length < 2) return
+    setMeetingActionId("new")
+    setStreamError("")
+    try {
+      const nextMeeting = await launchMeetingRoom({
+        roomName: room?.name ?? meetingMeta?.roomName ?? "Roundtable",
+        seats: seatedParticipants,
+      })
+      await reloadMeetingRooms()
+      navigate({ to: "/meeting/$roomId", params: { roomId: nextMeeting.roomId } })
+    } catch (err) {
+      setStreamError((err as Error).message || "Could not start a fresh meeting.")
+    } finally {
+      setMeetingActionId(null)
+    }
+  }
+
+  async function handleEndMeeting(targetRoomId: string) {
+    if (meetingActionId) return
+    if (typeof window !== "undefined" && !window.confirm("End this meeting? It will leave the active list.")) {
+      return
+    }
+    setMeetingActionId(`end:${targetRoomId}`)
+    setStreamError("")
+    try {
+      const target = meetingRooms.find((candidate) => candidate.id === targetRoomId)
+      const targetName = target?.name ?? room?.name ?? "Roundtable"
+      const targetDescription = target?.description ?? room?.description ?? ""
+      const nextDescription = [targetDescription, `Ended ${new Date().toISOString()}`]
+        .filter(Boolean)
+        .join("\n\n")
+      const res = await fetch(`/api/v1/chat/rooms/${targetRoomId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          name: targetName.includes("[Ended]") ? targetName : `${targetName} [Ended]`,
+          description: nextDescription,
+          meeting_mode_enabled: false,
+        }),
+      })
+      if (!res.ok) throw new Error("Could not end meeting.")
+      deleteMeetingRoomMeta(targetRoomId)
+      await reloadMeetingRooms()
+      if (targetRoomId === roomId) {
+        streamAbortRef.current?.abort()
+        navigate({ to: "/workstation" })
+      }
+    } catch (err) {
+      setStreamError((err as Error).message || "Could not end meeting.")
+    } finally {
+      setMeetingActionId(null)
+    }
+  }
+
+  async function handleDeleteMeeting(targetRoomId: string) {
+    if (meetingActionId) return
+    if (typeof window !== "undefined" && !window.confirm("Delete this meeting permanently?")) {
+      return
+    }
+    setMeetingActionId(`delete:${targetRoomId}`)
+    setStreamError("")
+    try {
+      const res = await fetch(`/api/v1/chat/rooms/${targetRoomId}`, {
+        method: "DELETE",
+        credentials: "include",
+      })
+      if (!res.ok) throw new Error("Could not delete meeting.")
+      deleteMeetingRoomMeta(targetRoomId)
+      await reloadMeetingRooms()
+      if (targetRoomId === roomId) {
+        streamAbortRef.current?.abort()
+        navigate({ to: "/workstation" })
+      }
+    } catch (err) {
+      setStreamError((err as Error).message || "Could not delete meeting.")
+    } finally {
+      setMeetingActionId(null)
     }
   }
 
   async function handleSendMessage(content: string) {
-    if (!content.trim() || sending) return
+    if (!content.trim()) return
 
     // Cancel any in-flight stream
     streamAbortRef.current?.abort()
     const abort = new AbortController()
     streamAbortRef.current = abort
+    const streamId = activeStreamIdRef.current + 1
+    activeStreamIdRef.current = streamId
 
     setSending(true)
     setStreamingToken("")
@@ -151,12 +290,17 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
       let streamDone = false
 
       while (!streamDone) {
+        if (activeStreamIdRef.current !== streamId) break
         const { done, value } = await reader.read()
         if (done) break
 
         const chunk = decoder.decode(value, { stream: true })
         for (const line of chunk.split("\n")) {
           if (!line.startsWith("data: ")) continue
+          if (activeStreamIdRef.current !== streamId) {
+            streamDone = true
+            break
+          }
           try {
             const evt = JSON.parse(line.slice(6))
             if (evt.type === "token") {
@@ -197,9 +341,11 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
         setStreamError((err as Error).message || "Stream error. Check console.")
       }
     } finally {
-      setStreamingToken("")
-      setStreamingAgent(null)
-      setSending(false)
+      if (activeStreamIdRef.current === streamId) {
+        setStreamingToken("")
+        setStreamingAgent(null)
+        setSending(false)
+      }
       await reloadMessages()
     }
   }
@@ -303,7 +449,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                 textTransform: "uppercase",
               }}
             >
-              One at a time
+              Autonomous meeting
             </div>
           </div>
         </header>
@@ -342,72 +488,327 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                 Roundtable
               </div>
               <p style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.7, margin: "8px 0 0" }}>
-                Launched from Workstation. This MVP room uses turn-taking mode, so keep one speaker
-                active at a time and hand the floor forward deliberately.
+                Launched from Workstation. After your kickoff, the room should continue on its own,
+                keep one active speaker at a time, and only stop when it reaches a recommendation,
+                blocker, or approval point.
               </p>
             </div>
 
             <div
               style={{
-                border: "1px solid rgba(125,211,252,0.14)",
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 8,
+                padding: 4,
                 borderRadius: 12,
-                padding: "12px 14px",
                 backgroundColor: "rgba(10,17,32,0.72)",
+                border: "1px solid rgba(125,211,252,0.12)",
               }}
             >
-              <div
-                style={{
-                  fontSize: 10,
-                  color: "#cbd5f5",
-                  letterSpacing: "0.1em",
-                  textTransform: "uppercase",
-                  fontWeight: 700,
-                  marginBottom: 10,
-                }}
-              >
-                Seated participants
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {seatedParticipants.map((seat) => (
-                  <div
-                    key={seat.stationId}
+              {(["current", "meetings"] as const).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setSidebarTab(tab)}
+                  style={{
+                    borderRadius: 9,
+                    border: sidebarTab === tab ? "1px solid rgba(125,211,252,0.3)" : "1px solid transparent",
+                    backgroundColor: sidebarTab === tab ? "rgba(59,130,246,0.16)" : "transparent",
+                    color: sidebarTab === tab ? "#e2e8f0" : "#94a3b8",
+                    padding: "9px 10px",
+                    fontSize: 10,
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+
+            {sidebarTab === "current" ? (
+              <>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr 1fr",
+                    gap: 8,
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={handleStartFreshMeeting}
+                    disabled={Boolean(meetingActionId) || seatedParticipants.length < 2}
                     style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      border: `1px solid ${seat.accentHex}22`,
                       borderRadius: 10,
-                      padding: "9px 10px",
-                      backgroundColor: `${seat.accentHex}10`,
+                      border: "1px solid rgba(125,211,252,0.2)",
+                      backgroundColor: "rgba(14,116,144,0.18)",
+                      color: "#bae6fd",
+                      padding: "10px 12px",
+                      fontSize: 10,
+                      letterSpacing: "0.08em",
+                      textTransform: "uppercase",
+                      fontWeight: 700,
+                      cursor: meetingActionId ? "not-allowed" : "pointer",
+                      opacity: meetingActionId || seatedParticipants.length < 2 ? 0.5 : 1,
                     }}
                   >
-                    <span
-                      style={{
-                        width: 10,
-                        height: 10,
-                        borderRadius: "50%",
-                        backgroundColor: seat.accentHex,
-                        boxShadow: `0 0 10px ${seat.accentHex}55`,
-                        flexShrink: 0,
-                      }}
-                    />
-                    <div style={{ minWidth: 0 }}>
+                    {meetingActionId === "new" ? "Starting…" : "New"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleEndMeeting(roomId)}
+                    disabled={Boolean(meetingActionId)}
+                    style={{
+                      borderRadius: 10,
+                      border: "1px solid rgba(250,204,21,0.2)",
+                      backgroundColor: "rgba(161,98,7,0.18)",
+                      color: "#fde68a",
+                      padding: "10px 12px",
+                      fontSize: 10,
+                      letterSpacing: "0.08em",
+                      textTransform: "uppercase",
+                      fontWeight: 700,
+                      cursor: meetingActionId ? "not-allowed" : "pointer",
+                      opacity: meetingActionId ? 0.5 : 1,
+                    }}
+                  >
+                    {meetingActionId === `end:${roomId}` ? "Ending…" : "End"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleDeleteMeeting(roomId)}
+                    disabled={Boolean(meetingActionId)}
+                    style={{
+                      borderRadius: 10,
+                      border: "1px solid rgba(248,113,113,0.22)",
+                      backgroundColor: "rgba(127,29,29,0.18)",
+                      color: "#fecaca",
+                      padding: "10px 12px",
+                      fontSize: 10,
+                      letterSpacing: "0.08em",
+                      textTransform: "uppercase",
+                      fontWeight: 700,
+                      cursor: meetingActionId ? "not-allowed" : "pointer",
+                      opacity: meetingActionId ? 0.5 : 1,
+                    }}
+                  >
+                    {meetingActionId === `delete:${roomId}` ? "Deleting…" : "Delete"}
+                  </button>
+                </div>
+
+                <div
+                  style={{
+                    border: "1px solid rgba(125,211,252,0.14)",
+                    borderRadius: 12,
+                    padding: "12px 14px",
+                    backgroundColor: "rgba(10,17,32,0.72)",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: "#cbd5f5",
+                      letterSpacing: "0.1em",
+                      textTransform: "uppercase",
+                      fontWeight: 700,
+                      marginBottom: 10,
+                    }}
+                  >
+                    Seated participants
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {seatedParticipants.map((seat) => (
                       <div
+                        key={seat.stationId}
                         style={{
-                          fontSize: 11,
-                          color: "#e2e8f0",
-                          fontWeight: 700,
-                          letterSpacing: "0.04em",
-                          textTransform: "uppercase",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10,
+                          border: `1px solid ${seat.accentHex}22`,
+                          borderRadius: 10,
+                          padding: "9px 10px",
+                          backgroundColor: `${seat.accentHex}10`,
                         }}
                       >
-                        Chair {seat.seatIndex + 1}: {seat.label}
+                        <span
+                          style={{
+                            width: 10,
+                            height: 10,
+                            borderRadius: "50%",
+                            backgroundColor: seat.accentHex,
+                            boxShadow: `0 0 10px ${seat.accentHex}55`,
+                            flexShrink: 0,
+                          }}
+                        />
+                        <div style={{ minWidth: 0 }}>
+                          <div
+                            style={{
+                              fontSize: 11,
+                              color: "#e2e8f0",
+                              fontWeight: 700,
+                              letterSpacing: "0.04em",
+                              textTransform: "uppercase",
+                            }}
+                          >
+                            Chair {seat.seatIndex + 1}: {seat.label}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div
+                style={{
+                  border: "1px solid rgba(125,211,252,0.14)",
+                  borderRadius: 12,
+                  padding: "12px 14px",
+                  backgroundColor: "rgba(10,17,32,0.72)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 10,
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 10,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: "#cbd5f5",
+                      letterSpacing: "0.1em",
+                      textTransform: "uppercase",
+                      fontWeight: 700,
+                    }}
+                  >
+                    Ongoing meetings
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleStartFreshMeeting}
+                    disabled={Boolean(meetingActionId) || seatedParticipants.length < 2}
+                    style={{
+                      borderRadius: 8,
+                      border: "1px solid rgba(125,211,252,0.2)",
+                      backgroundColor: "rgba(14,116,144,0.18)",
+                      color: "#bae6fd",
+                      padding: "7px 10px",
+                      fontSize: 10,
+                      letterSpacing: "0.08em",
+                      textTransform: "uppercase",
+                      fontWeight: 700,
+                      cursor: meetingActionId ? "not-allowed" : "pointer",
+                      opacity: meetingActionId || seatedParticipants.length < 2 ? 0.5 : 1,
+                    }}
+                  >
+                    New
+                  </button>
+                </div>
+                {meetingRooms.length === 0 ? (
+                  <div style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.6 }}>
+                    No active meetings. Start a fresh Roundtable instance from here or from Workstation.
+                  </div>
+                ) : (
+                  meetingRooms.map((meeting) => (
+                    <div
+                      key={meeting.id}
+                      style={{
+                        border: meeting.id === roomId ? "1px solid rgba(125,211,252,0.28)" : "1px solid rgba(99,102,241,0.16)",
+                        borderRadius: 10,
+                        padding: "10px 11px",
+                        backgroundColor: meeting.id === roomId ? "rgba(14,116,144,0.12)" : "rgba(7,13,28,0.58)",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 8,
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontSize: 11, color: "#e2e8f0", fontWeight: 700 }}>
+                          {meeting.name}
+                        </div>
+                        <div style={{ fontSize: 10, color: "#64748b", marginTop: 4 }}>
+                          Updated {new Date(meeting.updated_at || meeting.created_at).toLocaleString()}
+                        </div>
+                        {meeting.meta?.seats?.length ? (
+                          <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 6, lineHeight: 1.5 }}>
+                            {meeting.meta.seats.map((seat) => seat.label).join(" • ")}
+                          </div>
+                        ) : null}
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
+                        <button
+                          type="button"
+                          onClick={() => navigate({ to: "/meeting/$roomId", params: { roomId: meeting.id } })}
+                          style={{
+                            borderRadius: 8,
+                            border: "1px solid rgba(125,211,252,0.18)",
+                            backgroundColor: "rgba(14,116,144,0.16)",
+                            color: "#bae6fd",
+                            padding: "8px 9px",
+                            fontSize: 10,
+                            letterSpacing: "0.08em",
+                            textTransform: "uppercase",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Open
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleEndMeeting(meeting.id)}
+                          disabled={Boolean(meetingActionId)}
+                          style={{
+                            borderRadius: 8,
+                            border: "1px solid rgba(250,204,21,0.2)",
+                            backgroundColor: "rgba(161,98,7,0.18)",
+                            color: "#fde68a",
+                            padding: "8px 9px",
+                            fontSize: 10,
+                            letterSpacing: "0.08em",
+                            textTransform: "uppercase",
+                            fontWeight: 700,
+                            cursor: meetingActionId ? "not-allowed" : "pointer",
+                            opacity: meetingActionId ? 0.5 : 1,
+                          }}
+                        >
+                          {meetingActionId === `end:${meeting.id}` ? "Ending…" : "End"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteMeeting(meeting.id)}
+                          disabled={Boolean(meetingActionId)}
+                          style={{
+                            borderRadius: 8,
+                            border: "1px solid rgba(248,113,113,0.22)",
+                            backgroundColor: "rgba(127,29,29,0.18)",
+                            color: "#fecaca",
+                            padding: "8px 9px",
+                            fontSize: 10,
+                            letterSpacing: "0.08em",
+                            textTransform: "uppercase",
+                            fontWeight: 700,
+                            cursor: meetingActionId ? "not-allowed" : "pointer",
+                            opacity: meetingActionId ? 0.5 : 1,
+                          }}
+                        >
+                          {meetingActionId === `delete:${meeting.id}` ? "Deleting…" : "Delete"}
+                        </button>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
-            </div>
+            )}
 
             <button
               type="button"
@@ -433,73 +834,74 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
               Back to Workstation
             </button>
 
-            {/* Meeting Notes */}
-            <div
-              style={{
-                borderTop: "1px solid rgba(99,102,241,0.16)",
-                paddingTop: 12,
-                marginTop: 4,
-              }}
-            >
-              <button
-                type="button"
-                onClick={handleGenerateNotes}
-                disabled={generatingNotes}
+            {sidebarTab === "current" && (
+              <div
                 style={{
-                  width: "100%",
-                  borderRadius: 8,
-                  border: "1px solid rgba(99,102,241,0.3)",
-                  backgroundColor: "rgba(49,46,129,0.2)",
-                  padding: "8px 12px",
-                  fontSize: 11,
-                  color: "#a5b4fc",
-                  cursor: generatingNotes ? "not-allowed" : "pointer",
-                  opacity: generatingNotes ? 0.5 : 1,
-                  transition: "background 0.15s",
-                  letterSpacing: "0.06em",
+                  borderTop: "1px solid rgba(99,102,241,0.16)",
+                  paddingTop: 12,
+                  marginTop: 4,
                 }}
               >
-                {generatingNotes ? "Generating notes…" : "Generate Meeting Notes"}
-              </button>
-              {latestArtifact && (
-                <div
+                <button
+                  type="button"
+                  onClick={handleGenerateNotes}
+                  disabled={generatingNotes}
                   style={{
-                    marginTop: 10,
+                    width: "100%",
                     borderRadius: 8,
-                    border: "1px solid rgba(99,102,241,0.16)",
-                    backgroundColor: "rgba(7,13,28,0.6)",
-                    padding: 10,
+                    border: "1px solid rgba(99,102,241,0.3)",
+                    backgroundColor: "rgba(49,46,129,0.2)",
+                    padding: "8px 12px",
+                    fontSize: 11,
+                    color: "#a5b4fc",
+                    cursor: generatingNotes ? "not-allowed" : "pointer",
+                    opacity: generatingNotes ? 0.5 : 1,
+                    transition: "background 0.15s",
+                    letterSpacing: "0.06em",
                   }}
                 >
-                  <p
+                  {generatingNotes ? "Generating notes…" : "Generate Meeting Notes"}
+                </button>
+                {latestArtifact && (
+                  <div
                     style={{
-                      marginBottom: 6,
-                      fontSize: 9,
-                      fontWeight: 700,
-                      letterSpacing: "0.1em",
-                      textTransform: "uppercase",
-                      color: "#64748b",
+                      marginTop: 10,
+                      borderRadius: 8,
+                      border: "1px solid rgba(99,102,241,0.16)",
+                      backgroundColor: "rgba(7,13,28,0.6)",
+                      padding: 10,
                     }}
                   >
-                    Meeting Notes · {new Date(latestArtifact.created_at).toLocaleTimeString()}
-                  </p>
-                  <pre
-                    style={{
-                      maxHeight: 256,
-                      overflowY: "auto",
-                      whiteSpace: "pre-wrap",
-                      fontSize: 11,
-                      color: "#cbd5e1",
-                      lineHeight: 1.6,
-                      margin: 0,
-                      fontFamily: "inherit",
-                    }}
-                  >
-                    {latestArtifact.content_markdown}
-                  </pre>
-                </div>
-              )}
-            </div>
+                    <p
+                      style={{
+                        marginBottom: 6,
+                        fontSize: 9,
+                        fontWeight: 700,
+                        letterSpacing: "0.1em",
+                        textTransform: "uppercase",
+                        color: "#64748b",
+                      }}
+                    >
+                      Meeting Notes · {new Date(latestArtifact.created_at).toLocaleTimeString()}
+                    </p>
+                    <pre
+                      style={{
+                        maxHeight: 256,
+                        overflowY: "auto",
+                        whiteSpace: "pre-wrap",
+                        fontSize: 11,
+                        color: "#cbd5e1",
+                        lineHeight: 1.6,
+                        margin: 0,
+                        fontFamily: "inherit",
+                      }}
+                    >
+                      {latestArtifact.content_markdown}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            )}
           </aside>
 
           <section
@@ -528,7 +930,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                   {room?.name ?? "Roundtable"}
                 </div>
                 <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
-                  Turn-taking mode is active. One participant speaks at a time.
+                  Autonomous meeting mode is active. The room keeps working until it reaches a stopping point.
                 </div>
               </div>
               <button
@@ -609,16 +1011,18 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                     letterSpacing: "0.05em",
                   }}
                 >
-                  {seatedParticipants.length > 0
-                    ? `Call on a participant: ${seatedParticipants.map((s) => `@${s.label.toLowerCase().replace(/\s+/g, "")}`).join("  ")}`
-                    : "Type your message and the roundtable moderator will respond."}
+                  {sending
+                    ? "Meeting is running. Send a new message to interrupt, redirect, or add owner input."
+                    : seatedParticipants.length > 0
+                    ? `Kick off the topic once, or call on someone directly with ${seatedParticipants.map((s) => `@${s.label.toLowerCase().replace(/\s+/g, "")}`).join("  ")}`
+                    : "Type your kickoff and the roundtable will continue autonomously."}
                 </div>
                 <ChatInput
                   value={inputValue}
                   onChange={setInputValue}
                   onSubmit={handleSendMessage}
-                  isLoading={sending}
-                  placeholder="Send the next turn into the roundtable…"
+                  isLoading={false}
+                  placeholder={sending ? "Interrupt or redirect the meeting…" : "Kick off the meeting objective…"}
                 />
               </>
             )}
@@ -632,7 +1036,8 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
         subtitle="This room was launched from Workstation as the live group chat version of the central table."
         bullets={[
           "Roundtable is the live room spawned from the eight-seat table in Workstation.",
-          "The current protocol is one at a time: keep a single active speaker and hand the floor forward.",
+          "Autonomous meeting mode keeps the room moving after your kickoff while preserving one active speaker at a time.",
+          "You are the owner and approver. Jump in whenever you want; the room should only stop for approval, missing input, blockers, or a clear recommendation.",
           "Use Workstation to reseat desks, change the table, or launch again after reconfiguring chairs.",
           "Chat remains the everyday home. This room is the focused collaboration surface.",
         ]}

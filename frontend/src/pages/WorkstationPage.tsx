@@ -45,12 +45,11 @@ import {
   saveSparkBudChatLaunchDraft,
 } from "@/lib/sparkbudLaunch"
 import {
+  launchMeetingRoom,
   ROUND_TABLE_SEAT_COUNT,
   loadMeetingDraft,
   normalizeMeetingSeats,
   saveMeetingDraft,
-  saveMeetingRoomMeta,
-  type WorkstationMeetingRoomMeta,
 } from "@/lib/workstationMeeting"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -3074,129 +3073,17 @@ export default function WorkstationPage() {
     setMeetingLaunchError(null)
     setLaunchingMeeting(true)
     try {
-      let roomId = projectRoom.roomId
       const roomName = "Roundtable"
-      const description =
-        "Launched from Sparkbot Workstation. Turn-taking mode: one at a time."
-
-      const createRoom = async (): Promise<string> => {
-        const createRes = await fetch("/api/v1/chat/rooms/", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ name: roomName, description }),
-        })
-        if (!createRes.ok) throw new Error("Could not create roundtable room.")
-        const created = await createRes.json()
-        return created.id as string
-      }
-
-      // If we have a stale roomId from a previous session, verify it still exists.
-      // If not (404) or not ours (403), create a fresh room.
-      if (roomId) {
-        const checkRes = await fetch(`/api/v1/chat/rooms/${roomId}`, {
-          credentials: "include",
-        })
-        if (!checkRes.ok) {
-          roomId = null
-          setProjectRoom((prev) => ({ ...prev, roomId: null }))
-        }
-      }
-
-      if (!roomId) {
-        roomId = await createRoom()
-      }
-
-      if (!roomId) {
-        throw new Error("Roundtable room id missing after creation.")
-      }
-
-      const patchRes = await fetch(`/api/v1/chat/rooms/${roomId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          name: roomName,
-          description,
-          meeting_mode_enabled: true,
-          meeting_mode_bots_mention_only: true,
-          meeting_mode_max_bot_msgs_per_min: 1,
-          persona:
-            "Roundtable mode. Use turn-taking. One participant speaks at a time, then hand the floor to the next participant.",
-        }),
-      })
-      if (!patchRes.ok) {
-        throw new Error("Could not prepare meeting room.")
-      }
-
-      const launchedAt = new Date()
-      const participantLines = assignedSeatMeta
-        .map((seat) => `- Chair ${seat.seatIndex + 1}: ${seat.label}`)
-        .join("\n")
-
-      // Post a system message into the room summarising the launch
-      await fetch(`/api/v1/chat/rooms/${roomId}/messages`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          content: `Roundtable launched from Workstation.\n\nProtocol: one at a time.\n\nSeated participants:\n${participantLines}`,
-        }),
-      }).catch(() => {})
-
-      // Create the initial Guardian meeting artifact (markdown scaffold)
-      const artifactMarkdown = [
-        `# Roundtable Meeting — ${launchedAt.toISOString().replace("T", " ").slice(0, 16)} UTC`,
-        "",
-        "## Purpose",
-        "_To be defined by participants._",
-        "",
-        "## Participants",
-        ...assignedSeatMeta.map((seat) => `- **Chair ${seat.seatIndex + 1}:** ${seat.label}`),
-        "",
-        "## Agenda",
-        "- _To be defined._",
-        "",
-        "## Discussion",
-        "_Meeting in progress._",
-        "",
-        "## Decisions",
-        "- _None recorded yet._",
-        "",
-        "## Action Items",
-        "- [ ] _None recorded yet._",
-        "",
-        "## Open Questions",
-        "- _None recorded yet._",
-        "",
-        "## Next Steps",
-        "- _To be determined._",
-      ].join("\n")
-
-      await fetch(`/api/v1/chat/rooms/${roomId}/artifacts`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          type: "notes",
-          content_markdown: artifactMarkdown,
-        }),
-      }).catch(() => {})
-
-      const meetingMeta: WorkstationMeetingRoomMeta = {
-        roomId,
+      const meetingMeta = await launchMeetingRoom({
         roomName,
-        launchedAt: launchedAt.toISOString(),
-        protocolLabel: "One at a time",
         seats: assignedSeatMeta,
-      }
-      saveMeetingRoomMeta(meetingMeta)
+      })
       setProjectRoom((prev) => ({
         ...prev,
-        roomId,
+        roomId: null,
         roomName,
       }))
-      navigate({ to: "/meeting/$roomId", params: { roomId } })
+      navigate({ to: "/meeting/$roomId", params: { roomId: meetingMeta.roomId } })
     } catch (error) {
       console.error(error)
       setMeetingLaunchError(error instanceof Error ? error.message : "Could not launch meeting. Check console.")

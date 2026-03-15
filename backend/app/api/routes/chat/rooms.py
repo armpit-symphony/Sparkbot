@@ -5,6 +5,7 @@ Handles room CRUD and membership management.
 """
 import json
 import os
+import re
 from datetime import datetime, timezone
 from typing import Any, Optional
 from uuid import UUID
@@ -68,6 +69,116 @@ def _get_or_create_agent_bot_user(db, agent_name: str) -> "ChatUser":
         db.commit()
         db.refresh(bot_user)
     return bot_user
+
+
+_MEETING_STATUS_VALUES = {
+    "continue",
+    "needs_user_input",
+    "needs_approval",
+    "recommendation_ready",
+    "solved",
+    "blocked",
+    "looping",
+}
+
+
+def _agent_label(agent_name: str, agent_info: Optional[dict[str, Any]] = None) -> str:
+    """Return the user-facing label for an agent."""
+    info = agent_info or {}
+    emoji = str(info.get("emoji") or "")
+    display = "Sparkbot" if agent_name == "sparkbot" else agent_name.replace("_", " ").title()
+    return f"{emoji} {display}".strip() if emoji else display
+
+
+def _meeting_role_instruction(agent_name: str, *, chair: bool) -> str:
+    """Return meeting-role instructions tuned for the participant."""
+    normalized = agent_name.lower()
+    if chair:
+        return (
+            "You are the meeting chair and facilitator. Frame the objective, keep the room moving, "
+            "synthesize distinct inputs, and decide whether another round adds value. Treat the human "
+            "as the owner and approver, not as a required speaker between turns. Do not ask who should "
+            "speak next or say 'next speaker'."
+        )
+    if "research" in normalized:
+        return (
+            "You are the researcher. Contribute evidence, relevant patterns, concrete options, and any "
+            "missing facts worth checking. Add new information only; do not paraphrase prior speakers."
+        )
+    if "analyst" in normalized:
+        return (
+            "You are the analyst. Focus on tradeoffs, bottlenecks, risks, and decision logic. Challenge "
+            "weak assumptions and clarify what would make a recommendation strong."
+        )
+    if normalized in {"coder", "builder", "engineer", "developer"} or any(
+        token in normalized for token in ("build", "code", "engineer", "implement")
+    ):
+        return (
+            "You are the implementation voice. Turn ideas into an operating model, execution plan, or "
+            "practical build path. Be concrete about sequence, ownership, and feasibility."
+        )
+    return (
+        "You provide an alternate expert angle. Add distinct value, propose a concrete path forward, "
+        "and avoid repeating the prior speaker."
+    )
+
+
+def _parse_meeting_status(raw_text: str, default_status: str) -> tuple[str, str]:
+    """Parse STATUS/MESSAGE output from the chair and return (status, public_message)."""
+    text = (raw_text or "").strip()
+    if not text:
+        return default_status, ""
+
+    fenced_match = re.match(r"^```(?:json)?\s*(.*?)\s*```$", text, re.DOTALL | re.IGNORECASE)
+    if fenced_match:
+        text = fenced_match.group(1).strip()
+
+    try:
+        data = json.loads(text)
+    except Exception:
+        data = None
+
+    if isinstance(data, dict):
+        status = str(data.get("status") or default_status).strip().lower()
+        message = str(data.get("message") or "").strip()
+        if status not in _MEETING_STATUS_VALUES:
+            status = default_status
+        return status, message or raw_text.strip()
+
+    status_match = re.search(r"(?im)^status\s*:\s*([a-z_]+)\s*$", text)
+    message_match = re.search(r"(?ims)^message\s*:\s*(.+)$", text)
+    status = status_match.group(1).strip().lower() if status_match else default_status
+    if status not in _MEETING_STATUS_VALUES:
+        status = default_status
+
+    if message_match:
+        message = message_match.group(1).strip()
+    else:
+        message = re.sub(r"(?im)^status\s*:\s*[a-z_]+\s*$", "", text).strip()
+        message = re.sub(r"(?im)^message\s*:\s*", "", message).strip()
+    return status, message
+
+
+def _chunk_text(text: str, size: int = 80) -> list[str]:
+    """Split text into SSE-friendly chunks."""
+    return [text[i : i + size] for i in range(0, len(text), size)] if text else []
+
+
+def _meeting_artifact_markdown(objective: str, status: str, content: str) -> str:
+    """Convert a chair synthesis into a durable markdown artifact."""
+    heading = {
+        "needs_user_input": "Owner Input Needed",
+        "needs_approval": "Approval Needed",
+        "recommendation_ready": "Recommendation",
+        "solved": "Resolution",
+        "blocked": "Blocker",
+        "looping": "Loop Detected",
+    }.get(status, "Meeting Update")
+    return (
+        f"# {heading}\n\n"
+        f"## Objective\n{objective.strip() or '(none noted)'}\n\n"
+        f"## Outcome\n{content.strip() or '(none noted)'}\n"
+    )
 
 
 def _require_room_access(
@@ -973,6 +1084,351 @@ async def stream_room_message(
         from app.api.routes.chat.agents import get_agent as _get_agent_info
         from app.api.routes.chat.llm import stream_chat_with_tools as _sct
 
+        def _lookup_agent_info(agent_handle: str) -> Optional[dict[str, Any]]:
+            if agent_handle == "sparkbot":
+                return {
+                    "emoji": "🤖",
+                    "system_prompt": LLM_SYSTEM_PROMPT,
+                }
+            return _get_agent_info(agent_handle)
+
+        async def _run_agent_turn(
+            *,
+            participant_handle: str,
+            discussion_history: list[dict[str, str]],
+            objective: str,
+            phase_prompt: str,
+            chair_handle: str,
+            parse_status: bool = False,
+            default_status: str = "recommendation_ready",
+        ) -> dict[str, Any]:
+            agent_info = _lookup_agent_info(participant_handle)
+            if not agent_info:
+                return {"content": "", "status": None, "halted": False, "events": []}
+
+            p_base = str(agent_info.get("system_prompt") or LLM_SYSTEM_PROMPT)
+            if room.persona and room.persona.strip():
+                p_base = room.persona.strip() + "\n\n" + p_base
+
+            role_instruction = _meeting_role_instruction(
+                participant_handle,
+                chair=participant_handle == chair_handle,
+            )
+            p_base += (
+                "\n\n## Autonomous roundtable protocol\n"
+                "This is an autonomous meeting room. Continue the discussion without waiting for the owner "
+                "between turns. One participant speaks at a time, but the handoff is automatic. Avoid filler, "
+                "avoid generic agreement, and do not ask for the next speaker.\n\n"
+                f"## Your role\n{role_instruction}"
+            )
+
+            if memories:
+                mem_block = "\n".join(f"- {m.fact}" for m in memories)
+                p_system = p_base + f"\n\n## What you know about this user:\n{mem_block}"
+            else:
+                p_system = p_base
+            if memory_context:
+                p_system += f"\n\n{memory_context}"
+
+            label = _agent_label(participant_handle, agent_info)
+            emitted_events = [
+                f"data: {json.dumps({'type': 'agent_start', 'agent': participant_handle, 'label': label})}\n\n"
+            ]
+
+            agent_full_text = ""
+            agent_routing_payload = None
+            stop_event = None
+            db2 = None
+            try:
+                from app.api.deps import get_db as _get_db2
+
+                db2 = next(_get_db2())
+                turn_messages = [{"role": "system", "content": p_system}] + discussion_history + [
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Meeting objective from the owner:\n{objective.strip() or agent_content.strip()}\n\n"
+                            f"{phase_prompt}"
+                        ).strip(),
+                    }
+                ]
+                async for event in _sct(
+                    turn_messages,
+                    user_id=user_id_str,
+                    db_session=db2,
+                    room_id=str(room_id),
+                    agent_name=participant_handle,
+                    room_execution_allowed=room.execution_allowed,
+                    is_operator=_user_is_operator,
+                    is_privileged=_user_is_privileged,
+                ):
+                    if event["type"] == "token":
+                        agent_full_text += event["token"]
+                        if not parse_status:
+                            emitted_events.append(
+                                f"data: {json.dumps({'type': 'token', 'token': event['token'], 'agent': participant_handle})}\n\n"
+                            )
+                    elif event["type"] == "routing":
+                        agent_routing_payload = event.get("payload")
+                    elif event["type"] in ("tool_start", "tool_done"):
+                        emitted_events.append(f"data: {json.dumps(event)}\n\n")
+                    elif event["type"] in ("confirm_required", "privileged_required"):
+                        stop_event = event
+                        emitted_events.append(f"data: {json.dumps(event)}\n\n")
+                        break
+            except Exception as e:
+                if db2:
+                    db2.close()
+                emitted_events.append(
+                    f"data: {json.dumps({'type': 'error', 'error': str(e), 'agent': participant_handle})}\n\n"
+                )
+                return {"content": "", "status": "blocked", "halted": True, "events": emitted_events}
+
+            if stop_event:
+                if db2:
+                    db2.close()
+                return {"content": "", "status": "needs_approval", "halted": True, "events": emitted_events}
+
+            public_text = agent_full_text.strip()
+            meeting_status = None
+            if parse_status:
+                meeting_status, public_text = _parse_meeting_status(agent_full_text, default_status=default_status)
+                for chunk in _chunk_text(public_text):
+                    emitted_events.append(
+                        f"data: {json.dumps({'type': 'token', 'token': chunk, 'agent': participant_handle})}\n\n"
+                    )
+
+            if not public_text:
+                if db2:
+                    db2.close()
+                return {"content": "", "status": meeting_status, "halted": False, "events": emitted_events}
+
+            try:
+                bot_user = _get_or_create_agent_bot_user(db2, participant_handle)
+                meta_json: dict[str, Any] = {"agent": participant_handle}
+                if agent_routing_payload:
+                    meta_json["token_guardian"] = agent_routing_payload
+                if meeting_status:
+                    meta_json["meeting_status"] = meeting_status
+                bot_msg = create_chat_message(
+                    session=db2,
+                    room_id=room_id,
+                    sender_id=bot_user.id,
+                    content=public_text,
+                    sender_type="BOT",
+                    reply_to_id=human_msg_uuid,
+                    meta_json=meta_json,
+                )
+                agent_msg_id = str(bot_msg.id)
+                try:
+                    remember_chat_message(
+                        user_id=user_id_str,
+                        room_id=str(room_id),
+                        role="assistant",
+                        content=public_text,
+                    )
+                except Exception:
+                    pass
+                if meeting_status and meeting_status != "continue":
+                    try:
+                        create_chat_meeting_artifact(
+                            session=db2,
+                            room_id=room_id,
+                            created_by_user_id=current_user.id,
+                            type="notes",
+                            content_markdown=_meeting_artifact_markdown(objective, meeting_status, public_text),
+                            meta_json={
+                                "source": "autonomous_meeting",
+                                "agent": participant_handle,
+                                "meeting_status": meeting_status,
+                            },
+                        )
+                    except Exception:
+                        pass
+                discussion_history.append({"role": "assistant", "content": f"{label}: {public_text}"})
+                db2.close()
+                emitted_events.append(
+                    f"data: {json.dumps({'type': 'agent_done', 'agent': participant_handle, 'message_id': agent_msg_id})}\n\n"
+                )
+                return {
+                    "content": public_text,
+                    "status": meeting_status,
+                    "halted": False,
+                    "events": emitted_events,
+                }
+            except Exception as e:
+                if db2:
+                    db2.close()
+                emitted_events.append(
+                    f"data: {json.dumps({'type': 'error', 'error': f'Save failed for {participant_handle}: {e}'})}\n\n"
+                )
+                return {"content": "", "status": "blocked", "halted": True, "events": emitted_events}
+
+        async def autonomous_meeting_stream(valid_participants: list[str]):
+            yield f"data: {json.dumps({'type': 'human_message', 'message_id': human_msg_id})}\n\n"
+
+            chair_handle = "sparkbot" if "sparkbot" in valid_participants else valid_participants[0]
+            specialists = [handle for handle in valid_participants if handle != chair_handle]
+            discussion_history = list(openai_history)
+            objective = agent_content.strip() or message_in.content.strip()
+            minimum_turns = 2 if not specialists else min(10, max(4, (len(valid_participants) * 2) + 1))
+            room_cap = max(int(room.meeting_mode_max_bot_msgs_per_min or 0), 0)
+            max_bot_turns = min(10, max(minimum_turns, room_cap))
+            turns_used = 0
+
+            opening_prompt = (
+                "Current phase: initial framing.\n"
+                "Frame the problem, define the working objective, and explain how the room should approach it. "
+                "Keep it concise and actionable. Do not ask for the next speaker."
+            )
+            opening_result = await _run_agent_turn(
+                participant_handle=chair_handle,
+                discussion_history=discussion_history,
+                objective=objective,
+                phase_prompt=opening_prompt,
+                chair_handle=chair_handle,
+            )
+            for event in opening_result["events"]:
+                yield event
+            turns_used += 1
+            if opening_result.get("halted"):
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                return
+
+            for participant_handle in specialists:
+                if turns_used >= max_bot_turns - 1:
+                    break
+                gather_prompt = (
+                    "Current phase: perspective gathering.\n"
+                    "Contribute the most useful view from your role. Add distinct evidence, options, tradeoffs, "
+                    "or implementation guidance that has not already been said. End with a concrete takeaway. "
+                    "Do not ask for another speaker and do not repeat the objective."
+                )
+                gather_result = await _run_agent_turn(
+                    participant_handle=participant_handle,
+                    discussion_history=discussion_history,
+                    objective=objective,
+                    phase_prompt=gather_prompt,
+                    chair_handle=chair_handle,
+                )
+                for event in gather_result["events"]:
+                    yield event
+                turns_used += 1
+                if gather_result.get("halted"):
+                    yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                    return
+
+            synthesis_prompt = (
+                "Current phase: synthesis.\n"
+                "Assess whether the room should continue or stop. Return exactly in this format:\n"
+                "STATUS: <continue|needs_user_input|needs_approval|recommendation_ready|solved|blocked|looping>\n"
+                "MESSAGE:\n"
+                "## Recommendation\n"
+                "<one clear recommendation>\n\n"
+                "## Action Plan\n"
+                "- [ ] <step 1>\n"
+                "- [ ] <step 2>\n"
+                "- [ ] <step 3>\n\n"
+                "## Owner Input Or Approval\n"
+                "- <single approval, decision, or 'none'>\n\n"
+                "## Stop Reason\n"
+                "- <why continue or stop now>\n\n"
+                "Choose continue only if another round is likely to add substantial value. If approval or missing "
+                "owner input is needed, state that explicitly. Do not write generic discussion summaries."
+            )
+            synthesis_result = await _run_agent_turn(
+                participant_handle=chair_handle,
+                discussion_history=discussion_history,
+                objective=objective,
+                phase_prompt=synthesis_prompt,
+                chair_handle=chair_handle,
+                parse_status=True,
+                default_status="recommendation_ready",
+            )
+            for event in synthesis_result["events"]:
+                yield event
+            turns_used += 1
+            if synthesis_result.get("halted"):
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                return
+
+            status = synthesis_result.get("status") or "recommendation_ready"
+            can_refine = status == "continue" and specialists and turns_used < max_bot_turns
+            final_prompt = (
+                "Current phase: final synthesis.\n"
+                "Return exactly in this format:\n"
+                "STATUS: <needs_user_input|needs_approval|recommendation_ready|solved|blocked|looping>\n"
+                "MESSAGE:\n"
+                "## Recommendation\n"
+                "<best recommendation>\n\n"
+                "## Action Plan\n"
+                "- [ ] <specific next action>\n"
+                "- [ ] <specific next action>\n"
+                "- [ ] <specific next action>\n\n"
+                "## Owners\n"
+                "- <owner> — <responsibility>\n\n"
+                "## Open Questions / Approval Needed\n"
+                "- <item or 'none'>\n\n"
+                "## Stop Reason\n"
+                "- <why the room is stopping>\n\n"
+                "Do not choose continue in this phase. Do not ask for the next speaker. Produce a real plan, not generic advice."
+            )
+            if can_refine:
+                for participant_handle in specialists:
+                    if turns_used >= max_bot_turns - 1:
+                        break
+                    refine_prompt = (
+                        "Current phase: challenge and refinement.\n"
+                        "Focus on weak assumptions, missing constraints, or higher-value alternatives in the current "
+                        "direction. Add only non-duplicative value and keep it tight. If a concrete plan should be "
+                        "rewritten, rewrite it instead of discussing it abstractly."
+                    )
+                    refine_result = await _run_agent_turn(
+                        participant_handle=participant_handle,
+                        discussion_history=discussion_history,
+                        objective=objective,
+                        phase_prompt=refine_prompt,
+                        chair_handle=chair_handle,
+                    )
+                    for event in refine_result["events"]:
+                        yield event
+                    turns_used += 1
+                    if refine_result.get("halted"):
+                        yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                        return
+
+                final_result = await _run_agent_turn(
+                    participant_handle=chair_handle,
+                    discussion_history=discussion_history,
+                    objective=objective,
+                    phase_prompt=final_prompt,
+                    chair_handle=chair_handle,
+                    parse_status=True,
+                    default_status="recommendation_ready",
+                )
+                for event in final_result["events"]:
+                    yield event
+                if final_result.get("halted"):
+                    yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                    return
+            elif status == "continue":
+                final_result = await _run_agent_turn(
+                    participant_handle=chair_handle,
+                    discussion_history=discussion_history,
+                    objective=objective,
+                    phase_prompt=final_prompt,
+                    chair_handle=chair_handle,
+                    parse_status=True,
+                    default_status="recommendation_ready",
+                )
+                for event in final_result["events"]:
+                    yield event
+                if final_result.get("halted"):
+                    yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                    return
+
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
         async def multi_agent_stream():
             yield f"data: {json.dumps({'type': 'human_message', 'message_id': human_msg_id})}\n\n"
             for p_handle in participants_requested:
@@ -1055,6 +1511,23 @@ async def stream_room_message(
                         yield f"data: {json.dumps({'type': 'error', 'error': f'Save failed for {p_handle}: {e}'})}\n\n"
 
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
+        valid_participants: list[str] = []
+        seen_participants: set[str] = set()
+        for p_handle in participants_requested:
+            if p_handle in seen_participants:
+                continue
+            if not _lookup_agent_info(p_handle):
+                continue
+            seen_participants.add(p_handle)
+            valid_participants.append(p_handle)
+
+        if room.meeting_mode_enabled and valid_participants:
+            return StreamingResponse(
+                autonomous_meeting_stream(valid_participants),
+                media_type="text/event-stream",
+                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            )
 
         return StreamingResponse(
             multi_agent_stream(),
