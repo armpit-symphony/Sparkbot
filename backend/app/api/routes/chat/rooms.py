@@ -54,6 +54,22 @@ from app.schemas.chat import (
 router = APIRouter(prefix="/rooms", tags=["chat-rooms"])
 
 
+def _get_or_create_agent_bot_user(db, agent_name: str) -> "ChatUser":
+    """Return the bot ChatUser for a named agent, creating it on first call."""
+    from app.api.routes.chat.agents import get_agent as _get_agent
+    username = "sparkbot" if agent_name == "sparkbot" else f"agent_{agent_name}"
+    bot_user = db.exec(select(ChatUser).where(ChatUser.username == username)).scalar_one_or_none()
+    if not bot_user:
+        agent_info = _get_agent(agent_name) or {}
+        emoji = str(agent_info.get("emoji") or "")
+        display_name = f"{emoji} {agent_name.title()}".strip() if emoji else agent_name.title()
+        bot_user = ChatUser(username=username, type=UserType.BOT, hashed_password="", bot_display_name=display_name)
+        db.add(bot_user)
+        db.commit()
+        db.refresh(bot_user)
+    return bot_user
+
+
 def _require_room_access(
     session: SessionDep,
     room_id: UUID,
@@ -469,6 +485,7 @@ from typing import Optional, Any, Union
 class StreamMessageRequest(MessageCreate):
     """Extended message request with optional confirm_id for write-tool confirmation."""
     confirm_id: Optional[str] = None
+    participants: Optional[list[str]] = None  # round-table agent handles e.g. ["researcher","analyst"]
 
 
 class SendMessageResponse(BaseModel):
@@ -916,16 +933,10 @@ async def stream_room_message(
             db.close()
             return
 
-        # Save completed bot message (reuse the db session opened for tool calls)
+        # Save completed bot message — use per-agent bot user when agent is named
         try:
-            bot_user = db.exec(
-                select(ChatUser).where(ChatUser.username == "sparkbot")
-            ).scalar_one_or_none()
-            if not bot_user:
-                bot_user = ChatUser(username="sparkbot", type=UserType.BOT, hashed_password="")
-                db.add(bot_user)
-                db.commit()
-                db.refresh(bot_user)
+            _bot_agent = agent_name or "sparkbot"
+            bot_user = _get_or_create_agent_bot_user(db, _bot_agent)
             bot_reply = create_chat_message(
                 session=db,
                 room_id=room_id,
@@ -933,7 +944,7 @@ async def stream_room_message(
                 content=full_text,
                 sender_type="BOT",
                 reply_to_id=human_msg_uuid,
-                meta_json={"token_guardian": routing_payload} if routing_payload else None,
+                meta_json={"token_guardian": routing_payload, "agent": _bot_agent} if (routing_payload or agent_name) else None,
             )
             bot_reply_id = str(bot_reply.id)  # capture before session closes
             try:
@@ -952,6 +963,97 @@ async def stream_room_message(
             yield f"data: {json.dumps(done_event)}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'error': f'Save failed: {e}'})}\n\n"
+
+    # ── Multi-agent round table stream ─────────────────────────────────────────
+    # When `participants` is set and the message has no @mention, loop through
+    # each named agent and generate a response. Each agent saves its own message.
+    participants_requested = [p.strip().lower() for p in (message_in.participants or []) if p.strip()]
+
+    if participants_requested and not agent_name:
+        from app.api.routes.chat.agents import get_agent as _get_agent_info
+        from app.api.routes.chat.llm import stream_chat_with_tools as _sct
+
+        async def multi_agent_stream():
+            yield f"data: {json.dumps({'type': 'human_message', 'message_id': human_msg_id})}\n\n"
+            for p_handle in participants_requested:
+                agent_info = _get_agent_info(p_handle)
+                if not agent_info:
+                    continue  # skip unknown agents
+
+                # Build per-agent system prompt
+                p_base = str(agent_info.get("system_prompt") or LLM_SYSTEM_PROMPT)
+                if room.persona and room.persona.strip():
+                    p_base = room.persona.strip() + "\n\n" + p_base
+                if memories:
+                    mem_block = "\n".join(f"- {m.fact}" for m in memories)
+                    p_system = p_base + f"\n\n## What you know about this user:\n{mem_block}"
+                else:
+                    p_system = p_base
+                if memory_context:
+                    p_system += f"\n\n{memory_context}"
+
+                emoji = str(agent_info.get("emoji") or "")
+                label = f"{emoji} {p_handle.title()}".strip()
+                yield f"data: {json.dumps({'type': 'agent_start', 'agent': p_handle, 'label': label})}\n\n"
+
+                agent_full_text = ""
+                agent_routing_payload = None
+                try:
+                    from app.api.deps import get_db as _get_db2
+                    db2 = next(_get_db2())
+                    async for event in _sct(
+                        [{"role": "system", "content": p_system}] + openai_history,
+                        user_id=user_id_str,
+                        db_session=db2,
+                        room_id=str(room_id),
+                        agent_name=p_handle,
+                        room_execution_allowed=room.execution_allowed,
+                        is_operator=_user_is_operator,
+                        is_privileged=_user_is_privileged,
+                    ):
+                        if event["type"] == "token":
+                            agent_full_text += event["token"]
+                            yield f"data: {json.dumps({'type': 'token', 'token': event['token'], 'agent': p_handle})}\n\n"
+                        elif event["type"] == "routing":
+                            agent_routing_payload = event.get("payload")
+                        elif event["type"] in ("tool_start", "tool_done"):
+                            yield f"data: {json.dumps(event)}\n\n"
+                        elif event["type"] in ("confirm_required", "privileged_required"):
+                            yield f"data: {json.dumps(event)}\n\n"
+                            break
+                except Exception as e:
+                    yield f"data: {json.dumps({'type': 'error', 'error': str(e), 'agent': p_handle})}\n\n"
+                    continue
+
+                if agent_full_text:
+                    try:
+                        bot_user = _get_or_create_agent_bot_user(db2, p_handle)
+                        bot_msg = create_chat_message(
+                            session=db2,
+                            room_id=room_id,
+                            sender_id=bot_user.id,
+                            content=agent_full_text,
+                            sender_type="BOT",
+                            reply_to_id=human_msg_uuid,
+                            meta_json={"agent": p_handle, "token_guardian": agent_routing_payload},
+                        )
+                        agent_msg_id = str(bot_msg.id)  # capture before session closes
+                        try:
+                            remember_chat_message(user_id=user_id_str, room_id=str(room_id), role="assistant", content=agent_full_text)
+                        except Exception:
+                            pass
+                        db2.close()
+                        yield f"data: {json.dumps({'type': 'agent_done', 'agent': p_handle, 'message_id': agent_msg_id})}\n\n"
+                    except Exception as e:
+                        yield f"data: {json.dumps({'type': 'error', 'error': f'Save failed for {p_handle}: {e}'})}\n\n"
+
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
+        return StreamingResponse(
+            multi_agent_stream(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     return StreamingResponse(
         event_stream(),

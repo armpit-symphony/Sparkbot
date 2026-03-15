@@ -25,16 +25,20 @@ export interface Room {
 export interface Message {
   id: string
   room_id: string
-  user_id: string
+  user_id?: string
+  sender_id?: string         // API returns sender_id (alias of user_id)
   sender_type?: string
+  sender_username?: string   // API returns this at message root
+  sender_display_name?: string // API returns this at message root
   content: string
-  message_type: "text" | "image" | "file" | "system"
+  message_type?: "text" | "image" | "file" | "system"
   created_at: string
   updated_at?: string
   is_edited?: boolean
   is_deleted?: boolean
   user?: User
   reactions?: Reaction[]
+  meta_json?: Record<string, unknown> | null
 }
 
 export interface Reaction {

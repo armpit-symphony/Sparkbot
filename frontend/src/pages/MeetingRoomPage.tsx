@@ -42,6 +42,8 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
     created_at: string
   } | null>(null)
   const [streamingToken, setStreamingToken] = useState("")
+  const [streamingAgent, setStreamingAgent] = useState<string | null>(null)
+  const [streamError, setStreamError] = useState("")
   const streamAbortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
@@ -119,7 +121,15 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
 
     setSending(true)
     setStreamingToken("")
+    setStreamingAgent(null)
+    setStreamError("")
     setInputValue("")
+
+    // Derive participant handles from seated agents (when no @mention present)
+    const hasMention = /^@\w+/.test(content.trim())
+    const participants = (!hasMention && seatedParticipants.length > 0)
+      ? seatedParticipants.map((s) => s.label.toLowerCase().replace(/\s+/g, ""))
+      : undefined
 
     try {
       const response = await fetch(`/api/v1/chat/rooms/${roomId}/messages/stream`, {
@@ -127,14 +137,14 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         signal: abort.signal,
-        body: JSON.stringify({ content: content.trim() }),
+        body: JSON.stringify({ content: content.trim(), ...(participants ? { participants } : {}) }),
       })
 
       if (!response.ok || !response.body) {
-        throw new Error("Could not send meeting message.")
+        const errText = await response.text().catch(() => "")
+        throw new Error(errText || "Could not send meeting message.")
       }
 
-      // Read the SSE stream and accumulate tokens into the typing indicator
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
       let accumulated = ""
@@ -151,7 +161,27 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
             if (evt.type === "token") {
               accumulated += evt.token
               setStreamingToken(accumulated)
-            } else if (evt.type === "done" || evt.type === "error") {
+            } else if (evt.type === "agent_start") {
+              // New agent starting — reset accumulated and update label
+              accumulated = ""
+              setStreamingToken("")
+              setStreamingAgent(evt.label || evt.agent || null)
+            } else if (evt.type === "agent_done") {
+              accumulated = ""
+              setStreamingToken("")
+              setStreamingAgent(null)
+              await reloadMessages()
+            } else if (evt.type === "done") {
+              break
+            } else if (evt.type === "error") {
+              const msg = typeof evt.error === "string" ? evt.error : "An error occurred."
+              // Surface friendly message for known issues
+              const friendly = msg.includes("guardrail") || msg.includes("data policy")
+                ? "OpenRouter model unavailable (privacy policy). Check OpenRouter settings or switch model in Controls."
+                : msg.includes("NotFoundError") || msg.includes("404")
+                ? "Model not found. Please check your model settings in Controls."
+                : msg.substring(0, 120)
+              setStreamError(friendly)
               break
             }
           } catch {
@@ -162,11 +192,12 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
     } catch (err) {
       if ((err as Error).name !== "AbortError") {
         console.error("Meeting stream error:", err)
+        setStreamError((err as Error).message || "Stream error. Check console.")
       }
     } finally {
       setStreamingToken("")
+      setStreamingAgent(null)
       setSending(false)
-      // Reload to show the saved human + bot messages
       await reloadMessages()
     }
   }
@@ -532,6 +563,20 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                   typingUsers={[]}
                   className="flex-1"
                 />
+                {streamError && (
+                  <div
+                    style={{
+                      padding: "8px 16px",
+                      margin: "0 0 2px",
+                      fontSize: 12,
+                      color: "#f87171",
+                      borderTop: "1px solid rgba(248,113,113,0.20)",
+                      background: "rgba(248,113,113,0.06)",
+                    }}
+                  >
+                    ⚠ {streamError}
+                  </div>
+                )}
                 {streamingToken && (
                   <div
                     style={{
@@ -545,6 +590,11 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                       fontStyle: "italic",
                     }}
                   >
+                    {streamingAgent && (
+                      <span style={{ fontWeight: 700, fontStyle: "normal", marginRight: 8, fontSize: 11, color: "#7dd3fc" }}>
+                        {streamingAgent}
+                      </span>
+                    )}
                     {streamingToken}
                     <span style={{ animation: "blink 1s step-end infinite", opacity: 0.7 }}>▌</span>
                   </div>

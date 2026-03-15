@@ -101,9 +101,9 @@ export function MessageBubble({
             : "order-2 rounded-bl-md bg-muted"
         )}
       >
-        {!isOwn && message.user && (
+        {!isOwn && (message.sender_display_name || message.sender_username || message.user) && (
           <p className="mb-1 text-xs font-medium text-muted-foreground">
-            {message.user.display_name || message.user.username}
+            {message.sender_display_name || message.sender_username || message.user?.display_name || message.user?.username}
           </p>
         )}
 

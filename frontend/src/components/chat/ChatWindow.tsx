@@ -100,10 +100,10 @@ export function ChatWindow({
 
                   {/* Messages for this date */}
                   {dateMessages.map((message, index) => {
-                    const showAvatar =
-                      index === 0 ||
-                      dateMessages[index - 1]?.user_id !== message.user_id
-                    const isOwn = message.user_id === currentUser?.id
+                    const senderId = message.sender_id || message.user_id
+                    const prevSenderId = dateMessages[index - 1]?.sender_id || dateMessages[index - 1]?.user_id
+                    const showAvatar = index === 0 || prevSenderId !== senderId
+                    const isOwn = senderId === currentUser?.id
 
                     return (
                       <MessageBubble
