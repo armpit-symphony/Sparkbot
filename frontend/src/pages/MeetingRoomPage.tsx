@@ -148,8 +148,9 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
       let accumulated = ""
+      let streamDone = false
 
-      while (true) {
+      while (!streamDone) {
         const { done, value } = await reader.read()
         if (done) break
 
@@ -172,16 +173,17 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
               setStreamingAgent(null)
               await reloadMessages()
             } else if (evt.type === "done") {
+              streamDone = true
               break
             } else if (evt.type === "error") {
               const msg = typeof evt.error === "string" ? evt.error : "An error occurred."
-              // Surface friendly message for known issues
               const friendly = msg.includes("guardrail") || msg.includes("data policy")
                 ? "OpenRouter model unavailable (privacy policy). Check OpenRouter settings or switch model in Controls."
                 : msg.includes("NotFoundError") || msg.includes("404")
                 ? "Model not found. Please check your model settings in Controls."
                 : msg.substring(0, 120)
               setStreamError(friendly)
+              streamDone = true
               break
             }
           } catch {

@@ -976,7 +976,14 @@ async def stream_room_message(
         async def multi_agent_stream():
             yield f"data: {json.dumps({'type': 'human_message', 'message_id': human_msg_id})}\n\n"
             for p_handle in participants_requested:
-                agent_info = _get_agent_info(p_handle)
+                # "sparkbot" maps to the default bot (not a custom agent)
+                if p_handle == "sparkbot":
+                    agent_info = {
+                        "emoji": "🤖",
+                        "system_prompt": LLM_SYSTEM_PROMPT,
+                    }
+                else:
+                    agent_info = _get_agent_info(p_handle)
                 if not agent_info:
                     continue  # skip unknown agents
 
