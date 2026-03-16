@@ -8,6 +8,7 @@ and LLM definitions are updated automatically.
 import ast
 import base64
 import asyncio
+import ipaddress
 import json
 import operator
 import os
@@ -18,6 +19,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse, urlunparse
 
 import httpx
 
@@ -113,6 +115,38 @@ _SSH_CONNECT_TIMEOUT_SECONDS = max(
     3,
     min(int(os.getenv("SPARKBOT_SSH_CONNECT_TIMEOUT_SECONDS", "10")), 30),
 )
+_BROWSER_SESSION_TTL_SECONDS = max(
+    120,
+    min(int(os.getenv("SPARKBOT_BROWSER_SESSION_TTL_SECONDS", "1800")), 86400),
+)
+_BROWSER_MAX_TEXT_CHARS = max(
+    800,
+    min(int(os.getenv("SPARKBOT_BROWSER_MAX_TEXT_CHARS", "4000")), 20000),
+)
+_BROWSER_NAV_TIMEOUT_MS = max(
+    5000,
+    min(int(os.getenv("SPARKBOT_BROWSER_NAV_TIMEOUT_MS", "30000")), 120000),
+)
+_BROWSER_ALLOW_PRIVATE_NETWORK = os.getenv("SPARKBOT_BROWSER_ALLOW_PRIVATE_NETWORK", "false").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+_BROWSER_ALLOW_INSECURE_SSL = os.getenv("SPARKBOT_BROWSER_ALLOW_INSECURE_SSL", "false").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+_BROWSER_HEADLESS = os.getenv("SPARKBOT_BROWSER_HEADLESS", "true").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+_BROWSER_SESSIONS: dict[str, dict] = {}
+_BROWSER_SESSION_LOCK = asyncio.Lock()
 
 from app.services.skills import _registry as _skill_registry
 
@@ -202,6 +236,146 @@ TOOL_DEFINITIONS = [
                     },
                 },
                 "required": ["url"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_open",
+            "description": (
+                "Open a real browser session (Playwright) and load a website. "
+                "Use this for interactive website workflows such as registration, login, "
+                "navigation, and forum/social interactions."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "Website URL to open",
+                    },
+                    "session_id": {
+                        "type": "string",
+                        "description": "Optional existing browser session ID to reuse",
+                    },
+                },
+                "required": ["url"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_navigate",
+            "description": "Navigate an existing browser session to another URL.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "session_id": {
+                        "type": "string",
+                        "description": "Browser session ID returned by browser_open",
+                    },
+                    "url": {
+                        "type": "string",
+                        "description": "Destination URL",
+                    },
+                },
+                "required": ["session_id", "url"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_snapshot",
+            "description": (
+                "Read the currently loaded page in a browser session. "
+                "Returns page title, URL, readable text excerpt, links, inputs, and buttons."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "session_id": {
+                        "type": "string",
+                        "description": "Browser session ID returned by browser_open",
+                    }
+                },
+                "required": ["session_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_fill_field",
+            "description": (
+                "Fill a form field in a browser session. "
+                "Field can be a label, placeholder, name, id, or CSS selector."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "session_id": {
+                        "type": "string",
+                        "description": "Browser session ID",
+                    },
+                    "field": {
+                        "type": "string",
+                        "description": "Field label/name/id/placeholder/CSS selector",
+                    },
+                    "value": {
+                        "type": "string",
+                        "description": "Value to type into the field",
+                    },
+                },
+                "required": ["session_id", "field", "value"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_click",
+            "description": (
+                "Click an element in a browser session by text or CSS selector. "
+                "Use this to proceed through interactive website flows, including submit actions."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "session_id": {
+                        "type": "string",
+                        "description": "Browser session ID",
+                    },
+                    "target": {
+                        "type": "string",
+                        "description": "Button/link text or CSS selector",
+                    },
+                    "target_type": {
+                        "type": "string",
+                        "enum": ["auto", "text", "selector"],
+                        "description": "How to interpret target. Default: auto",
+                    },
+                },
+                "required": ["session_id", "target"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_close",
+            "description": "Close a browser session and release resources.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "session_id": {
+                        "type": "string",
+                        "description": "Browser session ID",
+                    }
+                },
+                "required": ["session_id"],
             },
         },
     },
@@ -1637,6 +1811,402 @@ async def _fetch_url(url: str, instruction: str = "") -> str:
     if instruction:
         prefix += f"**Task:** {instruction}\n"
     return prefix + "\n" + text
+
+
+def _normalize_browser_url(
+    raw_url: str,
+    *,
+    allow_private_network: bool | None = None,
+) -> tuple[str | None, str | None]:
+    allow_private = _BROWSER_ALLOW_PRIVATE_NETWORK if allow_private_network is None else allow_private_network
+    url = (raw_url or "").strip()
+    if not url:
+        return None, "browser_open failed: no URL provided"
+    if not re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", url):
+        url = "https://" + url
+
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return None, f"browser_open failed: invalid URL '{raw_url}'"
+
+    if parsed.scheme not in {"http", "https"}:
+        return None, "browser_open failed: only http:// and https:// URLs are allowed"
+    if not parsed.hostname:
+        return None, f"browser_open failed: invalid URL '{raw_url}'"
+
+    host = parsed.hostname.lower()
+    if host == "localhost" and not allow_private:
+        return None, "browser_open blocked: localhost/private network URLs are disabled"
+    if host.endswith(".local") and not allow_private:
+        return None, "browser_open blocked: .local/private network URLs are disabled"
+
+    try:
+        addr = ipaddress.ip_address(host)
+        if (
+            addr.is_private
+            or addr.is_loopback
+            or addr.is_link_local
+            or addr.is_reserved
+            or addr.is_multicast
+            or addr.is_unspecified
+        ) and not allow_private:
+            return None, "browser_open blocked: private or loopback IP targets are disabled"
+    except ValueError:
+        pass
+
+    if not parsed.path:
+        parsed = parsed._replace(path="/")
+    parsed = parsed._replace(fragment="")
+    return urlunparse(parsed), None
+
+
+def _playwright_install_hint(exc: Exception | None = None) -> str:
+    suffix = f" ({exc})" if exc else ""
+    return (
+        "Browser automation unavailable: Playwright is not ready"
+        f"{suffix}. Install with `pip install playwright` and run `playwright install chromium`."
+    )
+
+
+async def _close_browser_session_entry(entry: dict) -> None:
+    context = entry.get("context")
+    browser = entry.get("browser")
+    playwright = entry.get("playwright")
+    for obj in (context, browser):
+        if obj is None:
+            continue
+        try:
+            await obj.close()
+        except Exception:
+            pass
+    if playwright is not None:
+        try:
+            await playwright.stop()
+        except Exception:
+            pass
+
+
+async def _cleanup_browser_sessions(*, force: bool = False) -> None:
+    now = time.time()
+    stale: list[tuple[str, dict]] = []
+    async with _BROWSER_SESSION_LOCK:
+        for sid, entry in list(_BROWSER_SESSIONS.items()):
+            expired = now - float(entry.get("last_used_at", now)) > _BROWSER_SESSION_TTL_SECONDS
+            if force or expired:
+                stale.append((sid, entry))
+                _BROWSER_SESSIONS.pop(sid, None)
+    for _, entry in stale:
+        await _close_browser_session_entry(entry)
+
+
+async def _browser_get_session(session_id: str) -> dict | None:
+    await _cleanup_browser_sessions()
+    sid = (session_id or "").strip()
+    if not sid:
+        return None
+    async with _BROWSER_SESSION_LOCK:
+        entry = _BROWSER_SESSIONS.get(sid)
+        if entry is not None:
+            entry["last_used_at"] = time.time()
+        return entry
+
+
+async def _browser_create_session() -> tuple[str | None, dict | None, str | None]:
+    try:
+        from playwright.async_api import async_playwright
+    except Exception as exc:
+        return None, None, _playwright_install_hint(exc)
+
+    playwright = None
+    browser = None
+    context = None
+    try:
+        playwright = await async_playwright().start()
+        browser = await playwright.chromium.launch(headless=_BROWSER_HEADLESS)
+        context = await browser.new_context(ignore_https_errors=_BROWSER_ALLOW_INSECURE_SSL)
+        page = await context.new_page()
+    except Exception as exc:
+        if context is not None:
+            try:
+                await context.close()
+            except Exception:
+                pass
+        if browser is not None:
+            try:
+                await browser.close()
+            except Exception:
+                pass
+        if playwright is not None:
+            try:
+                await playwright.stop()
+            except Exception:
+                pass
+        return None, None, f"browser_open failed: could not launch browser ({exc})"
+
+    sid = str(uuid.uuid4())[:12]
+    entry = {
+        "playwright": playwright,
+        "browser": browser,
+        "context": context,
+        "page": page,
+        "created_at": time.time(),
+        "last_used_at": time.time(),
+    }
+    async with _BROWSER_SESSION_LOCK:
+        _BROWSER_SESSIONS[sid] = entry
+    return sid, entry, None
+
+
+def _browser_text_excerpt(text: str, max_chars: int = _BROWSER_MAX_TEXT_CHARS) -> str:
+    cleaned = re.sub(r"\n{3,}", "\n\n", (text or "").strip())
+    if len(cleaned) <= max_chars:
+        return cleaned
+    return cleaned[:max_chars] + f"\n\n[...truncated at {max_chars} chars]"
+
+
+async def _browser_snapshot_payload(page) -> dict:
+    title = await page.title()
+    body_text = await page.evaluate("() => (document.body && document.body.innerText) ? document.body.innerText : ''")
+    links = await page.evaluate(
+        """() => Array.from(document.querySelectorAll('a[href]')).slice(0, 12).map((a) => ({
+            text: (a.innerText || '').trim().slice(0, 90),
+            href: a.href || '',
+        }))"""
+    )
+    inputs = await page.evaluate(
+        """() => Array.from(document.querySelectorAll('input, textarea, select')).slice(0, 12).map((el) => ({
+            tag: (el.tagName || '').toLowerCase(),
+            type: (el.getAttribute('type') || '').toLowerCase(),
+            id: el.id || '',
+            name: el.getAttribute('name') || '',
+            placeholder: el.getAttribute('placeholder') || '',
+            label: (el.getAttribute('aria-label') || '').trim(),
+        }))"""
+    )
+    buttons = await page.evaluate(
+        """() => Array.from(document.querySelectorAll('button, input[type="submit"], input[type="button"], a[role="button"]'))
+            .slice(0, 12)
+            .map((el) => ({
+                tag: (el.tagName || '').toLowerCase(),
+                text: ((el.innerText || el.getAttribute('value') || '').trim()).slice(0, 90),
+                id: el.id || '',
+                name: el.getAttribute('name') || '',
+                type: (el.getAttribute('type') || '').toLowerCase(),
+            }))"""
+    )
+    return {
+        "title": (title or "").strip(),
+        "url": page.url,
+        "text": _browser_text_excerpt(body_text),
+        "links": links or [],
+        "inputs": inputs or [],
+        "buttons": buttons or [],
+    }
+
+
+def _format_browser_snapshot(session_id: str, payload: dict) -> str:
+    lines = [
+        f"Browser session: {session_id}",
+        f"Page title: {payload.get('title') or '(untitled)'}",
+        f"URL: {payload.get('url') or '(unknown)'}",
+        "",
+        "Page text:",
+        payload.get("text") or "(no readable text found)",
+        "",
+    ]
+    links = payload.get("links") or []
+    if links:
+        lines.append("Top links:")
+        for idx, item in enumerate(links, start=1):
+            text = str(item.get("text") or "").strip() or "(no text)"
+            href = str(item.get("href") or "").strip()
+            lines.append(f"{idx}. {text} -> {href}")
+        lines.append("")
+    inputs = payload.get("inputs") or []
+    if inputs:
+        lines.append("Inputs:")
+        for idx, item in enumerate(inputs, start=1):
+            tag = str(item.get("tag") or "")
+            typ = str(item.get("type") or "")
+            field_id = str(item.get("id") or "")
+            name = str(item.get("name") or "")
+            placeholder = str(item.get("placeholder") or "")
+            label = str(item.get("label") or "")
+            lines.append(
+                f"{idx}. {tag}[type={typ}] id='{field_id}' name='{name}' "
+                f"placeholder='{placeholder}' aria-label='{label}'"
+            )
+        lines.append("")
+    buttons = payload.get("buttons") or []
+    if buttons:
+        lines.append("Buttons/actions:")
+        for idx, item in enumerate(buttons, start=1):
+            tag = str(item.get("tag") or "")
+            text = str(item.get("text") or "").strip() or "(no text)"
+            field_id = str(item.get("id") or "")
+            name = str(item.get("name") or "")
+            typ = str(item.get("type") or "")
+            lines.append(f"{idx}. {tag} text='{text}' id='{field_id}' name='{name}' type='{typ}'")
+    return "\n".join(lines).strip()
+
+
+def _looks_like_selector(target: str) -> bool:
+    t = (target or "").strip()
+    return t.startswith(("#", ".", "[", "//")) or ">>" in t or ":" in t
+
+
+def _escape_css_attr(value: str) -> str:
+    return (value or "").replace("\\", "\\\\").replace('"', '\\"')
+
+
+async def _browser_open(url: str, session_id: str = "") -> str:
+    normalized_url, err = _normalize_browser_url(url)
+    if err:
+        return err
+
+    sid = (session_id or "").strip()
+    entry = await _browser_get_session(sid) if sid else None
+    if entry is None:
+        sid, entry, create_err = await _browser_create_session()
+        if create_err:
+            return create_err
+    if not sid or entry is None:
+        return "browser_open failed: could not create or find a browser session"
+
+    page = entry.get("page")
+    try:
+        await page.goto(normalized_url, wait_until="domcontentloaded", timeout=_BROWSER_NAV_TIMEOUT_MS)
+    except Exception as exc:
+        return f"browser_open failed: navigation error for {normalized_url} ({exc})"
+
+    payload = await _browser_snapshot_payload(page)
+    return _format_browser_snapshot(sid, payload)
+
+
+async def _browser_navigate(session_id: str, url: str) -> str:
+    normalized_url, err = _normalize_browser_url(url)
+    if err:
+        return err.replace("browser_open", "browser_navigate")
+    entry = await _browser_get_session(session_id)
+    if entry is None:
+        return f"browser_navigate failed: unknown or expired session '{session_id}'"
+    page = entry.get("page")
+    try:
+        await page.goto(normalized_url, wait_until="domcontentloaded", timeout=_BROWSER_NAV_TIMEOUT_MS)
+    except Exception as exc:
+        return f"browser_navigate failed: navigation error for {normalized_url} ({exc})"
+    payload = await _browser_snapshot_payload(page)
+    return _format_browser_snapshot(session_id, payload)
+
+
+async def _browser_snapshot(session_id: str) -> str:
+    entry = await _browser_get_session(session_id)
+    if entry is None:
+        return f"browser_snapshot failed: unknown or expired session '{session_id}'"
+    payload = await _browser_snapshot_payload(entry.get("page"))
+    return _format_browser_snapshot(session_id, payload)
+
+
+async def _browser_fill_field(session_id: str, field: str, value: str) -> str:
+    entry = await _browser_get_session(session_id)
+    if entry is None:
+        return f"browser_fill_field failed: unknown or expired session '{session_id}'"
+    field = (field or "").strip()
+    if not field:
+        return "browser_fill_field failed: missing field name/selector"
+
+    page = entry.get("page")
+    escaped = _escape_css_attr(field)
+    attempts = []
+    if _looks_like_selector(field):
+        attempts.append(("selector", page.locator(field)))
+    attempts.extend(
+        [
+            ("label", page.get_by_label(field, exact=False)),
+            ("placeholder", page.get_by_placeholder(field, exact=False)),
+            ("id", page.locator(f"#{escaped}")),
+            ("name", page.locator(f'input[name="{escaped}"], textarea[name="{escaped}"], select[name="{escaped}"]')),
+        ]
+    )
+
+    for source, locator in attempts:
+        try:
+            count = await locator.count()
+            if count <= 0:
+                continue
+            first = locator.first
+            tag_name = (await first.evaluate("el => (el.tagName || '').toLowerCase()")).strip()
+            if tag_name == "select":
+                await first.select_option(value=value, timeout=_BROWSER_NAV_TIMEOUT_MS)
+            else:
+                await first.fill(value, timeout=_BROWSER_NAV_TIMEOUT_MS)
+            return f"Filled field '{field}' via {source} in browser session {session_id}. Current URL: {page.url}"
+        except Exception:
+            continue
+
+    return (
+        f"browser_fill_field failed: could not find fillable field '{field}'. "
+        "Call browser_snapshot to inspect available inputs and use id/name/placeholder."
+    )
+
+
+async def _browser_click(session_id: str, target: str, target_type: str = "auto") -> str:
+    entry = await _browser_get_session(session_id)
+    if entry is None:
+        return f"browser_click failed: unknown or expired session '{session_id}'"
+    target = (target or "").strip()
+    if not target:
+        return "browser_click failed: missing target"
+
+    page = entry.get("page")
+    mode = (target_type or "auto").strip().lower()
+    locator_attempts = []
+    if mode == "selector" or (mode == "auto" and _looks_like_selector(target)):
+        locator_attempts.append(("selector", page.locator(target)))
+    if mode in {"auto", "text"}:
+        locator_attempts.extend(
+            [
+                ("button_text", page.get_by_role("button", name=target, exact=False)),
+                ("link_text", page.get_by_role("link", name=target, exact=False)),
+                ("text", page.get_by_text(target, exact=False)),
+            ]
+        )
+
+    for source, locator in locator_attempts:
+        try:
+            count = await locator.count()
+            if count <= 0:
+                continue
+            await locator.first.click(timeout=_BROWSER_NAV_TIMEOUT_MS)
+            try:
+                await page.wait_for_load_state("domcontentloaded", timeout=5000)
+            except Exception:
+                pass
+            return (
+                f"Clicked '{target}' via {source} in browser session {session_id}. "
+                f"Now at: {page.url}"
+            )
+        except Exception:
+            continue
+
+    return (
+        f"browser_click failed: target '{target}' not found/clickable. "
+        "Call browser_snapshot and use an exact button/link text or CSS selector."
+    )
+
+
+async def _browser_close(session_id: str) -> str:
+    sid = (session_id or "").strip()
+    if not sid:
+        return "browser_close failed: missing session_id"
+    entry = None
+    async with _BROWSER_SESSION_LOCK:
+        entry = _BROWSER_SESSIONS.pop(sid, None)
+    if entry is None:
+        return f"browser_close: session '{sid}' is already closed or unknown"
+    await _close_browser_session_entry(entry)
+    return f"Closed browser session {sid}."
 
 
 async def _get_datetime() -> str:
@@ -3635,6 +4205,26 @@ async def execute_tool(
         return await _web_search(args.get("query", ""))
     if name == "fetch_url":
         return await _fetch_url(args.get("url", ""), args.get("instruction", ""))
+    if name == "browser_open":
+        return await _browser_open(args.get("url", ""), args.get("session_id", ""))
+    if name == "browser_navigate":
+        return await _browser_navigate(args.get("session_id", ""), args.get("url", ""))
+    if name == "browser_snapshot":
+        return await _browser_snapshot(args.get("session_id", ""))
+    if name == "browser_fill_field":
+        return await _browser_fill_field(
+            args.get("session_id", ""),
+            args.get("field", ""),
+            args.get("value", ""),
+        )
+    if name == "browser_click":
+        return await _browser_click(
+            args.get("session_id", ""),
+            args.get("target", ""),
+            args.get("target_type", "auto"),
+        )
+    if name == "browser_close":
+        return await _browser_close(args.get("session_id", ""))
     if name == "get_datetime":
         return await _get_datetime()
     if name == "calculate":

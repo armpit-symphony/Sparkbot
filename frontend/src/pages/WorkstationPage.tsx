@@ -4,7 +4,7 @@
 // Phase 3: Live terminal via xterm.js + WebSocket-backed PTY sessions.
 
 import { useState, useCallback, useEffect } from "react"
-import { useNavigate } from "@tanstack/react-router"
+import { Link, useNavigate } from "@tanstack/react-router"
 import {
   Plus,
   Users,
@@ -3205,6 +3205,19 @@ export default function WorkstationPage() {
               onControls={() => handleNavigate("/dm?controls=open")}
               onInfo={handleOpenInfo}
             />
+            <Link
+              to="/spine"
+              style={{
+                fontSize: 10,
+                color: "rgba(203,213,245,0.6)",
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                textDecoration: "none",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Spine Ops →
+            </Link>
             <div style={{ width: 1, height: 24, backgroundColor: "rgba(99,102,241,0.16)" }} />
             <LiveClock />
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>

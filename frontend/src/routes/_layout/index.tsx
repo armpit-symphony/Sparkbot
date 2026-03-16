@@ -26,7 +26,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { LoadingButton } from "@/components/ui/loading-button"
-import useAuth from "@/hooks/useAuth"
+import useAuth, { hasChatSession } from "@/hooks/useAuth"
 
 export const Route = createFileRoute("/_layout/")({
   component: Dashboard,
@@ -686,7 +686,7 @@ function Dashboard() {
         </Card>
       </section>
 
-      {currentUser?.is_superuser && <SpineWorkStateSection />}
+      {hasChatSession() && <SpineWorkStateSection />}
 
       <section className="grid gap-4 xl:grid-cols-[1fr_1fr_1fr]">
         <Card>

@@ -29,6 +29,7 @@ _NO_RESULT_MARKERS = (
     "0 unread",
 )
 _WRITE_SUCCESS_MARKERS: dict[str, tuple[str, ...]] = {
+    "browser_click": ("clicked", "now at:", "navigation"),
     "gmail_send": ("sent", "email sent"),
     "slack_send_message": ("posted", "message sent", "sent to"),
     "calendar_create_event": ("event created", "created:"),

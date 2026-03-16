@@ -19,3 +19,21 @@ def test_policy_treats_service_status_as_read_only() -> None:
     )
     assert decision.action == "allow"
     assert decision.scope == "read"
+
+
+def test_policy_allows_browser_open_by_default() -> None:
+    decision = decide_tool_use(
+        "browser_open",
+        {"url": "https://example.com"},
+    )
+    assert decision.action == "allow"
+    assert decision.scope == "read"
+
+
+def test_policy_requires_confirmation_for_browser_click() -> None:
+    decision = decide_tool_use(
+        "browser_click",
+        {"session_id": "abc123", "target": "Sign up"},
+    )
+    assert decision.action == "confirm"
+    assert decision.scope == "write"

@@ -26,6 +26,7 @@ dependencies = [
     "ddgs>=9.11.4",
     "beautifulsoup4>=4.14.3",
     "html2text>=2025.4.15",
+    "playwright>=1.52.0",
 ]
 
 [dependency-groups]

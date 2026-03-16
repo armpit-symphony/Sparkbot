@@ -6,7 +6,6 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
-import { UsersService } from "@/client"
 import {
   type BreakglassStatus,
   type GuardianStatus,
@@ -43,8 +42,9 @@ import {
 export const Route = createFileRoute("/_layout/spine")({
   component: SpineOps,
   beforeLoad: async () => {
-    const user = await UsersService.readUserMe()
-    if (!user.is_superuser) {
+    try {
+      await fetchGuardianStatus()
+    } catch {
       throw redirect({ to: "/" })
     }
   },

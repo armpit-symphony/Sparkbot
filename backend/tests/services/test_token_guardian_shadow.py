@@ -2,6 +2,7 @@ from app.services.guardian import token_guardian
 
 
 def test_token_guardian_shadow_route_returns_decision(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKBOT_TOKEN_GUARDIAN_MODE", "shadow")
     monkeypatch.setenv("SPARKBOT_TOKEN_GUARDIAN_SHADOW_ENABLED", "true")
     token_guardian._pipeline.cache_clear()
     token_guardian._monitor.cache_clear()

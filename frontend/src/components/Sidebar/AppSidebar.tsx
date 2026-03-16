@@ -1,4 +1,4 @@
-import { Bot, Home, LayoutGrid, MessageSquare, Settings, Users } from "lucide-react"
+import { Bot, Database, Home, LayoutGrid, MessageSquare, Settings, Users } from "lucide-react"
 
 import { SidebarAppearance } from "@/components/Common/Appearance"
 import { Logo } from "@/components/Common/Logo"
@@ -8,7 +8,7 @@ import {
   SidebarFooter,
   SidebarHeader,
 } from "@/components/ui/sidebar"
-import useAuth from "@/hooks/useAuth"
+import useAuth, { hasChatSession } from "@/hooks/useAuth"
 import { isV1LocalMode } from "@/lib/v1Local"
 import { type Item, Main } from "./Main"
 import { User } from "./User"
@@ -27,8 +27,12 @@ export function AppSidebar() {
     ? baseItems.filter((item) => item.path !== "/workstation")
     : baseItems
 
-  const items = currentUser?.is_superuser
-    ? [...visibleBaseItems, { icon: Users, title: "Admin", path: "/admin" }]
+  const items = hasChatSession()
+    ? [
+        ...visibleBaseItems,
+        { icon: Database, title: "Spine Ops", path: "/spine" },
+        ...(currentUser?.is_superuser ? [{ icon: Users, title: "Admin", path: "/admin" }] : []),
+      ]
     : visibleBaseItems
 
   return (

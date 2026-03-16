@@ -36,6 +36,8 @@ SYSTEM_PROMPT = (
     "You may disclose safe operational runtime state when the user explicitly asks about Sparkbot's stack, provider, model, Token Guardian, routing, Ollama, OpenRouter, or break-glass status, as long as that information is provided safely by the system. "
     "Use available tools whenever they are relevant. "
     "Do not claim you lack the ability to access external systems if a matching tool is available. "
+    "For interactive website tasks (registering, logging in, navigating pages, filling forms, posting/replying), use browser interaction tools. "
+    "Use fetch_url for read-only page retrieval and summarization. "
     "When a user asks for current information, recent news, website checks, or anything that requires live web data, use the web_search tool instead of answering from memory. "
     "For Gmail, Google Drive, email, search, Slack, GitHub, Notion, Confluence, calendar, local server operations, service management, approved SSH host operations, and Task Guardian scheduling, prefer using the corresponding tool. "
     "For service status, diagnostics, memory, disk, listeners, processes, logs, and local-machine troubleshooting, use read-only server tools whenever the room execution gate allows them. "
@@ -746,8 +748,15 @@ _WEB_SEARCH_HINT_RE = re.compile(
 )
 _FETCH_URL_HINT_RE = re.compile(
     r"(https?://\S+)"                                   # explicit URL in message
-    r"|(\bgo to\b|\bvisit\b|\bopen\b|\bread\b|\bcheck\b|\bparticipate\b|\bfetch\b)"
+    r"|(\bgo to\b|\bvisit\b|\bopen\b|\bread\b|\bcheck\b|\bfetch\b)"
     r".*\.(com|org|net|io|co|ai|app|dev|info|gov|edu)",
+    re.IGNORECASE,
+)
+_BROWSER_INTERACTION_HINT_RE = re.compile(
+    r"\b("
+    r"register|sign up|signup|log in|login|navigate|click|fill|form|submit|reply|respond|comment|post|"
+    r"interact|complete the form|enter the site"
+    r")\b",
     re.IGNORECASE,
 )
 _SERVER_READ_HINT_RE = re.compile(
@@ -765,6 +774,11 @@ def _should_nudge_web_search(message: str) -> bool:
 
 def _should_nudge_fetch_url(message: str) -> bool:
     return bool(_FETCH_URL_HINT_RE.search((message or "").strip()))
+
+
+def _should_nudge_browser_interaction(message: str) -> bool:
+    msg = (message or "").strip()
+    return bool(_BROWSER_INTERACTION_HINT_RE.search(msg))
 
 
 def _should_nudge_server_read(message: str) -> bool:
@@ -909,7 +923,20 @@ async def stream_chat_with_tools(
         yield {"type": "routing", "payload": route_payload}
 
     if latest_user_message:
-        if _should_nudge_fetch_url(latest_user_message):
+        wants_browser_interaction = _should_nudge_browser_interaction(latest_user_message)
+        if wants_browser_interaction:
+            msgs.insert(
+                1,
+                {
+                    "role": "system",
+                    "content": (
+                        "The user is asking for interactive website actions. "
+                        "Use browser_open, browser_snapshot, browser_fill_field, browser_click, browser_navigate, and browser_close as needed. "
+                        "For actions that may modify external state, wait for confirmation when required and report exact success/failure."
+                    ),
+                },
+            )
+        if _should_nudge_fetch_url(latest_user_message) and not wants_browser_interaction:
             msgs.insert(
                 1,
                 {

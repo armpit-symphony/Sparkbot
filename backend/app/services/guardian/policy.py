@@ -70,6 +70,11 @@ def _build_policy_registry() -> dict[str, ToolPolicy]:
     for tool_name in (
         "web_search",
         "fetch_url",
+        "browser_open",
+        "browser_navigate",
+        "browser_snapshot",
+        "browser_fill_field",
+        "browser_close",
         "get_datetime",
         "calculate",
         "list_tasks",
@@ -121,6 +126,7 @@ def _build_policy_registry() -> dict[str, ToolPolicy]:
         )
 
     for tool_name, resource in (
+        ("browser_click", "web"),
         ("gmail_send", "gmail"),
         ("email_send", "email"),
         ("slack_send_message", "slack"),
