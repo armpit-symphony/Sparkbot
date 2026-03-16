@@ -385,7 +385,10 @@ def _resolve_linked_chat_user(session: Session, chat_id: str, tg_user: dict[str,
     if chat_id in _operator_telegram_chat_ids():
         from app.services.guardian.auth import operator_usernames
 
-        operator_username = sorted(operator_usernames())[0]
+        configured = sorted(operator_usernames())
+        # In open mode (no SPARKBOT_OPERATOR_USERNAMES set) fall back to the
+        # default operator account name so Telegram linking still works.
+        operator_username = configured[0] if configured else "sparkbot-user"
         chat_user = get_chat_user_by_username(session, operator_username)
         if not chat_user:
             chat_user = create_chat_user(session, username=operator_username, user_type="HUMAN")

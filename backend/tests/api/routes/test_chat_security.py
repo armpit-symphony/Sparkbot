@@ -1,6 +1,7 @@
 from datetime import timedelta
 from uuid import UUID
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
@@ -242,7 +243,8 @@ def test_audit_endpoints_require_room_scope_and_membership(
     assert non_member_list.status_code == 403
 
 
-def test_models_config_requires_operator_identity(client: TestClient) -> None:
+def test_models_config_requires_operator_identity(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SPARKBOT_OPERATOR_USERNAMES", "sparkbot-user")
     operator_id = _ensure_chat_user("sparkbot-user")
     outsider_id = _create_chat_user("outsider")
 
@@ -262,7 +264,8 @@ def test_models_config_requires_operator_identity(client: TestClient) -> None:
     assert outsider_response.status_code == 403
 
 
-def test_models_config_update_requires_operator_identity(client: TestClient) -> None:
+def test_models_config_update_requires_operator_identity(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SPARKBOT_OPERATOR_USERNAMES", "sparkbot-user")
     outsider_id = _create_chat_user("outsider")
     outsider_headers = _chat_headers_for_user(outsider_id)
 

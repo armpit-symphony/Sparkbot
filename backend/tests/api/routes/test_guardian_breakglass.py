@@ -199,6 +199,8 @@ class TestGuardianRouteAccess:
         outsider_id = _ensure_chat_user("outsider_guardian")
         headers = _chat_headers_for_user(outsider_id)
         monkeypatch.setenv("SPARKBOT_OPERATOR_PIN_HASH", create_pin_hash("1234"))
+        # Restrict operators to only "sparkbot-user" so outsider gets 403
+        monkeypatch.setenv("SPARKBOT_OPERATOR_USERNAMES", "sparkbot-user")
 
         assert client.get(f"{settings.API_V1_STR}/chat/guardian/breakglass/status", headers=headers).status_code == 403
         assert client.post(
@@ -262,6 +264,7 @@ class TestTelegramOperatorLinking:
         operator_id = _ensure_chat_user("sparkbot-user")
         monkeypatch.setenv("SPARKBOT_GUARDIAN_DATA_DIR", str(tmp_path))
         monkeypatch.setenv("SPARKBOT_OPERATOR_TELEGRAM_CHAT_IDS", "operator-chat")
+        monkeypatch.setenv("SPARKBOT_OPERATOR_USERNAMES", "sparkbot-user")
 
         with Session(engine) as db:
             link = telegram_bridge._ensure_linked_room(
@@ -303,6 +306,8 @@ class TestTelegramOperatorLinking:
         from app.services import telegram_bridge
 
         monkeypatch.setenv("SPARKBOT_GUARDIAN_DATA_DIR", str(tmp_path))
+        # Restrict operators so the telegram user is NOT an operator
+        monkeypatch.setenv("SPARKBOT_OPERATOR_USERNAMES", "sparkbot-user")
         sent_messages: list[str] = []
 
         async def _fake_send_text(chat_id: str, text: str) -> None:
