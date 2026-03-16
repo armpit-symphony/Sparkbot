@@ -15,8 +15,6 @@ from pydantic import BaseModel
 
 from app.api.deps import CurrentChatUser, SessionDep
 from app.crud import (
-    assign_task,
-    complete_task,
     create_task,
     delete_task,
     get_chat_room_member,
@@ -121,6 +119,11 @@ def create_room_task(
         assigned_to=assigned_uuid,
         due_date=due,
     )
+    try:
+        from app.services.guardian.task_master_adapter import task_master_spine
+        task_master_spine.register_created_task(task=task, session=session, actor_id=str(current_user.id))
+    except Exception:
+        pass
     return _fmt(task)
 
 
@@ -140,10 +143,16 @@ def update_room_task(
     if not task or task.room_id != room_id:
         raise HTTPException(status_code=404, detail="Task not found")
 
+    from app.services.guardian.task_master_adapter import task_master_spine
+
     if task_in.status == "done":
-        task = complete_task(session, task_id)
+        task = task_master_spine.complete_task(
+            session=session,
+            task=task,
+            actor_id=str(current_user.id),
+            summary=task.description or task.title,
+        )
     elif task_in.status == "open":
-        from app.services.guardian.task_master_adapter import task_master_spine
         task = task_master_spine.reopen_task(
             session=session,
             task=task,
@@ -153,7 +162,12 @@ def update_room_task(
 
     if "assigned_to" in task_in.model_fields_set:
         new_assignee = uuid.UUID(task_in.assigned_to) if task_in.assigned_to else None
-        task = assign_task(session, task_id, new_assignee)
+        task = task_master_spine.assign_existing_task(
+            session=session,
+            task=task,
+            assigned_to=new_assignee,
+            actor_id=str(current_user.id),
+        )
 
     return _fmt(task)
 
@@ -173,5 +187,10 @@ def delete_room_task(
     if not task or task.room_id != room_id:
         raise HTTPException(status_code=404, detail="Task not found")
 
+    try:
+        from app.services.guardian.task_master_adapter import task_master_spine
+        task_master_spine.archive_deleted_task(task=task, session=session, actor_id=str(current_user.id))
+    except Exception:
+        pass
     delete_task(session, task_id, actor_id=current_user.id)
     return {"deleted": str(task_id)}

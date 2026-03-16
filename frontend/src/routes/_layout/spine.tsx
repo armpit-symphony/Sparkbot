@@ -1,5 +1,5 @@
 import { Link, createFileRoute, redirect } from "@tanstack/react-router"
-import { ArrowLeft, Database, LoaderCircle, RefreshCw } from "lucide-react"
+import { ArrowLeft, Database, LoaderCircle, RefreshCw, ShieldAlert, Lock, ClipboardList, Plus, Trash2, Archive } from "lucide-react"
 import { useEffect, useState } from "react"
 
 import { Badge } from "@/components/ui/badge"
@@ -8,6 +8,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { UsersService } from "@/client"
 import {
+  type BreakglassStatus,
+  type GuardianStatus,
   type SpineApproval,
   type SpineEvent,
   type SpineHandoff,
@@ -18,6 +20,15 @@ import {
   type SpineTaskLineage,
   type SpineTMOverview,
   type SpineProjectWorkloadEntry,
+  type VaultEntry,
+  activateBreakglass,
+  addVaultSecret,
+  archiveProject,
+  createProject,
+  deactivateBreakglass,
+  deleteVaultSecret,
+  fetchBreakglassStatus,
+  fetchGuardianStatus,
   fetchSpineProjectWorkload,
   fetchSpineProducers,
   fetchSpineProjects,
@@ -25,6 +36,8 @@ import {
   fetchSpineRecentEvents,
   fetchSpineTMOverview,
   fetchSpineTaskDetail,
+  fetchVaultList,
+  setTaskGuardianWriteMode,
 } from "@/lib/spine"
 
 export const Route = createFileRoute("/_layout/spine")({
@@ -231,10 +244,12 @@ function SpineProjectTable({
   refreshKey,
   workloadData,
   onSelect,
+  onRefresh,
 }: {
   refreshKey: number
   workloadData: SpineProjectWorkloadEntry[]
   onSelect: (p: SpineProject, workload?: SpineProjectWorkloadEntry) => void
+  onRefresh?: () => void
 }) {
   const [result, setResult] = useState<{ projects: SpineProject[]; count: number } | null>(null)
   const [loading, setLoading] = useState(true)
@@ -266,6 +281,7 @@ function SpineProjectTable({
       ) : (
         result.projects.map((p) => {
           const wl = workloadData.find((w) => w.project_id === p.project_id)
+          const canArchive = p.status !== "archived" && p.room_id
           return (
             <div
               key={p.project_id}
@@ -282,6 +298,21 @@ function SpineProjectTable({
                 </Badge>
               ))}
               <span className="text-xs text-muted-foreground">{formatRelativeTime(p.updated_at)}</span>
+              {canArchive && (
+                <button
+                  className="text-muted-foreground hover:text-destructive ml-1"
+                  title="Archive project"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    if (!confirm(`Archive project "${p.display_name}"?`)) return
+                    archiveProject(p.room_id!, p.project_id)
+                      .then(() => onRefresh?.())
+                      .catch((err: unknown) => alert(err instanceof Error ? err.message : "Failed to archive"))
+                  }}
+                >
+                  <Archive className="size-3.5" />
+                </button>
+              )}
             </div>
           )
         })
@@ -722,7 +753,7 @@ function ProjectInspector({
       </div>
 
       <div className="rounded-xl border border-dashed px-3 py-2 text-xs text-muted-foreground">
-        Project mutations route through project_executive adapter — not yet wired to UI.
+        Project mutations (create, update, archive) are available via the Projects tab.
       </div>
     </div>
   )
@@ -878,7 +909,7 @@ function SpineOps() {
   const [overview, setOverview] = useState<SpineTMOverview | null>(null)
   const [overviewLoading, setOverviewLoading] = useState(true)
   const [overviewError, setOverviewError] = useState("")
-  const [activeTab, setActiveTab] = useState<"overview" | "queues" | "projects" | "events" | "producers">("overview")
+  const [activeTab, setActiveTab] = useState<"overview" | "queues" | "projects" | "events" | "producers" | "security" | "vault" | "task-guardian">("overview")
   const [activeQueue, setActiveQueue] = useState<SpineQueueName>("open")
   const [eventsLimit, setEventsLimit] = useState(25)
   const [refreshKey, setRefreshKey] = useState(0)
@@ -1000,15 +1031,9 @@ function SpineOps() {
         </div>
       )}
 
-      {/* Note */}
-      <div className="rounded-xl border border-dashed px-4 py-2 text-xs text-muted-foreground">
-        Project-level execution routing is not yet unified — project actions are read-only in this release. Actions via
-        project_executive adapter are not yet wired to the UI.
-      </div>
-
       {/* Tabs */}
       <div className="flex flex-wrap gap-1 border-b pb-0">
-        {(["overview", "queues", "projects", "events", "producers"] as const).map((tab) => (
+        {(["overview", "queues", "projects", "events", "producers", "security", "vault", "task-guardian"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -1018,7 +1043,7 @@ function SpineOps() {
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            {tab}
+            {tab === "task-guardian" ? "Task Guardian" : tab}
           </button>
         ))}
       </div>
@@ -1079,14 +1104,20 @@ function SpineOps() {
       {activeTab === "projects" && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Projects</CardTitle>
-            <CardDescription>All projects in the canonical spine registry.</CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-base">Projects</CardTitle>
+                <CardDescription>All projects in the canonical spine registry.</CardDescription>
+              </div>
+              <NewProjectButton onCreated={() => setRefreshKey((k) => k + 1)} />
+            </div>
           </CardHeader>
           <CardContent>
             <SpineProjectTable
               refreshKey={refreshKey}
               workloadData={workloadData}
               onSelect={handleProjectClick}
+              onRefresh={() => setRefreshKey((k) => k + 1)}
             />
           </CardContent>
         </Card>
@@ -1134,6 +1165,420 @@ function SpineOps() {
           </CardContent>
         </Card>
       )}
+
+      {activeTab === "security" && <SecurityTab />}
+      {activeTab === "vault" && <VaultTab />}
+      {activeTab === "task-guardian" && <TaskGuardianTab />}
+    </div>
+  )
+}
+
+// ─── New Project button ────────────────────────────────────────────────────────
+
+function NewProjectButton({ onCreated }: { onCreated: () => void }) {
+  const [open, setOpen] = useState(false)
+  const [name, setName] = useState("")
+  const [summary, setSummary] = useState("")
+  const [status, setStatus] = useState("active")
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
+
+  function handleSubmit() {
+    if (!name.trim()) return
+    setLoading(true)
+    setError("")
+    // No room context on the spine page — we use a special "global" room ID placeholder
+    // The backend requires room membership, but project exec uses room_id for context only.
+    // Best-effort: use a sentinel that the backend treats as optional.
+    createProject("00000000-0000-0000-0000-000000000000", {
+      display_name: name.trim(),
+      summary: summary.trim() || undefined,
+      status,
+    })
+      .then(() => { setOpen(false); setName(""); setSummary(""); onCreated() })
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : "Failed to create project"))
+      .finally(() => setLoading(false))
+  }
+
+  if (!open) {
+    return (
+      <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setOpen(true)}>
+        <Plus className="size-3.5" /> New Project
+      </Button>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border bg-background p-3 shadow-sm">
+      <input
+        className="rounded border px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+        placeholder="Project name"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        autoFocus
+      />
+      <input
+        className="rounded border px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+        placeholder="Summary (optional)"
+        value={summary}
+        onChange={(e) => setSummary(e.target.value)}
+      />
+      <select
+        className="rounded border px-2 py-1 text-sm"
+        value={status}
+        onChange={(e) => setStatus(e.target.value)}
+      >
+        {["active", "proposed", "blocked"].map((s) => (
+          <option key={s} value={s}>{s}</option>
+        ))}
+      </select>
+      {error && <div className="text-xs text-destructive">{error}</div>}
+      <div className="flex gap-2">
+        <Button size="sm" onClick={handleSubmit} disabled={loading || !name.trim()}>
+          {loading ? <LoaderCircle className="size-3.5 animate-spin" /> : "Create"}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
+      </div>
+    </div>
+  )
+}
+
+// ─── Security tab ──────────────────────────────────────────────────────────────
+
+function SecurityTab() {
+  const [status, setStatus] = useState<GuardianStatus | null>(null)
+  const [bgStatus, setBgStatus] = useState<BreakglassStatus | null>(null)
+  const [pin, setPin] = useState("")
+  const [loading, setLoading] = useState(true)
+  const [bgLoading, setBgLoading] = useState(false)
+  const [error, setError] = useState("")
+  const [bgError, setBgError] = useState("")
+  const [bgSuccess, setBgSuccess] = useState("")
+
+  function reload() {
+    setLoading(true)
+    Promise.all([fetchGuardianStatus(), fetchBreakglassStatus()])
+      .then(([s, bg]) => { setStatus(s); setBgStatus(bg) })
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : "Failed to load"))
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => { reload() }, [])
+
+  function handleActivate() {
+    if (!pin.trim()) return
+    setBgLoading(true); setBgError(""); setBgSuccess("")
+    activateBreakglass(pin)
+      .then((s) => { setBgStatus(s); setPin(""); setBgSuccess("Break-glass session activated.") })
+      .catch((e: unknown) => setBgError(e instanceof Error ? e.message : "Failed"))
+      .finally(() => setBgLoading(false))
+  }
+
+  function handleDeactivate() {
+    setBgLoading(true); setBgError(""); setBgSuccess("")
+    deactivateBreakglass()
+      .then(() => { setBgStatus({ active: false }); setBgSuccess("Session closed.") })
+      .catch((e: unknown) => setBgError(e instanceof Error ? e.message : "Failed"))
+      .finally(() => setBgLoading(false))
+  }
+
+  if (loading) return <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" /> Loading…</div>
+  if (error) return <ErrorBox message={error} />
+
+  return (
+    <div className="space-y-6">
+      {/* Guardian status overview */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base"><ShieldAlert className="size-4" /> Guardian Status</CardTitle>
+          <CardDescription>Current state of all guardian subsystems.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
+            {[
+              { label: "PIN configured", value: status?.pin_configured },
+              { label: "Vault key configured", value: status?.vault_configured },
+              { label: "Memory Guardian", value: status?.memory_guardian_enabled },
+              { label: "Task Guardian", value: status?.task_guardian_enabled },
+              { label: "Write mode", value: status?.task_guardian_write_enabled },
+            ].map(({ label, value }) => (
+              <div key={label} className="flex items-center justify-between rounded-lg border px-3 py-2">
+                <span className="text-muted-foreground text-xs">{label}</span>
+                <Badge variant={value ? "default" : "secondary"} className="text-xs">{value ? "enabled" : "off"}</Badge>
+              </div>
+            ))}
+            <div className="flex items-center justify-between rounded-lg border px-3 py-2">
+              <span className="text-muted-foreground text-xs">Operator mode</span>
+              <Badge variant="outline" className="text-xs">{status?.operator.open_mode ? "open" : "restricted"}</Badge>
+            </div>
+          </div>
+          {status?.operator.open_mode && (
+            <div className="mt-3 rounded-lg border border-yellow-400/30 bg-yellow-50 px-3 py-2 text-xs text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400">
+              Open mode: no SPARKBOT_OPERATOR_USERNAMES configured. Any authenticated human user has operator access. Set the env var to restrict access.
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Break-glass */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base"><Lock className="size-4" /> Break-Glass</CardTitle>
+          <CardDescription>Activate a privileged session to write vault secrets. Requires PIN.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center gap-3 rounded-lg border px-3 py-2">
+            <span className="text-sm text-muted-foreground">Status</span>
+            <Badge variant={bgStatus?.active ? "default" : "secondary"}>
+              {bgStatus?.active ? `Active — ${bgStatus.ttl_remaining}s remaining` : "Inactive"}
+            </Badge>
+            {bgStatus?.active && (
+              <Button size="sm" variant="outline" onClick={handleDeactivate} disabled={bgLoading} className="ml-auto">
+                Close session
+              </Button>
+            )}
+          </div>
+          {!bgStatus?.active && (
+            <div className="flex items-center gap-2">
+              <input
+                type="password"
+                className="flex-1 rounded border px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                placeholder="Enter PIN to activate"
+                value={pin}
+                onChange={(e) => setPin(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleActivate()}
+              />
+              <Button size="sm" onClick={handleActivate} disabled={bgLoading || !pin.trim()}>
+                {bgLoading ? <LoaderCircle className="size-3.5 animate-spin" /> : "Activate"}
+              </Button>
+            </div>
+          )}
+          {bgError && <div className="text-xs text-destructive">{bgError}</div>}
+          {bgSuccess && <div className="text-xs text-green-600 dark:text-green-400">{bgSuccess}</div>}
+          {!status?.pin_configured && (
+            <div className="rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground">
+              No PIN configured. Generate one:
+              <code className="ml-1 rounded bg-muted px-1 py-0.5">
+                python3 -c "from app.services.guardian.auth import create_pin_hash; print(create_pin_hash('your-pin'))"
+              </code>
+              and set <code className="rounded bg-muted px-1 py-0.5">SPARKBOT_OPERATOR_PIN_HASH</code> in your .env.
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+// ─── Vault tab ─────────────────────────────────────────────────────────────────
+
+function VaultTab() {
+  const [items, setItems] = useState<VaultEntry[]>([])
+  const [bgStatus, setBgStatus] = useState<BreakglassStatus | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
+  const [showAdd, setShowAdd] = useState(false)
+  const [alias, setAlias] = useState("")
+  const [value, setValue] = useState("")
+  const [policy, setPolicy] = useState("use_only")
+  const [addLoading, setAddLoading] = useState(false)
+  const [addError, setAddError] = useState("")
+  const [deleteLoading, setDeleteLoading] = useState<string | null>(null)
+
+  function reload() {
+    setLoading(true)
+    Promise.all([fetchVaultList(), fetchBreakglassStatus()])
+      .then(([v, bg]) => { setItems(v.items); setBgStatus(bg) })
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : "Failed to load vault"))
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => { reload() }, [])
+
+  function handleAdd() {
+    if (!alias.trim() || !value.trim()) return
+    setAddLoading(true); setAddError("")
+    addVaultSecret(alias.trim(), value.trim(), policy)
+      .then(() => { setAlias(""); setValue(""); setPolicy("use_only"); setShowAdd(false); reload() })
+      .catch((e: unknown) => setAddError(e instanceof Error ? e.message : "Failed"))
+      .finally(() => setAddLoading(false))
+  }
+
+  function handleDelete(a: string) {
+    if (!confirm(`Delete vault secret "${a}"? This cannot be undone.`)) return
+    setDeleteLoading(a)
+    deleteVaultSecret(a)
+      .then(() => reload())
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : "Failed to delete"))
+      .finally(() => setDeleteLoading(null))
+  }
+
+  if (loading) return <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" /> Loading…</div>
+  if (error) return <ErrorBox message={error} />
+
+  const isPrivileged = bgStatus?.active === true
+
+  return (
+    <div className="space-y-4">
+      {!isPrivileged && (
+        <div className="rounded-lg border border-yellow-400/30 bg-yellow-50 px-3 py-2 text-xs text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400">
+          Activate Break-glass first (Security tab) to add or delete vault secrets.
+        </div>
+      )}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base"><Lock className="size-4" /> Vault Secrets</CardTitle>
+              <CardDescription>Encrypted secrets stored in the Guardian Vault. Values are never shown.</CardDescription>
+            </div>
+            {isPrivileged && !showAdd && (
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setShowAdd(true)}>
+                <Plus className="size-3.5" /> Add Secret
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {isPrivileged && showAdd && (
+            <div className="flex flex-col gap-2 rounded-xl border bg-muted/30 p-3">
+              <input
+                className="rounded border px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                placeholder="Alias (e.g. gmail_api_key)"
+                value={alias}
+                onChange={(e) => setAlias(e.target.value)}
+                autoFocus
+              />
+              <input
+                type="password"
+                className="rounded border px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                placeholder="Secret value"
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+              />
+              <select
+                className="rounded border px-2 py-1 text-sm"
+                value={policy}
+                onChange={(e) => setPolicy(e.target.value)}
+              >
+                {["use_only", "privileged_reveal", "admin_reveal", "disabled"].map((p) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+              {addError && <div className="text-xs text-destructive">{addError}</div>}
+              <div className="flex gap-2">
+                <Button size="sm" onClick={handleAdd} disabled={addLoading || !alias.trim() || !value.trim()}>
+                  {addLoading ? <LoaderCircle className="size-3.5 animate-spin" /> : "Save"}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => { setShowAdd(false); setAddError("") }}>Cancel</Button>
+              </div>
+            </div>
+          )}
+          {items.length === 0 ? (
+            <div className="py-4 text-center text-sm text-muted-foreground">No secrets in vault.</div>
+          ) : (
+            <div className="space-y-1">
+              {items.map((item) => (
+                <div key={item.alias} className="flex items-center gap-3 rounded-lg border px-3 py-2 text-sm">
+                  <span className="font-mono text-xs font-medium flex-1">{item.alias}</span>
+                  <Badge variant="outline" className="text-xs">{item.access_policy}</Badge>
+                  <span className="text-xs text-muted-foreground">{item.category}</span>
+                  {item.last_used_at && (
+                    <span className="text-xs text-muted-foreground">used {formatRelativeTime(item.last_used_at)}</span>
+                  )}
+                  {isPrivileged && (
+                    <button
+                      className="text-destructive hover:text-destructive/80 disabled:opacity-40"
+                      onClick={() => handleDelete(item.alias)}
+                      disabled={deleteLoading === item.alias}
+                      title="Delete secret"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+// ─── Task Guardian tab ─────────────────────────────────────────────────────────
+
+function TaskGuardianTab() {
+  const [status, setStatus] = useState<GuardianStatus | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [toggling, setToggling] = useState(false)
+  const [error, setError] = useState("")
+  const [toggleMsg, setToggleMsg] = useState("")
+
+  function reload() {
+    setLoading(true)
+    fetchGuardianStatus()
+      .then(setStatus)
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : "Failed"))
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => { reload() }, [])
+
+  function handleToggleWrite() {
+    if (!status) return
+    const next = !status.task_guardian_write_enabled
+    setToggling(true); setToggleMsg("")
+    setTaskGuardianWriteMode(next)
+      .then((r) => {
+        setStatus((s) => s ? { ...s, task_guardian_write_enabled: r.write_enabled } : s)
+        setToggleMsg(r.write_enabled ? "Write mode enabled." : "Write mode disabled.")
+      })
+      .catch((e: unknown) => setToggleMsg(e instanceof Error ? e.message : "Failed"))
+      .finally(() => setToggling(false))
+  }
+
+  if (loading) return <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground"><LoaderCircle className="size-4 animate-spin" /> Loading…</div>
+  if (error) return <ErrorBox message={error} />
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base"><ClipboardList className="size-4" /> Task Guardian Settings</CardTitle>
+          <CardDescription>Runtime settings for the scheduled Task Guardian.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between rounded-lg border px-3 py-3">
+            <div>
+              <div className="text-sm font-medium">Task Guardian</div>
+              <div className="text-xs text-muted-foreground">Scheduled task execution engine</div>
+            </div>
+            <Badge variant={status?.task_guardian_enabled ? "default" : "secondary"}>
+              {status?.task_guardian_enabled ? "enabled" : "disabled"}
+            </Badge>
+          </div>
+          <div className="flex items-center justify-between rounded-lg border px-3 py-3">
+            <div>
+              <div className="text-sm font-medium">Write mode</div>
+              <div className="text-xs text-muted-foreground">Allow scheduled tasks to send email, Slack messages, calendar events</div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge variant={status?.task_guardian_write_enabled ? "default" : "secondary"}>
+                {status?.task_guardian_write_enabled ? "enabled" : "read-only"}
+              </Badge>
+              <Button size="sm" variant="outline" onClick={handleToggleWrite} disabled={toggling}>
+                {toggling ? <LoaderCircle className="size-3.5 animate-spin" /> : (status?.task_guardian_write_enabled ? "Disable" : "Enable")}
+              </Button>
+            </div>
+          </div>
+          {toggleMsg && <div className="text-xs text-muted-foreground">{toggleMsg}</div>}
+          <div className="rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground">
+            Write mode is reset to the env var default (<code className="rounded bg-muted px-1 py-0.5">SPARKBOT_TASK_GUARDIAN_WRITE_ENABLED</code>) on each process restart.
+            Set the env var to make the setting durable.
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

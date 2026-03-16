@@ -196,3 +196,167 @@ export function fetchSpineProducers(): Promise<{ producers: SpineProducer[]; cou
 export function fetchSpineTaskDetail(taskId: string): Promise<SpineTaskLineage> {
   return spineGet<SpineTaskLineage>(`${SPINE_BASE}/tasks/${taskId}/detail`)
 }
+
+// ── Guardian operator API helpers ─────────────────────────────────────────────
+
+const GUARDIAN_BASE = "/api/v1/chat/guardian"
+
+async function guardianFetch<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
+  const res = await fetch(path, { credentials: "include", ...init })
+  if (!res.ok) {
+    const text = await res.text().catch(() => "")
+    throw new Error(`Guardian API ${res.status}: ${text || path}`)
+  }
+  return res.json() as Promise<T>
+}
+
+export interface BreakglassStatus {
+  active: boolean
+  session_id?: string
+  ttl_remaining?: number
+  scopes?: string[]
+}
+
+export interface VaultEntry {
+  alias: string
+  category: string
+  access_policy: string
+  notes: string | null
+  created_at: string
+  updated_at: string
+  last_used_at: string | null
+  rotation_due: string | null
+}
+
+export interface GuardianStatus {
+  breakglass: { active: boolean; ttl_remaining: number | null }
+  operator: { username: string; usernames_configured: boolean; open_mode: boolean }
+  pin_configured: boolean
+  vault_configured: boolean
+  memory_guardian_enabled: boolean
+  task_guardian_enabled: boolean
+  task_guardian_write_enabled: boolean
+}
+
+export function fetchBreakglassStatus(): Promise<BreakglassStatus> {
+  return guardianFetch<BreakglassStatus>(`${GUARDIAN_BASE}/breakglass/status`)
+}
+
+export function activateBreakglass(pin: string): Promise<BreakglassStatus> {
+  return guardianFetch<BreakglassStatus>(`${GUARDIAN_BASE}/breakglass`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pin }),
+  })
+}
+
+export function deactivateBreakglass(): Promise<{ closed: boolean }> {
+  return guardianFetch<{ closed: boolean }>(`${GUARDIAN_BASE}/breakglass`, { method: "DELETE" })
+}
+
+export function fetchVaultList(): Promise<{ items: VaultEntry[]; count: number }> {
+  return guardianFetch<{ items: VaultEntry[]; count: number }>(`${GUARDIAN_BASE}/vault`)
+}
+
+export function addVaultSecret(
+  alias: string,
+  value: string,
+  policy: string,
+  category = "general",
+  notes?: string,
+): Promise<VaultEntry> {
+  return guardianFetch<VaultEntry>(`${GUARDIAN_BASE}/vault`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ alias, value, access_policy: policy, category, notes }),
+  })
+}
+
+export function deleteVaultSecret(alias: string): Promise<{ deleted: boolean; alias: string }> {
+  return guardianFetch<{ deleted: boolean; alias: string }>(`${GUARDIAN_BASE}/vault/${encodeURIComponent(alias)}`, {
+    method: "DELETE",
+  })
+}
+
+export function fetchGuardianStatus(): Promise<GuardianStatus> {
+  return guardianFetch<GuardianStatus>(`${GUARDIAN_BASE}/status`)
+}
+
+export function setTaskGuardianWriteMode(enabled: boolean): Promise<{ write_enabled: boolean }> {
+  return guardianFetch<{ write_enabled: boolean }>(`${GUARDIAN_BASE}/tasks/write-mode`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  })
+}
+
+// ── Project management API helpers ────────────────────────────────────────────
+
+const ROOMS_BASE = "/api/v1/chat/rooms"
+
+async function roomsFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(path, { credentials: "include", ...init })
+  if (!res.ok) {
+    const text = await res.text().catch(() => "")
+    throw new Error(`Projects API ${res.status}: ${text || path}`)
+  }
+  return res.json() as Promise<T>
+}
+
+export function createProject(
+  roomId: string,
+  data: { display_name: string; summary?: string; status?: string; tags?: string[] },
+): Promise<SpineProject> {
+  return roomsFetch<SpineProject>(`${ROOMS_BASE}/${roomId}/projects`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  })
+}
+
+export function updateProject(
+  roomId: string,
+  projectId: string,
+  data: {
+    display_name?: string
+    summary?: string
+    tags?: string[]
+    new_status?: string
+    reason?: string
+    owner_kind?: string
+    owner_id?: string
+  },
+): Promise<SpineProject> {
+  return roomsFetch<SpineProject>(`${ROOMS_BASE}/${roomId}/projects/${projectId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  })
+}
+
+export function archiveProject(
+  roomId: string,
+  projectId: string,
+  force = false,
+): Promise<{ archived: boolean; project_id: string }> {
+  return roomsFetch(`${ROOMS_BASE}/${roomId}/projects/${projectId}?force=${force}`, { method: "DELETE" })
+}
+
+export function attachTaskToProject(
+  roomId: string,
+  projectId: string,
+  taskId: string,
+): Promise<Record<string, unknown>> {
+  return roomsFetch(`${ROOMS_BASE}/${roomId}/projects/${projectId}/tasks/${taskId}`, { method: "POST" })
+}
+
+export function detachTaskFromProject(
+  roomId: string,
+  projectId: string,
+  taskId: string,
+): Promise<Record<string, unknown>> {
+  return roomsFetch(`${ROOMS_BASE}/${roomId}/projects/${projectId}/tasks/${taskId}`, { method: "DELETE" })
+}

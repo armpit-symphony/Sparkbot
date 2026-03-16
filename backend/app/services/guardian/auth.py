@@ -21,7 +21,6 @@ from typing import Optional
 
 log = logging.getLogger(__name__)
 
-_DEFAULT_OPERATOR_USERNAMES = {"sparkbot-user"}
 _SESSION_TTL_DEFAULT = 900   # 15 minutes
 _PIN_MAX_ATTEMPTS_DEFAULT = 5
 _PIN_LOCKOUT_WINDOW_DEFAULT = 300  # 5 minutes
@@ -52,19 +51,34 @@ _FAILED_ATTEMPTS: dict[str, list[float]] = {}
 
 
 def operator_usernames() -> set[str]:
-    configured = {
+    """Return the set of configured operator usernames, or an empty set if none are configured."""
+    return {
         name.strip().lower()
         for name in os.getenv("SPARKBOT_OPERATOR_USERNAMES", "").split(",")
         if name.strip()
     }
-    return configured or set(_DEFAULT_OPERATOR_USERNAMES)
 
 
-def is_operator_identity(*, username: str | None, user_type: object | None) -> bool:
+def is_operator_identity(*, username: str | None, user_type: object | None, is_superuser: bool = False) -> bool:
+    """Return True if this user identity is a guardian operator.
+
+    Resolution order:
+    1. Non-HUMAN users (bots, etc.) are never operators.
+    2. If is_superuser=True, always an operator (main-app superuser cross-reference).
+    3. If SPARKBOT_OPERATOR_USERNAMES is configured, check membership.
+    4. If SPARKBOT_OPERATOR_USERNAMES is NOT configured, any authenticated HUMAN
+       is an operator (open mode for fresh self-hosted installs with one user).
+    """
     normalized_type = getattr(user_type, "value", user_type)
     if str(normalized_type).upper() != "HUMAN":
         return False
-    return (username or "").strip().lower() in operator_usernames()
+    if is_superuser:
+        return True
+    configured = operator_usernames()
+    if not configured:
+        # No restriction configured → open mode: any authenticated human is operator
+        return True
+    return (username or "").strip().lower() in configured
 
 
 def is_operator_user_id(session, user_id: str | None) -> bool:
@@ -80,7 +94,7 @@ def is_operator_user_id(session, user_id: str | None) -> bool:
         return False
     if user is None:
         return False
-    return is_operator_identity(username=user.username, user_type=user.type)
+    return is_operator_identity(username=user.username, user_type=user.type, is_superuser=False)
 
 
 def _session_ttl() -> int:

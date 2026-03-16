@@ -80,6 +80,12 @@ TASK_GUARDIAN_WRITE_ENABLED: bool = (
     in {"1", "true", "yes", "on"}
 )
 
+
+def set_write_enabled(value: bool) -> None:
+    """Toggle write mode at runtime (no restart needed). Takes effect immediately."""
+    global TASK_GUARDIAN_WRITE_ENABLED
+    TASK_GUARDIAN_WRITE_ENABLED = value
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS guardian_tasks (
   id TEXT PRIMARY KEY,

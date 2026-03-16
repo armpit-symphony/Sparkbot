@@ -22,6 +22,27 @@ from typing import Optional
 
 log = logging.getLogger(__name__)
 
+
+def _emit_vault_event(event_type: str, alias: str, payload: dict) -> None:
+    """Emit a spine event for a vault action. Non-blocking — never raises."""
+    try:
+        from app.services.guardian import spine
+        spine.ingest_subsystem_event(
+            event=spine.SpineSubsystemEvent(
+                event_type=event_type,
+                subsystem="vault",
+                actor_kind="system",
+                source=spine.SpineSourceReference(
+                    source_kind="vault",
+                    source_ref=f"vault:{alias}",
+                ),
+                content=f"{event_type}: alias={alias}",
+                payload=payload,
+            ),
+        )
+    except Exception:
+        pass
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS vault_entries (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -148,6 +169,7 @@ def vault_add(
         raise ValueError(f"A secret with alias '{alias}' already exists. Use vault_update to change it.")
     _audit(alias, "add", operator, session_id, "ok")
     log.info("[vault] Secret added alias=%s category=%s policy=%s operator=%s", alias, category, policy, operator)
+    _emit_vault_event("vault.secret_added", alias, {"alias": alias, "category": category, "policy": policy})
     return {"alias": alias, "category": category, "access_policy": policy, "notes": notes, "created_at": now}
 
 
@@ -200,6 +222,7 @@ def vault_use(alias: str, user_id: str, operator: str, session_id: Optional[str]
             (_now_iso(), alias),
         )
     _audit(alias, "use", operator, session_id, "ok")
+    _emit_vault_event("vault.secret_used", alias, {"alias": alias})
     return plaintext
 
 
@@ -296,4 +319,5 @@ def vault_delete(alias: str, operator: str = "system", session_id: Optional[str]
         conn.execute("DELETE FROM vault_entries WHERE alias = ?", (alias,))
     _audit(alias, "delete", operator, session_id, "ok")
     log.info("[vault] Secret deleted alias=%s operator=%s", alias, operator)
+    _emit_vault_event("vault.secret_deleted", alias, {"alias": alias})
     return True

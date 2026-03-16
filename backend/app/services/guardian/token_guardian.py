@@ -193,6 +193,27 @@ def _select_live_model(
     return current_model, "No configured models are available for live Token Guardian routing.", candidate_models
 
 
+def _emit_token_guardian_event(event_type: str, content: str, payload: dict) -> None:
+    """Emit a spine event for a token guardian action. Non-blocking — never raises."""
+    try:
+        from app.services.guardian import spine
+        spine.ingest_subsystem_event(
+            event=spine.SpineSubsystemEvent(
+                event_type=event_type,
+                subsystem="token_guardian",
+                actor_kind="system",
+                source=spine.SpineSourceReference(
+                    source_kind="token_guardian",
+                    source_ref=event_type,
+                ),
+                content=content,
+                payload=payload,
+            ),
+        )
+    except Exception:
+        pass
+
+
 def _record_route_usage(payload: dict[str, Any], applied_model: str) -> None:
     try:
         _monitor().record_usage(
@@ -250,6 +271,18 @@ def route_model(
     payload["applied_model"] = chosen_model
     payload["live_routed"] = mode == "live" and chosen_model != current_model
     _record_route_usage(payload, chosen_model)
+    if mode == "live" and payload.get("live_routed"):
+        _emit_token_guardian_event(
+            "token_guardian.quota_event",
+            f"Token Guardian routed {current_model!r} → {chosen_model!r}",
+            {
+                "from_model": current_model,
+                "to_model": chosen_model,
+                "estimated_tokens": payload.get("estimated_tokens"),
+                "classification": payload.get("classification"),
+                "fallback_reason": payload.get("fallback_reason"),
+            },
+        )
     return chosen_model, payload
 
 

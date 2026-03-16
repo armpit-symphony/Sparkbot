@@ -22,6 +22,7 @@ from app.services.guardian.task_guardian import (
     run_task_once,
     schedule_task,
     set_task_enabled,
+    set_write_enabled,
 )
 
 router = APIRouter(tags=["chat-guardian"])
@@ -400,3 +401,60 @@ async def run_room_guardian_task(
 
     result = await run_task_once(task, session)
     return result
+
+
+# ── Write-mode toggle ───────────────────────────────────────────────────────────
+
+class WriteModeRequest(BaseModel):
+    enabled: bool
+
+
+@router.post("/guardian/tasks/write-mode")
+def set_task_guardian_write_mode(
+    body: WriteModeRequest,
+    current_user: CurrentChatUser,
+) -> dict[str, Any]:
+    """Toggle Task Guardian write mode (email, Slack, calendar sends) at runtime.
+    Operator-only. No restart needed."""
+    _require_guardian_operator(current_user)
+    set_write_enabled(body.enabled)
+    return {"write_enabled": body.enabled}
+
+
+@router.get("/guardian/tasks/write-mode")
+def get_task_guardian_write_mode(current_user: CurrentChatUser) -> dict[str, Any]:
+    """Return current Task Guardian write mode status."""
+    _require_guardian_operator(current_user)
+    from app.services.guardian import task_guardian as tg
+    return {"write_enabled": tg.TASK_GUARDIAN_WRITE_ENABLED}
+
+
+# ── Global guardian status ──────────────────────────────────────────────────────
+
+@router.get("/guardian/status")
+def guardian_status(current_user: CurrentChatUser) -> dict[str, Any]:
+    """Return a summary of all guardian subsystem statuses."""
+    _require_guardian_operator(current_user)
+    import os
+    from app.services.guardian.auth import get_active_session, operator_usernames
+    from app.services.guardian import task_guardian as tg
+
+    priv_session = get_active_session(str(current_user.id))
+    configured_usernames = operator_usernames()
+
+    return {
+        "breakglass": {
+            "active": priv_session is not None,
+            "ttl_remaining": priv_session.ttl_remaining() if priv_session else None,
+        },
+        "operator": {
+            "username": current_user.username,
+            "usernames_configured": bool(configured_usernames),
+            "open_mode": not bool(configured_usernames),
+        },
+        "pin_configured": bool(os.getenv("SPARKBOT_OPERATOR_PIN_HASH", "").strip()),
+        "vault_configured": bool(os.getenv("SPARKBOT_VAULT_KEY", "").strip()),
+        "memory_guardian_enabled": os.getenv("SPARKBOT_MEMORY_GUARDIAN_ENABLED", "true").strip().lower() not in {"0", "false", "no", "off"},
+        "task_guardian_enabled": os.getenv("SPARKBOT_TASK_GUARDIAN_ENABLED", "true").strip().lower() not in {"0", "false", "no", "off"},
+        "task_guardian_write_enabled": tg.TASK_GUARDIAN_WRITE_ENABLED,
+    }

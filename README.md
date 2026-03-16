@@ -79,6 +79,15 @@ For versioned or tag-bound packaging instructions, see [docs/public-downloads.md
 
 ## Recent Milestones
 
+### March 16, 2026
+
+- **Operator UI is now a real control surface.** The `/spine` page gained three new operator tabs: **Security** (break-glass activation/deactivation, guardian status overview, PIN setup guidance), **Vault** (encrypted secret listing, add/delete with break-glass gate), and **Task Guardian** (write-mode runtime toggle). The Projects tab now has a "New Project" button and per-project Archive action.
+- **All task mutations now emit Spine events.** Previously only `reopen` went through the Task Master adapter; create, complete, assign, and delete now all route through the adapter, making the canonical Spine event log complete for task lifecycle.
+- **Vault, memory, and token guardian now produce Spine events.** `vault.secret_added/used/deleted`, `memory.fact_stored`, and `token_guardian.quota_event` are now wired — the Spine event log covers all major guardian subsystems.
+- **Project management has a REST API.** `ProjectExecutiveAdapter` is now exposed via HTTP: create, update, archive projects; attach/detach tasks. The canonical Spine project lifecycle is now reachable from any API client or UI.
+- **Security defaults are self-hosted friendly.** Break-glass and vault no longer restrict to a hardcoded `sparkbot-user` username. If `SPARKBOT_OPERATOR_USERNAMES` is not set, any authenticated human user is an operator (open mode). Restrict by setting the env var. The `.env.example` now documents all guardian security variables with inline setup commands.
+- **Sparkbot can read any URL.** The new `fetch_url` tool lets Sparkbot retrieve and read page content from any public URL — useful for researching docs, checking pages, or participating in external resources.
+
 ### March 15, 2026
 
 - **Guardian Spine became a background operating subsystem.** It now acts as Sparkbot’s canonical cross-guardian catalog and history layer: structured subsystem events, canonical projects/tasks/events/handoffs/approvals, project lineage and dependencies, Task Master-oriented queue views, operator-global inspection routes, and explicit Memory/Executive/Approval/Task Guardian hooks.
@@ -391,6 +400,14 @@ Activated with `/meeting start`. While active, prefix messages with:
 - Send `/breakglass`, enter the operator PIN, and Sparkbot continues the waiting privileged action after approval.
 - PIN submissions are handled as chat approval input and are not stored in plaintext chat history.
 - Use `/breakglass close` to end the privileged session explicitly.
+
+### Operator Access (Self-Hosted)
+- **Open mode (default):** if `SPARKBOT_OPERATOR_USERNAMES` is not set, any authenticated human user is a guardian operator. Suitable for single-user installs.
+- **Restricted mode:** set `SPARKBOT_OPERATOR_USERNAMES=your-username` in `.env` to limit operator access to specific chat usernames.
+- **PIN protection:** set `SPARKBOT_OPERATOR_PIN_HASH` (generate with the inline command in `.env.example`) to require a PIN before break-glass privileges are granted.
+- **Vault:** set `SPARKBOT_VAULT_KEY` (generate with the inline command in `.env.example`) to enable the encrypted secrets vault. Break-glass activation is required before writing secrets.
+- All guardian security settings are documented with setup commands in `.env.example` under the `--- Guardian Security ---` section.
+- The `/spine` Security tab provides a first-run-friendly GUI for break-glass, vault, and guardian status.
 
 ### Skill Plugin System
 Drop a `.py` file into `backend/skills/` and it auto-loads on the next restart — no other files need editing.

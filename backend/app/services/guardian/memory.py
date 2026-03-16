@@ -386,17 +386,45 @@ def remember_tool_event(
     return stored
 
 
+def _emit_memory_event(event_type: str, content: str, payload: dict) -> None:
+    """Emit a spine event for a memory action. Non-blocking — never raises."""
+    try:
+        from app.services.guardian import spine
+        spine.ingest_subsystem_event(
+            event=spine.SpineSubsystemEvent(
+                event_type=event_type,
+                subsystem="memory",
+                actor_kind="system",
+                source=spine.SpineSourceReference(
+                    source_kind="memory",
+                    source_ref=event_type,
+                ),
+                content=content,
+                payload=payload,
+            ),
+        )
+    except Exception:
+        pass
+
+
 def remember_fact(*, user_id: str, fact: str, memory_id: str = "") -> bool:
     metadata = {"user_id": user_id}
     if memory_id:
         metadata["memory_id"] = memory_id
-    return _append_event(
+    stored = _append_event(
         event_type=EventType.SYSTEM,
         role="system",
         content=f"FACT: {_safe_text(fact, limit=500)}",
         session_id=_user_session(user_id),
         metadata=metadata,
     )
+    if stored:
+        _emit_memory_event(
+            "memory.fact_stored",
+            _safe_text(fact, limit=120),
+            {"user_id": user_id, "memory_id": memory_id},
+        )
+    return stored
 
 
 def build_memory_context(*, user_id: str, room_id: str, query: str) -> str:
