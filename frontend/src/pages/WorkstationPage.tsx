@@ -2150,10 +2150,18 @@ interface TerminalDetailPanelProps {
 
 function TerminalDetailPanel({ station, onClose }: TerminalDetailPanelProps) {
   const { accentHex, label, id, shellType, host } = station
-  const { sessionInfo, ws, error, connect, disconnect } = useTerminalSession(id)
+  const { sessionInfo, ws, error, connect, disconnect, listSessions } = useTerminalSession(id)
+  const [activeSessions, setActiveSessions] = useState<import("@/types/terminal").TerminalSessionInfo[]>([])
 
+  // Load active sessions on mount and whenever idle (to show resumable indicator)
   const isConnected = sessionInfo?.status === "connected"
   const isConnecting = sessionInfo?.status === "connecting"
+
+  useEffect(() => {
+    if (!isConnected && !isConnecting) {
+      listSessions().then(setActiveSessions).catch(() => {})
+    }
+  }, [isConnected, isConnecting, listSessions])
 
   // Panel expands when connected to give the terminal room to breathe
   const panelWidth = isConnected ? 720 : 340
@@ -2409,7 +2417,14 @@ function TerminalDetailPanel({ station, onClose }: TerminalDetailPanelProps) {
                 { key: "Host", value: localMachineLabel },
                 { key: "Shell", value: shellType ?? "bash" },
                 { key: "Status", value: statusLabel },
-                { key: "Session", value: "—" },
+                {
+                  key: "Session",
+                  value: (() => {
+                    const thisSession = activeSessions.find((s) => s.stationId === id)
+                    if (thisSession) return `${thisSession.sessionId.slice(0, 12)}… (resumable)`
+                    return activeSessions.length > 0 ? `${activeSessions.length} active (other stations)` : "—"
+                  })(),
+                },
               ].map(({ key, value }) => (
                 <div key={key} style={infoRowStyle}>
                   <span style={{ fontSize: 10, color: "#4b5563", letterSpacing: "0.06em", textTransform: "uppercase" }}>
@@ -2470,7 +2485,7 @@ function TerminalDetailPanel({ station, onClose }: TerminalDetailPanelProps) {
               ) : (
                 <Power size={13} />
               )}
-              {isConnecting ? "Connecting…" : "Connect"}
+              {isConnecting ? "Connecting…" : activeSessions.some((s) => s.stationId === id) ? "Resume Session" : "Connect"}
             </button>
           </div>
         </div>
