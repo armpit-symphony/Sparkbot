@@ -3,7 +3,7 @@
 // Route: /workstation
 // Phase 3: Live terminal via xterm.js + WebSocket-backed PTY sessions.
 
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, lazy, Suspense } from "react"
 import { Link, useNavigate } from "@tanstack/react-router"
 import {
   Plus,
@@ -37,7 +37,11 @@ import {
   TERMINALS,
 } from "@/config/workstationStations"
 import { useTerminalSession } from "@/hooks/useTerminalSession"
-import { XtermTerminal } from "@/components/Terminal/XtermTerminal"
+
+// Lazy-load xterm.js so the ~93kB gzip chunk only loads when a terminal panel is opened
+const XtermTerminal = lazy(() =>
+  import("@/components/Terminal/XtermTerminal").then((m) => ({ default: m.XtermTerminal }))
+)
 import { fetchControlsConfig, type SparkbotControlsConfig } from "@/lib/sparkbotControls"
 import {
   buildSparkBudChatLaunchText,
@@ -2292,7 +2296,9 @@ function TerminalDetailPanel({ station, onClose }: TerminalDetailPanelProps) {
               flexDirection: "column",
             }}
           >
-            <XtermTerminal ws={ws} accentHex={accentHex} />
+            <Suspense fallback={<div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "#4b5563", fontSize: 11 }}>Loading terminal…</div>}>
+              <XtermTerminal ws={ws} accentHex={accentHex} />
+            </Suspense>
           </div>
 
           {/* Session info footer bar */}
