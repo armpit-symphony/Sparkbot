@@ -4,6 +4,7 @@ import {
   Bot,
   CalendarDays,
   Clock3,
+  Database,
   LoaderCircle,
   Mail,
   MessageSquareText,
@@ -14,6 +15,13 @@ import {
   Waves,
 } from "lucide-react"
 import { useEffect, useState } from "react"
+
+import {
+  type SpineEventsResult,
+  type SpineTMOverview,
+  fetchSpineRecentEvents,
+  fetchSpineTMOverview,
+} from "@/lib/spine"
 
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -160,6 +168,127 @@ type DashboardSummaryData = {
       } | null
     }
   }
+}
+
+function formatRelativeTime(value: string | null | undefined) {
+  if (!value) return "—"
+  try {
+    const diff = Date.now() - new Date(value).getTime()
+    const s = Math.floor(diff / 1000)
+    if (s < 60) return `${s}s ago`
+    if (s < 3600) return `${Math.floor(s / 60)}m ago`
+    if (s < 86400) return `${Math.floor(s / 3600)}h ago`
+    return `${Math.floor(s / 86400)}d ago`
+  } catch {
+    return value
+  }
+}
+
+function SpineWorkStateSection() {
+  const [snapshot, setSnapshot] = useState<SpineTMOverview | null>(null)
+  const [events, setEvents] = useState<SpineEventsResult | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    setLoading(true)
+    Promise.allSettled([fetchSpineTMOverview(5), fetchSpineRecentEvents(5)]).then(([ovResult, evResult]) => {
+      if (ovResult.status === "fulfilled") setSnapshot(ovResult.value)
+      if (evResult.status === "fulfilled") setEvents(evResult.value)
+      setLoading(false)
+    })
+  }, [])
+
+  const stats = [
+    { label: "Open", count: snapshot?.open_queue.length ?? 0, highlight: false },
+    { label: "Blocked", count: snapshot?.blocked_queue.length ?? 0, highlight: true },
+    { label: "↑Approval", count: snapshot?.approval_waiting_queue.length ?? 0, highlight: true },
+    { label: "Stale", count: snapshot?.stale_queue.length ?? 0, highlight: false },
+    { label: "Orphaned", count: snapshot?.orphan_queue.length ?? 0, highlight: false },
+    { label: "Resurfaced", count: snapshot?.recently_resurfaced_queue.length ?? 0, highlight: false },
+    { label: "Ready", count: snapshot?.assignment_ready_queue.length ?? 0, highlight: false },
+  ]
+
+  const attentionTasks = [
+    ...(snapshot?.blocked_queue ?? []),
+    ...(snapshot?.approval_waiting_queue ?? []),
+  ].slice(0, 5)
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-sm font-medium text-primary">
+            <Database className="size-4" />
+            Guardian Spine · Work State
+          </div>
+          <Link
+            to="/spine"
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+          >
+            Open Spine Ops <ArrowRight className="size-3" />
+          </Link>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {loading ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <LoaderCircle className="size-4 animate-spin" /> Loading Spine…
+          </div>
+        ) : (
+          <>
+            {/* Stat pills */}
+            <div className="flex flex-wrap gap-2">
+              {stats.map(({ label, count, highlight }) => (
+                <div
+                  key={label}
+                  className={`rounded-lg border px-2.5 py-1 text-xs font-medium ${highlight && count > 0 ? "border-destructive/40 bg-destructive/5 text-destructive" : "text-muted-foreground"}`}
+                >
+                  {label}: {count}
+                </div>
+              ))}
+            </div>
+
+            {/* Needs attention */}
+            {attentionTasks.length > 0 && (
+              <div className="space-y-1">
+                <div className="text-xs font-semibold text-muted-foreground">Needs attention</div>
+                {attentionTasks.map((task) => (
+                  <div key={task.task_id} className="flex flex-wrap items-center gap-2 text-sm">
+                    <span className="min-w-0 flex-1 truncate">{task.title || task.task_id}</span>
+                    <span
+                      className={`rounded border px-1.5 py-0.5 text-xs ${task.status === "blocked" ? "border-destructive/40 text-destructive" : "border-yellow-400/40 text-yellow-600 dark:text-yellow-400"}`}
+                    >
+                      {task.status}
+                    </span>
+                    {task.room_id && (
+                      <span className="max-w-[100px] truncate text-xs text-muted-foreground">{task.room_id}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Recent events */}
+            {events && events.events.length > 0 && (
+              <div className="space-y-1">
+                <div className="text-xs font-semibold text-muted-foreground">Recent events</div>
+                {events.events.map((e) => (
+                  <div key={e.event_id} className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <span className="font-medium text-foreground">
+                      {e.event_type.replace(/_/g, " ")}
+                    </span>
+                    <span>{e.subsystem}</span>
+                    {e.task_id && <span className="max-w-[100px] truncate">{e.task_id}</span>}
+                    <span className="ml-auto">{formatRelativeTime(e.occurred_at)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
 }
 
 function formatTimestamp(value: string | null | undefined) {
@@ -556,6 +685,8 @@ function Dashboard() {
           </CardContent>
         </Card>
       </section>
+
+      {currentUser?.is_superuser && <SpineWorkStateSection />}
 
       <section className="grid gap-4 xl:grid-cols-[1fr_1fr_1fr]">
         <Card>

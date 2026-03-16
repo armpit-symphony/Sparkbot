@@ -704,7 +704,7 @@ Notes:
 - If service actions require elevation, set `SPARKBOT_SERVICE_USE_SUDO=true` and give the Sparkbot service user a narrow passwordless sudo rule for the allowed units.
 
 ### Optional — Web Search
-Sparkbot uses a fallback chain: Brave → SerpAPI → DuckDuckGo (no key required).
+Sparkbot uses a fallback chain: Brave → SerpAPI → DuckDuckGo. **DuckDuckGo works out of the box with no API key** — web search is available immediately after install. For higher reliability and rate limits, configure one of the paid providers:
 ```env
 BRAVE_SEARCH_API_KEY=...       # Brave Search API — free tier 2k req/day, most reliable
 SERPAPI_KEY=...                # SerpAPI (Google) — fallback

@@ -628,6 +628,26 @@ def read_operator_spine_task_master_overview(
     )
 
 
+@router.get("/spine/operator/tasks/{task_id}/detail", response_model=SpineTaskLineageResponse)
+def read_operator_spine_task_detail(
+    task_id: str,
+    current_user: CurrentChatUser,
+) -> SpineTaskLineageResponse:
+    _require_operator(current_user)
+    lineage = get_task_lineage(task_id=task_id)
+    if not lineage:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return SpineTaskLineageResponse(
+        task=_task_fmt(lineage["task"]),
+        parent=_task_fmt(lineage["parent"]) if lineage["parent"] else None,
+        children=[_task_fmt(t) for t in lineage["children"]],
+        dependencies=[_task_fmt(t) for t in lineage["dependencies"]],
+        related=[_task_fmt(t) for t in lineage["related"]],
+        approvals=[_approval_fmt(t) for t in lineage["approvals"]],
+        handoffs=[_handoff_fmt(t) for t in lineage["handoffs"]],
+    )
+
+
 @router.get("/spine/operator/signals/high-priority-blocked", response_model=dict)
 def read_operator_spine_high_priority_blocked(
     current_user: CurrentChatUser,

@@ -23,6 +23,7 @@ dependencies = [
     "discord.py>=2.3.2",
     "pywa[fastapi]>=2.0.0",
     "litellm>=1.0.0,<2.0.0",
+    "ddgs>=9.11.4",
 ]
 
 [dependency-groups]
