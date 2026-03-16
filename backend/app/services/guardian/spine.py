@@ -302,6 +302,9 @@ class SpineProject:
     parent_project_id: str | None
     created_at: str | None
     updated_at: str
+    # Owner fields — added via migration; may be None on legacy rows
+    owner_kind: str | None = None
+    owner_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -457,6 +460,9 @@ def _ensure_schema_migrations(conn: sqlite3.Connection) -> None:
     _ensure_column(conn, "guardian_spine_projects", "tags_json", "TEXT")
     _ensure_column(conn, "guardian_spine_projects", "parent_project_id", "TEXT")
     _ensure_column(conn, "guardian_spine_projects", "created_at", "TEXT")
+    # Owner fields — project execution boundary (project_executive adapter)
+    _ensure_column(conn, "guardian_spine_projects", "owner_kind", "TEXT DEFAULT 'unassigned'")
+    _ensure_column(conn, "guardian_spine_projects", "owner_id", "TEXT")
 
     conn.execute(
         """
@@ -475,7 +481,8 @@ def _ensure_schema_migrations(conn: sqlite3.Connection) -> None:
             created_by_subsystem = COALESCE(created_by_subsystem, 'guardian_spine'),
             updated_by_subsystem = COALESCE(updated_by_subsystem, created_by_subsystem, 'guardian_spine'),
             tags_json = COALESCE(tags_json, '[]'),
-            created_at = COALESCE(created_at, updated_at)
+            created_at = COALESCE(created_at, updated_at),
+            owner_kind = COALESCE(owner_kind, 'unassigned')
         """
     )
 
@@ -3170,3 +3177,533 @@ def emit_worker_status_event(
         ),
         session=session,
     )
+
+
+# ── Project execution primitives ─────────────────────────────────────────────
+#
+# These functions form the low-level canonical mutation layer for projects.
+# All explicit project lifecycle changes should route through the
+# ProjectExecutiveAdapter (project_executive.py) which calls these functions.
+#
+# Mirror rule:
+#   Guardian Spine is the canonical source of truth for project state.
+#   Markdown mirror files under _mirror_root() and any legacy tables that
+#   reflect project state are downstream, one-way reflections only.
+#   Never read from a mirror to determine canonical state.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_ALLOWED_PROJECT_FIELDS: frozenset[str] = frozenset(
+    {"status", "owner_kind", "owner_id", "display_name", "summary", "tags_json", "parent_project_id"}
+)
+
+
+def _update_project_fields_only(
+    conn: sqlite3.Connection,
+    *,
+    project_id: str,
+    updated_by_subsystem: str = "project_executive",
+    **fields: Any,
+) -> None:
+    """Partial in-place update of project columns.  Column names are validated
+    against a whitelist to prevent SQL injection even though the caller is
+    internal code — belt and suspenders.
+    """
+    safe = {k: v for k, v in fields.items() if k in _ALLOWED_PROJECT_FIELDS}
+    if not safe:
+        return
+    safe["updated_by_subsystem"] = updated_by_subsystem
+    safe["updated_at"] = _now_iso()
+    # Column names come from the whitelist above — safe to format into SQL.
+    set_clause = ", ".join(f"{k} = ?" for k in safe)
+    params = list(safe.values()) + [project_id]
+    conn.execute(
+        f"UPDATE guardian_spine_projects SET {set_clause} WHERE project_id = ?",
+        params,
+    )
+
+
+def update_project_owner(
+    *,
+    project_id: str,
+    owner_kind: str,
+    owner_id: str | None = None,
+    actor_id: str | None = None,
+    source_ref: str | None = None,
+    room_id: str | None = None,
+) -> "SpineProject | None":
+    """Assign or reassign the project owner and emit a project event.
+
+    Returns the updated SpineProject, or None if project_id does not exist.
+    Subsystem events (ingest_subsystem_event) do NOT call this function —
+    ownership is set only by the project_executive adapter.
+    """
+    _init_store()
+    if owner_kind not in OWNER_KINDS:
+        owner_kind = "unassigned"
+    project = get_spine_project(project_id=project_id)
+    if not project:
+        return None
+    with _conn() as conn:
+        _update_project_fields_only(
+            conn,
+            project_id=project_id,
+            owner_kind=owner_kind,
+            owner_id=owner_id,
+            updated_by_subsystem="project_executive",
+        )
+        _emit_project_event(
+            conn,
+            project_id=project_id,
+            event_type="project.owner_assigned",
+            room_id=room_id or project.room_id,
+            subsystem="project_executive",
+            source_kind="project",
+            source_ref=source_ref or project_id,
+            payload={
+                "owner_kind": owner_kind,
+                "owner_id": owner_id,
+                "actor_id": actor_id,
+                "previous_owner_kind": project.owner_kind,
+                "previous_owner_id": project.owner_id,
+            },
+        )
+    return get_spine_project(project_id=project_id)
+
+
+def update_project_status_canonical(
+    *,
+    project_id: str,
+    new_status: str,
+    actor_id: str | None = None,
+    source_ref: str | None = None,
+    reason: str | None = None,
+    room_id: str | None = None,
+) -> "SpineProject | None":
+    """Directly transition a project's canonical status and emit a project event.
+
+    Validates new_status against PROJECT_STATUSES and raises ValueError for
+    unknown values.  Does NOT enforce business rules (open-task guard, etc.) —
+    that is the responsibility of the ProjectExecutiveAdapter layer above.
+    Returns None if the project does not exist.
+    """
+    _init_store()
+    if new_status not in PROJECT_STATUSES:
+        raise ValueError(
+            f"Invalid project status {new_status!r}. Allowed values: {sorted(PROJECT_STATUSES)}"
+        )
+    project = get_spine_project(project_id=project_id)
+    if not project:
+        return None
+    old_status = project.status
+    with _conn() as conn:
+        _update_project_fields_only(
+            conn,
+            project_id=project_id,
+            status=new_status,
+            updated_by_subsystem="project_executive",
+        )
+        _emit_project_event(
+            conn,
+            project_id=project_id,
+            event_type=f"project.{new_status}",
+            room_id=room_id or project.room_id,
+            subsystem="project_executive",
+            source_kind="project",
+            source_ref=source_ref or project_id,
+            payload={
+                "old_status": old_status,
+                "new_status": new_status,
+                "actor_id": actor_id,
+                "reason": reason,
+            },
+        )
+    return get_spine_project(project_id=project_id)
+
+
+def update_project_metadata(
+    *,
+    project_id: str,
+    display_name: str | None = None,
+    summary: str | None = None,
+    tags: list[str] | None = None,
+    actor_id: str | None = None,
+    source_ref: str | None = None,
+    room_id: str | None = None,
+) -> "SpineProject | None":
+    """Update the mutable descriptive fields of a project (display_name, summary, tags).
+
+    Only provided (non-None) fields are updated.  Returns the refreshed
+    SpineProject, or None if the project does not exist.
+    """
+    _init_store()
+    project = get_spine_project(project_id=project_id)
+    if not project:
+        return None
+    fields: dict[str, Any] = {}
+    if display_name is not None:
+        fields["display_name"] = display_name
+    if summary is not None:
+        fields["summary"] = summary
+    if tags is not None:
+        fields["tags_json"] = json.dumps(tags, ensure_ascii=False)
+    if not fields:
+        return project
+    with _conn() as conn:
+        _update_project_fields_only(
+            conn, project_id=project_id, updated_by_subsystem="project_executive", **fields
+        )
+        _emit_project_event(
+            conn,
+            project_id=project_id,
+            event_type="project.metadata_updated",
+            room_id=room_id or project.room_id,
+            subsystem="project_executive",
+            source_kind="project",
+            source_ref=source_ref or project_id,
+            payload={
+                "actor_id": actor_id,
+                "updated_fields": list(fields.keys()),
+                "display_name": display_name,
+                "summary": summary,
+                "tags": tags,
+            },
+        )
+    return get_spine_project(project_id=project_id)
+
+
+def attach_task_to_project_canonical(
+    *,
+    task_id: str,
+    project_id: str,
+    actor_id: str | None = None,
+    source_ref: str | None = None,
+) -> dict[str, Any]:
+    """Move a task under a project, preserving full lineage in both the general
+    event log and the project event log.
+
+    Returns a dict with task_id, project_id, and old_project_id.
+    Returns an error dict if either the task or the project does not exist.
+    """
+    _init_store()
+    task = _render_task(task_id)
+    if task is None:
+        return {"error": "task_not_found", "task_id": task_id}
+    project = get_spine_project(project_id=project_id)
+    if project is None:
+        return {"error": "project_not_found", "project_id": project_id}
+    old_project_id = task.project_id or None  # normalise "" → None (Spine stores "" for unlinked tasks)
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE guardian_spine_tasks SET project_id = ?, updated_at = ? WHERE task_id = ?",
+            (project_id, _now_iso(), task_id),
+        )
+        _emit_event(
+            conn,
+            event_type="task.project_attached",
+            room_id=task.room_id,
+            subsystem="project_executive",
+            actor_kind="human" if actor_id else "system",
+            actor_id=actor_id,
+            source_kind="project",
+            source_ref=source_ref or project_id,
+            correlation_id=task_id,
+            task_id=task_id,
+            project_id=project_id,
+            payload={
+                "task_id": task_id,
+                "task_title": task.title,
+                "project_id": project_id,
+                "old_project_id": old_project_id,
+                "actor_id": actor_id,
+            },
+        )
+        _emit_project_event(
+            conn,
+            project_id=project_id,
+            event_type="project.task_attached",
+            room_id=task.room_id,
+            subsystem="project_executive",
+            source_kind="project",
+            source_ref=source_ref or project_id,
+            payload={
+                "task_id": task_id,
+                "task_title": task.title,
+                "old_project_id": old_project_id,
+                "actor_id": actor_id,
+            },
+        )
+    return {"task_id": task_id, "project_id": project_id, "old_project_id": old_project_id}
+
+
+def detach_task_from_project_canonical(
+    *,
+    task_id: str,
+    actor_id: str | None = None,
+    source_ref: str | None = None,
+) -> dict[str, Any]:
+    """Remove a task from its project, making it an orphan in the Spine catalog.
+
+    The detachment is recorded in both guardian_spine_events (for cross-task
+    querying) and the project event log (for per-project history).
+    Returns a result dict; returns {"already_orphan": True} if the task has no project.
+    """
+    _init_store()
+    task = _render_task(task_id)
+    if task is None:
+        return {"error": "task_not_found", "task_id": task_id}
+    old_project_id = task.project_id or None  # normalise "" → None (Spine stores "" for unlinked tasks)
+    if not old_project_id:
+        return {"task_id": task_id, "project_id": None, "already_orphan": True}
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE guardian_spine_tasks SET project_id = NULL, updated_at = ? WHERE task_id = ?",
+            (_now_iso(), task_id),
+        )
+        _emit_event(
+            conn,
+            event_type="task.project_detached",
+            room_id=task.room_id,
+            subsystem="project_executive",
+            actor_kind="human" if actor_id else "system",
+            actor_id=actor_id,
+            source_kind="project",
+            source_ref=source_ref or task_id,
+            correlation_id=task_id,
+            task_id=task_id,
+            project_id=old_project_id,
+            payload={
+                "task_id": task_id,
+                "task_title": task.title,
+                "old_project_id": old_project_id,
+                "actor_id": actor_id,
+            },
+        )
+        _emit_project_event(
+            conn,
+            project_id=old_project_id,
+            event_type="project.task_detached",
+            room_id=task.room_id,
+            subsystem="project_executive",
+            source_kind="project",
+            source_ref=source_ref or task_id,
+            payload={
+                "task_id": task_id,
+                "task_title": task.title,
+                "actor_id": actor_id,
+            },
+        )
+    return {"task_id": task_id, "old_project_id": old_project_id}
+
+
+# ── Project-derived operator signal queries ───────────────────────────────────
+
+
+def list_projects_without_owner(*, room_id: str | None = None, limit: int = 100) -> list[SpineProject]:
+    """Projects where owner_kind is unassigned or NULL.
+
+    Canonical indicator: project has no responsible owner in Spine state.
+    """
+    _init_store()
+    clauses = ["(owner_kind IS NULL OR owner_kind = 'unassigned')"]
+    params: list[Any] = []
+    if room_id:
+        clauses.append("room_id = ?")
+        params.append(room_id)
+    where = "WHERE " + " AND ".join(clauses)
+    params.append(max(1, min(limit, 200)))
+    with _conn() as conn:
+        rows = conn.execute(
+            f"SELECT * FROM guardian_spine_projects {where} ORDER BY updated_at DESC LIMIT ?",
+            tuple(params),
+        ).fetchall()
+    return [SpineProject(**dict(row)) for row in rows]
+
+
+def list_projects_with_stale_open_tasks(
+    *, stale_days: int = 7, room_id: str | None = None, limit: int = 100
+) -> list[dict[str, Any]]:
+    """Projects that have open tasks not updated within stale_days days.
+
+    Returns aggregated rows: project_id, display_name, project_status,
+    owner_kind, stale_task_count, oldest_task_updated_at.
+    """
+    _init_store()
+    cutoff = (_now() - timedelta(days=max(1, stale_days))).isoformat()
+    clauses = [
+        "t.status NOT IN ('done', 'canceled')",
+        "t.updated_at < ?",
+        "t.project_id IS NOT NULL",
+    ]
+    params: list[Any] = [cutoff]
+    if room_id:
+        clauses.append("t.room_id = ?")
+        params.append(room_id)
+    where = "WHERE " + " AND ".join(clauses)
+    params.append(max(1, min(limit, 200)))
+    with _conn() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT t.project_id, p.display_name, p.status AS project_status,
+                   p.owner_kind, p.owner_id,
+                   COUNT(*) AS stale_task_count,
+                   MIN(t.updated_at) AS oldest_task_updated_at
+            FROM guardian_spine_tasks t
+            JOIN guardian_spine_projects p ON p.project_id = t.project_id
+            {where}
+            GROUP BY t.project_id
+            ORDER BY stale_task_count DESC
+            LIMIT ?
+            """,
+            tuple(params),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def list_projects_with_candidate_tasks(
+    *, room_id: str | None = None, min_count: int = 2, limit: int = 100
+) -> list[dict[str, Any]]:
+    """Projects with many unactioned tasks (status=candidate).
+
+    'candidate' tasks are auto-detected by signal capture but never explicitly
+    opened or triaged.  A high candidate count signals a triage backlog.
+    Returns: project_id, display_name, project_status, owner_kind, candidate_count.
+    """
+    _init_store()
+    clauses = ["t.status = 'candidate'", "t.project_id IS NOT NULL"]
+    params: list[Any] = []
+    if room_id:
+        clauses.append("t.room_id = ?")
+        params.append(room_id)
+    where = "WHERE " + " AND ".join(clauses)
+    params.extend([min_count, max(1, min(limit, 200))])
+    with _conn() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT t.project_id, p.display_name, p.status AS project_status,
+                   p.owner_kind, COUNT(*) AS candidate_count
+            FROM guardian_spine_tasks t
+            JOIN guardian_spine_projects p ON p.project_id = t.project_id
+            {where}
+            GROUP BY t.project_id
+            HAVING candidate_count >= ?
+            ORDER BY candidate_count DESC
+            LIMIT ?
+            """,
+            tuple(params),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def list_projects_blocked_by_approval(
+    *, room_id: str | None = None, limit: int = 100
+) -> list[dict[str, Any]]:
+    """Projects with at least one open task awaiting approval.
+
+    Returns: project_id, display_name, project_status, owner_kind, approval_waiting_count.
+    """
+    _init_store()
+    clauses = [
+        "t.approval_state IN ('required', 'requested')",
+        "t.status NOT IN ('done', 'canceled')",
+        "t.project_id IS NOT NULL",
+    ]
+    params: list[Any] = []
+    if room_id:
+        clauses.append("t.room_id = ?")
+        params.append(room_id)
+    where = "WHERE " + " AND ".join(clauses)
+    params.append(max(1, min(limit, 200)))
+    with _conn() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT t.project_id, p.display_name, p.status AS project_status,
+                   p.owner_kind, COUNT(*) AS approval_waiting_count
+            FROM guardian_spine_tasks t
+            JOIN guardian_spine_projects p ON p.project_id = t.project_id
+            {where}
+            GROUP BY t.project_id
+            ORDER BY approval_waiting_count DESC
+            LIMIT ?
+            """,
+            tuple(params),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def list_projects_with_unassigned_executive_directives(
+    *, room_id: str | None = None, limit: int = 100
+) -> list[dict[str, Any]]:
+    """Projects where executive-tagged tasks are open but have no owner assigned.
+
+    Detects tasks tagged 'executive' or created/updated by the executive subsystem.
+    Returns: project_id, display_name, project_status, owner_kind, unassigned_directive_count.
+    """
+    _init_store()
+    clauses = [
+        "t.owner_kind = 'unassigned'",
+        "t.status NOT IN ('done', 'canceled')",
+        "t.project_id IS NOT NULL",
+        "(t.tags_json LIKE '%executive%' OR t.created_by_subsystem = 'executive' OR t.updated_by_subsystem = 'executive')",
+    ]
+    params: list[Any] = []
+    if room_id:
+        clauses.append("t.room_id = ?")
+        params.append(room_id)
+    where = "WHERE " + " AND ".join(clauses)
+    params.append(max(1, min(limit, 200)))
+    with _conn() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT t.project_id, p.display_name, p.status AS project_status,
+                   p.owner_kind, COUNT(*) AS unassigned_directive_count
+            FROM guardian_spine_tasks t
+            JOIN guardian_spine_projects p ON p.project_id = t.project_id
+            {where}
+            GROUP BY t.project_id
+            ORDER BY unassigned_directive_count DESC
+            LIMIT ?
+            """,
+            tuple(params),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def list_projects_with_unclear_status(
+    *, room_id: str | None = None, limit: int = 100, stale_days: int = 30
+) -> list[dict[str, Any]]:
+    """Projects where the declared status conflicts with actual task state.
+
+    Three signal classes:
+    - closed_with_open_tasks: project is done/archived but still has open tasks
+    - active_but_no_open_tasks: project is active/proposed, all tasks closed, project stale
+    - active_but_empty: project is active/proposed with zero tasks and is stale
+
+    Returns list of dicts with: project_id, display_name, project_status,
+    owner_kind, signal, open_task_count, total_task_count, updated_at.
+    """
+    projects = list_spine_projects(room_id=room_id, limit=500)
+    stale_cutoff = (_now() - timedelta(days=max(1, stale_days))).isoformat()
+    results: list[dict[str, Any]] = []
+    for project in projects:
+        tasks = list_project_tasks(project_id=project.project_id, limit=200)
+        if room_id:
+            tasks = [t for t in tasks if t.room_id == room_id]
+        open_tasks = [t for t in tasks if t.status not in {"done", "canceled"}]
+        is_stale = (project.updated_at or "") < stale_cutoff
+        base = {
+            "project_id": project.project_id,
+            "display_name": project.display_name,
+            "project_status": project.status,
+            "owner_kind": project.owner_kind,
+            "open_task_count": len(open_tasks),
+            "total_task_count": len(tasks),
+            "updated_at": project.updated_at,
+        }
+        if project.status in {"done", "archived"} and open_tasks:
+            results.append({**base, "signal": "closed_with_open_tasks"})
+        elif project.status in {"active", "proposed"} and not open_tasks and tasks and is_stale:
+            results.append({**base, "signal": "active_but_no_open_tasks"})
+        elif project.status in {"active", "proposed"} and not tasks and is_stale:
+            results.append({**base, "signal": "active_but_empty"})
+    results.sort(key=lambda x: x.get("updated_at") or "", reverse=True)
+    return results[: max(1, min(limit, 200))]

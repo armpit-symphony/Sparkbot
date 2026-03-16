@@ -16,6 +16,12 @@ from pydantic import BaseModel
 from app.api.deps import CurrentChatUser, SessionDep
 from app.crud import get_chat_room_member
 from app.services.guardian.task_master_adapter import task_master_spine
+from app.services.guardian.project_executive import (
+    ProjectExecutiveAdapter,
+    ProjectHasOpenTasksError,
+    ProjectNotFoundError,
+    project_executive,
+)
 from app.services.guardian.spine import (
     get_spine_overview,
     get_spine_project,
@@ -131,6 +137,8 @@ class SpineProjectResponse(BaseModel):
     parent_project_id: str | None
     created_at: str | None
     updated_at: str
+    owner_kind: str | None
+    owner_id: str | None
 
 
 class SpineApprovalResponse(BaseModel):
@@ -251,6 +259,8 @@ def _project_fmt(project) -> SpineProjectResponse:
         parent_project_id=project.parent_project_id,
         created_at=project.created_at,
         updated_at=project.updated_at,
+        owner_kind=project.owner_kind,
+        owner_id=project.owner_id,
     )
 
 
@@ -686,3 +696,329 @@ def read_operator_spine_fragmentation(
     _require_operator(current_user)
     tasks = list_fragmented_tasks(limit=limit)
     return {"tasks": [_task_fmt(task) for task in tasks], "count": len(tasks)}
+
+
+# ── Project write request models ─────────────────────────────────────────────
+
+class CreateProjectRequest(BaseModel):
+    project_id: str | None = None
+    display_name: str
+    summary: str | None = None
+    status: str = "active"
+    room_id: str | None = None
+    tags: list[str] = []
+    parent_project_id: str | None = None
+    source_ref: str | None = None
+
+
+class UpdateProjectMetadataRequest(BaseModel):
+    display_name: str | None = None
+    summary: str | None = None
+    tags: list[str] | None = None
+
+
+class TransitionProjectStatusRequest(BaseModel):
+    new_status: str
+    reason: str | None = None
+
+
+class AssignProjectOwnerRequest(BaseModel):
+    owner_kind: str
+    owner_id: str | None = None
+
+
+class ArchiveCancelProjectRequest(BaseModel):
+    force: bool = False
+    reason: str | None = None
+
+
+class ReopenProjectRequest(BaseModel):
+    new_status: str = "active"
+
+
+class AttachTaskRequest(BaseModel):
+    task_id: str
+
+
+# ── Project write endpoints (operator-only) ───────────────────────────────────
+
+
+@router.post("/spine/operator/projects", response_model=SpineProjectResponse)
+def create_spine_project(
+    body: CreateProjectRequest,
+    current_user: CurrentChatUser,
+) -> SpineProjectResponse:
+    """Create a new canonical project via the project execution boundary."""
+    _require_operator(current_user)
+    try:
+        project = project_executive.create_project(
+            project_id=body.project_id,
+            display_name=body.display_name,
+            summary=body.summary,
+            status=body.status,
+            room_id=body.room_id,
+            tags=body.tags,
+            parent_project_id=body.parent_project_id,
+            actor_id=str(current_user.id),
+            source_ref=body.source_ref,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return _project_fmt(project)
+
+
+@router.patch("/spine/operator/projects/{project_id}", response_model=SpineProjectResponse)
+def update_spine_project_metadata(
+    project_id: str,
+    body: UpdateProjectMetadataRequest,
+    current_user: CurrentChatUser,
+) -> SpineProjectResponse:
+    """Update mutable descriptive fields (display_name, summary, tags) of a project."""
+    _require_operator(current_user)
+    try:
+        project = project_executive.update_metadata(
+            project_id=project_id,
+            display_name=body.display_name,
+            summary=body.summary,
+            tags=body.tags,
+            actor_id=str(current_user.id),
+        )
+    except ProjectNotFoundError:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return _project_fmt(project)
+
+
+@router.post("/spine/operator/projects/{project_id}/status", response_model=SpineProjectResponse)
+def transition_spine_project_status(
+    project_id: str,
+    body: TransitionProjectStatusRequest,
+    current_user: CurrentChatUser,
+) -> SpineProjectResponse:
+    """Directly transition a project's status.  Does not enforce open-task guard.
+    Use /archive or /cancel for guarded transitions."""
+    _require_operator(current_user)
+    try:
+        project = project_executive.transition_status(
+            project_id=project_id,
+            new_status=body.new_status,
+            actor_id=str(current_user.id),
+            reason=body.reason,
+        )
+    except ProjectNotFoundError:
+        raise HTTPException(status_code=404, detail="Project not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return _project_fmt(project)
+
+
+@router.post("/spine/operator/projects/{project_id}/owner", response_model=SpineProjectResponse)
+def assign_spine_project_owner(
+    project_id: str,
+    body: AssignProjectOwnerRequest,
+    current_user: CurrentChatUser,
+) -> SpineProjectResponse:
+    """Assign or reassign the owner of a project."""
+    _require_operator(current_user)
+    try:
+        project = project_executive.assign_owner(
+            project_id=project_id,
+            owner_kind=body.owner_kind,
+            owner_id=body.owner_id,
+            actor_id=str(current_user.id),
+        )
+    except ProjectNotFoundError:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return _project_fmt(project)
+
+
+@router.post("/spine/operator/projects/{project_id}/archive", response_model=SpineProjectResponse)
+def archive_spine_project(
+    project_id: str,
+    body: ArchiveCancelProjectRequest,
+    current_user: CurrentChatUser,
+) -> SpineProjectResponse:
+    """Transition project to 'archived'. Returns 409 if open tasks exist and force=False."""
+    _require_operator(current_user)
+    try:
+        project = project_executive.archive_project(
+            project_id=project_id,
+            actor_id=str(current_user.id),
+            reason=body.reason,
+            force=body.force,
+        )
+    except ProjectNotFoundError:
+        raise HTTPException(status_code=404, detail="Project not found")
+    except ProjectHasOpenTasksError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "project_has_open_tasks",
+                "message": str(exc),
+                "task_count": exc.task_count,
+                "task_ids": exc.task_ids,
+            },
+        )
+    return _project_fmt(project)
+
+
+@router.post("/spine/operator/projects/{project_id}/cancel", response_model=SpineProjectResponse)
+def cancel_spine_project(
+    project_id: str,
+    body: ArchiveCancelProjectRequest,
+    current_user: CurrentChatUser,
+) -> SpineProjectResponse:
+    """Cancel a project (archived with reason=canceled). Returns 409 if open tasks exist and force=False."""
+    _require_operator(current_user)
+    try:
+        project = project_executive.cancel_project(
+            project_id=project_id,
+            actor_id=str(current_user.id),
+            reason=body.reason,
+            force=body.force,
+        )
+    except ProjectNotFoundError:
+        raise HTTPException(status_code=404, detail="Project not found")
+    except ProjectHasOpenTasksError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "project_has_open_tasks",
+                "message": str(exc),
+                "task_count": exc.task_count,
+                "task_ids": exc.task_ids,
+            },
+        )
+    return _project_fmt(project)
+
+
+@router.post("/spine/operator/projects/{project_id}/reopen", response_model=SpineProjectResponse)
+def reopen_spine_project(
+    project_id: str,
+    body: ReopenProjectRequest,
+    current_user: CurrentChatUser,
+) -> SpineProjectResponse:
+    """Reopen an archived/done project.  Child tasks are NOT auto-reopened."""
+    _require_operator(current_user)
+    try:
+        project = project_executive.reopen_project(
+            project_id=project_id,
+            new_status=body.new_status,
+            actor_id=str(current_user.id),
+        )
+    except ProjectNotFoundError:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return _project_fmt(project)
+
+
+@router.post("/spine/operator/projects/{project_id}/tasks/attach", response_model=dict)
+def attach_task_to_spine_project(
+    project_id: str,
+    body: AttachTaskRequest,
+    current_user: CurrentChatUser,
+) -> dict[str, Any]:
+    """Attach an orphan or re-routed task to a project.  Lineage is preserved."""
+    _require_operator(current_user)
+    try:
+        project_executive._require_project(project_id)
+    except ProjectNotFoundError:
+        raise HTTPException(status_code=404, detail="Project not found")
+    result = project_executive.attach_task(
+        project_id=project_id,
+        task_id=body.task_id,
+        actor_id=str(current_user.id),
+    )
+    if "error" in result:
+        raise HTTPException(status_code=404, detail=result["error"])
+    return result
+
+
+@router.delete("/spine/operator/projects/{project_id}/tasks/{task_id}", response_model=dict)
+def detach_task_from_spine_project(
+    project_id: str,
+    task_id: str,
+    current_user: CurrentChatUser,
+) -> dict[str, Any]:
+    """Remove a task from a project; task becomes an orphan in Spine."""
+    _require_operator(current_user)
+    try:
+        project_executive._require_project(project_id)
+    except ProjectNotFoundError:
+        raise HTTPException(status_code=404, detail="Project not found")
+    result = project_executive.detach_task(
+        task_id=task_id,
+        actor_id=str(current_user.id),
+    )
+    if "error" in result:
+        raise HTTPException(status_code=404, detail=result["error"])
+    return result
+
+
+# ── Project-derived operator signal routes (GET) ──────────────────────────────
+
+
+@router.get("/spine/operator/signals/projects-without-owner", response_model=dict)
+def read_operator_spine_projects_without_owner(
+    current_user: CurrentChatUser,
+    limit: int = 100,
+) -> dict[str, Any]:
+    """Projects with no assigned owner."""
+    _require_operator(current_user)
+    projects = project_executive.projects_without_owner(limit=limit)
+    return {"projects": [_project_fmt(p) for p in projects], "count": len(projects)}
+
+
+@router.get("/spine/operator/signals/projects-stale-tasks", response_model=dict)
+def read_operator_spine_projects_stale_tasks(
+    current_user: CurrentChatUser,
+    stale_days: int = 7,
+    limit: int = 100,
+) -> dict[str, Any]:
+    """Projects with open tasks not updated within stale_days days."""
+    _require_operator(current_user)
+    rows = project_executive.projects_with_stale_open_tasks(stale_days=stale_days, limit=limit)
+    return {"projects": rows, "count": len(rows)}
+
+
+@router.get("/spine/operator/signals/projects-candidate-tasks", response_model=dict)
+def read_operator_spine_projects_candidate_tasks(
+    current_user: CurrentChatUser,
+    min_count: int = 2,
+    limit: int = 100,
+) -> dict[str, Any]:
+    """Projects with many unactioned candidate tasks (triage backlog signal)."""
+    _require_operator(current_user)
+    rows = project_executive.projects_with_candidate_tasks(min_count=min_count, limit=limit)
+    return {"projects": rows, "count": len(rows)}
+
+
+@router.get("/spine/operator/signals/projects-blocked-approval", response_model=dict)
+def read_operator_spine_projects_blocked_approval(
+    current_user: CurrentChatUser,
+    limit: int = 100,
+) -> dict[str, Any]:
+    """Projects blocked by at least one approval-waiting task."""
+    _require_operator(current_user)
+    rows = project_executive.projects_blocked_by_approval(limit=limit)
+    return {"projects": rows, "count": len(rows)}
+
+
+@router.get("/spine/operator/signals/projects-unassigned-directives", response_model=dict)
+def read_operator_spine_projects_unassigned_directives(
+    current_user: CurrentChatUser,
+    limit: int = 100,
+) -> dict[str, Any]:
+    """Projects where executive-tagged open tasks have no owner assigned."""
+    _require_operator(current_user)
+    rows = project_executive.projects_with_unassigned_executive_directives(limit=limit)
+    return {"projects": rows, "count": len(rows)}
+
+
+@router.get("/spine/operator/signals/projects-unclear-status", response_model=dict)
+def read_operator_spine_projects_unclear_status(
+    current_user: CurrentChatUser,
+    limit: int = 100,
+) -> dict[str, Any]:
+    """Projects where declared status conflicts with actual task state."""
+    _require_operator(current_user)
+    rows = project_executive.projects_with_unclear_status(limit=limit)
+    return {"projects": rows, "count": len(rows)}
