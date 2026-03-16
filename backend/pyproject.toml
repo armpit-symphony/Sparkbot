@@ -24,6 +24,8 @@ dependencies = [
     "pywa[fastapi]>=2.0.0",
     "litellm>=1.0.0,<2.0.0",
     "ddgs>=9.11.4",
+    "beautifulsoup4>=4.14.3",
+    "html2text>=2025.4.15",
 ]
 
 [dependency-groups]

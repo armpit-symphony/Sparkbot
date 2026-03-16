@@ -421,6 +421,7 @@ The bot calls tools automatically mid-conversation — a chip appears briefly in
 | Tool | Trigger emoji | Description |
 |------|--------------|-------------|
 | `web_search` | 🔍 | Search the web (Brave → SerpAPI → DuckDuckGo fallback chain) |
+| `fetch_url` | 🌐 | Fetch and read the full content of any public URL — lets Sparkbot visit and read websites, not just search |
 | `get_datetime` | 🕐 | Current UTC date and time |
 | `calculate` | 🧮 | Safe AST-based math evaluator (no `eval()`) |
 | `create_task` | 📋 | Create a task in the current room (with optional assignee + due date) |

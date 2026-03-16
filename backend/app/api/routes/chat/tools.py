@@ -182,6 +182,32 @@ TOOL_DEFINITIONS = [
     {
         "type": "function",
         "function": {
+            "name": "fetch_url",
+            "description": (
+                "Fetch and read the content of any public web page or URL. "
+                "Use this when the user gives you a specific URL to visit, asks you to read a page, "
+                "check a website, or participate in a site (e.g. read a research page, forum, or article). "
+                "Returns the page text. After reading, you can summarise, respond to, or act on the content."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "Full URL to fetch, e.g. https://thesparkpit.com/research",
+                    },
+                    "instruction": {
+                        "type": "string",
+                        "description": "Optional: what to do with the page (e.g. 'summarise', 'find the research questions', 'list all links')",
+                    },
+                },
+                "required": ["url"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_datetime",
             "description": "Get the current date and time (UTC). Use when the user asks what time or date it is.",
             "parameters": {"type": "object", "properties": {}, "required": []},
@@ -1547,6 +1573,70 @@ def _search_ddgs_sync(query: str, max_results: int = 4) -> list[dict]:
 
 async def _search_ddgs(query: str, max_results: int = 4) -> list[dict]:
     return await asyncio.to_thread(_search_ddgs_sync, query, max_results)
+
+
+async def _fetch_url(url: str, instruction: str = "") -> str:
+    """Fetch a public URL and return cleaned readable text (max ~6 000 chars)."""
+    import html2text
+    from bs4 import BeautifulSoup
+
+    url = (url or "").strip()
+    if not url:
+        return "fetch_url failed: no URL provided"
+    if not url.startswith(("http://", "https://")):
+        url = "https://" + url
+
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+    raw_html: str | None = None
+    for verify in (True, False):
+        try:
+            async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers=headers, verify=verify) as client:
+                resp = await client.get(url)
+                resp.raise_for_status()
+                ct = resp.headers.get("content-type", "")
+                if "html" not in ct and "text" not in ct:
+                    return f"fetch_url: non-HTML content ({ct}) at {url} — cannot extract text"
+                raw_html = resp.text
+                break
+        except httpx.HTTPStatusError as exc:
+            return f"fetch_url failed: HTTP {exc.response.status_code} for {url}"
+        except Exception:
+            if not verify:
+                import traceback
+                return f"fetch_url failed: {traceback.format_exc(limit=2)}"
+    if raw_html is None:
+        return f"fetch_url failed: could not retrieve {url}"
+
+    # Strip script/style noise then convert to clean markdown
+    soup = BeautifulSoup(raw_html, "html.parser")
+    for tag in soup(["script", "style", "noscript", "iframe", "svg"]):
+        tag.decompose()
+
+    converter = html2text.HTML2Text()
+    converter.ignore_links = False
+    converter.ignore_images = True
+    converter.body_width = 0  # no wrapping
+    text = converter.handle(str(soup))
+
+    # Collapse excessive blank lines
+    import re as _re
+    text = _re.sub(r"\n{3,}", "\n\n", text).strip()
+
+    MAX = 6000
+    if len(text) > MAX:
+        text = text[:MAX] + f"\n\n[...page truncated at {MAX} chars — use fetch_url with a more specific sub-URL if needed]"
+
+    prefix = f"**Fetched:** {url}\n"
+    if instruction:
+        prefix += f"**Task:** {instruction}\n"
+    return prefix + "\n" + text
 
 
 async def _get_datetime() -> str:
@@ -3543,6 +3633,8 @@ async def execute_tool(
         return await _forget_fact(args.get("memory_id", ""), user_id, session)
     if name == "web_search":
         return await _web_search(args.get("query", ""))
+    if name == "fetch_url":
+        return await _fetch_url(args.get("url", ""), args.get("instruction", ""))
     if name == "get_datetime":
         return await _get_datetime()
     if name == "calculate":

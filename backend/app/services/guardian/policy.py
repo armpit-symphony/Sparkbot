@@ -69,6 +69,7 @@ def _build_policy_registry() -> dict[str, ToolPolicy]:
 
     for tool_name in (
         "web_search",
+        "fetch_url",
         "get_datetime",
         "calculate",
         "list_tasks",

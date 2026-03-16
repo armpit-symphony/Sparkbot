@@ -744,6 +744,12 @@ _WEB_SEARCH_HINT_RE = re.compile(
     r")\b",
     re.IGNORECASE,
 )
+_FETCH_URL_HINT_RE = re.compile(
+    r"(https?://\S+)"                                   # explicit URL in message
+    r"|(\bgo to\b|\bvisit\b|\bopen\b|\bread\b|\bcheck\b|\bparticipate\b|\bfetch\b)"
+    r".*\.(com|org|net|io|co|ai|app|dev|info|gov|edu)",
+    re.IGNORECASE,
+)
 _SERVER_READ_HINT_RE = re.compile(
     r"\b("
     r"server|machine|local machine|droplet|system|service|journal|log|logs|memory|disk|cpu|process|"
@@ -755,6 +761,10 @@ _SERVER_READ_HINT_RE = re.compile(
 
 def _should_nudge_web_search(message: str) -> bool:
     return bool(_WEB_SEARCH_HINT_RE.search((message or "").strip()))
+
+
+def _should_nudge_fetch_url(message: str) -> bool:
+    return bool(_FETCH_URL_HINT_RE.search((message or "").strip()))
 
 
 def _should_nudge_server_read(message: str) -> bool:
@@ -899,6 +909,18 @@ async def stream_chat_with_tools(
         yield {"type": "routing", "payload": route_payload}
 
     if latest_user_message:
+        if _should_nudge_fetch_url(latest_user_message):
+            msgs.insert(
+                1,
+                {
+                    "role": "system",
+                    "content": (
+                        "The user wants you to visit or read a specific URL or website. "
+                        "Use the fetch_url tool to retrieve the page content, then respond based on what you read. "
+                        "You CAN and SHOULD fetch URLs — do not say you cannot visit websites."
+                    ),
+                },
+            )
         if _should_nudge_web_search(latest_user_message):
             msgs.insert(
                 1,
