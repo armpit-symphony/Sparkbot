@@ -79,6 +79,15 @@ For versioned or tag-bound packaging instructions, see [docs/public-downloads.md
 
 ## Recent Milestones
 
+### March 17, 2026
+
+- **Code interpreter shipped.** Sparkbot can now execute Python 3, Node.js, and Bash directly from chat via `run_code(language, code)`. Subprocess-sandboxed with configurable timeout (default 30s, max 120s). Disable with `SPARKBOT_CODE_DISABLE=true`.
+- **Named browser sessions added.** After logging in to a site, `browser_save_session(session_id, name)` persists cookies and localStorage to disk. `browser_restore_session(name)` reloads them in any future conversation — no re-login required. `browser_list_sessions()` shows active and saved sessions.
+- **Knowledge base (RAG) shipped.** `ingest_document(text, name, source?)` stores text or auto-fetches a URL and indexes it with SQLite FTS5 (BM25). `search_knowledge(query)` retrieves relevant chunks with full-text ranking. `list_knowledge()` and `delete_knowledge(name)` round out the API. Zero new dependencies.
+- **Multi-tool skill hook added.** The skill plugin system now supports `_register_extra(registry)` so a single `.py` file can register multiple tools (used by the knowledge base plugin).
+- **System prompt expanded to ~400 words.** The new `SYSTEM_PROMPT` covers Identity, Collaboration (no echo/repeat), Proactivity, Quality, Boundaries, Tool Philosophy, and Tone in named sections. Loaded from `backend/prompts/system.md` at startup — editable without touching Python code. Override path via `SPARKBOT_SYSTEM_PROMPT_FILE`.
+- **Room context injection.** Every LLM call now receives a `## Room Context` block with the room name, optional description, and execution gate state. Sparkbot knows what room it's in without being told.
+
 ### March 16, 2026
 
 - **Operator UI is now a real control surface.** The `/spine` page gained three new operator tabs: **Security** (break-glass activation/deactivation, guardian status overview, PIN setup guidance), **Vault** (encrypted secret listing, add/delete with break-glass gate), and **Task Guardian** (write-mode runtime toggle). The Projects tab now has a "New Project" button and per-project Archive action.
