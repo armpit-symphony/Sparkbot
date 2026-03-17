@@ -59,6 +59,53 @@ def _ssh_key_path() -> Optional[str]:
     return p or None
 
 
+# ─── Terminal command policy ──────────────────────────────────────────────────
+
+def _command_policy_enabled() -> bool:
+    """True when command-level Guardian policy is active.
+
+    Default: False (personal/operator mode — raw shell, no filtering).
+    Set SPARKBOT_TERMINAL_COMMAND_POLICY=true to enable.
+    Recommended for any multi-user or public-facing deployment.
+    """
+    return os.getenv("SPARKBOT_TERMINAL_COMMAND_POLICY", "false").lower() in ("true", "1", "yes")
+
+
+def _blocked_command_patterns() -> list[str]:
+    """Return the list of blocked command prefixes/patterns.
+
+    Override via SPARKBOT_TERMINAL_BLOCKED_COMMANDS (comma-separated).
+    Default blocks a hardened set of destructive/exfiltration commands.
+    """
+    default_blocks = (
+        "rm -rf /,rm -rf /*,mkfs,dd if=,shutdown,reboot,halt,poweroff,"
+        ":(){ :|:& };:,> /dev/sda,wget|bash,curl|bash,curl|sh,wget|sh"
+    )
+    raw = os.getenv("SPARKBOT_TERMINAL_BLOCKED_COMMANDS", default_blocks)
+    return [p.strip() for p in raw.split(",") if p.strip()]
+
+
+def check_command_policy(line: str) -> tuple[bool, str]:
+    """Check a completed command line against Guardian policy.
+
+    Returns (allowed: bool, reason: str).
+    Only called when SPARKBOT_TERMINAL_COMMAND_POLICY=true.
+    Input inspection is best-effort — a determined user can bypass it via
+    multi-line here-docs or variable indirection. This is a first-pass
+    deterrent for accidental or casual misuse, not a security boundary.
+    """
+    if not _command_policy_enabled():
+        return True, ""
+    stripped = line.strip()
+    if not stripped:
+        return True, ""
+    lower = stripped.lower()
+    for pattern in _blocked_command_patterns():
+        if lower.startswith(pattern.lower()) or pattern.lower() in lower:
+            return False, f"Command blocked by Terminal Guardian policy: '{pattern}'"
+    return True, ""
+
+
 # ─── Session model ────────────────────────────────────────────────────────────
 
 @dataclass
@@ -276,6 +323,22 @@ class TerminalSessionManager:
         session = self._sessions.get(session_id)
         if not session or session.master_fd == -1 or session.status in ("closed", "error"):
             return False
+
+        # Command Guardian policy: inspect completed lines before forwarding.
+        # Only active when SPARKBOT_TERMINAL_COMMAND_POLICY=true.
+        if _command_policy_enabled() and (b"\n" in data or b"\r" in data):
+            line = data.decode("utf-8", errors="replace").strip()
+            allowed, reason = check_command_policy(line)
+            if not allowed:
+                # Deliver the policy denial as PTY output so the user sees it.
+                denial_msg = f"\r\n\x1b[31m[Terminal Guardian] {reason}\x1b[0m\r\n"
+                session.deliver_output(denial_msg.encode())
+                logger.warning(
+                    "Terminal Guardian blocked command in session %s: %s",
+                    session_id, line[:120],
+                )
+                return False
+
         try:
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(None, os.write, session.master_fd, data)
