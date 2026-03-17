@@ -49,6 +49,35 @@ def _build_transcript(session: Session, room_id: uuid.UUID, limit: int = 60) -> 
     return transcript, senders
 
 
+def _extract_section(notes_md: str, section_heading: str) -> str:
+    """Extract content of a ## Section from markdown, stopping at the next ## heading."""
+    lines = notes_md.splitlines()
+    inside = False
+    collected: list[str] = []
+    needle = section_heading.lower().strip()
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("## ") and stripped[3:].lower().strip() == needle:
+            inside = True
+            continue
+        if inside:
+            if stripped.startswith("## "):
+                break
+            collected.append(line)
+    content = "\n".join(collected).strip()
+    return content
+
+
+def _section_is_trivial(content: str) -> bool:
+    """Return True if a section has no real content (empty or placeholder only)."""
+    if not content:
+        return True
+    lower = content.lower().strip(" -\t*")
+    trivial_phrases = {"(none noted)", "none noted", "none", "n/a", "(none)", "(n/a)", "tbd", "(tbd)"}
+    items = [ln.strip(" -*\t[]x") for ln in content.splitlines() if ln.strip(" -*\t[]x")]
+    return not items or all(it.lower() in trivial_phrases for it in items)
+
+
 def _notes_prompt(transcript: str, senders: list[str], ts_label: str) -> str:
     participants_block = "\n".join(f"- {s}" for s in senders) if senders else "- (unknown)"
     return f"""You are Sparkbot, a meeting recorder. Given the following room transcript, produce concise structured meeting notes in the exact markdown format below. Fill every section — if information is absent write "(none noted)". Do not add extra sections.
@@ -177,6 +206,28 @@ async def generate_meeting_notes(
         window_end_ts=window_end,
         meta_json={"model": model, "llm_ok": llm_ok, "senders": senders},
     )
+
+    # ── 5. seed Spine tasks from action items and decisions ───────────────────
+    if llm_ok:
+        try:
+            from app.crud import create_chat_meeting_artifact as _create_artifact
+            for section_name, artifact_type in (
+                ("Action Items", "action_items"),
+                ("Key Decisions", "decisions"),
+            ):
+                block = _extract_section(notes_md, section_name)
+                if not _section_is_trivial(block):
+                    _create_artifact(
+                        session=session,
+                        room_id=room_id,
+                        created_by_user_id=user_id,
+                        type=artifact_type,
+                        content_markdown=block,
+                        window_end_ts=window_end,
+                        meta_json={"source": "meeting_recorder", "parent_notes_id": str(artifact.id)},
+                    )
+        except Exception:
+            pass  # never block notes return on task seeding failure
 
     return {
         "id": str(artifact.id),
