@@ -150,12 +150,17 @@ _SECRET_VALUE_PATTERNS = [
     re.compile(r"ghp_[A-Za-z0-9]{36}"),
     re.compile(r"AKIA[A-Z0-9]{16}"),
     re.compile(r"secret_[A-Za-z0-9]{40,}"),
+    # Belt-and-suspenders: vault_reveal_secret output format "Value: <plaintext>"
+    re.compile(r"(?i)^Value:\s+\S+", re.MULTILINE),
 ]
 
 # Tools whose plaintext result must never leave the LLM context boundary.
 # Result is replaced with a placeholder in all outward-facing paths:
 # SSE tool_done events, audit logs, memory, Telegram responses, chat DB.
 _VAULT_INTERNAL_TOOLS: frozenset[str] = frozenset({"vault_use_secret"})
+# Tools whose result must be masked in audit logs and memory but MAY appear in user-facing chat
+# (e.g. vault_reveal_secret: operator sees plaintext in chat, but log stores only the alias).
+_VAULT_AUDIT_MASK_TOOLS: frozenset[str] = frozenset({"vault_use_secret", "vault_reveal_secret"})
 _VAULT_VALUE_ARG_TOOLS: frozenset[str] = frozenset({"vault_add_secret", "vault_update_secret"})
 
 
@@ -167,7 +172,15 @@ def _masked_vault_placeholder(tool_args: dict | None) -> str:
 
 
 def mask_tool_result_for_external(tool_name: str, tool_args: dict | None, result: object) -> str:
+    """Mask result for user-visible outward paths (SSE, chat DB, Telegram)."""
     if tool_name in _VAULT_INTERNAL_TOOLS:
+        return _masked_vault_placeholder(tool_args)
+    return str(result)
+
+
+def _mask_result_for_audit(tool_name: str, tool_args: dict | None, result: object) -> str:
+    """Mask result for audit log and memory — broader than outward mask."""
+    if tool_name in _VAULT_AUDIT_MASK_TOOLS:
         return _masked_vault_placeholder(tool_args)
     return str(result)
 
@@ -188,8 +201,8 @@ def redact_tool_call_for_audit(
     tool_args: dict | None,
     result: object,
 ) -> tuple[str, str]:
-    outward_result = mask_tool_result_for_external(tool_name, tool_args, result)
-    return _redact_for_audit(_sanitize_tool_args_for_audit(tool_name, tool_args), outward_result)
+    audit_result = _mask_result_for_audit(tool_name, tool_args, result)
+    return _redact_for_audit(_sanitize_tool_args_for_audit(tool_name, tool_args), audit_result)
 
 
 _GENERIC_SECRET_PAIR_RE = re.compile(
