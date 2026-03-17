@@ -6,7 +6,8 @@
 // navigating away and back reconnects to the existing PTY instead of creating a new one.
 //
 // Usage:
-//   const { sessionInfo, ws, connect, disconnect, listSessions, error } = useTerminalSession(stationId)
+//   const { sessionInfo, ws, connect, disconnect, listSessions, error } = useTerminalSession(stationId, { host, shell })
+//   host defaults to "localhost". Set to a whitelisted remote host for SSH sessions.
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { TerminalSessionInfo, TerminalStatus } from "@/types/terminal"
@@ -62,8 +63,14 @@ export interface UseTerminalSessionReturn {
   listSessions: () => Promise<TerminalSessionInfo[]>
 }
 
+export interface UseTerminalSessionOpts {
+  host?: string   // defaults to "localhost"; set to a whitelisted remote host for SSH
+  shell?: string  // defaults to "/bin/bash"; ignored for SSH sessions
+}
+
 export function useTerminalSession(
   stationId: string,
+  opts: UseTerminalSessionOpts = {},
 ): UseTerminalSessionReturn {
   const [sessionInfo, setSessionInfo] = useState<TerminalSessionInfo | null>(null)
   const [ws, setWs] = useState<WebSocket | null>(null)
@@ -160,8 +167,8 @@ export function useTerminalSession(
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          host: "localhost",
-          shell: "/bin/bash",
+          host: opts.host || "localhost",
+          shell: opts.shell || "/bin/bash",
           station_id: stationId,
         }),
       })

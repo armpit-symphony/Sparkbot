@@ -37,6 +37,26 @@ DEFAULT_SHELL = "/bin/bash"
 ALLOWED_SHELLS = {"/bin/bash", "/bin/sh", "/usr/bin/bash", "/usr/bin/zsh", "/bin/zsh"}
 READ_CHUNK = 4096
 SELECT_TIMEOUT = 0.5  # seconds for blocking select in executor
+SSH_BINARY = "/usr/bin/ssh"
+
+
+def _ssh_allowed_hosts() -> set[str]:
+    """Return the set of SSH hosts permitted for remote terminal sessions.
+
+    Configure via SPARKBOT_TERMINAL_SSH_ALLOWED_HOSTS (comma-separated).
+    Example: "myserver.example.com,user@devbox.lan"
+    Empty → SSH remote sessions are disabled.
+    """
+    raw = os.getenv("SPARKBOT_TERMINAL_SSH_ALLOWED_HOSTS", "").strip()
+    if not raw:
+        return set()
+    return {h.strip() for h in raw.split(",") if h.strip()}
+
+
+def _ssh_key_path() -> Optional[str]:
+    """Return explicit SSH identity file path, or None to use ssh defaults."""
+    p = os.getenv("SPARKBOT_TERMINAL_SSH_KEY_PATH", "").strip()
+    return p or None
 
 
 # ─── Session model ────────────────────────────────────────────────────────────
@@ -114,11 +134,26 @@ class TerminalSessionManager:
         shell: str = DEFAULT_SHELL,
         station_id: Optional[str] = None,
     ) -> TerminalSession:
-        """Spawn a PTY-backed shell and return the new session."""
-        if shell not in ALLOWED_SHELLS:
-            raise ValueError(f"Shell not permitted: {shell}")
-        if host != "localhost":
-            raise ValueError("Only localhost is supported in Phase 3")
+        """Spawn a PTY-backed shell (localhost) or SSH session (remote host)."""
+        is_remote = host not in ("localhost", "127.0.0.1", "")
+        if is_remote:
+            allowed = _ssh_allowed_hosts()
+            if not allowed:
+                raise ValueError(
+                    "Remote SSH terminals are disabled. "
+                    "Set SPARKBOT_TERMINAL_SSH_ALLOWED_HOSTS to enable."
+                )
+            # Normalise: strip user@ for the allowlist check so both
+            # "myhost" and "user@myhost" are accepted when "myhost" is listed.
+            bare_host = host.split("@")[-1]
+            if host not in allowed and bare_host not in allowed:
+                raise ValueError(
+                    f"Host '{bare_host}' is not in the SSH allowlist. "
+                    "Add it to SPARKBOT_TERMINAL_SSH_ALLOWED_HOSTS."
+                )
+        else:
+            if shell not in ALLOWED_SHELLS:
+                raise ValueError(f"Shell not permitted: {shell}")
 
         async with self._lock:
             active = sum(
@@ -132,12 +167,8 @@ class TerminalSessionManager:
                 )
 
             master_fd, slave_fd = os.openpty()
-            # Make master non-blocking so reads in the executor use select
             flags = fcntl.fcntl(master_fd, fcntl.F_GETFL)
             fcntl.fcntl(master_fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
-
-            # Get the slave terminal device name before forking.
-            # We need it in preexec_fn to acquire a controlling terminal.
             slave_name = os.ttyname(slave_fd)
 
             env = {
@@ -153,41 +184,54 @@ class TerminalSessionManager:
             }
 
             def _acquire_ctty() -> None:
-                # Runs in child process after setsid() (from start_new_session=True).
-                # Opening the slave terminal after setsid() automatically acquires it
-                # as the controlling terminal of the new session on Linux.
-                # Without this, bash starts without a controlling terminal and
-                # disables interactive mode (no prompt, no command output).
                 try:
                     fd = os.open(slave_name, os.O_RDWR)
                     os.close(fd)
                 except OSError:
-                    pass  # best-effort; shell may still work in non-interactive mode
+                    pass
 
-            # Shell args: --norc avoids loading ~/.bashrc which may contain slow
-            # or blocking startup commands (e.g. `$(npm root -g)` in PATH exports).
-            # This is intentional for embedded/headless terminal sessions.
-            # Users can source their rc file manually: source ~/.bashrc
-            shell_args = [shell]
-            if shell in ("/bin/bash", "/usr/bin/bash"):
-                shell_args = [shell, "--norc"]
+            if is_remote:
+                # SSH interactive session through the PTY.
+                # BatchMode=yes disables password prompts (key auth only).
+                # StrictHostKeyChecking=accept-new trusts unknown hosts on first
+                # connect then remembers them — avoids blocking the terminal UI.
+                ssh_cmd = [
+                    SSH_BINARY,
+                    "-tt",                              # force PTY allocation
+                    "-o", "BatchMode=yes",
+                    "-o", "StrictHostKeyChecking=accept-new",
+                    "-o", "ConnectTimeout=15",
+                    "-o", "ServerAliveInterval=30",
+                    "-o", "ServerAliveCountMax=3",
+                ]
+                key_path = _ssh_key_path()
+                if key_path:
+                    ssh_cmd += ["-i", key_path]
+                ssh_cmd.append(host)
+                proc_args = ssh_cmd
+                display_shell = "ssh"
+            else:
+                proc_args = [shell]
+                if shell in ("/bin/bash", "/usr/bin/bash"):
+                    proc_args = [shell, "--norc"]
+                display_shell = shell
 
             try:
                 proc = subprocess.Popen(
-                    shell_args,
+                    proc_args,
                     stdin=slave_fd,
                     stdout=slave_fd,
                     stderr=slave_fd,
-                    start_new_session=True,   # setsid() — new session, no ctty yet
-                    preexec_fn=_acquire_ctty, # acquire slave as ctty after setsid
+                    start_new_session=True,
+                    preexec_fn=_acquire_ctty,
                     env=env,
                 )
             except Exception as exc:
                 os.close(master_fd)
                 os.close(slave_fd)
-                raise RuntimeError(f"Failed to spawn shell: {exc}") from exc
+                raise RuntimeError(f"Failed to spawn session: {exc}") from exc
 
-            os.close(slave_fd)  # parent doesn't need the slave end
+            os.close(slave_fd)
 
             now = time.time()
             session_id = str(uuid.uuid4())
@@ -195,7 +239,7 @@ class TerminalSessionManager:
                 session_id=session_id,
                 user_id=user_id,
                 host=host,
-                shell=shell,
+                shell=display_shell,
                 station_id=station_id,
                 started_at=now,
                 last_activity_at=now,
@@ -205,11 +249,13 @@ class TerminalSessionManager:
             )
             self._sessions[session_id] = session
 
-        # Start reader outside the lock (avoids holding lock across task creation)
         self._read_tasks[session_id] = asyncio.create_task(
             self._read_loop(session), name=f"terminal-read-{session_id[:8]}"
         )
-        logger.info("Terminal session created: %s (user=%s)", session_id, user_id)
+        logger.info(
+            "Terminal session created: %s (user=%s host=%s)",
+            session_id, user_id, host,
+        )
         return session
 
     # ── Session access ────────────────────────────────────────────────────────

@@ -2154,7 +2154,10 @@ interface TerminalDetailPanelProps {
 
 function TerminalDetailPanel({ station, onClose }: TerminalDetailPanelProps) {
   const { accentHex, label, id, shellType, host } = station
-  const { sessionInfo, ws, error, connect, disconnect, listSessions } = useTerminalSession(id)
+  const { sessionInfo, ws, error, connect, disconnect, listSessions } = useTerminalSession(id, {
+    host: host || "localhost",
+    shell: shellType === "zsh" ? "/bin/zsh" : shellType === "ssh" ? undefined : "/bin/bash",
+  })
   const [activeSessions, setActiveSessions] = useState<import("@/types/terminal").TerminalSessionInfo[]>([])
 
   // Load active sessions on mount and whenever idle (to show resumable indicator)
