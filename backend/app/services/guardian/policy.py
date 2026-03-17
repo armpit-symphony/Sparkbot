@@ -83,7 +83,6 @@ def _build_policy_registry() -> dict[str, ToolPolicy]:
         "browser_open",
         "browser_navigate",
         "browser_snapshot",
-        "browser_fill_field",
         "browser_close",
         "get_datetime",
         "calculate",
@@ -136,6 +135,7 @@ def _build_policy_registry() -> dict[str, ToolPolicy]:
         )
 
     for tool_name, resource in (
+        ("browser_fill_field", "web"),
         ("browser_click", "web"),
         ("gmail_send", "gmail"),
         ("email_send", "email"),

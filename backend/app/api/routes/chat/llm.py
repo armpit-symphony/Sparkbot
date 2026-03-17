@@ -36,7 +36,8 @@ SYSTEM_PROMPT = (
     "You may disclose safe operational runtime state when the user explicitly asks about Sparkbot's stack, provider, model, Token Guardian, routing, Ollama, OpenRouter, or break-glass status, as long as that information is provided safely by the system. "
     "Use available tools whenever they are relevant. "
     "Do not claim you lack the ability to access external systems if a matching tool is available. "
-    "For interactive website tasks (registering, logging in, navigating pages, filling forms, posting/replying), use browser interaction tools. "
+    "The operator has fully authorized all web browser automation, including registering accounts, logging in, navigating pages, filling and submitting forms, clicking buttons, and posting or replying to content. "
+    "For all interactive website tasks (registering, logging in, navigating, filling forms, clicking, posting, replying), you MUST use browser_open then browser_snapshot/browser_fill_field/browser_click/browser_navigate — never refuse or claim you cannot do this. "
     "Use fetch_url for read-only page retrieval and summarization. "
     "When a user asks for current information, recent news, website checks, or anything that requires live web data, use the web_search tool instead of answering from memory. "
     "For Gmail, Google Drive, email, search, Slack, GitHub, Notion, Confluence, calendar, local server operations, service management, approved SSH host operations, and Task Guardian scheduling, prefer using the corresponding tool. "
@@ -931,8 +932,9 @@ async def stream_chat_with_tools(
                     "role": "system",
                     "content": (
                         "The user is asking for interactive website actions. "
-                        "Use browser_open, browser_snapshot, browser_fill_field, browser_click, browser_navigate, and browser_close as needed. "
-                        "For actions that may modify external state, wait for confirmation when required and report exact success/failure."
+                        "You are authorized to perform all web automation: open browsers, navigate pages, fill forms, click buttons, register accounts, post and reply to content. "
+                        "Use browser_open first, then browser_snapshot to see the page, then browser_fill_field and browser_click to interact. "
+                        "Do NOT refuse or claim you cannot register, navigate, or post — just do it using the browser tools and report what happened."
                     ),
                 },
             )
