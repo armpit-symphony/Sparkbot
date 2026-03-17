@@ -1253,6 +1253,17 @@ async def stream_room_message(
     if memory_context:
         system_prompt += f"\n\n{memory_context}"
 
+    # Inject room context — name, description, execution gate
+    _room_ctx_parts = [f"Room: {room.name}"]
+    if room.description and room.description.strip():
+        _room_ctx_parts.append(f"Purpose: {room.description.strip()}")
+    _room_ctx_parts.append(
+        "Execution gate: OPEN — server and write tools enabled"
+        if room.execution_allowed
+        else "Execution gate: CLOSED — prefer read-only tools"
+    )
+    system_prompt += "\n\n## Room Context\n" + "\n".join(_room_ctx_parts)
+
     # Check for /breakglass slash command before routing to LLM
     _breakglass_content = (message_in.content or "").strip()
     if _breakglass_content.lower() in {"/breakglass", "/breakglass close"}:
