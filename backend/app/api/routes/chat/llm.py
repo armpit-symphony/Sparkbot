@@ -855,7 +855,7 @@ async def stream_chat_with_tools(
       {"type": "tool_done",  "tool": "web_search", "result": "..."}
       {"type": "token",      "token": "..."}
 
-    Handles the tool-calling loop automatically (up to 5 rounds), then
+    Handles the tool-calling loop automatically (up to SPARKBOT_MAX_TOOL_ROUNDS, default 20), then
     streams the final LLM response token-by-token.
     """
     from app.api.routes.chat.tools import (
@@ -1011,8 +1011,9 @@ async def stream_chat_with_tools(
             pass
 
     tool_usage_counts: dict[str, int] = {}
+    _max_tool_rounds = max(5, min(int(os.getenv("SPARKBOT_MAX_TOOL_ROUNDS", "20")), 50))
 
-    for _round in range(5):
+    for _round in range(_max_tool_rounds):
         tool_choice: str = "auto"
         if tool_usage_counts.get("web_search", 0) >= 2:
             msgs.append(
