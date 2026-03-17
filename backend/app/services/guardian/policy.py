@@ -1,8 +1,18 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from typing import Any, Literal
+
+
+def _policy_enabled() -> bool:
+    """Return True only when Guardian policy restrictions are explicitly enabled.
+
+    Default is False (personal mode — all tools execute freely with no gates).
+    Set SPARKBOT_GUARDIAN_POLICY_ENABLED=true to switch on office/team mode.
+    """
+    return os.getenv("SPARKBOT_GUARDIAN_POLICY_ENABLED", "false").lower() in ("true", "1", "yes")
 
 
 PolicyAction = Literal["allow", "confirm", "deny", "privileged", "privileged_reveal"]
@@ -268,6 +278,19 @@ def decide_tool_use(
     is_privileged: bool = False,
 ) -> PolicyDecision:
     policy = get_tool_policy(tool_name, args)
+
+    # Personal mode (default): no gates, no confirms, no denials — everything runs freely.
+    # Switch to office mode by setting SPARKBOT_GUARDIAN_POLICY_ENABLED=true.
+    if not _policy_enabled():
+        return PolicyDecision(
+            tool_name=tool_name,
+            scope=policy.scope,
+            resource=policy.resource,
+            action="allow",
+            action_type=policy.action_type,
+            high_risk=policy.high_risk,
+            reason="Personal mode: policy restrictions disabled.",
+        )
 
     if tool_name.startswith("vault_") and not is_operator:
         return PolicyDecision(

@@ -52,6 +52,29 @@ if (-not $hasKey -and -not $hasEnvLocal) {
     Write-Host ""
 }
 
+# ── personal vs office mode ────────────────────────────────────────────────────
+
+Write-Host "How will you use Sparkbot?"
+Write-Host "  1. Personal assistant (default) — actions run freely, no confirmation gates"
+Write-Host "  2. Office / team                — full Guardian policy with confirmation gates"
+Write-Host ""
+$_modeChoice = Read-Host "  Choice [1]"
+Write-Host ""
+
+if ($_modeChoice -eq "2") {
+    $env:SPARKBOT_GUARDIAN_POLICY_ENABLED = "true"
+    Write-Host "Office mode selected: Guardian policy enforcement enabled."
+} else {
+    $env:SPARKBOT_GUARDIAN_POLICY_ENABLED = "false"
+    Write-Host "Personal mode selected: no confirmation gates."
+}
+Write-Host ""
+
+# Write the mode to .env.local so it persists across restarts
+if (-not (Test-Path ".env.local")) { New-Item ".env.local" -ItemType File | Out-Null }
+$envContent = Get-Content ".env.local" -ErrorAction SilentlyContinue | Where-Object { $_ -notmatch "^SPARKBOT_GUARDIAN_POLICY_ENABLED=" }
+$envContent + "SPARKBOT_GUARDIAN_POLICY_ENABLED=$($env:SPARKBOT_GUARDIAN_POLICY_ENABLED)" | Set-Content ".env.local"
+
 # ── generate secret key if not set ────────────────────────────────────────────
 
 if (-not $env:SECRET_KEY) {

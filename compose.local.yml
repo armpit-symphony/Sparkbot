@@ -98,6 +98,8 @@ services:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN:-}
       - DISCORD_ENABLED=${DISCORD_ENABLED:-false}
+      # Guardian policy mode: false = personal (no gates), true = office/team (full enforcement)
+      - SPARKBOT_GUARDIAN_POLICY_ENABLED=${SPARKBOT_GUARDIAN_POLICY_ENABLED:-false}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/utils/health-check/"]
       interval: 10s

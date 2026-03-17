@@ -51,6 +51,32 @@ if [ -z "${OPENAI_API_KEY:-}" ] && \
   echo ""
 fi
 
+# ── personal vs office mode ────────────────────────────────────────────────────
+
+echo "How will you use Sparkbot?"
+echo "  1. Personal assistant (default) — actions run freely, no confirmation gates"
+echo "  2. Office / team                — full Guardian policy with confirmation gates"
+echo ""
+read -rp "  Choice [1]: " _mode_choice
+echo ""
+
+if [ "${_mode_choice}" = "2" ]; then
+  export SPARKBOT_GUARDIAN_POLICY_ENABLED=true
+  echo "Office mode selected: Guardian policy enforcement enabled."
+else
+  export SPARKBOT_GUARDIAN_POLICY_ENABLED=false
+  echo "Personal mode selected: no confirmation gates."
+fi
+echo ""
+
+# Write the mode to .env.local so it persists across restarts
+if [ ! -f ".env.local" ]; then
+  touch .env.local
+fi
+# Remove any existing entry then append the current choice
+grep -v "^SPARKBOT_GUARDIAN_POLICY_ENABLED=" .env.local > .env.local.tmp && mv .env.local.tmp .env.local
+echo "SPARKBOT_GUARDIAN_POLICY_ENABLED=${SPARKBOT_GUARDIAN_POLICY_ENABLED}" >> .env.local
+
 # ── generate secret key if not set ────────────────────────────────────────────
 
 if [ -z "${SECRET_KEY:-}" ]; then
