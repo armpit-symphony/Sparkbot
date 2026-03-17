@@ -62,6 +62,12 @@ def _load() -> None:
             _registry.executors[name] = mod.execute
             _registry.policies[name] = getattr(mod, "POLICY", _DEFAULT_POLICY)
             log.info("Loaded skill: %s", name)
+            # Multi-tool skills may expose _register_extra(registry) to add more tools
+            if hasattr(mod, "_register_extra"):
+                try:
+                    mod._register_extra(_registry)
+                except Exception as extra_exc:
+                    log.warning("Skill %s _register_extra failed: %s", path.name, extra_exc)
         except Exception as exc:
             log.warning("Failed to load skill %s: %s", path.name, exc)
 

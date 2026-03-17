@@ -147,6 +147,21 @@ _BROWSER_HEADLESS = os.getenv("SPARKBOT_BROWSER_HEADLESS", "true").strip().lower
 }
 _BROWSER_SESSIONS: dict[str, dict] = {}
 _BROWSER_SESSION_LOCK = asyncio.Lock()
+# Named sessions: human-readable name → active session_id (in-memory only)
+_NAMED_SESSIONS: dict[str, str] = {}
+
+
+def _browser_data_dir() -> Path:
+    """Resolve the directory for persisted browser session state files."""
+    root = os.getenv("SPARKBOT_DATA_DIR", "").strip()
+    if root:
+        base = Path(root).expanduser()
+    else:
+        base = Path(__file__).resolve().parents[4] / "data"
+    p = base / "browser_sessions"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
 
 from app.services.skills import _registry as _skill_registry
 
@@ -377,6 +392,68 @@ TOOL_DEFINITIONS = [
                 },
                 "required": ["session_id"],
             },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_save_session",
+            "description": (
+                "Save the current browser session (cookies, localStorage) to disk under a "
+                "human-readable name so it can be restored in a future conversation. "
+                "Use after logging in to a site so you don't need to log in again."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "session_id": {
+                        "type": "string",
+                        "description": "Active browser session ID to save",
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "Name for this saved session (alphanumeric, hyphens, underscores; e.g. 'twitter-account' or 'github-sparky')",
+                    },
+                },
+                "required": ["session_id", "name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_restore_session",
+            "description": (
+                "Restore a previously saved browser session by name, creating a new browser "
+                "instance with the saved cookies loaded. Use at the start of a task that "
+                "requires a site you've already logged in to."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Name of the saved session to restore",
+                    },
+                    "url": {
+                        "type": "string",
+                        "description": "Optional: navigate to this URL after restoring (e.g. the site home page)",
+                    },
+                },
+                "required": ["name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browser_list_sessions",
+            "description": (
+                "List all active browser sessions (in-memory, current server run) and all "
+                "saved sessions (on-disk, survive restarts). Use this to find a session to "
+                "restore or to check which sites you're already logged in to."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
         },
     },
     {
@@ -2058,6 +2135,148 @@ def _looks_like_selector(target: str) -> bool:
 
 def _escape_css_attr(value: str) -> str:
     return (value or "").replace("\\", "\\\\").replace('"', '\\"')
+
+
+# ─── Named / persistent browser sessions ─────────────────────────────────────
+
+async def _browser_save_session(session_id: str, name: str) -> str:
+    """Save browser session cookies+storage to disk under a human-readable name."""
+    name = (name or "").strip()
+    if not name or not re.fullmatch(r"[\w\-]+", name):
+        return "Error: Session name must contain only letters, numbers, hyphens, or underscores."
+
+    entry = await _browser_get_session(session_id)
+    if not entry:
+        return f"Error: No active browser session with ID '{session_id}'. Start one with browser_open() first."
+
+    try:
+        state = await entry["context"].storage_state()
+    except Exception as exc:
+        return f"Error capturing session state: {exc}"
+
+    save_path = _browser_data_dir() / f"{name}.json"
+    try:
+        save_path.write_text(json.dumps(state), encoding="utf-8")
+    except Exception as exc:
+        return f"Error saving session to disk: {exc}"
+
+    _NAMED_SESSIONS[name] = session_id
+    entry["saved_name"] = name
+
+    n_cookies = len(state.get("cookies", []))
+    return (
+        f"Session saved as '{name}' ({n_cookies} cookies stored). "
+        f"Use browser_restore_session('{name}') to resume in any future conversation."
+    )
+
+
+async def _browser_restore_session(name: str, url: str = "") -> str:
+    """Create a new browser instance pre-loaded with a previously saved session."""
+    name = (name or "").strip()
+    save_path = _browser_data_dir() / f"{name}.json"
+
+    if not save_path.is_file():
+        return (
+            f"Error: No saved session named '{name}'. "
+            "Use browser_list_sessions() to see available sessions."
+        )
+
+    try:
+        state = json.loads(save_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return f"Error loading saved session '{name}': {exc}"
+
+    try:
+        from playwright.async_api import async_playwright
+    except Exception as exc:
+        return _playwright_install_hint(exc)
+
+    playwright = None
+    browser = None
+    context = None
+    try:
+        playwright = await async_playwright().start()
+        browser = await playwright.chromium.launch(headless=_BROWSER_HEADLESS)
+        context = await browser.new_context(
+            storage_state=state,
+            ignore_https_errors=_BROWSER_ALLOW_INSECURE_SSL,
+        )
+        page = await context.new_page()
+    except Exception as exc:
+        for obj in (context, browser):
+            if obj:
+                try:
+                    await obj.close()
+                except Exception:
+                    pass
+        if playwright:
+            try:
+                await playwright.stop()
+            except Exception:
+                pass
+        return f"Error restoring session '{name}': {exc}"
+
+    sid = str(uuid.uuid4())[:12]
+    entry = {
+        "playwright": playwright,
+        "browser": browser,
+        "context": context,
+        "page": page,
+        "created_at": time.time(),
+        "last_used_at": time.time(),
+        "saved_name": name,
+    }
+    async with _BROWSER_SESSION_LOCK:
+        _BROWSER_SESSIONS[sid] = entry
+    _NAMED_SESSIONS[name] = sid
+
+    n_cookies = len(state.get("cookies", []))
+    result = f"Session '{name}' restored (session_id: {sid}, {n_cookies} cookies loaded)."
+
+    if url:
+        nav_result = await _browser_navigate(sid, url)
+        result += f"\n{nav_result}"
+    else:
+        result += " Use this session_id for browser_navigate/snapshot/fill/click calls."
+
+    return result
+
+
+async def _browser_list_sessions() -> str:
+    """List active (in-memory) and saved (on-disk) browser sessions."""
+    await _cleanup_browser_sessions()
+    now = time.time()
+    lines: list[str] = ["## Active browser sessions (in-memory)"]
+
+    async with _BROWSER_SESSION_LOCK:
+        active = dict(_BROWSER_SESSIONS)
+
+    if active:
+        for sid, entry in active.items():
+            age = int(now - entry.get("created_at", now))
+            idle = int(now - entry.get("last_used_at", now))
+            name_tag = f" [{entry['saved_name']}]" if entry.get("saved_name") else ""
+            lines.append(f"- {sid}{name_tag} — age {age}s, idle {idle}s")
+    else:
+        lines.append("(none)")
+
+    lines.append("\n## Saved sessions (on-disk, survive restarts)")
+    save_dir = _browser_data_dir()
+    saved = sorted(save_dir.glob("*.json"))
+    if saved:
+        for p in saved:
+            try:
+                state = json.loads(p.read_text(encoding="utf-8"))
+                n_cookies = len(state.get("cookies", []))
+                mtime = datetime.fromtimestamp(p.stat().st_mtime, tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+                active_marker = " ✓ active" if _NAMED_SESSIONS.get(p.stem) in active else ""
+                lines.append(f"- {p.stem} — {n_cookies} cookies, saved {mtime}{active_marker}")
+            except Exception:
+                lines.append(f"- {p.stem} — (unreadable)")
+    else:
+        lines.append("(none — use browser_save_session() after logging in to a site)")
+
+    return "\n".join(lines)
 
 
 async def _browser_open(url: str, session_id: str = "") -> str:
@@ -4225,6 +4444,12 @@ async def execute_tool(
         )
     if name == "browser_close":
         return await _browser_close(args.get("session_id", ""))
+    if name == "browser_save_session":
+        return await _browser_save_session(args.get("session_id", ""), args.get("name", ""))
+    if name == "browser_restore_session":
+        return await _browser_restore_session(args.get("name", ""), args.get("url", ""))
+    if name == "browser_list_sessions":
+        return await _browser_list_sessions()
     if name == "get_datetime":
         return await _get_datetime()
     if name == "calculate":

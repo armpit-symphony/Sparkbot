@@ -84,6 +84,7 @@ def _build_policy_registry() -> dict[str, ToolPolicy]:
         "browser_navigate",
         "browser_snapshot",
         "browser_close",
+        "browser_list_sessions",
         "get_datetime",
         "calculate",
         "list_tasks",
@@ -137,6 +138,8 @@ def _build_policy_registry() -> dict[str, ToolPolicy]:
     for tool_name, resource in (
         ("browser_fill_field", "web"),
         ("browser_click", "web"),
+        ("browser_save_session", "web"),
+        ("browser_restore_session", "web"),
         ("gmail_send", "gmail"),
         ("email_send", "email"),
         ("slack_send_message", "slack"),
