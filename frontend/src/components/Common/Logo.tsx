@@ -2,7 +2,8 @@ import { Link } from "@tanstack/react-router"
 
 import { useTheme } from "@/components/theme-provider"
 import { cn } from "@/lib/utils"
-import icon from "/assets/images/sparkpit-icon.svg"
+import icon from "/assets/images/sparkbot-icon.svg"
+import iconLight from "/assets/images/sparkbot-icon-light.svg"
 import wordmarkDark from "/assets/images/sparkbot-wordmark-dark.svg"
 import wordmarkLight from "/assets/images/sparkbot-wordmark-light.svg"
 
@@ -22,6 +23,7 @@ export function Logo({
 
   // Dark bg → light wordmark (white text); light bg → dark wordmark (dark text)
   const fullLogo = isDark ? wordmarkLight : wordmarkDark
+  const iconLogo = isDark ? iconLight : icon
 
   const content =
     variant === "responsive" ? (
@@ -35,7 +37,7 @@ export function Logo({
           )}
         />
         <img
-          src={icon}
+          src={iconLogo}
           alt="SparkBot"
           className={cn(
             "size-5 hidden group-data-[collapsible=icon]:block",
@@ -45,7 +47,7 @@ export function Logo({
       </>
     ) : (
       <img
-        src={variant === "full" ? fullLogo : icon}
+        src={variant === "full" ? fullLogo : iconLogo}
         alt="SparkBot"
         className={cn(variant === "full" ? "h-6 w-auto" : "size-5", className)}
       />

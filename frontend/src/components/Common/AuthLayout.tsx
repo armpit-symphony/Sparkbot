@@ -12,14 +12,13 @@ export function AuthLayout({ children }: AuthLayoutProps) {
       <div className="relative hidden lg:flex lg:flex-col lg:items-center lg:justify-center bg-zinc-950 overflow-hidden">
         {/* Background glow */}
         <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 rounded-full bg-primary/10 blur-[80px]" />
-          <div className="absolute bottom-1/4 right-1/4 w-48 h-48 rounded-full bg-violet-500/6 blur-[60px]" />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 rounded-full bg-blue-600/15 blur-[80px]" />
         </div>
 
         {/* Content */}
         <div className="relative z-10 flex flex-col items-center gap-6 px-14 text-center">
           {/* SparkPitLabs eyebrow */}
-          <p className="text-xs font-semibold tracking-[0.2em] uppercase text-primary/80">
+          <p className="text-xs font-semibold tracking-[0.2em] uppercase text-blue-400/80">
             SparkPitLabs
           </p>
 
@@ -28,10 +27,10 @@ export function AuthLayout({ children }: AuthLayoutProps) {
             SparkBot
           </h1>
 
-          {/* SparkPitLabs logo icon */}
+          {/* Sparkbot lightning bolt icon */}
           <img
-            src="/assets/images/sparkpit-icon.svg"
-            alt="SparkPitLabs"
+            src="/assets/images/sparkbot-icon.svg"
+            alt="SparkBot"
             className="w-24 h-24 drop-shadow-lg"
           />
 

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 132.29167 132.29166" width="500" height="500" role="img" aria-label="SparkBot">
+  <!-- Blue circle background -->
+  <circle cx="66.145833" cy="65.931923" r="66.145836" fill="#2563eb"/>
+  <!-- White lightning bolt -->
+  <path fill="#ffffff" fill-opacity="0.98" d="M 61.581771 29.853992 L 103.20042 29.853992 L 61.410205 59.222742 L 89.976937 59.222742 L 29.091248 102.00979 L 42.315763 72.641044 L 48.358289 59.222742 L 61.581771 29.853992 z"/>
+</svg>
