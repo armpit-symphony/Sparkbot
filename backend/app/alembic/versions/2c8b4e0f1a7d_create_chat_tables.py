@@ -23,15 +23,12 @@ depends_on = None
 
 
 def upgrade():
-    # Create shared PostgreSQL enum types up front to avoid double-create
-    # when the same type is referenced by more than one table below.
+    # Create PostgreSQL enum types explicitly via raw SQL.
+    # All sa.Enum(...) column references below use create_type=False so
+    # SQLAlchemy never attempts a second CREATE TYPE for the same name.
     op.execute("CREATE TYPE usertype AS ENUM ('HUMAN', 'BOT')")
     op.execute("CREATE TYPE roomrole AS ENUM ('OWNER', 'MOD', 'MEMBER', 'VIEWER', 'BOT')")
     op.execute("CREATE TYPE meetingartifacttype AS ENUM ('AGENDA', 'NOTES', 'DECISIONS', 'ACTION_ITEMS')")
-
-    usertype = sa.Enum('HUMAN', 'BOT', name='usertype', create_type=False)
-    roomrole = sa.Enum('OWNER', 'MOD', 'MEMBER', 'VIEWER', 'BOT', name='roomrole', create_type=False)
-    meetingartifacttype = sa.Enum('AGENDA', 'NOTES', 'DECISIONS', 'ACTION_ITEMS', name='meetingartifacttype', create_type=False)
 
     # 1. chat_users — no FK dependencies on other chat tables
     op.create_table('chat_users',
@@ -39,7 +36,7 @@ def upgrade():
         sa.Column('username', sqlmodel.sql.sqltypes.AutoString(length=100), nullable=False),
         sa.Column('hashed_password', sqlmodel.sql.sqltypes.AutoString(length=255), nullable=True),
         sa.Column('is_active', sa.Boolean(), nullable=False),
-        sa.Column('type', usertype, nullable=False),
+        sa.Column('type', sa.Enum('HUMAN', 'BOT', name='usertype', create_type=False), nullable=False),
         sa.Column('bot_service_key_hash', sqlmodel.sql.sqltypes.AutoString(length=255), nullable=True),
         sa.Column('bot_auto_mode', sa.Boolean(), nullable=False),
         sa.Column('bot_display_name', sqlmodel.sql.sqltypes.AutoString(length=100), nullable=True),
@@ -76,7 +73,7 @@ def upgrade():
         sa.Column('id', sa.Uuid(), nullable=False),
         sa.Column('room_id', sa.Uuid(), nullable=False),
         sa.Column('user_id', sa.Uuid(), nullable=False),
-        sa.Column('role', roomrole, nullable=False),
+        sa.Column('role', sa.Enum('OWNER', 'MOD', 'MEMBER', 'VIEWER', 'BOT', name='roomrole', create_type=False), nullable=False),
         sa.Column('joined_at', sa.DateTime(), nullable=False),
         sa.ForeignKeyConstraint(['room_id'], ['chat_rooms.id'], ondelete='CASCADE'),
         sa.ForeignKeyConstraint(['user_id'], ['chat_users.id']),
@@ -90,7 +87,7 @@ def upgrade():
         sa.Column('id', sa.Uuid(), nullable=False),
         sa.Column('room_id', sa.Uuid(), nullable=False),
         sa.Column('sender_id', sa.Uuid(), nullable=False),
-        sa.Column('sender_type', usertype, nullable=False),
+        sa.Column('sender_type', sa.Enum('HUMAN', 'BOT', name='usertype', create_type=False), nullable=False),
         sa.Column('content', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
         sa.Column('created_at', sa.DateTime(), nullable=False),
         sa.Column('meta_json', sa.JSON(), nullable=True),
@@ -114,7 +111,7 @@ def upgrade():
         sa.Column('expires_at', sa.DateTime(), nullable=True),
         sa.Column('usage_limit', sa.Integer(), nullable=True),
         sa.Column('used_count', sa.Integer(), nullable=False),
-        sa.Column('role', roomrole, nullable=False),
+        sa.Column('role', sa.Enum('OWNER', 'MOD', 'MEMBER', 'VIEWER', 'BOT', name='roomrole', create_type=False), nullable=False),
         sa.ForeignKeyConstraint(['created_by'], ['chat_users.id']),
         sa.ForeignKeyConstraint(['room_id'], ['chat_rooms.id'], ondelete='CASCADE'),
         sa.PrimaryKeyConstraint('id'),
@@ -128,7 +125,7 @@ def upgrade():
         sa.Column('room_id', sa.Uuid(), nullable=False),
         sa.Column('created_at', sa.DateTime(), nullable=False),
         sa.Column('created_by_user_id', sa.Uuid(), nullable=False),
-        sa.Column('type', meetingartifacttype, nullable=False),
+        sa.Column('type', sa.Enum('AGENDA', 'NOTES', 'DECISIONS', 'ACTION_ITEMS', name='meetingartifacttype', create_type=False), nullable=False),
         sa.Column('window_start_ts', sa.DateTime(), nullable=True),
         sa.Column('window_end_ts', sa.DateTime(), nullable=True),
         sa.Column('content_markdown', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
