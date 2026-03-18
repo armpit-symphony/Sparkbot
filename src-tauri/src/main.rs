@@ -6,8 +6,8 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use tauri::{Manager, RunEvent};
-use tauri_plugin_shell::process::CommandChild;
-use tauri_plugin_shell::{CommandEvent, ShellExt};
+use tauri_plugin_shell::process::{CommandChild, CommandEvent};
+use tauri_plugin_shell::ShellExt;
 
 const SIDECAR_NAME: &str = "binaries/sparkbot-backend";
 const BACKEND_HOST: &str = "127.0.0.1";
@@ -42,10 +42,9 @@ fn sparkbot_data_dir() -> Result<PathBuf, String> {
 
 fn stop_backend(app: &tauri::AppHandle) {
     if let Ok(mut guard) = app.state::<BackendChild>().0.lock() {
-        if let Some(child) = guard.as_mut() {
+        if let Some(child) = guard.take() {
             let _ = child.kill();
         }
-        guard.take();
     }
 }
 
