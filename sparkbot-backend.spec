@@ -11,7 +11,7 @@ _litellm_datas, _litellm_binaries, _litellm_hiddenimports = collect_all("litellm
 
 block_cipher = None
 
-BACKEND_DIR = Path("backend").resolve()
+BACKEND_DIR = Path(SPECPATH) / "backend"
 
 a = Analysis(
     [str(BACKEND_DIR / "desktop_launcher.py")],
