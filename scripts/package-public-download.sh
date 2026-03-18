@@ -139,6 +139,9 @@ rm -f \
 # Remove desktop build artifacts not relevant to the Docker/CLI self-hosted install.
 rm -rf "$stage_repo/src-tauri"
 
+# Remove Copier scaffolding artifacts (project template config, not for end users).
+rm -rf "$stage_repo/.copier"
+
 find "$stage_repo" \
   -type d \
   \( -name "__pycache__" -o -name ".pytest_cache" -o -name ".mypy_cache" -o -name ".ruff_cache" -o -name "node_modules" -o -name "dist" \) \
@@ -195,7 +198,7 @@ chmod 755 "$output_dir/$cli_name"
   echo "- consumer_readiness_checklist.md"
   echo "- release-notes.md"
   echo "- sparkbot-backend.spec (PyInstaller desktop build artifact)"
-  echo "- copier.yml (project scaffolding config)"
+  echo "- copier.yml + .copier/ (project scaffolding config)"
   echo "- src-tauri/ (Tauri desktop shell source)"
   echo "- backup files (*.bak, *.bak_*)"
   echo "- Python bytecode and cache directories"
