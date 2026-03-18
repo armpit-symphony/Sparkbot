@@ -120,6 +120,7 @@ jobs:
   # an arm64 sidecar even when cross-compiling the Tauri shell to x86_64.
   build-macos-intel:
     runs-on: macos-13
+    continue-on-error: true  # macos-13 runner unavailable on free plans; skip without blocking release
     timeout-minutes: 60
 
     steps:
@@ -385,7 +386,7 @@ jobs:
 
   # ──────────── GitHub Release (all 4 installers) ────────────────────────────
   release:
-    needs: [build-windows, build-macos-intel, build-macos-arm, build-linux]
+    needs: [build-windows, build-macos-arm, build-linux]
     runs-on: ubuntu-22.04
     permissions:
       contents: write
