@@ -54,6 +54,7 @@ services:
       - POSTGRES_USER=sparkbot
       - POSTGRES_PASSWORD=sparkbot-local
       - ENVIRONMENT=local
+      - DATABASE_TYPE=postgresql
       - PROJECT_NAME=${PROJECT_NAME:-Sparkbot}
       - SECRET_KEY=${SECRET_KEY:-please-change-this-secret-key-min-32}
       - FIRST_SUPERUSER=${FIRST_SUPERUSER:-admin@example.com}
@@ -85,6 +86,7 @@ services:
       - DOMAIN=localhost
       - FRONTEND_HOST=http://localhost:3000
       - BACKEND_CORS_ORIGINS=http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000
+      - DATABASE_TYPE=postgresql
       - PROJECT_NAME=${PROJECT_NAME:-Sparkbot}
       - SECRET_KEY=${SECRET_KEY:-please-change-this-secret-key-min-32}
       - FIRST_SUPERUSER=${FIRST_SUPERUSER:-admin@example.com}
