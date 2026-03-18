@@ -1,8 +1,24 @@
 name: Desktop Release
 
 # Triggered by a tag push matching desktop-v* (e.g. desktop-v1.3.0).
-# Produces Windows NSIS installer, macOS DMG, and Linux AppImage,
-# then publishes all three as a GitHub Release.
+# Produces: Windows NSIS, macOS DMG (Intel + Apple Silicon), Linux AppImage.
+#
+# ─── Code signing prerequisites ──────────────────────────────────────────────
+# Without signing, macOS and Windows show security warnings on first launch.
+# Add these GitHub Actions secrets to enable signing (no workflow changes needed):
+#
+# macOS — Apple Developer Program ($99/yr, developer.apple.com):
+#   APPLE_CERTIFICATE           base64-encoded Developer ID Application .p12
+#   APPLE_CERTIFICATE_PASSWORD  password for the .p12
+#   APPLE_SIGNING_IDENTITY      "Developer ID Application: Your Name (TEAMID)"
+#   APPLE_ID                    Apple ID email used for notarization
+#   APPLE_PASSWORD              app-specific password from appleid.apple.com
+#   APPLE_TEAM_ID               10-character Team ID from developer.apple.com
+#
+# Windows — Authenticode cert (~$70–300/yr: DigiCert, Sectigo, etc.):
+#   Add a post-build signtool.exe step after the NSIS build when cert is ready.
+#   (Tauri's TAURI_SIGNING_PRIVATE_KEY is for the updater only, not SmartScreen.)
+# ─────────────────────────────────────────────────────────────────────────────
 
 on:
   push:
@@ -13,7 +29,7 @@ jobs:
   # ─────────────────────────── Windows (NSIS) ────────────────────────────────
   build-windows:
     runs-on: windows-latest
-    timeout-minutes: 90
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -30,7 +46,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
 
-      - name: Setup Rust (stable, Windows target)
+      - name: Setup Rust (stable)
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
@@ -44,15 +60,24 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.toml') }}
           restore-keys: ${{ runner.os }}-cargo-
 
-      - name: Install Tauri CLI v2
-        run: cargo install tauri-cli --version "^2"
+      - name: Cache Tauri CLI binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin
+          key: cargo-bin-${{ runner.os }}-${{ runner.arch }}-tauri-cli-2
+
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@main
+
+      - name: Install Tauri CLI v2 (pre-compiled binary)
+        run: cargo binstall tauri-cli --version "^2" --no-confirm
 
       - name: Install Bun workspace deps
         run: bun install
 
-      - name: Sync backend Python deps (uv)
+      - name: Sync backend Python deps (release only — no dev group)
         working-directory: backend
-        run: uv sync --group dev
+        run: uv sync
 
       - name: Build PyInstaller backend sidecar
         shell: bash
@@ -78,9 +103,8 @@ jobs:
       - name: Build Tauri installer (NSIS)
         shell: bash
         run: cargo tauri build --config src-tauri/tauri.conf.json --bundles nsis
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ""
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        # Windows Authenticode signing: add a signtool.exe post-build step here
+        # when cert is available. See signing prerequisites at the top of this file.
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
@@ -90,10 +114,13 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # ─────────────────────────── macOS (DMG, Intel) ────────────────────────────
-  build-macos:
-    runs-on: macos-latest
-    timeout-minutes: 90
+  # ──────────────────── macOS Intel (DMG, x86_64) ────────────────────────────
+  # macos-13 = Intel runner. PyInstaller produces x86_64 binary natively here.
+  # Do NOT use macos-latest for this job — it is M-series and would produce
+  # an arm64 sidecar even when cross-compiling the Tauri shell to x86_64.
+  build-macos-intel:
+    runs-on: macos-13
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -121,20 +148,29 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.toml') }}
-          restore-keys: ${{ runner.os }}-cargo-
+          key: ${{ runner.os }}-x86-cargo-${{ hashFiles('src-tauri/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-x86-cargo-
 
-      - name: Install Tauri CLI v2
-        run: cargo install tauri-cli --version "^2"
+      - name: Cache Tauri CLI binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin
+          key: cargo-bin-${{ runner.os }}-x86_64-tauri-cli-2
+
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@main
+
+      - name: Install Tauri CLI v2 (pre-compiled binary)
+        run: cargo binstall tauri-cli --version "^2" --no-confirm
 
       - name: Install Bun workspace deps
         run: bun install
 
-      - name: Sync backend Python deps (uv)
+      - name: Sync backend Python deps (release only — no dev group)
         working-directory: backend
-        run: uv sync --group dev
+        run: uv sync
 
-      - name: Build PyInstaller backend sidecar (Intel)
+      - name: Build PyInstaller backend sidecar (x86_64)
         run: |
           cd backend
           uv run python -m PyInstaller \
@@ -153,21 +189,115 @@ jobs:
       - name: Build Tauri installer (DMG, Intel)
         run: cargo tauri build --config src-tauri/tauri.conf.json --bundles dmg --target x86_64-apple-darwin
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ""
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+          # macOS signing: these are no-ops when secrets are not set.
+          # Add the secrets listed at the top of this file to enable signing + notarization.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: installer-macos
+          name: installer-macos-intel
           path: src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+          retention-days: 7
+
+  # ──────────────── macOS Apple Silicon (DMG, aarch64) ───────────────────────
+  # macos-latest = M-series runner. PyInstaller produces aarch64 binary natively.
+  build-macos-arm:
+    runs-on: macos-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Setup Rust (stable, Apple Silicon target)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-arm64-cargo-${{ hashFiles('src-tauri/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-arm64-cargo-
+
+      - name: Cache Tauri CLI binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin
+          key: cargo-bin-${{ runner.os }}-aarch64-tauri-cli-2
+
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@main
+
+      - name: Install Tauri CLI v2 (pre-compiled binary)
+        run: cargo binstall tauri-cli --version "^2" --no-confirm
+
+      - name: Install Bun workspace deps
+        run: bun install
+
+      - name: Sync backend Python deps (release only — no dev group)
+        working-directory: backend
+        run: uv sync
+
+      - name: Build PyInstaller backend sidecar (aarch64)
+        run: |
+          cd backend
+          uv run python -m PyInstaller \
+            --distpath ../src-tauri/binaries \
+            --noconfirm \
+            ../sparkbot-backend.spec
+
+      - name: Rename sidecar for Tauri target triple
+        run: |
+          mv src-tauri/binaries/sparkbot-backend \
+             src-tauri/binaries/sparkbot-backend-aarch64-apple-darwin
+
+      - name: Build frontend (V1 local mode)
+        run: node scripts/run-desktop-frontend.mjs build
+
+      - name: Build Tauri installer (DMG, Apple Silicon)
+        run: cargo tauri build --config src-tauri/tauri.conf.json --bundles dmg --target aarch64-apple-darwin
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-macos-arm
+          path: src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
           if-no-files-found: error
           retention-days: 7
 
   # ─────────────────────────── Linux (AppImage) ──────────────────────────────
   build-linux:
     runs-on: ubuntu-22.04
-    timeout-minutes: 90
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -207,15 +337,24 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.toml') }}
           restore-keys: ${{ runner.os }}-cargo-
 
-      - name: Install Tauri CLI v2
-        run: cargo install tauri-cli --version "^2"
+      - name: Cache Tauri CLI binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin
+          key: cargo-bin-${{ runner.os }}-${{ runner.arch }}-tauri-cli-2
+
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@main
+
+      - name: Install Tauri CLI v2 (pre-compiled binary)
+        run: cargo binstall tauri-cli --version "^2" --no-confirm
 
       - name: Install Bun workspace deps
         run: bun install
 
-      - name: Sync backend Python deps (uv)
+      - name: Sync backend Python deps (release only — no dev group)
         working-directory: backend
-        run: uv sync --group dev
+        run: uv sync
 
       - name: Build PyInstaller backend sidecar
         run: |
@@ -235,9 +374,6 @@ jobs:
 
       - name: Build Tauri installer (AppImage)
         run: cargo tauri build --config src-tauri/tauri.conf.json --bundles appimage
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ""
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
@@ -247,9 +383,9 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # ─────────────────────── GitHub Release (all 3 installers) ─────────────────
+  # ──────────── GitHub Release (all 4 installers) ────────────────────────────
   release:
-    needs: [build-windows, build-macos, build-linux]
+    needs: [build-windows, build-macos-intel, build-macos-arm, build-linux]
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -282,33 +418,39 @@ jobs:
           body: |
             ## Sparkbot Desktop ${{ github.ref_name }}
 
-            Double-click installer for Windows, macOS, and Linux — **no Docker required**.
+            Double-click installer — **no Docker, no terminal, no prerequisites**.
 
             ### Downloads
 
             | Platform | File | Notes |
             |----------|------|-------|
             | Windows 10+ | `*-setup.exe` | NSIS installer |
-            | macOS 11+ (Intel) | `*.dmg` | Drag to Applications |
-            | Linux (x86-64) | `*.AppImage` | `chmod +x`, then run |
+            | macOS Intel (x86_64) | `*-x86_64.dmg` | Drag to Applications |
+            | macOS Apple Silicon (M1/M2/M3) | `*-aarch64.dmg` | Drag to Applications |
+            | Linux x86-64 | `*.AppImage` | `chmod +x`, then run |
 
             ### Install
 
-            - **Windows**: Download `*-setup.exe` and run it. SparkBot installs like any other app.
-            - **macOS**: Download the `.dmg`, open it, drag Sparkbot Local to Applications, then launch.
-            - **Linux**: Download the `.AppImage`, make it executable (`chmod +x *.AppImage`), then run it.
+            **Windows:** Download `*-setup.exe` and run it.
+            > SmartScreen may show "Windows protected your PC". Click **More info → Run anyway**. This warning appears because the installer is not yet Authenticode-signed.
+
+            **macOS:** Download the `.dmg` for your chip (Intel or Apple Silicon — check  → About This Mac), open it, drag Sparkbot Local to Applications, then launch.
+            > Gatekeeper may say "Apple cannot verify this app". Right-click the app in Applications → **Open**, then click **Open** in the dialog. You only need to do this once.
+
+            **Linux:** Download the `.AppImage`, make it executable (`chmod +x *.AppImage`), then run it.
+
+            > These installers are **not yet code-signed**. macOS and Windows show one-time security prompts that require an extra click. Signed builds will eliminate this warning in a future release.
 
             ### Verify checksums
 
             ```
             sha256sum --check SHA256SUMS
-            # or on macOS:
+            # macOS:
             shasum -a 256 -c SHA256SUMS
             ```
 
             ### First launch
 
-            Sparkbot Controls opens automatically on first launch for provider/model setup.
-            No Docker, no terminal, no prerequisites beyond the installer itself.
+            Sparkbot Controls opens on first launch for provider and model setup.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
