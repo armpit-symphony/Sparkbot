@@ -189,15 +189,9 @@ jobs:
 
       - name: Build Tauri installer (DMG, Intel)
         run: cargo tauri build --config src-tauri/tauri.conf.json --bundles dmg --target x86_64-apple-darwin
-        env:
-          # macOS signing: these are no-ops when secrets are not set.
-          # Add the secrets listed at the top of this file to enable signing + notarization.
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        # macOS signing: add APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY,
+        # APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID env vars here (from GitHub secrets) to enable
+        # signing + notarization. Omit them entirely (not just empty) to produce unsigned DMGs.
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
@@ -279,13 +273,9 @@ jobs:
 
       - name: Build Tauri installer (DMG, Apple Silicon)
         run: cargo tauri build --config src-tauri/tauri.conf.json --bundles dmg --target aarch64-apple-darwin
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        # macOS signing: add APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY,
+        # APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID env vars here (from GitHub secrets) to enable
+        # signing + notarization. Omit them entirely (not just empty) to produce unsigned DMGs.
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
