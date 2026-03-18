@@ -1,151 +1,97 @@
+# -*- mode: python ; coding: utf-8 -*-
+# PyInstaller spec for the Sparkbot backend sidecar binary.
+# Build with:  pyinstaller --distpath src-tauri/binaries sparkbot-backend.spec
+
+import sys
 from pathlib import Path
+from PyInstaller.utils.hooks import collect_all
 
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+# litellm uses heavy dynamic imports + bundled data files; collect everything
+_litellm_datas, _litellm_binaries, _litellm_hiddenimports = collect_all("litellm")
 
+block_cipher = None
 
-project_root = Path(SPECPATH)  # PyInstaller injects SPECPATH; __file__ is not defined in spec context
-backend_root = project_root / "backend"
-
-# ── Data files ────────────────────────────────────────────────────────────────
-datas = collect_data_files(
-    "app",
-    includes=["alembic/**", "email-templates/**"],
-)
-datas.append((str(backend_root / "alembic.ini"), "."))
-
-# litellm bundles a lot of JSON/YAML provider configs — include them all
-datas += collect_data_files("litellm")
-
-# ── Hidden imports ────────────────────────────────────────────────────────────
-hiddenimports = collect_submodules("app")
-
-# SQLAlchemy dialects needed at runtime
-hiddenimports += [
-    "sqlalchemy.dialects.sqlite",
-    "sqlalchemy.dialects.sqlite.pysqlite",
-    "sqlalchemy.ext.asyncio",
-]
-
-# litellm uses dynamic imports for every provider; include the common ones
-hiddenimports += [
-    "litellm.llms.openai",
-    "litellm.llms.anthropic",
-    "litellm.llms.gemini",
-    "litellm.llms.groq",
-    "litellm.llms.cohere",
-    "litellm.llms.mistral",
-    "litellm.llms.ollama",
-    "litellm.llms.ollama_chat",
-    "litellm.llms.openrouter",
-    "litellm.llms.azure",
-    "litellm.llms.azure_ai",
-    "litellm.main",
-    "litellm.utils",
-    "litellm.types",
-    "litellm.cost_calculator",
-    "litellm.router",
-]
-
-# tiktoken (used by litellm for token counting)
-hiddenimports += [
-    "tiktoken",
-    "tiktoken.core",
-    "tiktoken_ext",
-    "tiktoken_ext.openai_public",
-]
-
-# FastAPI / Starlette internals
-hiddenimports += [
-    "fastapi.routing",
-    "fastapi.middleware",
-    "starlette.middleware",
-    "starlette.middleware.cors",
-    "starlette.routing",
-    "starlette.staticfiles",
-    "starlette.responses",
-    "uvicorn.main",
-    "uvicorn.config",
-    "uvicorn.protocols.http.h11_impl",
-    "uvicorn.protocols.websockets.websockets_impl",
-    "uvicorn.lifespan.on",
-    "uvicorn.logging",
-]
-
-# Pydantic / email validators
-hiddenimports += [
-    "pydantic.networks",
-    "pydantic.v1",
-    "email_validator",
-]
-
-# JWT / crypto
-hiddenimports += [
-    "jwt",
-    "cryptography.fernet",
-    "cryptography.hazmat.primitives.kdf.pbkdf2",
-    "cryptography.hazmat.primitives.ciphers.aead",
-]
-
-# Alembic runtime
-hiddenimports += [
-    "alembic.runtime.migration",
-    "alembic.runtime.environment",
-    "alembic.script",
-]
-
-# httpx + httpcore (used by litellm for all HTTP calls)
-hiddenimports += [
-    "httpx",
-    "httpcore",
-    "anyio",
-    "anyio.from_thread",
-]
-
-# ── Excludes — things that don't belong in a local SQLite build ───────────────
-excludes = [
-    # PostgreSQL driver — not needed for SQLite
-    "psycopg",
-    "psycopg2",
-    "psycopg_binary",
-    # Bridges — not needed in V1 Local mode
-    "discord",
-    "telegram",
-    # Playwright — excluded to reduce binary size (~600MB → ~100MB)
-    "playwright",
-    "playwright.sync_api",
-    "playwright.async_api",
-    # WhatsApp bridge — not needed in V1 Local mode
-    "pywa",
-    # Test frameworks
-    "pytest",
-    "mypy",
-    "ruff",
-]
+BACKEND_DIR = Path("backend").resolve()
 
 a = Analysis(
-    [str(backend_root / "app" / "desktop_entry.py")],
-    pathex=[str(backend_root)],
-    binaries=[],
-    datas=datas,
-    hiddenimports=hiddenimports,
+    [str(BACKEND_DIR / "desktop_launcher.py")],
+    pathex=[str(BACKEND_DIR)],
+    binaries=[] + _litellm_binaries,
+    datas=[
+        # Email templates shipped with the bundle
+        (str(BACKEND_DIR / "app" / "email-templates"), "app/email-templates"),
+    ] + _litellm_datas,
+    hiddenimports=[
+        # uvicorn internals not auto-discovered
+        "uvicorn",
+        "uvicorn.logging",
+        "uvicorn.loops",
+        "uvicorn.loops.auto",
+        "uvicorn.loops.asyncio",
+        "uvicorn.protocols",
+        "uvicorn.protocols.http",
+        "uvicorn.protocols.http.auto",
+        "uvicorn.protocols.http.h11_impl",
+        "uvicorn.protocols.websockets",
+        "uvicorn.protocols.websockets.auto",
+        "uvicorn.protocols.websockets.websockets_impl",
+        "uvicorn.lifespan",
+        "uvicorn.lifespan.on",
+        # FastAPI / Starlette extras
+        "fastapi",
+        "starlette",
+        "email_validator",
+        # litellm (collected via collect_all above)
+        "litellm",
+        # App modules
+        "app",
+        "app.main",
+        "app.core",
+        "app.core.config",
+        "app.api",
+        "app.api.main",
+        "app.api.deps",
+        "app.api.routes",
+        "app.services",
+        "app.services.guardian",
+    ] + _litellm_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=excludes,
+    excludes=[
+        "tkinter",
+        "matplotlib",
+        "numpy",
+        "PIL",
+        "test",
+        "tests",
+    ],
+    win_no_prefer_redirects=False,
+    win_private_assemblies=False,
+    cipher=block_cipher,
     noarchive=False,
 )
-pyz = PYZ(a.pure)
+
+pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 exe = EXE(
     pyz,
     a.scripts,
     a.binaries,
+    a.zipfiles,
     a.datas,
     [],
     name="sparkbot-backend",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=False,
-    console=False,
+    upx=True,
+    upx_exclude=[],
+    runtime_tmpdir=None,
+    console=True,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
 )
