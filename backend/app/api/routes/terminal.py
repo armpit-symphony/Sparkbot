@@ -44,7 +44,10 @@ from pydantic import BaseModel
 
 from app.api.deps import CurrentChatUser, get_db
 from app.core.config import settings
-from app.services.terminal_service import terminal_manager
+try:
+    from app.services.terminal_service import terminal_manager
+except ImportError:
+    terminal_manager = None  # type: ignore[assignment]  # unavailable on Windows
 
 logger = logging.getLogger(__name__)
 
