@@ -1,0 +1,314 @@
+name: Desktop Release
+
+# Triggered by a tag push matching desktop-v* (e.g. desktop-v1.3.0).
+# Produces Windows NSIS installer, macOS DMG, and Linux AppImage,
+# then publishes all three as a GitHub Release.
+
+on:
+  push:
+    tags:
+      - "desktop-v*"
+
+jobs:
+  # ─────────────────────────── Windows (NSIS) ────────────────────────────────
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Setup Rust (stable, Windows target)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Install Tauri CLI v2
+        run: cargo install tauri-cli --version "^2"
+
+      - name: Install Bun workspace deps
+        run: bun install
+
+      - name: Sync backend Python deps (uv)
+        working-directory: backend
+        run: uv sync --group dev
+
+      - name: Build PyInstaller backend sidecar
+        shell: bash
+        run: |
+          cd backend
+          uv run python -m PyInstaller \
+            --distpath ../src-tauri/binaries \
+            --noconfirm \
+            ../sparkbot-backend.spec
+
+      - name: Rename sidecar for Tauri target triple
+        shell: pwsh
+        run: |
+          Move-Item `
+            src-tauri\binaries\sparkbot-backend.exe `
+            src-tauri\binaries\sparkbot-backend-x86_64-pc-windows-msvc.exe
+          Write-Host "Sidecar renamed OK."
+
+      - name: Build frontend (V1 local mode)
+        shell: bash
+        run: node scripts/run-desktop-frontend.mjs build
+
+      - name: Build Tauri installer (NSIS)
+        shell: bash
+        run: cargo tauri build --config src-tauri/tauri.conf.json --bundles nsis
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ""
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-windows
+          path: src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+          retention-days: 7
+
+  # ─────────────────────────── macOS (DMG, Intel) ────────────────────────────
+  build-macos:
+    runs-on: macos-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Setup Rust (stable, Intel target)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Install Tauri CLI v2
+        run: cargo install tauri-cli --version "^2"
+
+      - name: Install Bun workspace deps
+        run: bun install
+
+      - name: Sync backend Python deps (uv)
+        working-directory: backend
+        run: uv sync --group dev
+
+      - name: Build PyInstaller backend sidecar (Intel)
+        run: |
+          cd backend
+          uv run python -m PyInstaller \
+            --distpath ../src-tauri/binaries \
+            --noconfirm \
+            ../sparkbot-backend.spec
+
+      - name: Rename sidecar for Tauri target triple
+        run: |
+          mv src-tauri/binaries/sparkbot-backend \
+             src-tauri/binaries/sparkbot-backend-x86_64-apple-darwin
+
+      - name: Build frontend (V1 local mode)
+        run: node scripts/run-desktop-frontend.mjs build
+
+      - name: Build Tauri installer (DMG, Intel)
+        run: cargo tauri build --config src-tauri/tauri.conf.json --bundles dmg --target x86_64-apple-darwin
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ""
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-macos
+          path: src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+          retention-days: 7
+
+  # ─────────────────────────── Linux (AppImage) ──────────────────────────────
+  build-linux:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install system deps for Tauri (GTK, WebKit, AppImage)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libfuse2
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Setup Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Install Tauri CLI v2
+        run: cargo install tauri-cli --version "^2"
+
+      - name: Install Bun workspace deps
+        run: bun install
+
+      - name: Sync backend Python deps (uv)
+        working-directory: backend
+        run: uv sync --group dev
+
+      - name: Build PyInstaller backend sidecar
+        run: |
+          cd backend
+          uv run python -m PyInstaller \
+            --distpath ../src-tauri/binaries \
+            --noconfirm \
+            ../sparkbot-backend.spec
+
+      - name: Rename sidecar for Tauri target triple
+        run: |
+          mv src-tauri/binaries/sparkbot-backend \
+             src-tauri/binaries/sparkbot-backend-x86_64-unknown-linux-gnu
+
+      - name: Build frontend (V1 local mode)
+        run: node scripts/run-desktop-frontend.mjs build
+
+      - name: Build Tauri installer (AppImage)
+        run: cargo tauri build --config src-tauri/tauri.conf.json --bundles appimage
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ""
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-linux
+          path: src-tauri/target/release/bundle/appimage/*.AppImage
+          if-no-files-found: error
+          retention-days: 7
+
+  # ─────────────────────── GitHub Release (all 3 installers) ─────────────────
+  release:
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all installer artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          merge-multiple: true
+
+      - name: Generate SHA256 checksums
+        working-directory: dist
+        run: sha256sum * > SHA256SUMS
+
+      - name: List release files
+        run: ls -lh dist/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: "Sparkbot Desktop ${{ github.ref_name }}"
+          draft: false
+          prerelease: false
+          files: dist/*
+          body: |
+            ## Sparkbot Desktop ${{ github.ref_name }}
+
+            Double-click installer for Windows, macOS, and Linux — **no Docker required**.
+
+            ### Downloads
+
+            | Platform | File | Notes |
+            |----------|------|-------|
+            | Windows 10+ | `*-setup.exe` | NSIS installer |
+            | macOS 11+ (Intel) | `*.dmg` | Drag to Applications |
+            | Linux (x86-64) | `*.AppImage` | `chmod +x`, then run |
+
+            ### Install
+
+            - **Windows**: Download `*-setup.exe` and run it. SparkBot installs like any other app.
+            - **macOS**: Download the `.dmg`, open it, drag Sparkbot Local to Applications, then launch.
+            - **Linux**: Download the `.AppImage`, make it executable (`chmod +x *.AppImage`), then run it.
+
+            ### Verify checksums
+
+            ```
+            sha256sum --check SHA256SUMS
+            # or on macOS:
+            shasum -a 256 -c SHA256SUMS
+            ```
+
+            ### First launch
+
+            Sparkbot Controls opens automatically on first launch for provider/model setup.
+            No Docker, no terminal, no prerequisites beyond the installer itself.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

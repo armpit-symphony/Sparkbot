@@ -10,11 +10,24 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import secrets
 import sys
 from pathlib import Path
 
 
 logger = logging.getLogger(__name__)
+
+
+def _load_or_create_secret_key(data_dir: Path) -> str:
+    """Persist SECRET_KEY across restarts so sessions survive app relaunches."""
+    key_file = data_dir / "secret.key"
+    if key_file.exists():
+        key = key_file.read_text().strip()
+        if key:
+            return key
+    key = secrets.token_urlsafe(32)
+    key_file.write_text(key)
+    return key
 
 
 def _default_data_dir() -> Path:
@@ -40,7 +53,8 @@ def _configure_environment(args: argparse.Namespace) -> tuple[Path, Path]:
     os.environ.setdefault("FIRST_SUPERUSER_PASSWORD", "sparkbot-local")
     os.environ.setdefault(
         "BACKEND_CORS_ORIGINS",
-        "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173",
+        "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173"
+        ",tauri://localhost,https://tauri.localhost",
     )
     os.environ.setdefault("FRONTEND_HOST", "http://127.0.0.1:5173")
     os.environ.setdefault("SPARKBOT_PASSPHRASE", args.passphrase or "sparkbot-local")
@@ -77,6 +91,9 @@ def main() -> None:
     logger.info("Sparkbot desktop backend starting")
     logger.info("Data dir: %s", data_dir)
     logger.info("Guardian dir: %s", guardian_dir)
+
+    # Persist SECRET_KEY so sessions survive app restarts
+    os.environ.setdefault("SECRET_KEY", _load_or_create_secret_key(data_dir))
 
     _initialize_local_state()
 

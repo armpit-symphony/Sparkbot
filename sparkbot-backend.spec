@@ -110,6 +110,12 @@ excludes = [
     # Bridges — not needed in V1 Local mode
     "discord",
     "telegram",
+    # Playwright — excluded to reduce binary size (~600MB → ~100MB)
+    "playwright",
+    "playwright.sync_api",
+    "playwright.async_api",
+    # WhatsApp bridge — not needed in V1 Local mode
+    "pywa",
     # Test frameworks
     "pytest",
     "mypy",
