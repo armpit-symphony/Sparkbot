@@ -56,7 +56,7 @@ services:
       - ENVIRONMENT=local
       - PROJECT_NAME=${PROJECT_NAME:-Sparkbot}
       - SECRET_KEY=${SECRET_KEY:-please-change-this-secret-key-min-32}
-      - FIRST_SUPERUSER=${FIRST_SUPERUSER:-admin@sparkbot.local}
+      - FIRST_SUPERUSER=${FIRST_SUPERUSER:-admin@example.com}
       - FIRST_SUPERUSER_PASSWORD=${FIRST_SUPERUSER_PASSWORD:-changeme}
       - BACKEND_CORS_ORIGINS=http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000
 
@@ -87,7 +87,7 @@ services:
       - BACKEND_CORS_ORIGINS=http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000
       - PROJECT_NAME=${PROJECT_NAME:-Sparkbot}
       - SECRET_KEY=${SECRET_KEY:-please-change-this-secret-key-min-32}
-      - FIRST_SUPERUSER=${FIRST_SUPERUSER:-admin@sparkbot.local}
+      - FIRST_SUPERUSER=${FIRST_SUPERUSER:-admin@example.com}
       - FIRST_SUPERUSER_PASSWORD=${FIRST_SUPERUSER_PASSWORD:-changeme}
       - SPARKBOT_PASSPHRASE=${SPARKBOT_PASSPHRASE:-sparkbot-local}
       # LLM keys — set in .env.local or export before running
