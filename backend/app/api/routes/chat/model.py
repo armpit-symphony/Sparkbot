@@ -68,6 +68,12 @@ def _repo_root() -> Path:
 
 
 def _env_path() -> Path:
+    # When running as a PyInstaller frozen desktop bundle, SPARKBOT_DATA_DIR is set
+    # to the directory beside the exe by desktop_launcher.py.  Use it so that the
+    # .env written here is the same file that the launcher loads on next startup.
+    data_dir = os.environ.get("SPARKBOT_DATA_DIR")
+    if data_dir:
+        return Path(data_dir) / ".env"
     return _repo_root() / ".env"
 
 

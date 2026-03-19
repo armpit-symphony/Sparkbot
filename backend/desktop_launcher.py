@@ -20,11 +20,19 @@ if getattr(sys, "frozen", False):
     # Point alembic / SQLite to a writable location beside the exe
     exe_dir = os.path.dirname(sys.executable)
     os.environ.setdefault("SPARKBOT_DATA_DIR", exe_dir)
-    # Also write a minimal .env beside the exe so pydantic-settings finds it
+    # Ensure a .env file exists beside the exe for pydantic-settings and key storage
     env_path = os.path.join(exe_dir, ".env")
     if not os.path.exists(env_path):
         with open(env_path, "w") as f:
             f.write("PROJECT_NAME=Sparkbot\nDATABASE_TYPE=sqlite\nENVIRONMENT=local\n")
+    # Load saved keys (e.g. OPENROUTER_API_KEY) from the .env into the current process.
+    # setdefault is intentional: os.environ values set above take precedence.
+    with open(env_path) as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _k, _, _v = _line.partition("=")
+                os.environ.setdefault(_k.strip(), _v.strip())
 
 import argparse  # noqa: E402
 import uvicorn  # noqa: E402 (import after path fixup)
