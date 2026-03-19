@@ -75,7 +75,9 @@ fn start_backend(app: &tauri::AppHandle) -> Result<(), String> {
         .env("V1_LOCAL_MODE", "true")
         .env("DATABASE_TYPE", "sqlite")
         .env("WORKSTATION_LIVE_TERMINAL_ENABLED", "false")
-        .env("ENVIRONMENT", "local");
+        .env("ENVIRONMENT", "local")
+        .env("FRONTEND_HOST", "http://tauri.localhost")
+        .env("BACKEND_CORS_ORIGINS", "http://tauri.localhost,tauri://localhost");
 
     let (mut rx, child) = command.spawn().map_err(|err| err.to_string())?;
 
