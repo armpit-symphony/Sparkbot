@@ -26,13 +26,19 @@ if getattr(sys, "frozen", False):
         with open(env_path, "w") as f:
             f.write("PROJECT_NAME=Sparkbot\nDATABASE_TYPE=sqlite\nENVIRONMENT=local\n")
 
+import argparse  # noqa: E402
 import uvicorn  # noqa: E402 (import after path fixup)
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--data-dir", default=None)  # consumed by Tauri; ignored here
+    args, _ = parser.parse_known_args()
+
     uvicorn.run(
         "app.main:app",
-        host="127.0.0.1",
-        port=8765,
+        host=args.host,
+        port=args.port,
         log_level="info",
-        # reload=False is the default; keep it off for frozen builds
     )

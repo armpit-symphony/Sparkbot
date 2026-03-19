@@ -9,7 +9,7 @@ use tauri::{Manager, RunEvent};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 
-const SIDECAR_NAME: &str = "binaries/sparkbot-backend";
+const SIDECAR_NAME: &str = "sparkbot-backend";
 const BACKEND_HOST: &str = "127.0.0.1";
 const BACKEND_PORT: &str = "8000";
 

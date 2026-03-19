@@ -11,7 +11,7 @@
       "identifier": "shell:allow-execute",
       "allow": [
         {
-          "name": "binaries/sparkbot-backend",
+          "name": "sparkbot-backend",
           "sidecar": true
         }
       ]
