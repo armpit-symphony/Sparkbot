@@ -95,30 +95,6 @@ jobs:
             src-tauri\binaries\sparkbot-backend-x86_64-pc-windows-msvc.exe
           Write-Host "Sidecar renamed OK."
 
-      # ── Sign the backend sidecar BEFORE it goes into the installer ──────────
-      - name: Upload unsigned sidecar for signing
-        if: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
-        id: upload-sidecar
-        uses: actions/upload-artifact@v4
-        with:
-          name: unsigned-sidecar-windows
-          path: src-tauri/binaries/sparkbot-backend-x86_64-pc-windows-msvc.exe
-          retention-days: 1
-
-      - name: Sign backend sidecar (SignPath Foundation)
-        if: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
-        uses: signpath/github-action-submit-signing-request@v1
-        with:
-          api-token: '${{ secrets.SIGNPATH_API_TOKEN }}'
-          organization-id: '${{ secrets.SIGNPATH_ORG_ID }}'
-          project-slug: 'sparkbot'
-          signing-policy-slug: 'release-signing'
-          artifact-configuration-slug: 'windows-sidecar'
-          github-artifact-id: '${{ steps.upload-sidecar.outputs.artifact-id }}'
-          wait-for-completion: true
-          output-artifact-directory: src-tauri/binaries/
-      # ────────────────────────────────────────────────────────────────────────
-
       - name: Build frontend (V1 local mode)
         shell: bash
         run: node scripts/run-desktop-frontend.mjs build
@@ -127,38 +103,11 @@ jobs:
         shell: bash
         run: cargo tauri build --config src-tauri/tauri.conf.json --bundles nsis
 
-      # ── Sign the NSIS installer ──────────────────────────────────────────────
-      - name: Upload unsigned installer for signing
-        if: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
-        id: upload-installer-unsigned
-        uses: actions/upload-artifact@v4
-        with:
-          name: unsigned-installer-windows
-          path: src-tauri/target/release/bundle/nsis/*.exe
-          retention-days: 1
-
-      - name: Sign NSIS installer (SignPath Foundation)
-        if: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
-        uses: signpath/github-action-submit-signing-request@v1
-        with:
-          api-token: '${{ secrets.SIGNPATH_API_TOKEN }}'
-          organization-id: '${{ secrets.SIGNPATH_ORG_ID }}'
-          project-slug: 'sparkbot'
-          signing-policy-slug: 'release-signing'
-          artifact-configuration-slug: 'windows-installer'
-          github-artifact-id: '${{ steps.upload-installer-unsigned.outputs.artifact-id }}'
-          wait-for-completion: true
-          output-artifact-directory: signed-installer/
-      # ────────────────────────────────────────────────────────────────────────
-
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
           name: installer-windows
-          # Use signed installer if signing ran, otherwise use unsigned build output
-          path: |
-            signed-installer/*.exe
-            src-tauri/target/release/bundle/nsis/*.exe
+          path: src-tauri/target/release/bundle/nsis/*.exe
           if-no-files-found: error
           retention-days: 7
 
