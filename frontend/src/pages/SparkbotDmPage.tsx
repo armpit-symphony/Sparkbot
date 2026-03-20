@@ -2408,27 +2408,27 @@ function SparkbotDmPage() {
     setCommsForm({
       telegram: {
         bot_token: "",
-        enabled: Boolean(config.comms.telegram.poll_enabled),
-        private_only: Boolean(config.comms.telegram.private_only),
+        enabled: Boolean(config.comms?.telegram?.poll_enabled),
+        private_only: Boolean(config.comms?.telegram?.private_only),
       },
       discord: {
         bot_token: "",
-        enabled: Boolean(config.comms.discord.enabled),
-        dm_only: Boolean(config.comms.discord.dm_only),
+        enabled: Boolean(config.comms?.discord?.enabled),
+        dm_only: Boolean(config.comms?.discord?.dm_only),
       },
       whatsapp: {
         token: "",
         phone_id: "",
         verify_token: "sparkbot-wa-verify",
-        enabled: Boolean(config.comms.whatsapp.enabled),
+        enabled: Boolean(config.comms?.whatsapp?.enabled),
       },
       github: {
         token: "",
         webhook_secret: "",
-        bot_login: config.comms.github.bot_login || "sparkbot",
-        default_repo: config.comms.github.default_repo || "",
-        allowed_repos: (config.comms.github.allowed_repos ?? []).join(", "),
-        enabled: Boolean(config.comms.github.enabled),
+        bot_login: config.comms?.github?.bot_login || "sparkbot",
+        default_repo: config.comms?.github?.default_repo || "",
+        allowed_repos: (config.comms?.github?.allowed_repos ?? []).join(", "),
+        enabled: Boolean(config.comms?.github?.enabled),
       },
     })
     setOllamaBaseUrl(config.local_runtime?.base_url || "http://localhost:11434")
