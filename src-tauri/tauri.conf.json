@@ -37,6 +37,9 @@
     ],
     "externalBin": [
       "binaries/sparkbot-backend"
-    ]
+    ],
+    "nsis": {
+      "installerHooks": "nsis/installer-hooks.nsh"
+    }
   }
 }
