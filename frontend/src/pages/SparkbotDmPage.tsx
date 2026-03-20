@@ -681,6 +681,7 @@ interface SparkbotSettingsDialogProps {
   taskArgs: string
   taskSaving: boolean
   error: string
+  success: string
   onRefresh: () => void
   onToggleExecution: (enabled: boolean) => void
   onModelStackChange: (field: keyof ModelStackForm, value: string) => void
@@ -785,6 +786,7 @@ function SparkbotSettingsDialog({
   taskArgs,
   taskSaving,
   error,
+  success,
   onRefresh,
   onToggleExecution,
   onModelStackChange,
@@ -2205,6 +2207,11 @@ function SparkbotSettingsDialog({
             </div>
           </section> : null}
 
+          {success && !error && !loading && (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+              {success}
+            </div>
+          )}
           {(loading || error) && (
             <div className="rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground">
               {loading ? "Loading controls..." : error}
@@ -2250,6 +2257,7 @@ function SparkbotDmPage() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsLoading, setSettingsLoading] = useState(false)
   const [settingsError, setSettingsError] = useState("")
+  const [settingsSuccess, setSettingsSuccess] = useState("")
   const [savingExecution, setSavingExecution] = useState(false)
   const [controlsDashboard, setControlsDashboard] = useState<ControlsDashboardSummary | null>(null)
   const [modelsConfig, setModelsConfig] = useState<ModelsControlsConfig | null>(null)
@@ -2793,6 +2801,7 @@ function SparkbotDmPage() {
     }
     setSavingProviderTokens(true)
     setSettingsError("")
+    setSettingsSuccess("")
     try {
       const res = await apiFetch("/api/v1/chat/models/config", {
         method: "POST",
@@ -2817,6 +2826,7 @@ function SparkbotDmPage() {
         if (payload.openrouter_api_key) {
           await loadOpenRouterModels()
         }
+        setSettingsSuccess("Key saved. You can now pick a model from the list below.")
         setMessages(prev => [...prev, systemMsg("Provider tokens saved.")])
       }
     } catch {
@@ -3891,6 +3901,7 @@ function SparkbotDmPage() {
         taskArgs={taskArgs}
         taskSaving={taskSaving}
         error={settingsError}
+        success={settingsSuccess}
         onRefresh={refreshControls}
         onToggleExecution={toggleExecutionGate}
         onModelStackChange={handleModelStackChange}
