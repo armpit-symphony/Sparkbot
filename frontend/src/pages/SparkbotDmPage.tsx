@@ -865,7 +865,7 @@ function SparkbotSettingsDialog({
     ?? modelId.replace("ollama/", "")
 
   const hasOpenRouterConfigured = Boolean(
-    modelsConfig?.providers.find((provider) => provider.id === "openrouter")?.configured,
+    modelsConfig?.providers?.find((provider) => provider.id === "openrouter")?.configured,
   )
   const directProviderLabel: Record<string, string> = {
     openai: "OpenAI", anthropic: "Anthropic", google: "Google", groq: "Groq", minimax: "MiniMax",
@@ -875,21 +875,21 @@ function SparkbotSettingsDialog({
     google: "google_api_key", groq: "groq_api_key", minimax: "minimax_api_key",
   }
   const directProviderIsConfigured = (id: string) =>
-    Boolean(modelsConfig?.providers.find((p) => p.id === id)?.configured)
+    Boolean(modelsConfig?.providers?.find((p) => p.id === id)?.configured)
   const directProviderModels = (id: string): string[] =>
-    modelsConfig?.providers.find((p) => p.id === id)?.models ?? []
-  const ollamaProvider = modelsConfig?.providers.find((provider) => provider.id === "ollama")
+    modelsConfig?.providers?.find((p) => p.id === id)?.models ?? []
+  const ollamaProvider = modelsConfig?.providers?.find((provider) => provider.id === "ollama")
   const routingAgents = modelsConfig?.available_agents ?? []
   const showAdvancedControls = !isV1LocalMode
 
-  const readyProviderCount = modelsConfig?.providers.filter(
+  const readyProviderCount = modelsConfig?.providers?.filter(
     (provider) => provider.configured || provider.models_available === true,
   ).length ?? 0
   const enabledChannelCount = [
-    Boolean(commsForm.telegram.enabled && modelsConfig?.comms.telegram.configured),
-    Boolean(commsForm.discord.enabled && modelsConfig?.comms.discord.configured),
-    Boolean(commsForm.whatsapp.enabled && modelsConfig?.comms.whatsapp.configured),
-    Boolean(commsForm.github.enabled && modelsConfig?.comms.github.configured),
+    Boolean(commsForm.telegram.enabled && modelsConfig?.comms?.telegram?.configured),
+    Boolean(commsForm.discord.enabled && modelsConfig?.comms?.discord?.configured),
+    Boolean(commsForm.whatsapp.enabled && modelsConfig?.comms?.whatsapp?.configured),
+    Boolean(commsForm.github.enabled && modelsConfig?.comms?.github?.configured),
   ].filter(Boolean).length
   const onboardingSteps = showAdvancedControls
     ? [
@@ -1622,10 +1622,10 @@ function SparkbotSettingsDialog({
                     const route = override.route
                     const modelValue = override.model ?? ""
                     const selectedModel = route === "openrouter"
-                      ? modelValue || modelsConfig?.default_selection.model || ""
+                      ? modelValue || modelsConfig?.default_selection?.model || ""
                       : route === "local"
                         ? modelValue || localDefaultModel
-                        : modelsConfig?.default_selection.model || ""
+                        : modelsConfig?.default_selection?.model || ""
 
                     return (
                       <div key={agent.name} className="rounded-lg border bg-muted/30 px-3 py-3">
@@ -1700,7 +1700,7 @@ function SparkbotSettingsDialog({
               <div className="rounded-lg border bg-background/60 px-3 py-3">
                 <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Current default</div>
                 <div className="mt-2 text-xs text-muted-foreground">
-                  {modelsConfig?.default_selection.label ?? modelsConfig?.default_selection.model ?? "No default selected"}
+                  {modelsConfig?.default_selection?.label ?? modelsConfig?.default_selection?.model ?? "No default selected"}
                 </div>
               </div>
             </div>
@@ -1717,12 +1717,12 @@ function SparkbotSettingsDialog({
               <div className="rounded-lg border bg-muted/40 px-3 py-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-sm font-medium">Telegram</div>
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms.telegram.configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
-                    {modelsConfig?.comms.telegram.configured ? "Configured" : "Missing"}
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms?.telegram?.configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
+                    {modelsConfig?.comms?.telegram?.configured ? "Configured" : "Missing"}
                   </span>
                 </div>
                 <div className="mt-0.5 text-[10px] text-muted-foreground/70">Reads messages · Sends replies · No file access</div>
-                <div className="mt-1 text-xs text-muted-foreground">Linked chats: {modelsConfig?.comms.telegram.linked_chats ?? 0}</div>
+                <div className="mt-1 text-xs text-muted-foreground">Linked chats: {modelsConfig?.comms?.telegram?.linked_chats ?? 0}</div>
                 <input
                   type="password"
                   value={commsForm.telegram.bot_token}
@@ -1751,12 +1751,12 @@ function SparkbotSettingsDialog({
               <div className="rounded-lg border bg-muted/40 px-3 py-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-sm font-medium">Discord</div>
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms.discord.configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
-                    {modelsConfig?.comms.discord.configured ? "Configured" : "Missing"}
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms?.discord?.configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
+                    {modelsConfig?.comms?.discord?.configured ? "Configured" : "Missing"}
                   </span>
                 </div>
                 <div className="mt-0.5 text-[10px] text-muted-foreground/70">Reads DMs & mentions · Sends replies · No server data access</div>
-                <div className="mt-1 text-xs text-muted-foreground">Linked channels: {modelsConfig?.comms.discord.linked_channels ?? 0}</div>
+                <div className="mt-1 text-xs text-muted-foreground">Linked channels: {modelsConfig?.comms?.discord?.linked_channels ?? 0}</div>
                 <input
                   type="password"
                   value={commsForm.discord.bot_token}
@@ -1785,12 +1785,12 @@ function SparkbotSettingsDialog({
               <div className="rounded-lg border bg-muted/40 px-3 py-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-sm font-medium">WhatsApp</div>
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms.whatsapp.configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
-                    {modelsConfig?.comms.whatsapp.configured ? "Configured" : "Missing"}
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms?.whatsapp?.configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
+                    {modelsConfig?.comms?.whatsapp?.configured ? "Configured" : "Missing"}
                   </span>
                 </div>
                 <div className="mt-0.5 text-[10px] text-muted-foreground/70">Reads messages · Sends replies · 24-hour session window</div>
-                <div className="mt-1 text-xs text-muted-foreground">Linked numbers: {modelsConfig?.comms.whatsapp.linked_numbers ?? 0}</div>
+                <div className="mt-1 text-xs text-muted-foreground">Linked numbers: {modelsConfig?.comms?.whatsapp?.linked_numbers ?? 0}</div>
                 <input
                   type="password"
                   value={commsForm.whatsapp.token}
@@ -1825,13 +1825,13 @@ function SparkbotSettingsDialog({
               <div className="rounded-lg border bg-muted/40 px-3 py-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-sm font-medium">GitHub</div>
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms.github.configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
-                    {modelsConfig?.comms.github.configured ? "Configured" : "Missing"}
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms?.github?.configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
+                    {modelsConfig?.comms?.github?.configured ? "Configured" : "Missing"}
                   </span>
                 </div>
                 <div className="mt-0.5 text-[10px] text-muted-foreground/70">Reads issues & PRs · Posts comments · Write actions require approval</div>
-                <div className="mt-1 text-xs text-muted-foreground">Linked threads: {modelsConfig?.comms.github.linked_threads ?? 0}</div>
-                <div className="mt-1 text-xs text-muted-foreground">Webhook: {modelsConfig?.comms.github.webhook_path ?? "/api/v1/chat/github/events"}</div>
+                <div className="mt-1 text-xs text-muted-foreground">Linked threads: {modelsConfig?.comms?.github?.linked_threads ?? 0}</div>
+                <div className="mt-1 text-xs text-muted-foreground">Webhook: {modelsConfig?.comms?.github?.webhook_path ?? "/api/v1/chat/github/events"}</div>
                 <input
                   type="password"
                   value={commsForm.github.token}
@@ -1879,14 +1879,14 @@ function SparkbotSettingsDialog({
                   <div className="text-[11px] uppercase tracking-wide text-muted-foreground">GitHub onboarding</div>
                   <div className="mt-2 space-y-1 text-xs text-muted-foreground">
                     <div>1. Paste a GitHub token and a webhook secret, then save comms.</div>
-                    <div>2. In your repo, add a webhook to <code className="rounded bg-muted px-1 py-0.5">{modelsConfig?.comms.github.webhook_path ?? "/api/v1/chat/github/events"}</code>.</div>
+                    <div>2. In your repo, add a webhook to <code className="rounded bg-muted px-1 py-0.5">{modelsConfig?.comms?.github?.webhook_path ?? "/api/v1/chat/github/events"}</code>.</div>
                     <div>3. Select <span className="font-medium text-foreground">Issue comments</span> and <span className="font-medium text-foreground">Pull request review comments</span>.</div>
                     <div>4. Restart <code className="rounded bg-muted px-1 py-0.5">sparkbot-v2</code>, then test in a thread with <code className="rounded bg-muted px-1 py-0.5">/sparkbot summarize this PR</code>.</div>
                   </div>
                   <div className="mt-3 rounded-md bg-muted/50 px-2 py-2 text-[11px] text-muted-foreground">
                     Replies in-thread support <code className="rounded bg-background px-1 py-0.5">approve</code> and <code className="rounded bg-background px-1 py-0.5">deny</code> for pending actions.
                   </div>
-                  {modelsConfig?.comms.github.allowed_repos_count ? (
+                  {modelsConfig?.comms?.github?.allowed_repos_count ? (
                     <div className="mt-2 text-[11px] text-muted-foreground">
                       Allowlisted repos: {modelsConfig.comms.github.allowed_repos.join(", ")}
                     </div>
@@ -2325,7 +2325,7 @@ function SparkbotDmPage() {
     ((routerState.location as { searchStr?: string }).searchStr) ?? window.location.search
   )
   const pageHasOpenRouterConfigured = Boolean(
-    modelsConfig?.providers.find((provider) => provider.id === "openrouter")?.configured,
+    modelsConfig?.providers?.find((provider) => provider.id === "openrouter")?.configured,
   )
 
   // ── Reply / edit state ───────────────────────────────────────────────────────
@@ -4003,7 +4003,7 @@ function SparkbotDmPage() {
       {/* Messages */}
       <div className="flex-1 overflow-auto px-4 py-4 space-y-2">
         {messages.length === 0 ? (
-          (modelsConfig?.providers.filter((p) => p.configured || p.models_available === true).length ?? 0) === 0 ? (
+          (modelsConfig?.providers?.filter((p) => p.configured || p.models_available === true).length ?? 0) === 0 ? (
             <div className="flex flex-col items-center justify-center h-full gap-4 py-12 text-center px-4">
               <div className="flex size-14 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-500">
                 <svg xmlns="http://www.w3.org/2000/svg" className="size-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
