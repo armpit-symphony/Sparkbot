@@ -33,6 +33,18 @@ if getattr(sys, "frozen", False):
             if _line and not _line.startswith("#") and "=" in _line:
                 _k, _, _v = _line.partition("=")
                 os.environ.setdefault(_k.strip(), _v.strip())
+    # Also load from SPARKBOT_DATA_DIR/.env (where model.py writes user keys).
+    # Tauri sets SPARKBOT_DATA_DIR to %APPDATA%\Sparkbot, which differs from exe_dir.
+    _data_dir = os.environ.get("SPARKBOT_DATA_DIR", "")
+    if _data_dir and _data_dir != exe_dir:
+        _data_env_path = os.path.join(_data_dir, ".env")
+        if os.path.exists(_data_env_path):
+            with open(_data_env_path) as _f2:
+                for _line2 in _f2:
+                    _line2 = _line2.strip()
+                    if _line2 and not _line2.startswith("#") and "=" in _line2:
+                        _k2, _, _v2 = _line2.partition("=")
+                        os.environ.setdefault(_k2.strip(), _v2.strip())
 
 import argparse  # noqa: E402
 import uvicorn  # noqa: E402 (import after path fixup)
