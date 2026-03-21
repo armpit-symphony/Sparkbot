@@ -1482,6 +1482,12 @@ function SparkbotSettingsDialog({
                       {savingDefaultSelection ? "Saving default..." : "Save default model"}
                     </button>
                   </div>
+                  {success && !error && (
+                    <p className="mt-2 text-right text-xs font-medium text-emerald-600">{success}</p>
+                  )}
+                  {error && (
+                    <p className="mt-2 text-right text-xs font-medium text-red-600">{error}</p>
+                  )}
                 </div>
 
                 <div className="rounded-lg border bg-muted/20 p-4">
@@ -2813,8 +2819,8 @@ function SparkbotDmPage() {
       if (!res.ok) {
         setSettingsError(data.detail ?? "Could not save provider tokens.")
       } else {
+        setSettingsSuccess("Key saved. You can now pick a model from the list below.")
         applyControlsConfig(data)
-        await refreshControls()
         setProviderDrafts({
           openrouter_api_key: "",
           openai_api_key: "",
@@ -2823,10 +2829,10 @@ function SparkbotDmPage() {
           groq_api_key: "",
           minimax_api_key: "",
         })
+        await refreshControls()
         if (payload.openrouter_api_key) {
           await loadOpenRouterModels()
         }
-        setSettingsSuccess("Key saved. You can now pick a model from the list below.")
         setMessages(prev => [...prev, systemMsg("Provider tokens saved.")])
       }
     } catch {
