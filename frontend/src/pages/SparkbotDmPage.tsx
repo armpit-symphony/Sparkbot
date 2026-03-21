@@ -1361,14 +1361,29 @@ function SparkbotSettingsDialog({
                           className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
                         >
                           <option value="">Choose an OpenRouter model</option>
-                          {openRouterModels.map((model) => (
+                          {openRouterModels.length > 0 ? openRouterModels.map((model) => (
+                            <option key={model.id} value={model.id}>
+                              {model.label}
+                            </option>
+                          )) : [
+                            { id: "openrouter/openai/gpt-4o-mini", label: "GPT-4o Mini (OpenAI)" },
+                            { id: "openrouter/openai/gpt-4o", label: "GPT-4o (OpenAI)" },
+                            { id: "openrouter/anthropic/claude-3.5-sonnet", label: "Claude 3.5 Sonnet (Anthropic)" },
+                            { id: "openrouter/anthropic/claude-3.5-haiku", label: "Claude 3.5 Haiku (Anthropic)" },
+                            { id: "openrouter/google/gemini-flash-1.5", label: "Gemini Flash 1.5 (Google)" },
+                            { id: "openrouter/google/gemini-2.0-flash-001", label: "Gemini 2.0 Flash (Google)" },
+                            { id: "openrouter/meta-llama/llama-3.3-70b-instruct", label: "Llama 3.3 70B (Meta)" },
+                            { id: "openrouter/mistralai/mistral-small-3.1-24b-instruct", label: "Mistral Small 3.1 (Mistral)" },
+                          ].map((model) => (
                             <option key={model.id} value={model.id}>
                               {model.label}
                             </option>
                           ))}
                         </select>
                         <p className="mt-1 text-[11px] text-muted-foreground">
-                          Sparkbot will use this as the main cloud model for everyday chat unless an agent override says otherwise.
+                          {openRouterModels.length === 0
+                            ? "Showing built-in model list — click \"Refresh OpenRouter models\" above to load the full catalogue."
+                            : "Sparkbot will use this as the main cloud model for everyday chat unless an agent override says otherwise."}
                         </p>
                       </div>
                     </div>
