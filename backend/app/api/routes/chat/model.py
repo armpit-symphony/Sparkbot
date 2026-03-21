@@ -672,6 +672,9 @@ async def update_models_config(body: ControlsConfigUpdate, current_user: Current
     elif body.providers is not None:
         notices.append("Provider tokens are live in the current process and persisted for restart.")
 
-    response = await _build_controls_config(current_user, notices=notices)
-    response["restart_required"] = restart_required
-    return response
+    # Return a minimal acknowledgement instead of the full config snapshot.
+    # The full config includes an Ollama reachability check (3 s timeout) that
+    # makes the response slow and large — causing WebView2 body-parse failures.
+    # The frontend calls GET /models/config (refreshControls) after any save to
+    # reload state, so we don't need to send the full config here.
+    return {"ok": True, "notices": notices, "restart_required": restart_required}

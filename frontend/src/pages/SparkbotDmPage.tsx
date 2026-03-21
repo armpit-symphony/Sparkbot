@@ -2833,15 +2833,9 @@ function SparkbotDmPage() {
       })
       const data = await res.json().catch(() => null)
       if (!res.ok) {
-        setSettingsError(`Save failed (${res.status}): ${data?.detail ?? "no detail"}`)
-      } else if (!data) {
-        // Key was saved on the backend but the JSON response failed to parse.
-        // refreshControls() will reload everything correctly.
-        setSettingsSuccess("Key saved! Close and reopen Settings to refresh the model list.")
-        setMessages(prev => [...prev, systemMsg("Provider tokens saved.")])
+        setSettingsError(data?.detail ?? `Save failed (${res.status})`)
       } else {
         setSettingsSuccess("Key saved. You can now pick a model from the list below.")
-        applyControlsConfig(data)
         setProviderDrafts({
           openrouter_api_key: "",
           openai_api_key: "",
@@ -2878,11 +2872,10 @@ function SparkbotDmPage() {
         credentials: "include",
         body: JSON.stringify({ stack: modelStack }),
       })
-      const data = await res.json().catch(() => ({ detail: "Could not save model stack." }))
+      const data = await res.json().catch(() => null)
       if (!res.ok) {
-        setSettingsError(data.detail ?? "Could not save model stack.")
+        setSettingsError(data?.detail ?? "Could not save model stack.")
       } else {
-        applyControlsConfig(data)
         await refreshControls()
         setMessages((prev) => [...prev, systemMsg("Four-model stack saved.")])
       }
@@ -2959,11 +2952,10 @@ function SparkbotDmPage() {
           },
         }),
       })
-      const data = await res.json().catch(() => ({ detail: "Could not save default model." }))
+      const data = await res.json().catch(() => null)
       if (!res.ok) {
-        setSettingsError(data.detail ?? "Could not save default model.")
+        setSettingsError(data?.detail ?? "Could not save default model.")
       } else {
-        applyControlsConfig(data)
         await refreshControls()
         setMessages((prev) => [
           ...prev,
