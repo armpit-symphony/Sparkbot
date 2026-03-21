@@ -2815,12 +2815,18 @@ function SparkbotDmPage() {
         credentials: "include",
         body: JSON.stringify({ providers: payload }),
       })
-      const data = await res.json().catch(() => ({ detail: "Could not save provider tokens." }))
+      const data = await res.json().catch(() => null)
       if (!res.ok) {
-        setSettingsError(data.detail ?? "Could not save provider tokens.")
+        setSettingsError(`Save failed (${res.status}): ${data?.detail ?? "no detail"}`)
       } else {
         setSettingsSuccess("Key saved. You can now pick a model from the list below.")
-        applyControlsConfig(data)
+        try {
+          applyControlsConfig(data)
+        } catch (e) {
+          setSettingsError(`Key saved but UI refresh crashed: ${e instanceof Error ? e.message : String(e)}`)
+          setSavingProviderTokens(false)
+          return
+        }
         setProviderDrafts({
           openrouter_api_key: "",
           openai_api_key: "",
@@ -2835,8 +2841,8 @@ function SparkbotDmPage() {
         }
         setMessages(prev => [...prev, systemMsg("Provider tokens saved.")])
       }
-    } catch {
-      setSettingsError("Could not save provider tokens.")
+    } catch (e) {
+      setSettingsError(`Network error: ${e instanceof Error ? e.message : String(e)}`)
     } finally {
       setSavingProviderTokens(false)
     }
