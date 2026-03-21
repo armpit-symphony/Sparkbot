@@ -14,6 +14,10 @@ Design notes:
 - Idle sessions with no active WS subscriber are closed after
   SESSION_IDLE_TIMEOUT seconds.
 """
+import sys
+if sys.platform == "win32":
+    raise ImportError("terminal_service requires Linux/Unix (fcntl/termios unavailable on Windows)")
+
 import asyncio
 import fcntl
 import logging
@@ -37,73 +41,6 @@ DEFAULT_SHELL = "/bin/bash"
 ALLOWED_SHELLS = {"/bin/bash", "/bin/sh", "/usr/bin/bash", "/usr/bin/zsh", "/bin/zsh"}
 READ_CHUNK = 4096
 SELECT_TIMEOUT = 0.5  # seconds for blocking select in executor
-SSH_BINARY = "/usr/bin/ssh"
-
-
-def _ssh_allowed_hosts() -> set[str]:
-    """Return the set of SSH hosts permitted for remote terminal sessions.
-
-    Configure via SPARKBOT_TERMINAL_SSH_ALLOWED_HOSTS (comma-separated).
-    Example: "myserver.example.com,user@devbox.lan"
-    Empty → SSH remote sessions are disabled.
-    """
-    raw = os.getenv("SPARKBOT_TERMINAL_SSH_ALLOWED_HOSTS", "").strip()
-    if not raw:
-        return set()
-    return {h.strip() for h in raw.split(",") if h.strip()}
-
-
-def _ssh_key_path() -> Optional[str]:
-    """Return explicit SSH identity file path, or None to use ssh defaults."""
-    p = os.getenv("SPARKBOT_TERMINAL_SSH_KEY_PATH", "").strip()
-    return p or None
-
-
-# ─── Terminal command policy ──────────────────────────────────────────────────
-
-def _command_policy_enabled() -> bool:
-    """True when command-level Guardian policy is active.
-
-    Default: False (personal/operator mode — raw shell, no filtering).
-    Set SPARKBOT_TERMINAL_COMMAND_POLICY=true to enable.
-    Recommended for any multi-user or public-facing deployment.
-    """
-    return os.getenv("SPARKBOT_TERMINAL_COMMAND_POLICY", "false").lower() in ("true", "1", "yes")
-
-
-def _blocked_command_patterns() -> list[str]:
-    """Return the list of blocked command prefixes/patterns.
-
-    Override via SPARKBOT_TERMINAL_BLOCKED_COMMANDS (comma-separated).
-    Default blocks a hardened set of destructive/exfiltration commands.
-    """
-    default_blocks = (
-        "rm -rf /,rm -rf /*,mkfs,dd if=,shutdown,reboot,halt,poweroff,"
-        ":(){ :|:& };:,> /dev/sda,wget|bash,curl|bash,curl|sh,wget|sh"
-    )
-    raw = os.getenv("SPARKBOT_TERMINAL_BLOCKED_COMMANDS", default_blocks)
-    return [p.strip() for p in raw.split(",") if p.strip()]
-
-
-def check_command_policy(line: str) -> tuple[bool, str]:
-    """Check a completed command line against Guardian policy.
-
-    Returns (allowed: bool, reason: str).
-    Only called when SPARKBOT_TERMINAL_COMMAND_POLICY=true.
-    Input inspection is best-effort — a determined user can bypass it via
-    multi-line here-docs or variable indirection. This is a first-pass
-    deterrent for accidental or casual misuse, not a security boundary.
-    """
-    if not _command_policy_enabled():
-        return True, ""
-    stripped = line.strip()
-    if not stripped:
-        return True, ""
-    lower = stripped.lower()
-    for pattern in _blocked_command_patterns():
-        if lower.startswith(pattern.lower()) or pattern.lower() in lower:
-            return False, f"Command blocked by Terminal Guardian policy: '{pattern}'"
-    return True, ""
 
 
 # ─── Session model ────────────────────────────────────────────────────────────
@@ -181,26 +118,11 @@ class TerminalSessionManager:
         shell: str = DEFAULT_SHELL,
         station_id: Optional[str] = None,
     ) -> TerminalSession:
-        """Spawn a PTY-backed shell (localhost) or SSH session (remote host)."""
-        is_remote = host not in ("localhost", "127.0.0.1", "")
-        if is_remote:
-            allowed = _ssh_allowed_hosts()
-            if not allowed:
-                raise ValueError(
-                    "Remote SSH terminals are disabled. "
-                    "Set SPARKBOT_TERMINAL_SSH_ALLOWED_HOSTS to enable."
-                )
-            # Normalise: strip user@ for the allowlist check so both
-            # "myhost" and "user@myhost" are accepted when "myhost" is listed.
-            bare_host = host.split("@")[-1]
-            if host not in allowed and bare_host not in allowed:
-                raise ValueError(
-                    f"Host '{bare_host}' is not in the SSH allowlist. "
-                    "Add it to SPARKBOT_TERMINAL_SSH_ALLOWED_HOSTS."
-                )
-        else:
-            if shell not in ALLOWED_SHELLS:
-                raise ValueError(f"Shell not permitted: {shell}")
+        """Spawn a PTY-backed shell and return the new session."""
+        if shell not in ALLOWED_SHELLS:
+            raise ValueError(f"Shell not permitted: {shell}")
+        if host != "localhost":
+            raise ValueError("Only localhost is supported in Phase 3")
 
         async with self._lock:
             active = sum(
@@ -214,8 +136,12 @@ class TerminalSessionManager:
                 )
 
             master_fd, slave_fd = os.openpty()
+            # Make master non-blocking so reads in the executor use select
             flags = fcntl.fcntl(master_fd, fcntl.F_GETFL)
             fcntl.fcntl(master_fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+
+            # Get the slave terminal device name before forking.
+            # We need it in preexec_fn to acquire a controlling terminal.
             slave_name = os.ttyname(slave_fd)
 
             env = {
@@ -231,54 +157,41 @@ class TerminalSessionManager:
             }
 
             def _acquire_ctty() -> None:
+                # Runs in child process after setsid() (from start_new_session=True).
+                # Opening the slave terminal after setsid() automatically acquires it
+                # as the controlling terminal of the new session on Linux.
+                # Without this, bash starts without a controlling terminal and
+                # disables interactive mode (no prompt, no command output).
                 try:
                     fd = os.open(slave_name, os.O_RDWR)
                     os.close(fd)
                 except OSError:
-                    pass
+                    pass  # best-effort; shell may still work in non-interactive mode
 
-            if is_remote:
-                # SSH interactive session through the PTY.
-                # BatchMode=yes disables password prompts (key auth only).
-                # StrictHostKeyChecking=accept-new trusts unknown hosts on first
-                # connect then remembers them — avoids blocking the terminal UI.
-                ssh_cmd = [
-                    SSH_BINARY,
-                    "-tt",                              # force PTY allocation
-                    "-o", "BatchMode=yes",
-                    "-o", "StrictHostKeyChecking=accept-new",
-                    "-o", "ConnectTimeout=15",
-                    "-o", "ServerAliveInterval=30",
-                    "-o", "ServerAliveCountMax=3",
-                ]
-                key_path = _ssh_key_path()
-                if key_path:
-                    ssh_cmd += ["-i", key_path]
-                ssh_cmd.append(host)
-                proc_args = ssh_cmd
-                display_shell = "ssh"
-            else:
-                proc_args = [shell]
-                if shell in ("/bin/bash", "/usr/bin/bash"):
-                    proc_args = [shell, "--norc"]
-                display_shell = shell
+            # Shell args: --norc avoids loading ~/.bashrc which may contain slow
+            # or blocking startup commands (e.g. `$(npm root -g)` in PATH exports).
+            # This is intentional for embedded/headless terminal sessions.
+            # Users can source their rc file manually: source ~/.bashrc
+            shell_args = [shell]
+            if shell in ("/bin/bash", "/usr/bin/bash"):
+                shell_args = [shell, "--norc"]
 
             try:
                 proc = subprocess.Popen(
-                    proc_args,
+                    shell_args,
                     stdin=slave_fd,
                     stdout=slave_fd,
                     stderr=slave_fd,
-                    start_new_session=True,
-                    preexec_fn=_acquire_ctty,
+                    start_new_session=True,   # setsid() — new session, no ctty yet
+                    preexec_fn=_acquire_ctty, # acquire slave as ctty after setsid
                     env=env,
                 )
             except Exception as exc:
                 os.close(master_fd)
                 os.close(slave_fd)
-                raise RuntimeError(f"Failed to spawn session: {exc}") from exc
+                raise RuntimeError(f"Failed to spawn shell: {exc}") from exc
 
-            os.close(slave_fd)
+            os.close(slave_fd)  # parent doesn't need the slave end
 
             now = time.time()
             session_id = str(uuid.uuid4())
@@ -286,7 +199,7 @@ class TerminalSessionManager:
                 session_id=session_id,
                 user_id=user_id,
                 host=host,
-                shell=display_shell,
+                shell=shell,
                 station_id=station_id,
                 started_at=now,
                 last_activity_at=now,
@@ -296,13 +209,11 @@ class TerminalSessionManager:
             )
             self._sessions[session_id] = session
 
+        # Start reader outside the lock (avoids holding lock across task creation)
         self._read_tasks[session_id] = asyncio.create_task(
             self._read_loop(session), name=f"terminal-read-{session_id[:8]}"
         )
-        logger.info(
-            "Terminal session created: %s (user=%s host=%s)",
-            session_id, user_id, host,
-        )
+        logger.info("Terminal session created: %s (user=%s)", session_id, user_id)
         return session
 
     # ── Session access ────────────────────────────────────────────────────────
@@ -323,22 +234,6 @@ class TerminalSessionManager:
         session = self._sessions.get(session_id)
         if not session or session.master_fd == -1 or session.status in ("closed", "error"):
             return False
-
-        # Command Guardian policy: inspect completed lines before forwarding.
-        # Only active when SPARKBOT_TERMINAL_COMMAND_POLICY=true.
-        if _command_policy_enabled() and (b"\n" in data or b"\r" in data):
-            line = data.decode("utf-8", errors="replace").strip()
-            allowed, reason = check_command_policy(line)
-            if not allowed:
-                # Deliver the policy denial as PTY output so the user sees it.
-                denial_msg = f"\r\n\x1b[31m[Terminal Guardian] {reason}\x1b[0m\r\n"
-                session.deliver_output(denial_msg.encode())
-                logger.warning(
-                    "Terminal Guardian blocked command in session %s: %s",
-                    session_id, line[:120],
-                )
-                return False
-
         try:
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(None, os.write, session.master_fd, data)

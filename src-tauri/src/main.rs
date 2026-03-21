@@ -6,10 +6,10 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use tauri::{Manager, RunEvent};
-use tauri_plugin_shell::process::CommandChild;
-use tauri_plugin_shell::{CommandEvent, ShellExt};
+use tauri_plugin_shell::process::{CommandChild, CommandEvent};
+use tauri_plugin_shell::ShellExt;
 
-const SIDECAR_NAME: &str = "binaries/sparkbot-backend";
+const SIDECAR_NAME: &str = "sparkbot-backend";
 const BACKEND_HOST: &str = "127.0.0.1";
 const BACKEND_PORT: &str = "8000";
 
@@ -42,10 +42,9 @@ fn sparkbot_data_dir() -> Result<PathBuf, String> {
 
 fn stop_backend(app: &tauri::AppHandle) {
     if let Ok(mut guard) = app.state::<BackendChild>().0.lock() {
-        if let Some(child) = guard.as_mut() {
+        if let Some(child) = guard.take() {
             let _ = child.kill();
         }
-        guard.take();
     }
 }
 
@@ -76,7 +75,9 @@ fn start_backend(app: &tauri::AppHandle) -> Result<(), String> {
         .env("V1_LOCAL_MODE", "true")
         .env("DATABASE_TYPE", "sqlite")
         .env("WORKSTATION_LIVE_TERMINAL_ENABLED", "false")
-        .env("ENVIRONMENT", "local");
+        .env("ENVIRONMENT", "local")
+        .env("FRONTEND_HOST", "http://tauri.localhost")
+        .env("BACKEND_CORS_ORIGINS", "http://tauri.localhost,tauri://localhost");
 
     let (mut rx, child) = command.spawn().map_err(|err| err.to_string())?;
 
