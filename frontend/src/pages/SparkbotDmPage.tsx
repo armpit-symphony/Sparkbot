@@ -2395,6 +2395,7 @@ function SparkbotDmPage() {
   useEffect(() => { setShowAgentPicker(inputValue.startsWith("@") && !inputValue.includes(" ")) }, [inputValue])
 
   const applyControlsConfig = useCallback((config: ModelsControlsConfig) => {
+    if (!config) return
     setModelsConfig(config)
     setTokenGuardianMode(config.token_guardian_mode || "shadow")
     if (config.stack) setModelStack(config.stack)
@@ -2818,15 +2819,14 @@ function SparkbotDmPage() {
       const data = await res.json().catch(() => null)
       if (!res.ok) {
         setSettingsError(`Save failed (${res.status}): ${data?.detail ?? "no detail"}`)
+      } else if (!data) {
+        // Key was saved on the backend but the JSON response failed to parse.
+        // refreshControls() will reload everything correctly.
+        setSettingsSuccess("Key saved! Close and reopen Settings to refresh the model list.")
+        setMessages(prev => [...prev, systemMsg("Provider tokens saved.")])
       } else {
         setSettingsSuccess("Key saved. You can now pick a model from the list below.")
-        try {
-          applyControlsConfig(data)
-        } catch (e) {
-          setSettingsError(`Key saved but UI refresh crashed: ${e instanceof Error ? e.message : String(e)}`)
-          setSavingProviderTokens(false)
-          return
-        }
+        applyControlsConfig(data)
         setProviderDrafts({
           openrouter_api_key: "",
           openai_api_key: "",
