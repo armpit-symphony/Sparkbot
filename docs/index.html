@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sparkbot — Download</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f0f0f;
+      color: #f0f0f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      text-align: center;
+    }
+
+    .logo {
+      font-size: 3rem;
+      margin-bottom: 0.5rem;
+    }
+
+    h1 {
+      font-size: 2.5rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+    }
+
+    .tagline {
+      color: #999;
+      font-size: 1.1rem;
+      margin-bottom: 3rem;
+    }
+
+    .download-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.75rem;
+      background: #6c63ff;
+      color: #fff;
+      text-decoration: none;
+      font-size: 1.3rem;
+      font-weight: 600;
+      padding: 1.1rem 2.5rem;
+      border-radius: 12px;
+      transition: background 0.15s, transform 0.1s;
+      margin-bottom: 1rem;
+    }
+
+    .download-btn:hover {
+      background: #574fd6;
+      transform: translateY(-2px);
+    }
+
+    .download-btn:active {
+      transform: translateY(0);
+    }
+
+    .platform-icon {
+      font-size: 1.6rem;
+    }
+
+    .note {
+      color: #666;
+      font-size: 0.85rem;
+      margin-top: 0.5rem;
+      max-width: 420px;
+    }
+
+    .other-platforms {
+      margin-top: 3rem;
+      color: #555;
+      font-size: 0.9rem;
+    }
+
+    .other-platforms a {
+      color: #888;
+      text-decoration: underline;
+    }
+
+    .other-platforms a:hover {
+      color: #aaa;
+    }
+
+    .version {
+      margin-top: 2.5rem;
+      color: #444;
+      font-size: 0.8rem;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="logo">⚡</div>
+  <h1>Sparkbot</h1>
+  <p class="tagline">Your local AI assistant — runs entirely on your computer.</p>
+
+  <a class="download-btn" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.3.8/Sparkbot.Local_1.3.8_x64-setup.exe">
+    <span class="platform-icon">🪟</span>
+    Download for Windows
+  </a>
+
+  <p class="note">
+    Windows may show a security warning — click <strong>"More info"</strong> then
+    <strong>"Run anyway"</strong> to install.
+  </p>
+
+  <div class="other-platforms">
+    Also available for &nbsp;
+    <a href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.3.8/Sparkbot.Local_1.3.8_aarch64.dmg">macOS (Apple Silicon)</a>
+    &nbsp;·&nbsp;
+    <a href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.3.8/Sparkbot.Local_1.3.8_amd64.AppImage">Linux</a>
+  </div>
+
+  <p class="version">v1.3.8</p>
+
+</body>
+</html>
