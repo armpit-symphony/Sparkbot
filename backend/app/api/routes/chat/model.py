@@ -479,14 +479,22 @@ async def ollama_status(current_user: CurrentChatUser) -> dict:
 async def openrouter_models(current_user: CurrentChatUser) -> dict[str, Any]:
     _require_operator(current_user)
     import httpx
+    import ssl
 
     headers = {"Accept": "application/json"}
     api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
 
+    # Use ssl.create_default_context() so the frozen PyInstaller sidecar on Windows
+    # verifies HTTPS via the Windows Certificate Store rather than relying on certifi
+    # being discoverable inside the bundle.  On Linux/macOS this uses the system
+    # OpenSSL trust store.  SSL_CERT_FILE / REQUESTS_CA_BUNDLE (set by
+    # desktop_launcher.py) are honoured automatically by the ssl module.
+    ssl_context = ssl.create_default_context()
+
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=15.0, verify=ssl_context) as client:
             response = await client.get("https://openrouter.ai/api/v1/models", headers=headers)
             response.raise_for_status()
     except Exception as exc:
