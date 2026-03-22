@@ -2636,18 +2636,36 @@ function SparkbotDmPage() {
   const loadOpenRouterModels = useCallback(async () => {
     setLoadingOpenRouterModels(true)
     try {
-      const response = await apiFetch("/api/v1/chat/openrouter/models", { credentials: "include" })
+      // Call OpenRouter directly from the frontend (WebView2 / browser) so that
+      // HTTPS is handled by the OS networking stack, not the Python frozen sidecar.
+      // The /api/v1/models endpoint is public — no API key required to list models.
+      const response = await fetch("https://openrouter.ai/api/v1/models")
       if (!response.ok) {
-        throw new Error("Could not load OpenRouter models.")
+        setSettingsError(`OpenRouter model list failed: HTTP ${response.status}`)
+        setOpenRouterModels([])
+        return
       }
       const data = await response.json()
-      setOpenRouterModels(data.models ?? [])
-    } catch {
+      // OpenRouter returns { data: [ { id, name, context_length, pricing, ... } ] }
+      const models = ((data.data ?? []) as Record<string, unknown>[])
+        .filter((item) => item.id)
+        .map((item) => ({
+          id: `openrouter/${item.id as string}`,
+          raw_id: item.id as string,
+          label: (item.name as string) || (item.id as string),
+          context_length: item.context_length as number | undefined,
+          pricing: (item.pricing as Record<string, string>) ?? {},
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label))
+      setOpenRouterModels(models)
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setSettingsError(`OpenRouter model list error: ${msg}`)
       setOpenRouterModels([])
     } finally {
       setLoadingOpenRouterModels(false)
     }
-  }, [])
+  }, [setSettingsError])
 
   useEffect(() => {
     if (settingsOpen) {
