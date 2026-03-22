@@ -2353,10 +2353,6 @@ function SparkbotDmPage() {
   const controlsRequested = isControlsSearchOpen(
     ((routerState.location as { searchStr?: string }).searchStr) ?? window.location.search
   )
-  const pageHasOpenRouterConfigured = Boolean(
-    modelsConfig?.providers?.find((provider) => provider.id === "openrouter")?.configured,
-  )
-
   // ── Reply / edit state ───────────────────────────────────────────────────────
   const [replyingTo, setReplyingTo] = useState<Message | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
