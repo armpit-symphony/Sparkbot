@@ -17,6 +17,16 @@ os.environ.setdefault("WORKSTATION_LIVE_TERMINAL_ENABLED", "false")
 if getattr(sys, "frozen", False):
     bundle_dir = sys._MEIPASS  # noqa: SLF001
     sys.path.insert(0, bundle_dir)
+    # Point SSL libraries to the certifi CA bundle bundled by PyInstaller.
+    # Without this, every HTTPS call (httpx → openrouter.ai etc.) fails with
+    # an SSL certificate verification error in the frozen sidecar.
+    try:
+        import certifi as _certifi
+        _ca_bundle = _certifi.where()
+        os.environ.setdefault("SSL_CERT_FILE", _ca_bundle)
+        os.environ.setdefault("REQUESTS_CA_BUNDLE", _ca_bundle)
+    except Exception:
+        pass
     # Point alembic / SQLite to a writable location beside the exe
     exe_dir = os.path.dirname(sys.executable)
     os.environ.setdefault("SPARKBOT_DATA_DIR", exe_dir)

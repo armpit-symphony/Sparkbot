@@ -6,6 +6,11 @@ import sys
 from pathlib import Path
 from PyInstaller.utils.hooks import collect_all
 
+# certifi provides the CA certificate bundle required for all HTTPS requests
+# (httpx, requests, litellm all use it). Without this the frozen sidecar
+# cannot verify SSL and every external API call fails.
+_certifi_datas, _certifi_binaries, _certifi_hiddenimports = collect_all("certifi")
+
 # litellm uses heavy dynamic imports + bundled data files; collect everything
 _litellm_datas, _litellm_binaries, _litellm_hiddenimports = collect_all("litellm")
 
@@ -16,11 +21,11 @@ BACKEND_DIR = Path(SPECPATH) / "backend"
 a = Analysis(
     [str(BACKEND_DIR / "desktop_launcher.py")],
     pathex=[str(BACKEND_DIR)],
-    binaries=[] + _litellm_binaries,
+    binaries=[] + _certifi_binaries + _litellm_binaries,
     datas=[
         # Email templates shipped with the bundle
         (str(BACKEND_DIR / "app" / "email-templates"), "app/email-templates"),
-    ] + _litellm_datas,
+    ] + _certifi_datas + _litellm_datas,
     hiddenimports=[
         # uvicorn internals not auto-discovered
         "uvicorn",
@@ -54,7 +59,7 @@ a = Analysis(
         "app.api.routes",
         "app.services",
         "app.services.guardian",
-    ] + _litellm_hiddenimports,
+    ] + _certifi_hiddenimports + _litellm_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
