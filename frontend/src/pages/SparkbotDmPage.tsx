@@ -681,7 +681,6 @@ interface SparkbotSettingsDialogProps {
   taskArgs: string
   taskSaving: boolean
   error: string
-  success: string
   onRefresh: () => void
   onToggleExecution: (enabled: boolean) => void
   onModelStackChange: (field: keyof ModelStackForm, value: string) => void
@@ -786,7 +785,6 @@ function SparkbotSettingsDialog({
   taskArgs,
   taskSaving,
   error,
-  success,
   onRefresh,
   onToggleExecution,
   onModelStackChange,
@@ -854,10 +852,10 @@ function SparkbotSettingsDialog({
         ...Object.keys(modelsConfig?.model_labels ?? {}),
         ...openRouterModels.map((model) => model.id),
         ...localModelOptions,
-        modelStack?.primary,
-        modelStack?.backup_1,
-        modelStack?.backup_2,
-        modelStack?.heavy_hitter,
+        modelStack.primary,
+        modelStack.backup_1,
+        modelStack.backup_2,
+        modelStack.heavy_hitter,
       ].filter(Boolean),
     ),
   )
@@ -867,7 +865,7 @@ function SparkbotSettingsDialog({
     ?? modelId.replace("ollama/", "")
 
   const hasOpenRouterConfigured = Boolean(
-    modelsConfig?.providers?.find((provider) => provider.id === "openrouter")?.configured,
+    modelsConfig?.providers.find((provider) => provider.id === "openrouter")?.configured,
   )
   const directProviderLabel: Record<string, string> = {
     openai: "OpenAI", anthropic: "Anthropic", google: "Google", groq: "Groq", minimax: "MiniMax",
@@ -877,21 +875,21 @@ function SparkbotSettingsDialog({
     google: "google_api_key", groq: "groq_api_key", minimax: "minimax_api_key",
   }
   const directProviderIsConfigured = (id: string) =>
-    Boolean(modelsConfig?.providers?.find((p) => p.id === id)?.configured)
+    Boolean(modelsConfig?.providers.find((p) => p.id === id)?.configured)
   const directProviderModels = (id: string): string[] =>
-    modelsConfig?.providers?.find((p) => p.id === id)?.models ?? []
-  const ollamaProvider = modelsConfig?.providers?.find((provider) => provider.id === "ollama")
+    modelsConfig?.providers.find((p) => p.id === id)?.models ?? []
+  const ollamaProvider = modelsConfig?.providers.find((provider) => provider.id === "ollama")
   const routingAgents = modelsConfig?.available_agents ?? []
   const showAdvancedControls = !isV1LocalMode
 
-  const readyProviderCount = modelsConfig?.providers?.filter(
+  const readyProviderCount = modelsConfig?.providers.filter(
     (provider) => provider.configured || provider.models_available === true,
   ).length ?? 0
   const enabledChannelCount = [
-    Boolean(commsForm.telegram.enabled && modelsConfig?.comms?.telegram?.configured),
-    Boolean(commsForm.discord.enabled && modelsConfig?.comms?.discord?.configured),
-    Boolean(commsForm.whatsapp.enabled && modelsConfig?.comms?.whatsapp?.configured),
-    Boolean(commsForm.github.enabled && modelsConfig?.comms?.github?.configured),
+    Boolean(commsForm.telegram.enabled && modelsConfig?.comms.telegram.configured),
+    Boolean(commsForm.discord.enabled && modelsConfig?.comms.discord.configured),
+    Boolean(commsForm.whatsapp.enabled && modelsConfig?.comms.whatsapp.configured),
+    Boolean(commsForm.github.enabled && modelsConfig?.comms.github.configured),
   ].filter(Boolean).length
   const onboardingSteps = showAdvancedControls
     ? [
@@ -1142,7 +1140,7 @@ function SparkbotSettingsDialog({
                   {readyProviderCount > 0 ? `${readyProviderCount} provider path${readyProviderCount > 1 ? "s" : ""}` : "No provider"}
                 </div>
                 <div className="mt-0.5 text-[11px] text-muted-foreground truncate">
-                  {modelStack?.primary || "No model selected"}
+                  {modelStack.primary || "No model selected"}
                 </div>
               </div>
 
@@ -1361,29 +1359,14 @@ function SparkbotSettingsDialog({
                           className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
                         >
                           <option value="">Choose an OpenRouter model</option>
-                          {openRouterModels.length > 0 ? openRouterModels.map((model) => (
-                            <option key={model.id} value={model.id}>
-                              {model.label}
-                            </option>
-                          )) : [
-                            { id: "openrouter/openai/gpt-4o-mini", label: "GPT-4o Mini (OpenAI)" },
-                            { id: "openrouter/openai/gpt-4o", label: "GPT-4o (OpenAI)" },
-                            { id: "openrouter/anthropic/claude-3.5-sonnet", label: "Claude 3.5 Sonnet (Anthropic)" },
-                            { id: "openrouter/anthropic/claude-3.5-haiku", label: "Claude 3.5 Haiku (Anthropic)" },
-                            { id: "openrouter/google/gemini-flash-1.5", label: "Gemini Flash 1.5 (Google)" },
-                            { id: "openrouter/google/gemini-2.0-flash-001", label: "Gemini 2.0 Flash (Google)" },
-                            { id: "openrouter/meta-llama/llama-3.3-70b-instruct", label: "Llama 3.3 70B (Meta)" },
-                            { id: "openrouter/mistralai/mistral-small-3.1-24b-instruct", label: "Mistral Small 3.1 (Mistral)" },
-                          ].map((model) => (
+                          {openRouterModels.map((model) => (
                             <option key={model.id} value={model.id}>
                               {model.label}
                             </option>
                           ))}
                         </select>
                         <p className="mt-1 text-[11px] text-muted-foreground">
-                          {openRouterModels.length === 0
-                            ? "Showing built-in model list — click \"Refresh OpenRouter models\" above to load the full catalogue."
-                            : "Sparkbot will use this as the main cloud model for everyday chat unless an agent override says otherwise."}
+                          Sparkbot will use this as the main cloud model for everyday chat unless an agent override says otherwise.
                         </p>
                       </div>
                     </div>
@@ -1497,12 +1480,6 @@ function SparkbotSettingsDialog({
                       {savingDefaultSelection ? "Saving default..." : "Save default model"}
                     </button>
                   </div>
-                  {success && !error && (
-                    <p className="mt-2 text-right text-xs font-medium text-emerald-600">{success}</p>
-                  )}
-                  {error && (
-                    <p className="mt-2 text-right text-xs font-medium text-red-600">{error}</p>
-                  )}
                 </div>
 
                 <div className="rounded-lg border bg-muted/20 p-4">
@@ -1645,10 +1622,10 @@ function SparkbotSettingsDialog({
                     const route = override.route
                     const modelValue = override.model ?? ""
                     const selectedModel = route === "openrouter"
-                      ? modelValue || modelsConfig?.default_selection?.model || ""
+                      ? modelValue || modelsConfig?.default_selection.model || ""
                       : route === "local"
                         ? modelValue || localDefaultModel
-                        : modelsConfig?.default_selection?.model || ""
+                        : modelsConfig?.default_selection.model || ""
 
                     return (
                       <div key={agent.name} className="rounded-lg border bg-muted/30 px-3 py-3">
@@ -1723,7 +1700,7 @@ function SparkbotSettingsDialog({
               <div className="rounded-lg border bg-background/60 px-3 py-3">
                 <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Current default</div>
                 <div className="mt-2 text-xs text-muted-foreground">
-                  {modelsConfig?.default_selection?.label ?? modelsConfig?.default_selection?.model ?? "No default selected"}
+                  {modelsConfig?.default_selection.label ?? modelsConfig?.default_selection.model ?? "No default selected"}
                 </div>
               </div>
             </div>
@@ -1740,12 +1717,12 @@ function SparkbotSettingsDialog({
               <div className="rounded-lg border bg-muted/40 px-3 py-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-sm font-medium">Telegram</div>
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms?.telegram?.configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
-                    {modelsConfig?.comms?.telegram?.configured ? "Configured" : "Missing"}
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms.telegram.configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
+                    {modelsConfig?.comms.telegram.configured ? "Configured" : "Missing"}
                   </span>
                 </div>
                 <div className="mt-0.5 text-[10px] text-muted-foreground/70">Reads messages · Sends replies · No file access</div>
-                <div className="mt-1 text-xs text-muted-foreground">Linked chats: {modelsConfig?.comms?.telegram?.linked_chats ?? 0}</div>
+                <div className="mt-1 text-xs text-muted-foreground">Linked chats: {modelsConfig?.comms.telegram.linked_chats ?? 0}</div>
                 <input
                   type="password"
                   value={commsForm.telegram.bot_token}
@@ -1774,12 +1751,12 @@ function SparkbotSettingsDialog({
               <div className="rounded-lg border bg-muted/40 px-3 py-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-sm font-medium">Discord</div>
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms?.discord?.configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
-                    {modelsConfig?.comms?.discord?.configured ? "Configured" : "Missing"}
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms.discord.configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
+                    {modelsConfig?.comms.discord.configured ? "Configured" : "Missing"}
                   </span>
                 </div>
                 <div className="mt-0.5 text-[10px] text-muted-foreground/70">Reads DMs & mentions · Sends replies · No server data access</div>
-                <div className="mt-1 text-xs text-muted-foreground">Linked channels: {modelsConfig?.comms?.discord?.linked_channels ?? 0}</div>
+                <div className="mt-1 text-xs text-muted-foreground">Linked channels: {modelsConfig?.comms.discord.linked_channels ?? 0}</div>
                 <input
                   type="password"
                   value={commsForm.discord.bot_token}
@@ -1808,12 +1785,12 @@ function SparkbotSettingsDialog({
               <div className="rounded-lg border bg-muted/40 px-3 py-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-sm font-medium">WhatsApp</div>
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms?.whatsapp?.configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
-                    {modelsConfig?.comms?.whatsapp?.configured ? "Configured" : "Missing"}
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms.whatsapp.configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
+                    {modelsConfig?.comms.whatsapp.configured ? "Configured" : "Missing"}
                   </span>
                 </div>
                 <div className="mt-0.5 text-[10px] text-muted-foreground/70">Reads messages · Sends replies · 24-hour session window</div>
-                <div className="mt-1 text-xs text-muted-foreground">Linked numbers: {modelsConfig?.comms?.whatsapp?.linked_numbers ?? 0}</div>
+                <div className="mt-1 text-xs text-muted-foreground">Linked numbers: {modelsConfig?.comms.whatsapp.linked_numbers ?? 0}</div>
                 <input
                   type="password"
                   value={commsForm.whatsapp.token}
@@ -1848,13 +1825,13 @@ function SparkbotSettingsDialog({
               <div className="rounded-lg border bg-muted/40 px-3 py-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-sm font-medium">GitHub</div>
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms?.github?.configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
-                    {modelsConfig?.comms?.github?.configured ? "Configured" : "Missing"}
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms.github.configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
+                    {modelsConfig?.comms.github.configured ? "Configured" : "Missing"}
                   </span>
                 </div>
                 <div className="mt-0.5 text-[10px] text-muted-foreground/70">Reads issues & PRs · Posts comments · Write actions require approval</div>
-                <div className="mt-1 text-xs text-muted-foreground">Linked threads: {modelsConfig?.comms?.github?.linked_threads ?? 0}</div>
-                <div className="mt-1 text-xs text-muted-foreground">Webhook: {modelsConfig?.comms?.github?.webhook_path ?? "/api/v1/chat/github/events"}</div>
+                <div className="mt-1 text-xs text-muted-foreground">Linked threads: {modelsConfig?.comms.github.linked_threads ?? 0}</div>
+                <div className="mt-1 text-xs text-muted-foreground">Webhook: {modelsConfig?.comms.github.webhook_path ?? "/api/v1/chat/github/events"}</div>
                 <input
                   type="password"
                   value={commsForm.github.token}
@@ -1902,14 +1879,14 @@ function SparkbotSettingsDialog({
                   <div className="text-[11px] uppercase tracking-wide text-muted-foreground">GitHub onboarding</div>
                   <div className="mt-2 space-y-1 text-xs text-muted-foreground">
                     <div>1. Paste a GitHub token and a webhook secret, then save comms.</div>
-                    <div>2. In your repo, add a webhook to <code className="rounded bg-muted px-1 py-0.5">{modelsConfig?.comms?.github?.webhook_path ?? "/api/v1/chat/github/events"}</code>.</div>
+                    <div>2. In your repo, add a webhook to <code className="rounded bg-muted px-1 py-0.5">{modelsConfig?.comms.github.webhook_path ?? "/api/v1/chat/github/events"}</code>.</div>
                     <div>3. Select <span className="font-medium text-foreground">Issue comments</span> and <span className="font-medium text-foreground">Pull request review comments</span>.</div>
                     <div>4. Restart <code className="rounded bg-muted px-1 py-0.5">sparkbot-v2</code>, then test in a thread with <code className="rounded bg-muted px-1 py-0.5">/sparkbot summarize this PR</code>.</div>
                   </div>
                   <div className="mt-3 rounded-md bg-muted/50 px-2 py-2 text-[11px] text-muted-foreground">
                     Replies in-thread support <code className="rounded bg-background px-1 py-0.5">approve</code> and <code className="rounded bg-background px-1 py-0.5">deny</code> for pending actions.
                   </div>
-                  {modelsConfig?.comms?.github?.allowed_repos_count ? (
+                  {modelsConfig?.comms.github.allowed_repos_count ? (
                     <div className="mt-2 text-[11px] text-muted-foreground">
                       Allowlisted repos: {modelsConfig.comms.github.allowed_repos.join(", ")}
                     </div>
@@ -2228,11 +2205,6 @@ function SparkbotSettingsDialog({
             </div>
           </section> : null}
 
-          {success && !error && !loading && (
-            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-              {success}
-            </div>
-          )}
           {(loading || error) && (
             <div className="rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground">
               {loading ? "Loading controls..." : error}
@@ -2278,7 +2250,6 @@ function SparkbotDmPage() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsLoading, setSettingsLoading] = useState(false)
   const [settingsError, setSettingsError] = useState("")
-  const [settingsSuccess, setSettingsSuccess] = useState("")
   const [savingExecution, setSavingExecution] = useState(false)
   const [controlsDashboard, setControlsDashboard] = useState<ControlsDashboardSummary | null>(null)
   const [modelsConfig, setModelsConfig] = useState<ModelsControlsConfig | null>(null)
@@ -2354,7 +2325,7 @@ function SparkbotDmPage() {
     ((routerState.location as { searchStr?: string }).searchStr) ?? window.location.search
   )
   const pageHasOpenRouterConfigured = Boolean(
-    modelsConfig?.providers?.find((provider) => provider.id === "openrouter")?.configured,
+    modelsConfig?.providers.find((provider) => provider.id === "openrouter")?.configured,
   )
 
   // ── Reply / edit state ───────────────────────────────────────────────────────
@@ -2410,10 +2381,9 @@ function SparkbotDmPage() {
   useEffect(() => { setShowAgentPicker(inputValue.startsWith("@") && !inputValue.includes(" ")) }, [inputValue])
 
   const applyControlsConfig = useCallback((config: ModelsControlsConfig) => {
-    if (!config) return
     setModelsConfig(config)
     setTokenGuardianMode(config.token_guardian_mode || "shadow")
-    if (config.stack) setModelStack(config.stack)
+    setModelStack(config.stack)
     const _validProviders = new Set(["openrouter", "ollama", "openai", "anthropic", "google", "groq", "minimax"])
     const _savedProvider = config.default_selection?.provider ?? "openrouter"
     setDefaultSelection({
@@ -2438,27 +2408,27 @@ function SparkbotDmPage() {
     setCommsForm({
       telegram: {
         bot_token: "",
-        enabled: Boolean(config.comms?.telegram?.poll_enabled),
-        private_only: Boolean(config.comms?.telegram?.private_only),
+        enabled: Boolean(config.comms.telegram.poll_enabled),
+        private_only: Boolean(config.comms.telegram.private_only),
       },
       discord: {
         bot_token: "",
-        enabled: Boolean(config.comms?.discord?.enabled),
-        dm_only: Boolean(config.comms?.discord?.dm_only),
+        enabled: Boolean(config.comms.discord.enabled),
+        dm_only: Boolean(config.comms.discord.dm_only),
       },
       whatsapp: {
         token: "",
         phone_id: "",
         verify_token: "sparkbot-wa-verify",
-        enabled: Boolean(config.comms?.whatsapp?.enabled),
+        enabled: Boolean(config.comms.whatsapp.enabled),
       },
       github: {
         token: "",
         webhook_secret: "",
-        bot_login: config.comms?.github?.bot_login || "sparkbot",
-        default_repo: config.comms?.github?.default_repo || "",
-        allowed_repos: (config.comms?.github?.allowed_repos ?? []).join(", "),
-        enabled: Boolean(config.comms?.github?.enabled),
+        bot_login: config.comms.github.bot_login || "sparkbot",
+        default_repo: config.comms.github.default_repo || "",
+        allowed_repos: (config.comms.github.allowed_repos ?? []).join(", "),
+        enabled: Boolean(config.comms.github.enabled),
       },
     })
     setOllamaBaseUrl(config.local_runtime?.base_url || "http://localhost:11434")
@@ -2823,7 +2793,6 @@ function SparkbotDmPage() {
     }
     setSavingProviderTokens(true)
     setSettingsError("")
-    setSettingsSuccess("")
     try {
       const res = await apiFetch("/api/v1/chat/models/config", {
         method: "POST",
@@ -2831,17 +2800,12 @@ function SparkbotDmPage() {
         credentials: "include",
         body: JSON.stringify({ providers: payload }),
       })
-      const data = await res.json().catch(() => null)
+      const data = await res.json().catch(() => ({ detail: "Could not save provider tokens." }))
       if (!res.ok) {
-        setSettingsError(`Save failed (${res.status}): ${data?.detail ?? "no detail"}`)
-      } else if (!data) {
-        // Key was saved on the backend but the JSON response failed to parse.
-        // refreshControls() will reload everything correctly.
-        setSettingsSuccess("Key saved! Close and reopen Settings to refresh the model list.")
-        setMessages(prev => [...prev, systemMsg("Provider tokens saved.")])
+        setSettingsError(data.detail ?? "Could not save provider tokens.")
       } else {
-        setSettingsSuccess("Key saved. You can now pick a model from the list below.")
         applyControlsConfig(data)
+        await refreshControls()
         setProviderDrafts({
           openrouter_api_key: "",
           openai_api_key: "",
@@ -2850,21 +2814,20 @@ function SparkbotDmPage() {
           groq_api_key: "",
           minimax_api_key: "",
         })
-        await refreshControls()
         if (payload.openrouter_api_key) {
           await loadOpenRouterModels()
         }
         setMessages(prev => [...prev, systemMsg("Provider tokens saved.")])
       }
-    } catch (e) {
-      setSettingsError(`Network error: ${e instanceof Error ? e.message : String(e)}`)
+    } catch {
+      setSettingsError("Could not save provider tokens.")
     } finally {
       setSavingProviderTokens(false)
     }
   }, [applyControlsConfig, loadOpenRouterModels, providerDrafts, refreshControls])
 
   const saveModelStack = useCallback(async () => {
-    if (!modelStack?.primary?.trim() || !modelStack?.heavy_hitter?.trim()) {
+    if (!modelStack.primary.trim() || !modelStack.heavy_hitter.trim()) {
       setSettingsError("Choose at least the primary and heavy-hitter models before saving the stack.")
       return
     }
@@ -3928,7 +3891,6 @@ function SparkbotDmPage() {
         taskArgs={taskArgs}
         taskSaving={taskSaving}
         error={settingsError}
-        success={settingsSuccess}
         onRefresh={refreshControls}
         onToggleExecution={toggleExecutionGate}
         onModelStackChange={handleModelStackChange}
@@ -4041,7 +4003,7 @@ function SparkbotDmPage() {
       {/* Messages */}
       <div className="flex-1 overflow-auto px-4 py-4 space-y-2">
         {messages.length === 0 ? (
-          (modelsConfig?.providers?.filter((p) => p.configured || p.models_available === true).length ?? 0) === 0 ? (
+          (modelsConfig?.providers.filter((p) => p.configured || p.models_available === true).length ?? 0) === 0 ? (
             <div className="flex flex-col items-center justify-center h-full gap-4 py-12 text-center px-4">
               <div className="flex size-14 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-500">
                 <svg xmlns="http://www.w3.org/2000/svg" className="size-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>

@@ -9,6 +9,9 @@ from PyInstaller.utils.hooks import collect_all
 # litellm uses heavy dynamic imports + bundled data files; collect everything
 _litellm_datas, _litellm_binaries, _litellm_hiddenimports = collect_all("litellm")
 
+# certifi: bundle the CA certificate store so httpx/requests can verify HTTPS inside the frozen exe
+_certifi_datas, _certifi_binaries, _certifi_hiddenimports = collect_all("certifi")
+
 block_cipher = None
 
 BACKEND_DIR = Path(SPECPATH) / "backend"
@@ -16,11 +19,11 @@ BACKEND_DIR = Path(SPECPATH) / "backend"
 a = Analysis(
     [str(BACKEND_DIR / "desktop_launcher.py")],
     pathex=[str(BACKEND_DIR)],
-    binaries=[] + _litellm_binaries,
+    binaries=[] + _litellm_binaries + _certifi_binaries,
     datas=[
         # Email templates shipped with the bundle
         (str(BACKEND_DIR / "app" / "email-templates"), "app/email-templates"),
-    ] + _litellm_datas,
+    ] + _litellm_datas + _certifi_datas,
     hiddenimports=[
         # uvicorn internals not auto-discovered
         "uvicorn",
@@ -54,7 +57,8 @@ a = Analysis(
         "app.api.routes",
         "app.services",
         "app.services.guardian",
-    ] + _litellm_hiddenimports,
+        "certifi",
+    ] + _litellm_hiddenimports + _certifi_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

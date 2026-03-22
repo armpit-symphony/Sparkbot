@@ -17,6 +17,12 @@ os.environ.setdefault("WORKSTATION_LIVE_TERMINAL_ENABLED", "false")
 if getattr(sys, "frozen", False):
     bundle_dir = sys._MEIPASS  # noqa: SLF001
     sys.path.insert(0, bundle_dir)
+    # Fix SSL certificate verification inside the frozen bundle.
+    # httpx (used by litellm) cannot find the system CA bundle when running from
+    # sys._MEIPASS.  Point it at the certifi bundle that PyInstaller collected.
+    import certifi  # noqa: E402 (must be after sys.path fixup)
+    os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+    os.environ.setdefault("REQUESTS_CA_BUNDLE", certifi.where())
     # Point alembic / SQLite to a writable location beside the exe
     exe_dir = os.path.dirname(sys.executable)
     os.environ.setdefault("SPARKBOT_DATA_DIR", exe_dir)
