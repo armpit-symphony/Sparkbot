@@ -2929,10 +2929,9 @@ function SparkbotDmPage() {
       setSettingsError("Choose a preferred local model so local overrides have something to use.")
       return
     }
-    if (defaultSelection.provider === "openrouter" && !pageHasOpenRouterConfigured && !providerDrafts.openrouter_api_key.trim()) {
-      setSettingsError("Save an OpenRouter API key before using OpenRouter as the default.")
-      return
-    }
+    // Note: no frontend key-presence guard here — the key is stored server-side
+    // and the backend validates at chat time.  A stale pageHasOpenRouterConfigured
+    // value (e.g. if refreshControls bailed early) was blocking legitimate saves.
     const _DIRECT_KEY_FIELDS: Record<string, keyof ProviderTokenDrafts> = {
       openai: "openai_api_key", anthropic: "anthropic_api_key",
       google: "google_api_key", groq: "groq_api_key", minimax: "minimax_api_key",
@@ -2995,7 +2994,6 @@ function SparkbotDmPage() {
     routingPolicy.crossProviderFallback,
     localDefaultModel,
     modelsConfig,
-    pageHasOpenRouterConfigured,
     providerDrafts,
     refreshControls,
   ])
