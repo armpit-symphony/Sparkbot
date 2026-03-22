@@ -3,121 +3,1254 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Sparkbot — Download</title>
+  <meta name="description" content="Sparkbot — Your own AI assistant that runs on your computer. No cloud. No subscription. No account needed. Download free for Windows." />
+  <title>Sparkbot — Your Own AI, On Your Computer</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    /* ===========================
+       CSS RESET + CUSTOM PROPERTIES
+    =========================== */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --purple: #6c63ff;
+      --purple-light: #8b85ff;
+      --purple-dim: rgba(108, 99, 255, 0.15);
+      --purple-glow: rgba(108, 99, 255, 0.35);
+      --bg: #0f0f0f;
+      --bg-card: #1a1a1a;
+      --bg-card2: #222222;
+      --text: #f0f0f0;
+      --text-muted: #a0a0a0;
+      --text-dim: #707070;
+      --green: #4caf50;
+      --green-dim: rgba(76, 175, 80, 0.15);
+      --yellow: #f0b429;
+      --yellow-dim: rgba(240, 180, 41, 0.12);
+      --radius: 16px;
+      --radius-sm: 10px;
+      --shadow-purple: 0 0 40px rgba(108, 99, 255, 0.25);
+      --max-width: 860px;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #0f0f0f;
-      color: #f0f0f0;
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
       min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 2rem;
+      line-height: 1.6;
+      font-size: 17px;
+    }
+
+    /* ===========================
+       LAYOUT HELPERS
+    =========================== */
+    .container {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    .section {
+      padding: 72px 0;
+    }
+
+    .section + .section {
+      border-top: 1px solid #222;
+    }
+
+    /* ===========================
+       HERO SECTION
+    =========================== */
+    .hero {
+      background: radial-gradient(ellipse 80% 60% at 50% -10%, rgba(108, 99, 255, 0.18) 0%, transparent 70%);
+      padding: 80px 0 64px;
       text-align: center;
     }
 
-    .logo {
-      font-size: 3rem;
-      margin-bottom: 0.5rem;
-    }
-
-    h1 {
-      font-size: 2.5rem;
-      font-weight: 700;
-      margin-bottom: 0.5rem;
-    }
-
-    .tagline {
-      color: #999;
-      font-size: 1.1rem;
-      margin-bottom: 3rem;
-    }
-
-    .download-btn {
+    .logo-mark {
       display: inline-flex;
       align-items: center;
-      gap: 0.75rem;
-      background: #6c63ff;
-      color: #fff;
-      text-decoration: none;
-      font-size: 1.3rem;
-      font-weight: 600;
-      padding: 1.1rem 2.5rem;
-      border-radius: 12px;
-      transition: background 0.15s, transform 0.1s;
-      margin-bottom: 1rem;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 28px;
     }
 
-    .download-btn:hover {
-      background: #574fd6;
+    .logo-bolt {
+      font-size: 3.2rem;
+      line-height: 1;
+      filter: drop-shadow(0 0 18px rgba(108, 99, 255, 0.7));
+      animation: pulse-glow 3s ease-in-out infinite;
+    }
+
+    @keyframes pulse-glow {
+      0%, 100% { filter: drop-shadow(0 0 18px rgba(108, 99, 255, 0.7)); }
+      50%       { filter: drop-shadow(0 0 32px rgba(108, 99, 255, 1.0)); }
+    }
+
+    .logo-name {
+      font-size: 2.4rem;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, #fff 30%, var(--purple-light));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero-badge {
+      display: inline-block;
+      background: var(--purple-dim);
+      border: 1px solid rgba(108, 99, 255, 0.4);
+      color: var(--purple-light);
+      font-size: 0.82rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 5px 14px;
+      border-radius: 999px;
+      margin-bottom: 20px;
+    }
+
+    .hero h1 {
+      font-size: clamp(2rem, 5vw, 3.2rem);
+      font-weight: 800;
+      line-height: 1.15;
+      letter-spacing: -0.5px;
+      margin-bottom: 18px;
+      max-width: 700px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .hero-tagline {
+      font-size: clamp(1.05rem, 2.5vw, 1.25rem);
+      color: var(--text-muted);
+      max-width: 580px;
+      margin: 0 auto 40px;
+      line-height: 1.7;
+    }
+
+    /* ===========================
+       MAIN DOWNLOAD BUTTON
+    =========================== */
+    .download-primary-wrap {
+      margin-bottom: 20px;
+    }
+
+    .btn-download-windows {
+      display: inline-flex;
+      align-items: center;
+      gap: 14px;
+      background: var(--purple);
+      color: #fff;
+      text-decoration: none;
+      font-size: 1.35rem;
+      font-weight: 700;
+      padding: 22px 44px;
+      border-radius: 14px;
+      box-shadow: 0 0 0 0 var(--purple-glow), 0 8px 32px rgba(108, 99, 255, 0.45);
+      transition: transform 0.18s, box-shadow 0.18s, background 0.18s;
+      letter-spacing: -0.2px;
+      cursor: pointer;
+      border: none;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn-download-windows::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(255,255,255,0.12) 0%, transparent 60%);
+      pointer-events: none;
+    }
+
+    .btn-download-windows:hover {
+      background: var(--purple-light);
+      transform: translateY(-3px) scale(1.02);
+      box-shadow: 0 0 0 6px var(--purple-glow), 0 16px 48px rgba(108, 99, 255, 0.55);
+    }
+
+    .btn-download-windows:active {
+      transform: translateY(-1px) scale(1.0);
+    }
+
+    .btn-icon {
+      font-size: 1.7rem;
+      line-height: 1;
+    }
+
+    .btn-text-block {
+      text-align: left;
+    }
+
+    .btn-label {
+      display: block;
+      font-size: 0.72rem;
+      font-weight: 400;
+      opacity: 0.8;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 2px;
+    }
+
+    .btn-cta {
+      display: block;
+      font-size: 1.25rem;
+      font-weight: 800;
+    }
+
+    .download-meta {
+      font-size: 0.9rem;
+      color: var(--text-dim);
+      margin-bottom: 32px;
+    }
+
+    /* Other OS links */
+    .other-os {
+      display: flex;
+      gap: 20px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .btn-os-small {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--bg-card);
+      border: 1px solid #333;
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 500;
+      padding: 10px 22px;
+      border-radius: 10px;
+      transition: border-color 0.18s, color 0.18s, background 0.18s;
+    }
+
+    .btn-os-small:hover {
+      border-color: var(--purple);
+      color: var(--text);
+      background: var(--purple-dim);
+    }
+
+    /* ===========================
+       TRUST STRIP
+    =========================== */
+    .trust-strip {
+      display: flex;
+      justify-content: center;
+      gap: 32px;
+      flex-wrap: wrap;
+      margin-top: 52px;
+      padding: 28px 0;
+      border-top: 1px solid #1e1e1e;
+      border-bottom: 1px solid #1e1e1e;
+    }
+
+    .trust-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.95rem;
+      color: var(--text-muted);
+    }
+
+    .trust-icon {
+      font-size: 1.3rem;
+    }
+
+    /* ===========================
+       FEATURES GRID
+    =========================== */
+    .section-title {
+      text-align: center;
+      font-size: clamp(1.6rem, 4vw, 2.2rem);
+      font-weight: 800;
+      margin-bottom: 12px;
+      letter-spacing: -0.3px;
+    }
+
+    .section-subtitle {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 1.05rem;
+      margin-bottom: 52px;
+      max-width: 520px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 20px;
+    }
+
+    .feature-card {
+      background: var(--bg-card);
+      border: 1px solid #272727;
+      border-radius: var(--radius);
+      padding: 28px 24px;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+
+    .feature-card:hover {
+      border-color: rgba(108, 99, 255, 0.4);
       transform: translateY(-2px);
     }
 
-    .download-btn:active {
-      transform: translateY(0);
+    .feature-icon {
+      font-size: 2rem;
+      margin-bottom: 14px;
+      display: block;
     }
 
-    .platform-icon {
-      font-size: 1.6rem;
+    .feature-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      margin-bottom: 8px;
     }
 
-    .note {
-      color: #666;
-      font-size: 0.85rem;
-      margin-top: 0.5rem;
-      max-width: 420px;
-    }
-
-    .other-platforms {
-      margin-top: 3rem;
-      color: #555;
+    .feature-desc {
       font-size: 0.9rem;
+      color: var(--text-muted);
+      line-height: 1.6;
     }
 
-    .other-platforms a {
-      color: #888;
-      text-decoration: underline;
+    /* ===========================
+       INSTALL STEPS
+    =========================== */
+    .steps-wrap {
+      max-width: 680px;
+      margin: 0 auto;
     }
 
-    .other-platforms a:hover {
-      color: #aaa;
+    .step {
+      display: flex;
+      gap: 22px;
+      margin-bottom: 40px;
+      align-items: flex-start;
     }
 
-    .version {
-      margin-top: 2.5rem;
-      color: #444;
+    .step-num {
+      flex-shrink: 0;
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      background: var(--purple-dim);
+      border: 2px solid var(--purple);
+      color: var(--purple-light);
+      font-size: 1.3rem;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .step-body {
+      padding-top: 8px;
+    }
+
+    .step-title {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .step-desc {
+      color: var(--text-muted);
+      font-size: 0.97rem;
+      line-height: 1.7;
+    }
+
+    .step-desc strong {
+      color: var(--text);
+    }
+
+    /* ===========================
+       SMARTSCREEN WARNING BOX
+    =========================== */
+    .smartscreen-section {
+      background: var(--yellow-dim);
+      border: 1px solid rgba(240, 180, 41, 0.3);
+      border-radius: var(--radius);
+      padding: 36px 32px;
+      max-width: 680px;
+      margin: 0 auto;
+    }
+
+    .smartscreen-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+
+    .smartscreen-icon {
+      font-size: 2rem;
+      flex-shrink: 0;
+    }
+
+    .smartscreen-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+    }
+
+    .smartscreen-subtitle {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    /* The fake Windows SmartScreen dialog */
+    .win-dialog {
+      background: #1e1e2e;
+      border: 2px solid #444;
+      border-radius: 10px;
+      padding: 0;
+      margin: 24px 0;
+      overflow: hidden;
+      font-size: 0.88rem;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    }
+
+    .win-dialog-titlebar {
+      background: #2d2d3f;
+      padding: 10px 16px;
       font-size: 0.8rem;
+      color: #888;
+      border-bottom: 1px solid #3a3a4f;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .win-titlebar-dots {
+      display: flex;
+      gap: 5px;
+    }
+
+    .win-titlebar-dots span {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #555;
+    }
+
+    .win-dialog-body {
+      padding: 24px 20px;
+    }
+
+    .win-shield {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    .win-shield-icon {
+      font-size: 2.8rem;
+      flex-shrink: 0;
+    }
+
+    .win-shield-text h3 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #f0f0f0;
+      margin-bottom: 4px;
+    }
+
+    .win-shield-text p {
+      color: #a0a0a0;
+      font-size: 0.83rem;
+      line-height: 1.5;
+    }
+
+    .win-info-row {
+      background: #16161e;
+      border: 1px solid #333;
+      border-radius: 6px;
+      padding: 10px 14px;
+      margin-bottom: 12px;
+      font-size: 0.82rem;
+    }
+
+    .win-info-row strong {
+      color: #ccc;
+    }
+
+    .win-info-row span {
+      color: #888;
+    }
+
+    .win-dialog-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .win-btn {
+      padding: 8px 20px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      border: 1px solid #555;
+      cursor: default;
+      color: #ccc;
+      background: #2a2a3a;
+    }
+
+    .win-btn-primary {
+      background: var(--purple);
+      border-color: var(--purple);
+      color: #fff;
+      position: relative;
+    }
+
+    .win-btn-primary::after {
+      content: ' ← Click this!';
+      font-size: 0.75rem;
+      font-weight: 800;
+      color: var(--yellow);
+      margin-left: 4px;
+    }
+
+    .win-more-info {
+      color: var(--purple-light);
+      text-decoration: underline;
+      font-size: 0.84rem;
+      cursor: default;
+      display: inline-block;
+      margin-bottom: 8px;
+    }
+
+    .win-more-info::after {
+      content: ' ← Click "More info" first';
+      font-weight: 700;
+      color: var(--yellow);
+      text-decoration: none;
+    }
+
+    .smartscreen-steps {
+      list-style: none;
+      margin-top: 20px;
+    }
+
+    .smartscreen-steps li {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      font-size: 0.97rem;
+      line-height: 1.6;
+    }
+
+    .smartscreen-steps li:last-child {
+      border-bottom: none;
+    }
+
+    .ss-step-num {
+      flex-shrink: 0;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: rgba(240, 180, 41, 0.2);
+      border: 1px solid rgba(240, 180, 41, 0.5);
+      color: var(--yellow);
+      font-size: 0.78rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 1px;
+    }
+
+    /* ===========================
+       FAQ SECTION
+    =========================== */
+    .faq-list {
+      max-width: 680px;
+      margin: 0 auto;
+    }
+
+    .faq-item {
+      background: var(--bg-card);
+      border: 1px solid #272727;
+      border-radius: var(--radius-sm);
+      margin-bottom: 14px;
+      overflow: hidden;
+      transition: border-color 0.2s;
+    }
+
+    .faq-item:hover {
+      border-color: rgba(108, 99, 255, 0.35);
+    }
+
+    .faq-q {
+      width: 100%;
+      background: none;
+      border: none;
+      color: var(--text);
+      text-align: left;
+      font-size: 1.05rem;
+      font-weight: 700;
+      padding: 22px 24px;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      font-family: var(--font);
+      line-height: 1.4;
+    }
+
+    .faq-q:focus {
+      outline: 2px solid var(--purple);
+      outline-offset: -2px;
+    }
+
+    .faq-arrow {
+      flex-shrink: 0;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: var(--purple-dim);
+      border: 1px solid rgba(108, 99, 255, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--purple-light);
+      font-size: 0.75rem;
+      transition: transform 0.22s;
+    }
+
+    .faq-item.open .faq-arrow {
+      transform: rotate(180deg);
+    }
+
+    .faq-a {
+      padding: 0 24px;
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease, padding 0.3s ease;
+    }
+
+    .faq-item.open .faq-a {
+      max-height: 500px;
+      padding: 0 24px 22px;
+    }
+
+    .faq-a p {
+      color: var(--text-muted);
+      font-size: 0.97rem;
+      line-height: 1.75;
+    }
+
+    .faq-a p + p {
+      margin-top: 12px;
+    }
+
+    .faq-a strong {
+      color: var(--text);
+    }
+
+    /* ===========================
+       BOTTOM CTA
+    =========================== */
+    .bottom-cta {
+      text-align: center;
+      padding: 80px 24px;
+      background: radial-gradient(ellipse 70% 80% at 50% 120%, rgba(108, 99, 255, 0.15) 0%, transparent 70%);
+    }
+
+    .bottom-cta h2 {
+      font-size: clamp(1.6rem, 4vw, 2.4rem);
+      font-weight: 800;
+      margin-bottom: 14px;
+      letter-spacing: -0.3px;
+    }
+
+    .bottom-cta p {
+      color: var(--text-muted);
+      font-size: 1.05rem;
+      margin-bottom: 40px;
+    }
+
+    /* ===========================
+       FOOTER
+    =========================== */
+    footer {
+      border-top: 1px solid #1e1e1e;
+      padding: 32px 24px;
+      text-align: center;
+      color: var(--text-dim);
+      font-size: 0.85rem;
+    }
+
+    footer a {
+      color: var(--text-muted);
+      text-decoration: none;
+    }
+
+    footer a:hover {
+      color: var(--purple-light);
+    }
+
+    /* ===========================
+       UTILITY / SHARED
+    =========================== */
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0,0,0,0);
+      white-space: nowrap;
+    }
+
+    .highlight {
+      color: var(--purple-light);
+    }
+
+    .divider-line {
+      border: none;
+      border-top: 1px solid #1e1e1e;
+      margin: 0;
+    }
+
+    /* ===========================
+       RESPONSIVE
+    =========================== */
+    @media (max-width: 600px) {
+      .hero {
+        padding: 60px 0 48px;
+      }
+
+      .btn-download-windows {
+        font-size: 1.15rem;
+        padding: 18px 28px;
+        gap: 12px;
+        width: 100%;
+        justify-content: center;
+      }
+
+      .btn-cta {
+        font-size: 1.1rem;
+      }
+
+      .other-os {
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .trust-strip {
+        gap: 18px;
+      }
+
+      .trust-item {
+        font-size: 0.88rem;
+      }
+
+      .section {
+        padding: 52px 0;
+      }
+
+      .step {
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .step-num {
+        width: 44px;
+        height: 44px;
+        font-size: 1.1rem;
+      }
+
+      .smartscreen-section {
+        padding: 24px 18px;
+      }
+
+      .win-dialog-actions {
+        flex-direction: column;
+      }
+
+      .win-btn {
+        text-align: center;
+      }
+
+      .logo-name {
+        font-size: 1.9rem;
+      }
+
+      .logo-bolt {
+        font-size: 2.4rem;
+      }
+
+      .features-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 400px) {
+      body { font-size: 16px; }
+      .container { padding: 0 16px; }
+    }
+
+    /* ===========================
+       FOCUS / ACCESSIBILITY
+    =========================== */
+    a:focus-visible,
+    button:focus-visible {
+      outline: 2px solid var(--purple);
+      outline-offset: 3px;
+      border-radius: 4px;
     }
   </style>
 </head>
 <body>
 
-  <div class="logo">⚡</div>
-  <h1>Sparkbot</h1>
-  <p class="tagline">Your local AI assistant — runs entirely on your computer.</p>
+  <!-- ===========================
+       HERO
+  =========================== -->
+  <header class="hero">
+    <div class="container">
 
-  <a class="download-btn" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.4.0/Sparkbot.Local_1.4.0_x64-setup.exe">
-    <span class="platform-icon">🪟</span>
-    Download for Windows
-  </a>
+      <div class="logo-mark">
+        <span class="logo-bolt" role="img" aria-label="Lightning bolt">⚡</span>
+        <span class="logo-name">Sparkbot</span>
+      </div>
 
-  <p class="note">
-    Windows may show a security warning — click <strong>"More info"</strong> then
-    <strong>"Run anyway"</strong> to install.
-  </p>
+      <div class="hero-badge">Free &amp; Open Source &nbsp;·&nbsp; v1.4.0</div>
 
-  <div class="other-platforms">
-    Also available for &nbsp;
-    <a href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.4.0/Sparkbot.Local_1.4.0_aarch64.dmg">macOS (Apple Silicon)</a>
-    &nbsp;·&nbsp;
-    <a href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.4.0/Sparkbot.Local_1.4.0_amd64.AppImage">Linux</a>
-  </div>
+      <h1>Your own AI,<br>on your computer</h1>
 
-  <p class="version">v1.4.0</p>
+      <p class="hero-tagline">
+        Chat with a powerful AI assistant that lives entirely on your machine.
+        No cloud. No monthly fee. No account. Just download and go.
+      </p>
+
+      <!-- PRIMARY DOWNLOAD BUTTON -->
+      <div class="download-primary-wrap">
+        <a
+          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.4.0/Sparkbot.Local_1.4.0_x64-setup.exe"
+          class="btn-download-windows"
+          aria-label="Download Sparkbot for Windows, version 1.4.0"
+        >
+          <span class="btn-icon" role="img" aria-hidden="true">🪟</span>
+          <span class="btn-text-block">
+            <span class="btn-label">Free Download</span>
+            <span class="btn-cta">Download for Windows</span>
+          </span>
+        </a>
+      </div>
+
+      <p class="download-meta">Version 1.4.0 &nbsp;·&nbsp; Windows 10 &amp; 11 &nbsp;·&nbsp; 64-bit &nbsp;·&nbsp; Free forever</p>
+
+      <!-- Secondary OS links -->
+      <div class="other-os">
+        <a
+          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.4.0/Sparkbot.Local_1.4.0_aarch64.dmg"
+          class="btn-os-small"
+          aria-label="Download Sparkbot for macOS Apple Silicon"
+        >
+          <span role="img" aria-hidden="true"></span> macOS (Apple Silicon)
+        </a>
+        <a
+          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.4.0/Sparkbot.Local_1.4.0_amd64.AppImage"
+          class="btn-os-small"
+          aria-label="Download Sparkbot for Linux AppImage"
+        >
+          <span role="img" aria-hidden="true">🐧</span> Linux (AppImage)
+        </a>
+      </div>
+
+      <!-- Trust strip -->
+      <div class="trust-strip" role="list">
+        <div class="trust-item" role="listitem">
+          <span class="trust-icon" role="img" aria-hidden="true">🔒</span>
+          <span>100% private — nothing leaves your PC</span>
+        </div>
+        <div class="trust-item" role="listitem">
+          <span class="trust-icon" role="img" aria-hidden="true">💸</span>
+          <span>No subscription, no hidden fees</span>
+        </div>
+        <div class="trust-item" role="img" aria-hidden="true" role="listitem">
+          <span class="trust-icon" role="img" aria-hidden="true">✅</span>
+          <span>No account or sign-up needed</span>
+        </div>
+        <div class="trust-item" role="listitem">
+          <span class="trust-icon" role="img" aria-hidden="true">📂</span>
+          <span>Open source</span>
+        </div>
+      </div>
+
+    </div>
+  </header>
+
+  <main>
+
+    <!-- ===========================
+         FEATURES
+    =========================== -->
+    <section class="section" aria-labelledby="features-heading">
+      <div class="container">
+        <h2 class="section-title" id="features-heading">Everything you need, nothing you don't</h2>
+        <p class="section-subtitle">Sparkbot does everything ChatGPT does — but your conversations stay on your computer, always.</p>
+
+        <div class="features-grid">
+
+          <div class="feature-card">
+            <span class="feature-icon" role="img" aria-hidden="true">🔒</span>
+            <h3 class="feature-title">Completely private</h3>
+            <p class="feature-desc">Your chats never leave your computer. No company reads them, stores them, or uses them to train AI. What you type stays yours.</p>
+          </div>
+
+          <div class="feature-card">
+            <span class="feature-icon" role="img" aria-hidden="true">💬</span>
+            <h3 class="feature-title">Chat with AI naturally</h3>
+            <p class="feature-desc">Ask questions, get help writing emails, plan a trip, or just have a conversation. Works with OpenAI, Anthropic, Google, or free local models with no API key needed.</p>
+          </div>
+
+          <div class="feature-card">
+            <span class="feature-icon" role="img" aria-hidden="true">🧠</span>
+            <h3 class="feature-title">It remembers you</h3>
+            <p class="feature-desc">Tell Sparkbot your name, your preferences, your routines — and it'll remember across every conversation, forever, on your own computer.</p>
+          </div>
+
+          <div class="feature-card">
+            <span class="feature-icon" role="img" aria-hidden="true">📁</span>
+            <h3 class="feature-title">Read your files</h3>
+            <p class="feature-desc">Drop in a document, spreadsheet, or photo and ask Sparkbot to summarize it, answer questions about it, or help you edit it.</p>
+          </div>
+
+          <div class="feature-card">
+            <span class="feature-icon" role="img" aria-hidden="true">⏰</span>
+            <h3 class="feature-title">Reminders &amp; web search</h3>
+            <p class="feature-desc">Ask it to remind you to take your medication, look something up on the internet, or check the weather — it can do all of that.</p>
+          </div>
+
+          <div class="feature-card">
+            <span class="feature-icon" role="img" aria-hidden="true">🤖</span>
+            <h3 class="feature-title">Custom AI assistants</h3>
+            <p class="feature-desc">Set up different AI personalities for different tasks — one for cooking help, one for writing, one for medical questions. Each stays focused on what you need.</p>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <hr class="divider-line" />
+
+    <!-- ===========================
+         HOW TO INSTALL
+    =========================== -->
+    <section class="section" aria-labelledby="install-heading">
+      <div class="container">
+        <h2 class="section-title" id="install-heading">How to install Sparkbot</h2>
+        <p class="section-subtitle">It takes about 2 minutes. If you can install an app on your phone, you can do this.</p>
+
+        <div class="steps-wrap">
+
+          <div class="step">
+            <div class="step-num" aria-hidden="true">1</div>
+            <div class="step-body">
+              <h3 class="step-title">Click the big purple "Download for Windows" button above</h3>
+              <p class="step-desc">Your browser will download a file called <strong>Sparkbot.Local_1.4.0_x64-setup.exe</strong>. This is the installer. It's about 10–20 MB so it only takes a moment on most internet connections.</p>
+            </div>
+          </div>
+
+          <div class="step">
+            <div class="step-num" aria-hidden="true">2</div>
+            <div class="step-body">
+              <h3 class="step-title">Find the downloaded file and open it</h3>
+              <p class="step-desc">Look at the bottom of your browser for the downloaded file, or check your <strong>Downloads folder</strong>. Double-click the file named <strong>Sparkbot.Local_1.4.0_x64-setup.exe</strong> to start installing.</p>
+            </div>
+          </div>
+
+          <div class="step">
+            <div class="step-num" aria-hidden="true">3</div>
+            <div class="step-body">
+              <h3 class="step-title">Handle the Windows security warning (don't worry — see below)</h3>
+              <p class="step-desc">Windows may show a blue or grey warning screen. <strong>This is normal for new software</strong> and does not mean anything is wrong. Scroll down for a step-by-step picture of exactly what to click.</p>
+            </div>
+          </div>
+
+          <div class="step">
+            <div class="step-num" aria-hidden="true">4</div>
+            <div class="step-body">
+              <h3 class="step-title">Follow the installer — it only takes a moment</h3>
+              <p class="step-desc">Click <strong>Next</strong> (or <strong>Install</strong>) on any screens that appear. When it's done, Sparkbot will appear in your Start Menu like any other app.</p>
+            </div>
+          </div>
+
+          <div class="step">
+            <div class="step-num" aria-hidden="true">5</div>
+            <div class="step-body">
+              <h3 class="step-title">Open Sparkbot and start chatting</h3>
+              <p class="step-desc">Find <strong>Sparkbot</strong> in your Start Menu and open it. On the first run it will ask if you want to use a free local AI or connect your own AI key (like OpenAI). Either way works — you can always change it later.</p>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <hr class="divider-line" />
+
+    <!-- ===========================
+         SMARTSCREEN WARNING
+    =========================== -->
+    <section class="section" aria-labelledby="smartscreen-heading">
+      <div class="container">
+        <h2 class="section-title" id="smartscreen-heading">About the Windows warning screen</h2>
+        <p class="section-subtitle">Windows shows this for any new software. Here's exactly what to do — step by step.</p>
+
+        <div class="smartscreen-section" role="region" aria-label="SmartScreen warning instructions">
+
+          <div class="smartscreen-header">
+            <span class="smartscreen-icon" role="img" aria-label="Warning">⚠️</span>
+            <div>
+              <div class="smartscreen-title">You'll probably see this blue screen — don't panic</div>
+              <div class="smartscreen-subtitle">It's called "Windows SmartScreen" and it appears for any software that hasn't built up millions of downloads yet.</div>
+            </div>
+          </div>
+
+          <!-- Fake Windows SmartScreen mockup -->
+          <div class="win-dialog" role="img" aria-label="Screenshot mockup of Windows SmartScreen protected your PC dialog">
+            <div class="win-dialog-titlebar">
+              <div class="win-titlebar-dots">
+                <span></span><span></span><span></span>
+              </div>
+              <span>Windows protected your PC</span>
+            </div>
+            <div class="win-dialog-body">
+              <div class="win-shield">
+                <span class="win-shield-icon">🛡️</span>
+                <div class="win-shield-text">
+                  <h3>Windows protected your PC</h3>
+                  <p>Microsoft Defender SmartScreen prevented an unrecognized app from starting. Running this app might put your PC at risk.</p>
+                </div>
+              </div>
+
+              <div class="win-info-row">
+                <strong>App:</strong> <span>Sparkbot.Local_1.4.0_x64-setup.exe</span>
+              </div>
+              <div class="win-info-row">
+                <strong>Publisher:</strong> <span>Unknown publisher</span>
+              </div>
+
+              <!-- The "More info" link they need to click first -->
+              <span class="win-more-info" tabindex="-1">More info</span>
+
+              <div class="win-dialog-actions">
+                <span class="win-btn">Don't run</span>
+                <span class="win-btn win-btn-primary">Run anyway</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step-by-step instructions -->
+          <ul class="smartscreen-steps" aria-label="Steps to bypass SmartScreen warning">
+            <li>
+              <span class="ss-step-num" aria-hidden="true">1</span>
+              <span>When the blue screen appears, look for the small text link that says <strong>"More info"</strong> — click it. (It's usually in the lower-left area of the blue box.)</span>
+            </li>
+            <li>
+              <span class="ss-step-num" aria-hidden="true">2</span>
+              <span>After clicking "More info", a new button will appear at the bottom that says <strong>"Run anyway"</strong> — click that.</span>
+            </li>
+            <li>
+              <span class="ss-step-num" aria-hidden="true">3</span>
+              <span>The installer will now start normally. Continue with the installation as usual.</span>
+            </li>
+          </ul>
+
+        </div>
+      </div>
+    </section>
+
+    <hr class="divider-line" />
+
+    <!-- ===========================
+         FAQ
+    =========================== -->
+    <section class="section" aria-labelledby="faq-heading">
+      <div class="container">
+        <h2 class="section-title" id="faq-heading">Questions &amp; answers</h2>
+        <p class="section-subtitle">Plain English answers to things people usually wonder about.</p>
+
+        <div class="faq-list" role="list">
+
+          <div class="faq-item" role="listitem">
+            <button class="faq-q" aria-expanded="false" onclick="toggleFaq(this)">
+              Is this safe? Could it be a virus?
+              <span class="faq-arrow" aria-hidden="true">▾</span>
+            </button>
+            <div class="faq-a" role="region">
+              <p><strong>Yes, it is safe.</strong> Sparkbot is open source software, which means anyone in the world can read its entire code and verify there is nothing harmful in it. You can find the full source code on GitHub at the link in the footer.</p>
+              <p>The Windows warning you see is called SmartScreen — it appears automatically for any software that hasn't been downloaded by millions of people yet. It's a precaution from Microsoft, not a sign that something is wrong. New software from even well-known developers triggers this warning.</p>
+            </div>
+          </div>
+
+          <div class="faq-item" role="listitem">
+            <button class="faq-q" aria-expanded="false" onclick="toggleFaq(this)">
+              Does it cost anything? Will I be charged later?
+              <span class="faq-arrow" aria-hidden="true">▾</span>
+            </button>
+            <div class="faq-a" role="region">
+              <p><strong>Sparkbot itself is completely free, forever.</strong> There is no trial period, no subscription, and no credit card required.</p>
+              <p>The AI "brain" inside Sparkbot can be either free (using a local AI model that runs on your computer with no internet needed) or paid (using a service like OpenAI or Anthropic, which charge by how much you use). Most people start with the free local option, which works great for everyday questions. You choose — Sparkbot never charges you directly.</p>
+            </div>
+          </div>
+
+          <div class="faq-item" role="listitem">
+            <button class="faq-q" aria-expanded="false" onclick="toggleFaq(this)">
+              Do I need the internet to use it?
+              <span class="faq-arrow" aria-hidden="true">▾</span>
+            </button>
+            <div class="faq-a" role="region">
+              <p><strong>It depends on which AI option you choose.</strong> If you use a local AI model (the free option), Sparkbot works completely offline — no internet required at all after the initial setup download.</p>
+              <p>If you connect it to an online AI service like OpenAI or Anthropic, then it needs internet to talk to those services. But even then, your conversation history stays on your computer — only the actual question you're asking gets sent over the internet, just like when you search Google.</p>
+            </div>
+          </div>
+
+          <div class="faq-item" role="listitem">
+            <button class="faq-q" aria-expanded="false" onclick="toggleFaq(this)">
+              What exactly is AI? I'm not sure I understand it.
+              <span class="faq-arrow" aria-hidden="true">▾</span>
+            </button>
+            <div class="faq-a" role="region">
+              <p>Think of AI as a very well-read assistant that has studied an enormous amount of text — books, websites, encyclopedias, instruction manuals — and can answer questions about almost anything in plain, conversational language.</p>
+              <p>You type a question or request in normal sentences, and it types back a helpful answer. You don't need to learn any special commands or technical language. Just talk to it the same way you'd talk to a knowledgeable friend. <strong>If you've ever used Google to look something up, you can use Sparkbot.</strong></p>
+            </div>
+          </div>
+
+          <div class="faq-item" role="listitem">
+            <button class="faq-q" aria-expanded="false" onclick="toggleFaq(this)">
+              Will my conversations be seen by anyone else?
+              <span class="faq-arrow" aria-hidden="true">▾</span>
+            </button>
+            <div class="faq-a" role="region">
+              <p><strong>No.</strong> Your conversations are stored only on your computer, in a folder that belongs to you. No one at Sparkbot sees them. There are no servers receiving your chat history.</p>
+              <p>If you choose to use a paid AI service like OpenAI, those services do receive the text of your question in order to answer it — the same way a search engine receives what you type to give you results. But Sparkbot itself never transmits or stores your chats anywhere other than your own machine.</p>
+            </div>
+          </div>
+
+          <div class="faq-item" role="listitem">
+            <button class="faq-q" aria-expanded="false" onclick="toggleFaq(this)">
+              How is this different from ChatGPT or Claude?
+              <span class="faq-arrow" aria-hidden="true">▾</span>
+            </button>
+            <div class="faq-a" role="region">
+              <p>ChatGPT and Claude are websites run by big companies — you visit their site, create an account, and your conversations are stored on their servers. They may use those conversations to improve their systems, and you need to pay monthly for the full features.</p>
+              <p><strong>Sparkbot runs on your own computer.</strong> Your conversations belong only to you. There's no account to create, no monthly bill, and the app works even without internet. Think of it as having your own personal AI assistant that you own outright, rather than renting time with someone else's.</p>
+            </div>
+          </div>
+
+          <div class="faq-item" role="listitem">
+            <button class="faq-q" aria-expanded="false" onclick="toggleFaq(this)">
+              What kind of computer do I need?
+              <span class="faq-arrow" aria-hidden="true">▾</span>
+            </button>
+            <div class="faq-a" role="region">
+              <p>Any Windows 10 or Windows 11 computer made in the last 5–6 years will work fine. You don't need a gaming computer or anything fancy.</p>
+              <p>If you want to use a free local AI model (no internet required), having 8 GB of RAM helps, though smaller models work on 4 GB. If you connect Sparkbot to an online AI service like OpenAI, even an older computer will work well because the heavy thinking happens on their servers.</p>
+            </div>
+          </div>
+
+          <div class="faq-item" role="listitem">
+            <button class="faq-q" aria-expanded="false" onclick="toggleFaq(this)">
+              What if I need help or something goes wrong?
+              <span class="faq-arrow" aria-hidden="true">▾</span>
+            </button>
+            <div class="faq-a" role="region">
+              <p>You can open a support request on GitHub (the link is in the footer). The community there is friendly and helpful. Just describe what happened and someone will get back to you — usually within a day.</p>
+              <p>You can also uninstall Sparkbot at any time from Windows Settings → Apps → Installed Apps, exactly like removing any other program. It won't leave anything behind.</p>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ===========================
+         BOTTOM CTA
+    =========================== -->
+    <section class="bottom-cta" aria-labelledby="cta-heading">
+      <h2 id="cta-heading">Ready to try it?</h2>
+      <p>Free. Private. Yours. Download takes less than a minute.</p>
+      <a
+        href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.4.0/Sparkbot.Local_1.4.0_x64-setup.exe"
+        class="btn-download-windows"
+        style="display:inline-flex;"
+        aria-label="Download Sparkbot for Windows"
+      >
+        <span class="btn-icon" role="img" aria-hidden="true">🪟</span>
+        <span class="btn-text-block">
+          <span class="btn-label">Free Download</span>
+          <span class="btn-cta">Download for Windows</span>
+        </span>
+      </a>
+    </section>
+
+  </main>
+
+  <!-- ===========================
+       FOOTER
+  =========================== -->
+  <footer>
+    <p>
+      <span role="img" aria-hidden="true">⚡</span> <strong>Sparkbot</strong> &nbsp;·&nbsp; Version 1.4.0 &nbsp;·&nbsp; Free &amp; Open Source
+    </p>
+    <p style="margin-top:10px;">
+      <a href="https://github.com/armpit-symphony/Sparkbot" target="_blank" rel="noopener noreferrer">GitHub</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/armpit-symphony/Sparkbot/releases" target="_blank" rel="noopener noreferrer">All Releases</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/armpit-symphony/Sparkbot/issues" target="_blank" rel="noopener noreferrer">Get Help</a>
+    </p>
+    <p style="margin-top:12px; font-size:0.8rem;">
+      Other platforms:
+      <a href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.4.0/Sparkbot.Local_1.4.0_aarch64.dmg">macOS (Apple Silicon)</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.4.0/Sparkbot.Local_1.4.0_amd64.AppImage">Linux (AppImage)</a>
+    </p>
+  </footer>
+
+  <!-- ===========================
+       JAVASCRIPT — FAQ accordion
+  =========================== -->
+  <script>
+    function toggleFaq(btn) {
+      var item = btn.closest('.faq-item');
+      var isOpen = item.classList.contains('open');
+
+      // Close all open items
+      document.querySelectorAll('.faq-item.open').forEach(function(el) {
+        el.classList.remove('open');
+        el.querySelector('.faq-q').setAttribute('aria-expanded', 'false');
+      });
+
+      // If the clicked one wasn't open, open it
+      if (!isOpen) {
+        item.classList.add('open');
+        btn.setAttribute('aria-expanded', 'true');
+      }
+    }
+  </script>
 
 </body>
 </html>
