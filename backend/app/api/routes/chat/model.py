@@ -503,17 +503,23 @@ async def openrouter_models(current_user: CurrentChatUser) -> dict[str, Any]:
         raw_id = str(item.get("id") or "").strip()
         if not raw_id:
             continue
+        pricing = item.get("pricing") or {}
+        prompt_price = str(pricing.get("prompt") or "1").strip()
+        completion_price = str(pricing.get("completion") or "1").strip()
+        is_free = raw_id.endswith(":free") or (prompt_price == "0" and completion_price == "0")
         rows.append(
             {
                 "id": f"openrouter/{raw_id}",
                 "raw_id": raw_id,
                 "label": str(item.get("name") or raw_id),
                 "context_length": item.get("context_length"),
-                "pricing": item.get("pricing") or {},
+                "pricing": pricing,
+                "is_free": is_free,
             }
         )
 
-    rows.sort(key=lambda item: str(item.get("label") or item["raw_id"]).lower())
+    # Sort: free models first, then alphabetically by label
+    rows.sort(key=lambda m: (not m.get("is_free", False), str(m.get("label") or m["raw_id"]).lower()))
     return {"models": rows}
 
 

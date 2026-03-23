@@ -289,6 +289,7 @@ interface OpenRouterModelRecord {
   label: string
   context_length?: number
   pricing?: Record<string, string>
+  is_free?: boolean
 }
 
 interface CommsForm {
@@ -667,6 +668,7 @@ interface SparkbotSettingsDialogProps {
   savingModelStack: boolean
   savingProviderTokens: boolean
   savingDefaultSelection: boolean
+  savingOpenRouterConnect: boolean
   savingAgentOverrides: boolean
   loadingOpenRouterModels: boolean
   savingComms: boolean
@@ -693,6 +695,7 @@ interface SparkbotSettingsDialogProps {
   onSaveModelStack: () => void
   onSaveProviderTokens: () => void
   onSaveDefaultSelection: () => void
+  onSaveOpenRouterConnect: () => void
   onRoutingPolicyChange: (value: boolean) => void
   onSaveAgentOverrides: () => void
   onLoadOpenRouterModels: () => void
@@ -771,6 +774,7 @@ function SparkbotSettingsDialog({
   savingModelStack,
   savingProviderTokens,
   savingDefaultSelection,
+  savingOpenRouterConnect,
   savingAgentOverrides,
   loadingOpenRouterModels,
   savingComms,
@@ -797,6 +801,7 @@ function SparkbotSettingsDialog({
   onSaveModelStack,
   onSaveProviderTokens,
   onSaveDefaultSelection,
+  onSaveOpenRouterConnect,
   onRoutingPolicyChange,
   onSaveAgentOverrides,
   onLoadOpenRouterModels,
@@ -1312,15 +1317,21 @@ function SparkbotSettingsDialog({
               <div className="space-y-4">
                 <div className="rounded-lg border bg-muted/30 p-4">
                   <div className="mb-3 flex flex-wrap gap-2">
-                    {([
-                      ["openrouter", "OpenRouter"],
-                      ["openai", "OpenAI direct"],
-                      ["anthropic", "Anthropic direct"],
-                      ["google", "Google direct"],
-                      ["groq", "Groq direct"],
-                      ["minimax", "MiniMax direct"],
-                      ["ollama", "Local (Ollama)"],
-                    ] as [string, string][]).map(([providerId, label]) => (
+                    {(isV1LocalMode
+                      ? ([
+                          ["openrouter", "OpenRouter (recommended)"],
+                          ["ollama", "Local (Ollama)"],
+                        ] as [string, string][])
+                      : ([
+                          ["openrouter", "OpenRouter"],
+                          ["openai", "OpenAI direct"],
+                          ["anthropic", "Anthropic direct"],
+                          ["google", "Google direct"],
+                          ["groq", "Groq direct"],
+                          ["minimax", "MiniMax direct"],
+                          ["ollama", "Local (Ollama)"],
+                        ] as [string, string][])
+                    ).map(([providerId, label]) => (
                       <button
                         key={providerId}
                         type="button"
@@ -1352,21 +1363,63 @@ function SparkbotSettingsDialog({
                         </p>
                       </div>
                       <div>
-                        <label className="mb-1 block text-xs font-medium text-muted-foreground">Default cloud model</label>
+                        <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                          Default cloud model
+                          {openRouterModels.length > 0 && (
+                            <span className="ml-2 text-muted-foreground/60">
+                              ({openRouterModels.filter(m => m.is_free).length} free, {openRouterModels.filter(m => !m.is_free).length} paid)
+                            </span>
+                          )}
+                        </label>
                         <select
                           value={defaultSelection.provider === "openrouter" ? defaultSelection.model : ""}
                           onChange={(e) => onDefaultSelectionChange("model", e.target.value)}
                           className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
                         >
-                          <option value="">Choose an OpenRouter model</option>
-                          {openRouterModels.map((model) => (
-                            <option key={model.id} value={model.id}>
-                              {model.label}
-                            </option>
-                          ))}
+                          <option value="">
+                            {openRouterModels.length === 0
+                              ? "Click 'Refresh models' to load the full list..."
+                              : "Choose an OpenRouter model"}
+                          </option>
+                          {openRouterModels.length === 0 ? (
+                            <optgroup label="Popular free models (no API key needed)">
+                              {[
+                                { id: "openrouter/meta-llama/llama-3.1-8b-instruct:free", label: "Llama 3.1 8B — great everyday chat" },
+                                { id: "openrouter/mistralai/mistral-7b-instruct:free", label: "Mistral 7B — fast and capable" },
+                                { id: "openrouter/google/gemma-2-9b-it:free", label: "Gemma 2 9B — by Google" },
+                                { id: "openrouter/microsoft/phi-3-mini-128k-instruct:free", label: "Phi-3 Mini — excellent reasoning" },
+                                { id: "openrouter/qwen/qwen-2-7b-instruct:free", label: "Qwen 2 7B — multilingual" },
+                              ].map(m => (
+                                <option key={m.id} value={m.id}>{m.label}</option>
+                              ))}
+                            </optgroup>
+                          ) : (
+                            <>
+                              {openRouterModels.filter(m => m.is_free).length > 0 && (
+                                <optgroup label={`Free models (${openRouterModels.filter(m => m.is_free).length})`}>
+                                  {openRouterModels.filter(m => m.is_free).map((model) => (
+                                    <option key={model.id} value={model.id}>
+                                      {model.label}
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              )}
+                              {openRouterModels.filter(m => !m.is_free).length > 0 && (
+                                <optgroup label={`Paid models (${openRouterModels.filter(m => !m.is_free).length})`}>
+                                  {openRouterModels.filter(m => !m.is_free).map((model) => (
+                                    <option key={model.id} value={model.id}>
+                                      {model.label}
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              )}
+                            </>
+                          )}
                         </select>
                         <p className="mt-1 text-[11px] text-muted-foreground">
-                          Sparkbot will use this as the main cloud model for everyday chat unless an agent override says otherwise.
+                          {isV1LocalMode
+                            ? "Free models work with no API key. For paid models, paste your OpenRouter key above."
+                            : "Sparkbot will use this as the main cloud model for everyday chat unless an agent override says otherwise."}
                         </p>
                       </div>
                     </div>
@@ -1459,26 +1512,40 @@ function SparkbotSettingsDialog({
                   </div>
 
                   <div className="mt-4 flex justify-end gap-2">
-                    {(defaultSelection.provider === "openrouter" || directProviderKeyField[defaultSelection.provider] !== undefined) ? (
+                    {isV1LocalMode && defaultSelection.provider === "openrouter" ? (
+                      // V1 desktop: single "Connect" button saves key + model together
                       <button
                         type="button"
-                        onClick={onSaveProviderTokens}
-                        disabled={savingProviderTokens}
-                        className="rounded-md border px-4 py-2 text-sm hover:bg-muted disabled:opacity-50"
+                        onClick={onSaveOpenRouterConnect}
+                        disabled={savingOpenRouterConnect}
+                        className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50"
                       >
-                        {savingProviderTokens
-                          ? "Saving key..."
-                          : `Save ${directProviderLabel[defaultSelection.provider] ?? "OpenRouter"} key`}
+                        {savingOpenRouterConnect ? "Connecting..." : hasOpenRouterConfigured ? "Save model" : "Connect to OpenRouter"}
                       </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={onSaveDefaultSelection}
-                      disabled={savingDefaultSelection}
-                      className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50"
-                    >
-                      {savingDefaultSelection ? "Saving default..." : "Save default model"}
-                    </button>
+                    ) : (
+                      <>
+                        {(defaultSelection.provider === "openrouter" || directProviderKeyField[defaultSelection.provider] !== undefined) ? (
+                          <button
+                            type="button"
+                            onClick={onSaveProviderTokens}
+                            disabled={savingProviderTokens}
+                            className="rounded-md border px-4 py-2 text-sm hover:bg-muted disabled:opacity-50"
+                          >
+                            {savingProviderTokens
+                              ? "Saving key..."
+                              : `Save ${directProviderLabel[defaultSelection.provider] ?? "OpenRouter"} key`}
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={onSaveDefaultSelection}
+                          disabled={savingDefaultSelection}
+                          className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50"
+                        >
+                          {savingDefaultSelection ? "Saving default..." : "Save default model"}
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -2300,6 +2367,7 @@ function SparkbotDmPage() {
   const [savingModelStack, setSavingModelStack] = useState(false)
   const [savingProviderTokens, setSavingProviderTokens] = useState(false)
   const [savingDefaultSelection, setSavingDefaultSelection] = useState(false)
+  const [savingOpenRouterConnect, setSavingOpenRouterConnect] = useState(false)
   const [savingAgentOverrides, setSavingAgentOverrides] = useState(false)
   const [savingComms, setSavingComms] = useState(false)
   const [policyEntries, setPolicyEntries] = useState<PolicyEntry[]>([])
@@ -2826,6 +2894,57 @@ function SparkbotDmPage() {
     }
   }, [applyControlsConfig, loadOpenRouterModels, providerDrafts, refreshControls])
 
+  // V1_LOCAL_MODE: save OpenRouter key + model + routing in one combined call.
+  // This prevents the common mistake of saving the model without the API key,
+  // which causes chat to fail because OPENROUTER_API_KEY never reaches the env.
+  const saveOpenRouterConnect = useCallback(async () => {
+    const chosenModel = defaultSelection.provider === "openrouter" ? defaultSelection.model.trim() : ""
+    if (!chosenModel) {
+      setSettingsError("Choose an OpenRouter model before connecting.")
+      return
+    }
+    const hasKeyDraft = providerDrafts.openrouter_api_key.trim().length > 0
+    const hasKeyConfigured = Boolean(modelsConfig?.providers?.find(p => p.id === "openrouter")?.configured)
+    if (!hasKeyConfigured && !hasKeyDraft) {
+      setSettingsError("Paste an OpenRouter API key first, or pick a free model — free models work without a key.")
+      return
+    }
+    setSavingOpenRouterConnect(true)
+    setSettingsError("")
+    try {
+      const body: Record<string, unknown> = {
+        default_selection: { provider: "openrouter", model: chosenModel },
+        routing_policy: { cross_provider_fallback: routingPolicy.crossProviderFallback },
+        local_runtime: { default_local_model: localDefaultModel.trim() || "ollama/phi4-mini" },
+      }
+      if (hasKeyDraft) {
+        body.providers = { openrouter_api_key: providerDrafts.openrouter_api_key.trim() }
+      }
+      const res = await apiFetch("/api/v1/chat/models/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(body),
+      })
+      const data = await res.json().catch(() => ({ detail: "Could not connect to OpenRouter." }))
+      if (!res.ok) {
+        setSettingsError(data.detail ?? "Could not connect to OpenRouter.")
+      } else {
+        applyControlsConfig(data)
+        await refreshControls()
+        if (hasKeyDraft) {
+          setProviderDrafts(prev => ({ ...prev, openrouter_api_key: "" }))
+          await loadOpenRouterModels()
+        }
+        setMessages(prev => [...prev, systemMsg(`OpenRouter connected. Default model: **${chosenModel}**. You can start chatting now.`)])
+      }
+    } catch {
+      setSettingsError("Could not connect to OpenRouter.")
+    } finally {
+      setSavingOpenRouterConnect(false)
+    }
+  }, [applyControlsConfig, defaultSelection, loadOpenRouterModels, localDefaultModel, modelsConfig, providerDrafts, routingPolicy.crossProviderFallback, refreshControls])
+
   const saveModelStack = useCallback(async () => {
     if (!modelStack?.primary?.trim() || !modelStack?.heavy_hitter?.trim()) {
       setSettingsError("Choose at least the primary and heavy-hitter models before saving the stack.")
@@ -2905,22 +3024,30 @@ function SparkbotDmPage() {
     setSavingDefaultSelection(true)
     setSettingsError("")
     try {
+      // If the user has an OpenRouter key draft, include it so the key and model
+      // are always saved together — prevents the case where the model is saved
+      // without the key, causing chat to fail with an auth error.
+      const hasOrKeyDraft = defaultSelection.provider === "openrouter" && providerDrafts.openrouter_api_key.trim().length > 0
+      const requestBody: Record<string, unknown> = {
+        default_selection: {
+          provider: defaultSelection.provider,
+          model: chosenDefaultModel,
+        },
+        routing_policy: {
+          cross_provider_fallback: routingPolicy.crossProviderFallback,
+        },
+        local_runtime: {
+          default_local_model: chosenLocalModel,
+        },
+      }
+      if (hasOrKeyDraft) {
+        requestBody.providers = { openrouter_api_key: providerDrafts.openrouter_api_key.trim() }
+      }
       const res = await apiFetch("/api/v1/chat/models/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({
-          default_selection: {
-            provider: defaultSelection.provider,
-            model: chosenDefaultModel,
-          },
-          routing_policy: {
-            cross_provider_fallback: routingPolicy.crossProviderFallback,
-          },
-          local_runtime: {
-            default_local_model: chosenLocalModel,
-          },
-        }),
+        body: JSON.stringify(requestBody),
       })
       const data = await res.json().catch(() => ({ detail: "Could not save default model." }))
       if (!res.ok) {
@@ -2928,6 +3055,10 @@ function SparkbotDmPage() {
       } else {
         applyControlsConfig(data)
         await refreshControls()
+        if (hasOrKeyDraft) {
+          setProviderDrafts(prev => ({ ...prev, openrouter_api_key: "" }))
+          await loadOpenRouterModels()
+        }
         setMessages((prev) => [
           ...prev,
           systemMsg(
@@ -2945,6 +3076,7 @@ function SparkbotDmPage() {
   }, [
     applyControlsConfig,
     defaultSelection,
+    loadOpenRouterModels,
     routingPolicy.crossProviderFallback,
     localDefaultModel,
     modelsConfig,
@@ -3877,6 +4009,7 @@ function SparkbotDmPage() {
         savingModelStack={savingModelStack}
         savingProviderTokens={savingProviderTokens}
         savingDefaultSelection={savingDefaultSelection}
+        savingOpenRouterConnect={savingOpenRouterConnect}
         savingAgentOverrides={savingAgentOverrides}
         loadingOpenRouterModels={loadingOpenRouterModels}
         savingComms={savingComms}
@@ -3903,6 +4036,7 @@ function SparkbotDmPage() {
         onSaveModelStack={saveModelStack}
         onSaveProviderTokens={saveProviderTokens}
         onSaveDefaultSelection={saveDefaultSelection}
+        onSaveOpenRouterConnect={saveOpenRouterConnect}
         onRoutingPolicyChange={handleRoutingPolicyChange}
         onSaveAgentOverrides={saveAgentOverrides}
         onLoadOpenRouterModels={loadOpenRouterModels}
