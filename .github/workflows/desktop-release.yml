@@ -23,6 +23,12 @@ on:
   push:
     tags:
       - "desktop-v*"
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Tag name to build (e.g. desktop-v1.4.4)"
+        required: true
+        default: "desktop-v1.4.4"
 
 jobs:
   # ─────────────────────────── Windows (NSIS) ────────────────────────────────
@@ -37,8 +43,8 @@ jobs:
       - name: Inject version from tag into tauri.conf.json
         shell: bash
         run: |
-          VERSION="${{ github.ref_name }}"
-          VERSION="${VERSION#desktop-v}"
+          TAG="${{ github.event.inputs.tag_name || github.ref_name }}"
+          VERSION="${TAG#desktop-v}"
           python3 -c "
 import json
 with open('src-tauri/tauri.conf.json') as f: c = json.load(f)
@@ -139,8 +145,8 @@ print('Version set to $VERSION')
       - name: Inject version from tag into tauri.conf.json
         shell: bash
         run: |
-          VERSION="${{ github.ref_name }}"
-          VERSION="${VERSION#desktop-v}"
+          TAG="${{ github.event.inputs.tag_name || github.ref_name }}"
+          VERSION="${TAG#desktop-v}"
           python3 -c "
 import json
 with open('src-tauri/tauri.conf.json') as f: c = json.load(f)
@@ -231,6 +237,19 @@ print('Version set to $VERSION')
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Inject version from tag into tauri.conf.json
+        shell: bash
+        run: |
+          TAG="${{ github.event.inputs.tag_name || github.ref_name }}"
+          VERSION="${TAG#desktop-v}"
+          python3 -c "
+import json
+with open('src-tauri/tauri.conf.json') as f: c = json.load(f)
+c['version'] = '$VERSION'
+with open('src-tauri/tauri.conf.json', 'w') as f: json.dump(c, f, indent=2)
+print('Version set to $VERSION')
+"
 
       - name: Install system deps for Tauri (GTK, WebKit, AppImage)
         run: |
@@ -339,13 +358,13 @@ print('Version set to $VERSION')
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: "Sparkbot Desktop ${{ github.ref_name }}"
+          tag_name: ${{ github.event.inputs.tag_name || github.ref_name }}
+          name: "Sparkbot Desktop ${{ github.event.inputs.tag_name || github.ref_name }}"
           draft: false
           prerelease: false
           files: dist/*
           body: |
-            ## Sparkbot Desktop ${{ github.ref_name }}
+            ## Sparkbot Desktop ${{ github.event.inputs.tag_name || github.ref_name }}
 
             Double-click installer — **no Docker, no terminal, no prerequisites**.
 
