@@ -34,6 +34,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Inject version from tag into tauri.conf.json
+        shell: bash
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#desktop-v}"
+          python3 -c "
+import json
+with open('src-tauri/tauri.conf.json') as f: c = json.load(f)
+c['version'] = '$VERSION'
+with open('src-tauri/tauri.conf.json', 'w') as f: json.dump(c, f, indent=2)
+print('Version set to $VERSION')
+"
+
       - name: Setup Python 3.11
         uses: actions/setup-python@v5
         with:
@@ -122,6 +135,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Inject version from tag into tauri.conf.json
+        shell: bash
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#desktop-v}"
+          python3 -c "
+import json
+with open('src-tauri/tauri.conf.json') as f: c = json.load(f)
+c['version'] = '$VERSION'
+with open('src-tauri/tauri.conf.json', 'w') as f: json.dump(c, f, indent=2)
+print('Version set to $VERSION')
+"
 
       - name: Setup Python 3.11
         uses: actions/setup-python@v5
