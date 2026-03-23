@@ -111,94 +111,9 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # ──────────────────── macOS Intel (DMG, x86_64) ────────────────────────────
-  # macos-13 = Intel runner. PyInstaller produces x86_64 binary natively here.
-  # Do NOT use macos-latest for this job — it is M-series and would produce
-  # an arm64 sidecar even when cross-compiling the Tauri shell to x86_64.
-  build-macos-intel:
-    runs-on: macos-13
-    continue-on-error: true  # macos-13 runner unavailable on free plans; skip without blocking release
-    timeout-minutes: 60
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Setup uv
-        uses: astral-sh/setup-uv@v5
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-
-      - name: Setup Rust (stable, Intel target)
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-apple-darwin
-
-      - name: Cache Cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: ${{ runner.os }}-x86-cargo-${{ hashFiles('src-tauri/Cargo.toml') }}
-          restore-keys: ${{ runner.os }}-x86-cargo-
-
-      - name: Cache Tauri CLI binary
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/bin
-          key: cargo-bin-${{ runner.os }}-x86_64-tauri-cli-2
-
-      - name: Install cargo-binstall
-        uses: cargo-bins/cargo-binstall@main
-
-      - name: Install Tauri CLI v2 (pre-compiled binary)
-        run: cargo binstall tauri-cli --version "^2" --no-confirm
-
-      - name: Install Bun workspace deps
-        run: bun install
-
-      - name: Sync backend Python deps (release only — no dev group)
-        working-directory: backend
-        run: uv sync
-
-      - name: Build PyInstaller backend sidecar (x86_64)
-        run: |
-          cd backend
-          uv run python -m PyInstaller \
-            --distpath ../src-tauri/binaries \
-            --noconfirm \
-            ../sparkbot-backend.spec
-
-      - name: Rename sidecar for Tauri target triple
-        run: |
-          mv src-tauri/binaries/sparkbot-backend \
-             src-tauri/binaries/sparkbot-backend-x86_64-apple-darwin
-
-      - name: Build frontend (V1 local mode)
-        run: node scripts/run-desktop-frontend.mjs build
-
-      - name: Build Tauri installer (DMG, Intel)
-        run: cargo tauri build --config src-tauri/tauri.conf.json --bundles dmg --target x86_64-apple-darwin
-        # macOS signing: add APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY,
-        # APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID env vars here (from GitHub secrets) to enable
-        # signing + notarization. Omit them entirely (not just empty) to produce unsigned DMGs.
-
-      - name: Upload installer artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: installer-macos-intel
-          path: src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
-          if-no-files-found: error
-          retention-days: 7
-
   # ──────────────── macOS Apple Silicon (DMG, aarch64) ───────────────────────
+  # Note: GitHub retired the macos-13 (Intel) hosted runner. The ARM DMG below
+  # works on all Macs including Intel ones via Rosetta 2.
   # macos-latest = M-series runner. PyInstaller produces aarch64 binary natively.
   build-macos-arm:
     runs-on: macos-latest
@@ -413,8 +328,7 @@ jobs:
             | Platform | File | Notes |
             |----------|------|-------|
             | Windows 10+ | `*-setup.exe` | NSIS installer |
-            | macOS Intel (x86_64) | `*-x86_64.dmg` | Drag to Applications |
-            | macOS Apple Silicon (M1/M2/M3) | `*-aarch64.dmg` | Drag to Applications |
+            | macOS (Apple Silicon + Intel via Rosetta 2) | `*-aarch64.dmg` | Drag to Applications |
             | Linux x86-64 | `*.AppImage` | `chmod +x`, then run |
 
             ### Install
@@ -422,7 +336,7 @@ jobs:
             **Windows:** Download `*-setup.exe` and run it.
             > SmartScreen may show "Windows protected your PC". Click **More info → Run anyway**. This warning appears because the installer is not yet Authenticode-signed.
 
-            **macOS:** Download the `.dmg` for your chip (Intel or Apple Silicon — check  → About This Mac), open it, drag Sparkbot Local to Applications, then launch.
+            **macOS:** Download the `.dmg`, open it, drag Sparkbot Local to Applications, then launch. Works on Apple Silicon natively and Intel Macs via Rosetta 2.
             > Gatekeeper may say "Apple cannot verify this app". Right-click the app in Applications → **Open**, then click **Open** in the dialog. You only need to do this once.
 
             **Linux:** Download the `.AppImage`, make it executable (`chmod +x *.AppImage`), then run it.
