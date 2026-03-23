@@ -179,7 +179,12 @@ def _build_comms_status() -> dict[str, Any]:
     """Return bridge comms status. Imports bridge modules lazily so that
     discord.py / pywa / telegram are not loaded in V1_LOCAL_MODE."""
     if settings.V1_LOCAL_MODE:
-        return {"telegram": None, "discord": None, "whatsapp": None, "github": None}
+        return {
+            "telegram": {"poll_enabled": False, "private_only": True},
+            "discord": {"enabled": False, "dm_only": False},
+            "whatsapp": {"enabled": False},
+            "github": {"enabled": False, "bot_login": "sparkbot", "default_repo": "", "allowed_repos": []},
+        }
     from app.services.discord_bridge import get_status as get_discord_status
     from app.services.github_bridge import get_status as get_github_status
     from app.services.telegram_bridge import get_status as get_telegram_status

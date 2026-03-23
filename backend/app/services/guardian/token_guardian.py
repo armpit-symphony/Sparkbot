@@ -87,22 +87,44 @@ def _build_route_payload(query: str, current_model: str, mode: str) -> dict[str,
     return payload
 
 
+def _env_or_vault_has(env_var: str, vault_alias: str) -> bool:
+    """Return True if an API key is configured via env var OR Guardian Vault.
+
+    Minimal integration: token_guardian continues to use env vars for runtime,
+    but will treat vault-backed keys as "configured" for routing eligibility.
+
+    NOTE: We do not automatically inject the vault secret into the process
+    environment here to avoid surprising side effects.
+    """
+    if os.getenv(env_var, "").strip():
+        return True
+    try:
+        from app.services.guardian.vault import vault_get_metadata
+
+        meta = vault_get_metadata(vault_alias)
+        if not meta:
+            return False
+        return str(meta.get("access_policy") or "") != "disabled"
+    except Exception:
+        return False
+
+
 def _model_is_configured(model: str) -> bool:
     normalized = (model or "").strip()
     if not normalized:
         return False
     if normalized.startswith("gpt-"):
-        return bool(os.getenv("OPENAI_API_KEY", "").strip())
+        return _env_or_vault_has("OPENAI_API_KEY", "api_key_openai")
     if normalized.startswith("claude"):
-        return bool(os.getenv("ANTHROPIC_API_KEY", "").strip())
+        return _env_or_vault_has("ANTHROPIC_API_KEY", "api_key_anthropic")
     if normalized.startswith("gemini/"):
-        return bool(os.getenv("GOOGLE_API_KEY", "").strip())
+        return _env_or_vault_has("GOOGLE_API_KEY", "api_key_google")
     if normalized.startswith("groq/"):
-        return bool(os.getenv("GROQ_API_KEY", "").strip())
+        return _env_or_vault_has("GROQ_API_KEY", "api_key_groq")
     if normalized.startswith("minimax/"):
-        return bool(os.getenv("MINIMAX_API_KEY", "").strip())
+        return _env_or_vault_has("MINIMAX_API_KEY", "api_key_minimax")
     if normalized.startswith("openrouter/"):
-        return bool(os.getenv("OPENROUTER_API_KEY", "").strip())
+        return _env_or_vault_has("OPENROUTER_API_KEY", "api_key_openrouter")
     return True
 
 

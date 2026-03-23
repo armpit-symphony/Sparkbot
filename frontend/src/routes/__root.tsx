@@ -14,5 +14,5 @@ export const Route = createRootRoute({
     </>
   ),
   notFoundComponent: () => <NotFound />,
-  errorComponent: () => <ErrorComponent />,
+  errorComponent: ({ error }) => <ErrorComponent error={error instanceof Error ? error : new Error(String(error))} />,
 })
