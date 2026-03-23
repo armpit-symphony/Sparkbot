@@ -1168,8 +1168,8 @@ function SparkbotSettingsDialog({
 
               {/* Token Guardian */}
               {(() => {
-                const mode = dashboardSummary?.summary.token_guardian_mode ?? tokenGuardianMode ?? "off"
-                const liveReady = dashboardSummary?.today.token_guardian.live_ready
+                const mode = dashboardSummary?.summary?.token_guardian_mode ?? tokenGuardianMode ?? "off"
+                const liveReady = dashboardSummary?.today?.token_guardian.live_ready
                 return (
                   <div className={`rounded-lg px-3 py-3 ${mode === "live" ? "bg-emerald-50/50 dark:bg-emerald-950/30 border border-emerald-500/20" : mode === "shadow" ? "bg-sky-50/50 dark:bg-sky-950/30 border border-sky-500/20" : "bg-muted/40 border"}`}>
                     <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Token Guardian</div>
@@ -1210,7 +1210,7 @@ function SparkbotSettingsDialog({
                 </div>
                 <div className="mt-0.5 text-[11px] text-muted-foreground">
                   {(() => {
-                    const pending = dashboardSummary?.summary.pending_approvals ?? 0
+                    const pending = dashboardSummary?.summary?.pending_approvals ?? 0
                     return pending > 0
                       ? <span className="text-amber-600 dark:text-amber-400 font-medium">{pending} pending approval{pending > 1 ? "s" : ""}</span>
                       : "No pending approvals"
@@ -1241,35 +1241,35 @@ function SparkbotSettingsDialog({
                   <option value="live">Live</option>
                 </select>
                 <div className="mt-1 text-xs text-muted-foreground">
-                  {dashboardSummary?.today.token_guardian.live_ready ? "Live-ready" : "No live route targets configured"}
+                  {dashboardSummary?.today?.token_guardian.live_ready ? "Live-ready" : "No live route targets configured"}
                 </div>
               </div>
               <div className="rounded-lg bg-muted/40 px-3 py-3">
                 <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Allowed models</div>
                 <div className="mt-1 text-xs text-muted-foreground">
-                  {dashboardSummary?.today.token_guardian.allowed_live_models.join(", ") || "None"}
+                  {dashboardSummary?.today?.token_guardian.allowed_live_models.join(", ") || "None"}
                 </div>
               </div>
             </div>
             <div className="mt-3 rounded-lg bg-muted/40 px-3 py-3">
               <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Last route</div>
-              {dashboardSummary?.today.token_guardian.last_route ? (
+              {dashboardSummary?.today?.token_guardian?.last_route ? (
                 <div className="mt-1 space-y-1 text-xs text-muted-foreground">
                   <div>
-                    {dashboardSummary.today.token_guardian.last_route.current_model || "unknown"} →{" "}
+                    {dashboardSummary.today?.token_guardian?.last_route?.current_model || "unknown"} →{" "}
                     <span className="font-medium text-foreground">
-                      {dashboardSummary.today.token_guardian.last_route.applied_model || "unknown"}
+                      {dashboardSummary.today?.token_guardian?.last_route?.applied_model || "unknown"}
                     </span>
                   </div>
                   <div>
-                    {dashboardSummary.today.token_guardian.last_route.classification || "general"} ·{" "}
-                    {new Date(dashboardSummary.today.token_guardian.last_route.created_at).toLocaleString()}
+                    {dashboardSummary.today?.token_guardian?.last_route?.classification || "general"} ·{" "}
+                    {new Date(dashboardSummary.today?.token_guardian?.last_route?.created_at || "").toLocaleString()}
                   </div>
                   <div>
-                    Requested {dashboardSummary.today.token_guardian.last_route.selected_model || "unknown"}
+                    Requested {dashboardSummary.today?.token_guardian?.last_route?.selected_model || "unknown"}
                   </div>
-                  {dashboardSummary.today.token_guardian.last_route.fallback_reason ? (
-                    <div>{dashboardSummary.today.token_guardian.last_route.fallback_reason}</div>
+                  {dashboardSummary.today?.token_guardian?.last_route?.fallback_reason ? (
+                    <div>{dashboardSummary.today?.token_guardian?.last_route?.fallback_reason}</div>
                   ) : null}
                 </div>
               ) : (
@@ -1717,12 +1717,12 @@ function SparkbotSettingsDialog({
               <div className="rounded-lg border bg-muted/40 px-3 py-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-sm font-medium">Telegram</div>
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms.telegram.configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
-                    {modelsConfig?.comms.telegram.configured ? "Configured" : "Missing"}
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms?.telegram.configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
+                    {modelsConfig?.comms?.telegram.configured ? "Configured" : "Missing"}
                   </span>
                 </div>
                 <div className="mt-0.5 text-[10px] text-muted-foreground/70">Reads messages · Sends replies · No file access</div>
-                <div className="mt-1 text-xs text-muted-foreground">Linked chats: {modelsConfig?.comms.telegram.linked_chats ?? 0}</div>
+                <div className="mt-1 text-xs text-muted-foreground">Linked chats: {modelsConfig?.comms?.telegram.linked_chats ?? 0}</div>
                 <input
                   type="password"
                   value={commsForm.telegram.bot_token}
@@ -1751,12 +1751,12 @@ function SparkbotSettingsDialog({
               <div className="rounded-lg border bg-muted/40 px-3 py-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-sm font-medium">Discord</div>
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms.discord.configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
-                    {modelsConfig?.comms.discord.configured ? "Configured" : "Missing"}
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms?.discord.configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
+                    {modelsConfig?.comms?.discord.configured ? "Configured" : "Missing"}
                   </span>
                 </div>
                 <div className="mt-0.5 text-[10px] text-muted-foreground/70">Reads DMs & mentions · Sends replies · No server data access</div>
-                <div className="mt-1 text-xs text-muted-foreground">Linked channels: {modelsConfig?.comms.discord.linked_channels ?? 0}</div>
+                <div className="mt-1 text-xs text-muted-foreground">Linked channels: {modelsConfig?.comms?.discord.linked_channels ?? 0}</div>
                 <input
                   type="password"
                   value={commsForm.discord.bot_token}
@@ -1785,12 +1785,12 @@ function SparkbotSettingsDialog({
               <div className="rounded-lg border bg-muted/40 px-3 py-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-sm font-medium">WhatsApp</div>
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms.whatsapp.configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
-                    {modelsConfig?.comms.whatsapp.configured ? "Configured" : "Missing"}
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms?.whatsapp.configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
+                    {modelsConfig?.comms?.whatsapp.configured ? "Configured" : "Missing"}
                   </span>
                 </div>
                 <div className="mt-0.5 text-[10px] text-muted-foreground/70">Reads messages · Sends replies · 24-hour session window</div>
-                <div className="mt-1 text-xs text-muted-foreground">Linked numbers: {modelsConfig?.comms.whatsapp.linked_numbers ?? 0}</div>
+                <div className="mt-1 text-xs text-muted-foreground">Linked numbers: {modelsConfig?.comms?.whatsapp.linked_numbers ?? 0}</div>
                 <input
                   type="password"
                   value={commsForm.whatsapp.token}
@@ -1825,13 +1825,13 @@ function SparkbotSettingsDialog({
               <div className="rounded-lg border bg-muted/40 px-3 py-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-sm font-medium">GitHub</div>
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms.github.configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
-                    {modelsConfig?.comms.github.configured ? "Configured" : "Missing"}
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms?.github.configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
+                    {modelsConfig?.comms?.github.configured ? "Configured" : "Missing"}
                   </span>
                 </div>
                 <div className="mt-0.5 text-[10px] text-muted-foreground/70">Reads issues & PRs · Posts comments · Write actions require approval</div>
-                <div className="mt-1 text-xs text-muted-foreground">Linked threads: {modelsConfig?.comms.github.linked_threads ?? 0}</div>
-                <div className="mt-1 text-xs text-muted-foreground">Webhook: {modelsConfig?.comms.github.webhook_path ?? "/api/v1/chat/github/events"}</div>
+                <div className="mt-1 text-xs text-muted-foreground">Linked threads: {modelsConfig?.comms?.github.linked_threads ?? 0}</div>
+                <div className="mt-1 text-xs text-muted-foreground">Webhook: {modelsConfig?.comms?.github.webhook_path ?? "/api/v1/chat/github/events"}</div>
                 <input
                   type="password"
                   value={commsForm.github.token}
@@ -1879,7 +1879,7 @@ function SparkbotSettingsDialog({
                   <div className="text-[11px] uppercase tracking-wide text-muted-foreground">GitHub onboarding</div>
                   <div className="mt-2 space-y-1 text-xs text-muted-foreground">
                     <div>1. Paste a GitHub token and a webhook secret, then save comms.</div>
-                    <div>2. In your repo, add a webhook to <code className="rounded bg-muted px-1 py-0.5">{modelsConfig?.comms.github.webhook_path ?? "/api/v1/chat/github/events"}</code>.</div>
+                    <div>2. In your repo, add a webhook to <code className="rounded bg-muted px-1 py-0.5">{modelsConfig?.comms?.github.webhook_path ?? "/api/v1/chat/github/events"}</code>.</div>
                     <div>3. Select <span className="font-medium text-foreground">Issue comments</span> and <span className="font-medium text-foreground">Pull request review comments</span>.</div>
                     <div>4. Restart <code className="rounded bg-muted px-1 py-0.5">sparkbot-v2</code>, then test in a thread with <code className="rounded bg-muted px-1 py-0.5">/sparkbot summarize this PR</code>.</div>
                   </div>
