@@ -852,10 +852,10 @@ function SparkbotSettingsDialog({
         ...Object.keys(modelsConfig?.model_labels ?? {}),
         ...openRouterModels.map((model) => model.id),
         ...localModelOptions,
-        modelStack.primary,
-        modelStack.backup_1,
-        modelStack.backup_2,
-        modelStack.heavy_hitter,
+        modelStack?.primary,
+        modelStack?.backup_1,
+        modelStack?.backup_2,
+        modelStack?.heavy_hitter,
       ].filter(Boolean),
     ),
   )
@@ -1140,7 +1140,7 @@ function SparkbotSettingsDialog({
                   {readyProviderCount > 0 ? `${readyProviderCount} provider path${readyProviderCount > 1 ? "s" : ""}` : "No provider"}
                 </div>
                 <div className="mt-0.5 text-[11px] text-muted-foreground truncate">
-                  {modelStack.primary || "No model selected"}
+                  {modelStack?.primary || "No model selected"}
                 </div>
               </div>
 
@@ -2383,7 +2383,7 @@ function SparkbotDmPage() {
   const applyControlsConfig = useCallback((config: ModelsControlsConfig) => {
     setModelsConfig(config)
     setTokenGuardianMode(config.token_guardian_mode || "shadow")
-    setModelStack(config.stack)
+    setModelStack(prev => config.stack ?? prev)
     const _validProviders = new Set(["openrouter", "ollama", "openai", "anthropic", "google", "groq", "minimax"])
     const _savedProvider = config.default_selection?.provider ?? "openrouter"
     setDefaultSelection({
@@ -2827,7 +2827,7 @@ function SparkbotDmPage() {
   }, [applyControlsConfig, loadOpenRouterModels, providerDrafts, refreshControls])
 
   const saveModelStack = useCallback(async () => {
-    if (!modelStack.primary.trim() || !modelStack.heavy_hitter.trim()) {
+    if (!modelStack?.primary?.trim() || !modelStack?.heavy_hitter?.trim()) {
       setSettingsError("Choose at least the primary and heavy-hitter models before saving the stack.")
       return
     }
