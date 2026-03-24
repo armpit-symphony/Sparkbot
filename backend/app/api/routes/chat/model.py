@@ -39,6 +39,7 @@ from app.api.routes.chat.llm import (
     get_local_default_model,
     get_model,
     get_model_stack,
+    get_model_stack_display,
     get_ollama_status,
     get_openrouter_default_model,
     is_valid_model,
@@ -199,16 +200,22 @@ def _build_comms_status() -> dict[str, Any]:
 
 async def _build_controls_config(current_user: CurrentChatUser, notices: list[str] | None = None) -> dict[str, Any]:
     ollama_status = await get_ollama_status()
+    # Only expose a model in default_selection/stack when the user has explicitly
+    # configured one.  Fall back to empty string so the UI shows a clean slate on
+    # first launch instead of pre-selecting our hardcoded fallbacks.
+    _configured_primary = os.getenv(PRIMARY_MODEL_ENV, "").strip()
+    _display_model = _configured_primary or ""
+    _configured_local = os.getenv(LOCAL_DEFAULT_MODEL_ENV, "").strip()
     return {
         "active_model": get_model(str(current_user.id)),
-        "stack": get_model_stack(),
+        "stack": get_model_stack_display(),
         "default_selection": {
-            "provider": model_provider(get_model()) or get_default_provider(),
-            "model": get_model(),
-            "label": model_label(get_model()),
+            "provider": model_provider(_display_model) or get_default_provider() if _display_model else "openrouter",
+            "model": _display_model,
+            "label": model_label(_display_model) if _display_model else "",
         },
         "local_runtime": {
-            "default_local_model": get_local_default_model(),
+            "default_local_model": _configured_local,
             "base_url": os.getenv("OLLAMA_API_BASE", "http://localhost:11434").strip() or "http://localhost:11434",
         },
         "routing_policy": {
@@ -240,9 +247,8 @@ async def _build_controls_config(current_user: CurrentChatUser, notices: list[st
         # Auto-updates whenever AVAILABLE_MODELS is updated; no frontend change needed.
         "model_labels": {
             **dict(AVAILABLE_MODELS),
-            get_model(): model_label(get_model()),
-            get_openrouter_default_model(): model_label(get_openrouter_default_model()),
-            get_local_default_model(): model_label(get_local_default_model()),
+            **({_display_model: model_label(_display_model)} if _display_model else {}),
+            **({_configured_local: model_label(_configured_local)} if _configured_local else {}),
         },
         "comms": _build_comms_status(),
         "ollama_status": ollama_status,

@@ -519,6 +519,18 @@ def get_model_stack() -> dict[str, str]:
     }
 
 
+def get_model_stack_display() -> dict[str, str]:
+    """Like get_model_stack() but returns empty strings for values that were
+    never explicitly set by the user — used only for the settings config response
+    so the UI shows a clean slate on first launch."""
+    return {
+        "primary": os.getenv(PRIMARY_MODEL_ENV, "").strip(),
+        "backup_1": os.getenv(BACKUP_MODEL_1_ENV, "").strip(),
+        "backup_2": os.getenv(BACKUP_MODEL_2_ENV, "").strip(),
+        "heavy_hitter": os.getenv(HEAVY_HITTER_MODEL_ENV, "").strip(),
+    }
+
+
 def set_model_stack(
     *,
     primary: str,
