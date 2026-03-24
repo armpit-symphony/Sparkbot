@@ -1355,6 +1355,9 @@ function SparkbotSettingsDialog({
                           type="password"
                           value={providerDrafts.openrouter_api_key}
                           onChange={(e) => onProviderDraftChange("openrouter_api_key", e.target.value)}
+                          onBlur={() => {
+                            if (providerDrafts.openrouter_api_key.trim().length > 3) onLoadOpenRouterModels()
+                          }}
                           placeholder={hasOpenRouterConfigured ? "Saved already. Paste a new key only if you want to replace it." : "Paste OpenRouter API key"}
                           className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
                         />
@@ -1511,6 +1514,9 @@ function SparkbotSettingsDialog({
                     </p>
                   </div>
 
+                  {error && (defaultSelection.provider === "openrouter" || defaultSelection.provider === "ollama" || directProviderKeyField[defaultSelection.provider] !== undefined) && (
+                    <p className="mt-2 text-xs font-medium text-destructive">{error}</p>
+                  )}
                   <div className="mt-4 flex justify-end gap-2">
                     {isV1LocalMode && defaultSelection.provider === "openrouter" ? (
                       // V1 desktop: single "Connect" button saves key + model together
@@ -2273,7 +2279,7 @@ function SparkbotSettingsDialog({
           </section> : null}
 
           {(loading || error) && (
-            <div className="rounded-lg border border-dashed px-3 py-2 text-sm text-muted-foreground">
+            <div className={`rounded-lg border border-dashed px-3 py-2 text-sm ${error ? "border-destructive/40 text-destructive" : "text-muted-foreground"}`}>
               {loading ? "Loading controls..." : error}
             </div>
           )}
@@ -2698,6 +2704,18 @@ function SparkbotDmPage() {
     loadOpenRouterModels()
   }, [settingsOpen, loadOpenRouterModels])
 
+  // Auto-select first free OpenRouter model once the list loads (if nothing is selected yet)
+  useEffect(() => {
+    if (openRouterModels.length === 0) return
+    setDefaultSelection(prev => {
+      if (prev.provider === "openrouter" && !prev.model) {
+        const firstFree = openRouterModels.find(m => m.is_free) ?? openRouterModels[0]
+        return { ...prev, model: firstFree.id }
+      }
+      return prev
+    })
+  }, [openRouterModels])
+
   const toggleExecutionGate = useCallback(async (enabled: boolean) => {
     if (!roomId) return
     setSavingExecution(true)
@@ -2790,18 +2808,25 @@ function SparkbotDmPage() {
     if (field === "provider") {
       const _validProviders = new Set(["openrouter", "ollama", "openai", "anthropic", "google", "groq", "minimax"])
       const nextProvider = (_validProviders.has(value) ? value : "openrouter") as DefaultModelSelectionForm["provider"]
-      setDefaultSelection((prev) => ({
-        provider: nextProvider,
-        model: nextProvider === "ollama"
-          ? localDefaultModel
-          : nextProvider === "openrouter" && prev.model.startsWith("openrouter/")
-          ? prev.model
-          : "",
-      }))
+      setDefaultSelection((prev) => {
+        let nextModel = ""
+        if (nextProvider === "ollama") {
+          nextModel = localDefaultModel
+        } else if (nextProvider === "openrouter") {
+          if (prev.model.startsWith("openrouter/")) {
+            nextModel = prev.model
+          } else {
+            // Auto-select first free model so Connect works without a manual pick
+            const firstFree = openRouterModels.find(m => m.is_free) ?? openRouterModels[0]
+            nextModel = firstFree?.id ?? "openrouter/meta-llama/llama-3.1-8b-instruct:free"
+          }
+        }
+        return { provider: nextProvider, model: nextModel }
+      })
       return
     }
     setDefaultSelection((prev) => ({ ...prev, [field]: value }))
-  }, [localDefaultModel])
+  }, [localDefaultModel, openRouterModels])
 
   const handleLocalDefaultModelChange = useCallback((value: string) => {
     setLocalDefaultModel(value)
@@ -2914,6 +2939,9 @@ function SparkbotDmPage() {
     try {
       const body: Record<string, unknown> = {
         default_selection: { provider: "openrouter", model: chosenModel },
+        // Also update the model stack so the LLM tile and advanced stack panel reflect the
+        // OpenRouter choice immediately — clears stale OpenAI/Anthropic defaults.
+        stack: { primary: chosenModel, backup_1: "", backup_2: "", heavy_hitter: chosenModel },
         routing_policy: { cross_provider_fallback: routingPolicy.crossProviderFallback },
         local_runtime: { default_local_model: localDefaultModel.trim() || "ollama/phi4-mini" },
       }
