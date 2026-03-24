@@ -671,6 +671,7 @@ interface SparkbotSettingsDialogProps {
   savingOpenRouterConnect: boolean
   savingAgentOverrides: boolean
   loadingOpenRouterModels: boolean
+  openRouterLoadError: string
   savingComms: boolean
   tokenGuardianMode: string
   savingTokenGuardianMode: boolean
@@ -777,6 +778,7 @@ function SparkbotSettingsDialog({
   savingOpenRouterConnect,
   savingAgentOverrides,
   loadingOpenRouterModels,
+  openRouterLoadError,
   savingComms,
   tokenGuardianMode,
   savingTokenGuardianMode,
@@ -1303,14 +1305,19 @@ function SparkbotSettingsDialog({
                   Choose your default AI provider. OpenRouter is the easiest all-in-one cloud path. Use direct keys for OpenAI, Anthropic, Google, Groq, or MiniMax. Ollama runs models privately on this machine.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={onLoadOpenRouterModels}
-                disabled={loadingOpenRouterModels}
-                className="rounded-md border px-3 py-1.5 text-xs hover:bg-muted disabled:opacity-50"
-              >
-                {loadingOpenRouterModels ? "Refreshing..." : "Refresh OpenRouter models"}
-              </button>
+              <div className="flex flex-col items-end gap-1">
+                <button
+                  type="button"
+                  onClick={onLoadOpenRouterModels}
+                  disabled={loadingOpenRouterModels}
+                  className="rounded-md border px-3 py-1.5 text-xs hover:bg-muted disabled:opacity-50"
+                >
+                  {loadingOpenRouterModels ? "Refreshing..." : "Refresh OpenRouter models"}
+                </button>
+                {openRouterLoadError && (
+                  <p className="text-xs font-medium text-destructive">{openRouterLoadError}</p>
+                )}
+              </div>
             </div>
 
             <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
@@ -1419,6 +1426,9 @@ function SparkbotSettingsDialog({
                             </>
                           )}
                         </select>
+                        {openRouterLoadError && (
+                          <p className="mt-1 text-xs font-medium text-destructive">{openRouterLoadError}</p>
+                        )}
                         <p className="mt-1 text-[11px] text-muted-foreground">
                           {isV1LocalMode
                             ? "Free models work with no API key. For paid models, paste your OpenRouter key above."
@@ -2340,6 +2350,7 @@ function SparkbotDmPage() {
   const [agentOverrides, setAgentOverrides] = useState<Record<string, AgentRoutingOverride>>({})
   const [openRouterModels, setOpenRouterModels] = useState<OpenRouterModelRecord[]>([])
   const [loadingOpenRouterModels, setLoadingOpenRouterModels] = useState(false)
+  const [openRouterLoadError, setOpenRouterLoadError] = useState("")
   const [ollamaStatus, setOllamaStatus] = useState<OllamaStatus | null>(null)
   const [ollamaBaseUrl, setOllamaBaseUrl] = useState("http://localhost:11434")
   const [ollamaLoading, setOllamaLoading] = useState(false)
@@ -2460,9 +2471,11 @@ function SparkbotDmPage() {
     setModelStack(prev => config.stack ?? prev)
     const _validProviders = new Set(["openrouter", "ollama", "openai", "anthropic", "google", "groq", "minimax"])
     const _savedProvider = config.default_selection?.provider ?? "openrouter"
+    const _resolvedProvider = (_validProviders.has(_savedProvider) ? _savedProvider : "openrouter")
+    const _savedModel = config.default_selection?.model || ""
     setDefaultSelection({
-      provider: (_validProviders.has(_savedProvider) ? _savedProvider : "openrouter") as DefaultModelSelectionForm["provider"],
-      model: config.default_selection?.model || "",
+      provider: _resolvedProvider as DefaultModelSelectionForm["provider"],
+      model: _savedModel || (_resolvedProvider === "openrouter" ? "openrouter/meta-llama/llama-3.1-8b-instruct:free" : ""),
     })
     setRoutingPolicy({
       crossProviderFallback: Boolean(config.routing_policy?.cross_provider_fallback),
@@ -2679,15 +2692,18 @@ function SparkbotDmPage() {
 
   const loadOpenRouterModels = useCallback(async () => {
     setLoadingOpenRouterModels(true)
+    setOpenRouterLoadError("")
     try {
       const response = await apiFetch("/api/v1/chat/openrouter/models", { credentials: "include" })
       if (!response.ok) {
-        throw new Error("Could not load OpenRouter models.")
+        const errData = await response.json().catch(() => ({ detail: `HTTP ${response.status}` }))
+        throw new Error(errData.detail ?? `HTTP ${response.status}`)
       }
       const data = await response.json()
       setOpenRouterModels(data.models ?? [])
-    } catch {
+    } catch (err) {
       setOpenRouterModels([])
+      setOpenRouterLoadError(err instanceof Error ? err.message : "Failed to load OpenRouter models")
     } finally {
       setLoadingOpenRouterModels(false)
     }
@@ -4040,6 +4056,7 @@ function SparkbotDmPage() {
         savingOpenRouterConnect={savingOpenRouterConnect}
         savingAgentOverrides={savingAgentOverrides}
         loadingOpenRouterModels={loadingOpenRouterModels}
+        openRouterLoadError={openRouterLoadError}
         savingComms={savingComms}
         tokenGuardianMode={tokenGuardianMode}
         savingTokenGuardianMode={savingTokenGuardianMode}
