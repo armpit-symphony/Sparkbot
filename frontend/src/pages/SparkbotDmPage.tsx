@@ -2342,7 +2342,6 @@ function SparkbotDmPage() {
   const [savingModelStack, setSavingModelStack] = useState(false)
   const [savingProviderTokens, setSavingProviderTokens] = useState(false)
   const [savingDefaultSelection, setSavingDefaultSelection] = useState(false)
-  const [, setSavingOpenRouterConnect] = useState(false)
   const [savingAgentOverrides, setSavingAgentOverrides] = useState(false)
   const [savingComms, setSavingComms] = useState(false)
   const [policyEntries, setPolicyEntries] = useState<PolicyEntry[]>([])
@@ -2892,59 +2891,6 @@ function SparkbotDmPage() {
       setSavingProviderTokens(false)
     }
   }, [applyControlsConfig, loadOpenRouterModels, providerDrafts, refreshControls])
-
-  // V1_LOCAL_MODE: save OpenRouter key + model + routing in one combined call.
-  // This prevents the common mistake of saving the model without the API key,
-  // which causes chat to fail because OPENROUTER_API_KEY never reaches the env.
-  const saveOpenRouterConnect = useCallback(async () => {
-    const chosenModel = defaultSelection.provider === "openrouter" ? defaultSelection.model.trim() : ""
-    if (!chosenModel) {
-      setSettingsError("Choose an OpenRouter model before connecting.")
-      return
-    }
-    const hasKeyDraft = providerDrafts.openrouter_api_key.trim().length > 0
-    const hasKeyConfigured = Boolean(modelsConfig?.providers?.find(p => p.id === "openrouter")?.configured)
-    if (!hasKeyConfigured && !hasKeyDraft) {
-      setSettingsError("Paste an OpenRouter API key first, or pick a free model — free models work without a key.")
-      return
-    }
-    setSavingOpenRouterConnect(true)
-    setSettingsError("")
-    try {
-      const body: Record<string, unknown> = {
-        default_selection: { provider: "openrouter", model: chosenModel },
-        routing_policy: { cross_provider_fallback: routingPolicy.crossProviderFallback },
-      }
-      if (localDefaultModel.trim()) {
-        body.local_runtime = { default_local_model: localDefaultModel.trim() }
-      }
-      if (hasKeyDraft) {
-        body.providers = { openrouter_api_key: providerDrafts.openrouter_api_key.trim() }
-      }
-      const res = await apiFetch("/api/v1/chat/models/config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(body),
-      })
-      const data = await res.json().catch(() => ({ detail: "Could not connect to OpenRouter." }))
-      if (!res.ok) {
-        setSettingsError(data.detail ?? "Could not connect to OpenRouter.")
-      } else {
-        applyControlsConfig(data)
-        await refreshControls()
-        if (hasKeyDraft) {
-          setProviderDrafts(prev => ({ ...prev, openrouter_api_key: "" }))
-          await loadOpenRouterModels()
-        }
-        setMessages(prev => [...prev, systemMsg(`OpenRouter connected. Default model: **${chosenModel}**. You can start chatting now.`)])
-      }
-    } catch {
-      setSettingsError("Could not connect to OpenRouter.")
-    } finally {
-      setSavingOpenRouterConnect(false)
-    }
-  }, [applyControlsConfig, defaultSelection, loadOpenRouterModels, localDefaultModel, modelsConfig, providerDrafts, routingPolicy.crossProviderFallback, refreshControls])
 
   const saveModelStack = useCallback(async () => {
     if (!modelStack?.primary?.trim() || !modelStack?.heavy_hitter?.trim()) {
