@@ -82,7 +82,7 @@ jobs:
         uses: cargo-bins/cargo-binstall@main
 
       - name: Install Tauri CLI v2 (pre-compiled binary)
-        run: cargo binstall tauri-cli --version "^2" --no-confirm
+        run: cargo binstall tauri-cli --version "^2" --no-confirm --force
 
       - name: Install Bun workspace deps
         run: bun install
@@ -178,7 +178,7 @@ jobs:
         uses: cargo-bins/cargo-binstall@main
 
       - name: Install Tauri CLI v2 (pre-compiled binary)
-        run: cargo binstall tauri-cli --version "^2" --no-confirm
+        run: cargo binstall tauri-cli --version "^2" --no-confirm --force
 
       - name: Install Bun workspace deps
         run: bun install
@@ -277,7 +277,7 @@ jobs:
         uses: cargo-bins/cargo-binstall@main
 
       - name: Install Tauri CLI v2 (pre-compiled binary)
-        run: cargo binstall tauri-cli --version "^2" --no-confirm
+        run: cargo binstall tauri-cli --version "^2" --no-confirm --force
 
       - name: Install Bun workspace deps
         run: bun install
