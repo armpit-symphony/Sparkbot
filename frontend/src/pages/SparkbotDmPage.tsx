@@ -1386,19 +1386,17 @@ function SparkbotSettingsDialog({
                           onChange={(e) => onDefaultSelectionChange("model", e.target.value)}
                           className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
                         >
-                          <option value="">
-                            {openRouterModels.length === 0
-                              ? "Click 'Refresh models' to load the full list..."
-                              : "Choose an OpenRouter model"}
-                          </option>
+                          {openRouterModels.length > 0 && (
+                            <option value="">Choose an OpenRouter model</option>
+                          )}
                           {openRouterModels.length === 0 ? (
-                            <optgroup label="Popular free models (no API key needed)">
+                            <optgroup label="Popular free models — pick one, no key needed">
                               {[
-                                { id: "openrouter/meta-llama/llama-3.1-8b-instruct:free", label: "Llama 3.1 8B — great everyday chat" },
-                                { id: "openrouter/mistralai/mistral-7b-instruct:free", label: "Mistral 7B — fast and capable" },
-                                { id: "openrouter/google/gemma-2-9b-it:free", label: "Gemma 2 9B — by Google" },
-                                { id: "openrouter/microsoft/phi-3-mini-128k-instruct:free", label: "Phi-3 Mini — excellent reasoning" },
-                                { id: "openrouter/qwen/qwen-2-7b-instruct:free", label: "Qwen 2 7B — multilingual" },
+                                { id: "openrouter/meta-llama/llama-3.1-8b-instruct:free", label: "Llama 3.1 8B — great everyday chat (free)" },
+                                { id: "openrouter/mistralai/mistral-7b-instruct:free", label: "Mistral 7B — fast and capable (free)" },
+                                { id: "openrouter/google/gemma-2-9b-it:free", label: "Gemma 2 9B — by Google (free)" },
+                                { id: "openrouter/microsoft/phi-3-mini-128k-instruct:free", label: "Phi-3 Mini — excellent reasoning (free)" },
+                                { id: "openrouter/qwen/qwen-2-7b-instruct:free", label: "Qwen 2 7B — multilingual (free)" },
                               ].map(m => (
                                 <option key={m.id} value={m.id}>{m.label}</option>
                               ))}
@@ -2341,7 +2339,9 @@ function SparkbotDmPage() {
   const [, setAiSourceMode] = useState<"cloud" | "local" | "hybrid">("cloud")
   const [defaultSelection, setDefaultSelection] = useState<DefaultModelSelectionForm>({
     provider: "openrouter",
-    model: "",
+    // Pre-select the top free model so "Connect" works on first click even before
+    // the real model list loads from OpenRouter.
+    model: "openrouter/meta-llama/llama-3.1-8b-instruct:free",
   })
   const [routingPolicy, setRoutingPolicy] = useState<RoutingPolicyForm>({
     crossProviderFallback: false,
