@@ -1,7 +1,7 @@
 """
 Desktop launcher for Sparkbot backend.
 Bundled by PyInstaller and sideloaded by the Tauri shell.
-Starts a local uvicorn server on 127.0.0.1:8765.
+Starts a local uvicorn server on 127.0.0.1:8000.
 """
 import os
 import sys
@@ -12,6 +12,16 @@ os.environ.setdefault("PROJECT_NAME", "Sparkbot")
 os.environ.setdefault("DATABASE_TYPE", "sqlite")
 os.environ.setdefault("ENVIRONMENT", "local")
 os.environ.setdefault("WORKSTATION_LIVE_TERMINAL_ENABLED", "false")
+os.environ.setdefault("V1_LOCAL_MODE", "true")
+os.environ.setdefault("SPARKBOT_PASSPHRASE", "sparkbot-local")
+os.environ.setdefault("FIRST_SUPERUSER", "admin@example.com")
+os.environ.setdefault("FIRST_SUPERUSER_PASSWORD", "sparkbot-local")
+os.environ.setdefault(
+    "BACKEND_CORS_ORIGINS",
+    "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173"
+    ",tauri://localhost,https://tauri.localhost",
+)
+os.environ.setdefault("FRONTEND_HOST", "http://127.0.0.1:5173")
 
 # When running as a PyInstaller frozen bundle, ensure the bundle dir is on sys.path
 if getattr(sys, "frozen", False):
@@ -29,6 +39,21 @@ if getattr(sys, "frozen", False):
     # Point alembic / SQLite to a writable location beside the exe
     exe_dir = os.path.dirname(sys.executable)
     os.environ.setdefault("SPARKBOT_DATA_DIR", exe_dir)
+    # Persist SECRET_KEY so JWT sessions survive app restarts.
+    # Without this, every restart generates a new secret and all existing
+    # login cookies become invalid, forcing re-login every session.
+    _secret_key_path = os.path.join(exe_dir, "secret.key")
+    if os.path.exists(_secret_key_path):
+        with open(_secret_key_path) as _skf:
+            _sk = _skf.read().strip()
+            if _sk:
+                os.environ.setdefault("SECRET_KEY", _sk)
+    if not os.environ.get("SECRET_KEY"):
+        import secrets as _secrets_mod
+        _sk = _secrets_mod.token_urlsafe(32)
+        with open(_secret_key_path, "w") as _skf:
+            _skf.write(_sk)
+        os.environ["SECRET_KEY"] = _sk
     # Ensure a .env file exists beside the exe for pydantic-settings and key storage
     env_path = os.path.join(exe_dir, ".env")
     if not os.path.exists(env_path):
@@ -64,6 +89,17 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--data-dir", default=None)  # consumed by Tauri; ignored here
     args, _ = parser.parse_known_args()
+
+    # Initialize SQLite schema and seed initial superuser on fresh installs.
+    # Safe to run on every startup — create_all uses checkfirst=True.
+    try:
+        from app.local_db_init import init_sqlite_schema
+        from app.initial_data import init as _seed_initial_data
+        init_sqlite_schema()
+        _seed_initial_data()
+    except Exception as _init_err:
+        import logging as _logging
+        _logging.getLogger(__name__).warning("DB init warning (non-fatal): %s", _init_err)
 
     uvicorn.run(
         "app.main:app",

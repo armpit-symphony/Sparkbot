@@ -1475,6 +1475,15 @@ function SparkbotSettingsDialog({
                     </p>
                   </div>
 
+                  {(error || success) && (
+                    <div className={`mt-3 rounded-md border px-3 py-2 text-sm font-medium ${
+                      error
+                        ? "border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950/40 dark:text-red-400"
+                        : "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400"
+                    }`}>
+                      {error || success}
+                    </div>
+                  )}
                   <div className="mt-4 flex justify-end gap-2">
                     {(defaultSelection.provider === "openrouter" || directProviderKeyField[defaultSelection.provider] !== undefined) ? (
                       <button
@@ -1497,12 +1506,6 @@ function SparkbotSettingsDialog({
                       {savingDefaultSelection ? "Saving default..." : "Save default model"}
                     </button>
                   </div>
-                  {success && !error && (
-                    <p className="mt-2 text-right text-xs font-medium text-emerald-600">{success}</p>
-                  )}
-                  {error && (
-                    <p className="mt-2 text-right text-xs font-medium text-red-600">{error}</p>
-                  )}
                 </div>
 
                 <div className="rounded-lg border bg-muted/20 p-4">
@@ -2629,7 +2632,7 @@ function SparkbotDmPage() {
     }
   }, [roomId, applyControlsConfig])
 
-  const loadOpenRouterModels = useCallback(async () => {
+  const loadOpenRouterModels = useCallback(async (opts?: { suppressErrors?: boolean }) => {
     setLoadingOpenRouterModels(true)
     try {
       // Call OpenRouter directly from the frontend (WebView2 / browser) so that
@@ -2637,7 +2640,7 @@ function SparkbotDmPage() {
       // The /api/v1/models endpoint is public — no API key required to list models.
       const response = await fetch("https://openrouter.ai/api/v1/models")
       if (!response.ok) {
-        setSettingsError(`OpenRouter model list failed: HTTP ${response.status}`)
+        if (!opts?.suppressErrors) setSettingsError(`OpenRouter model list failed: HTTP ${response.status}`)
         setOpenRouterModels([])
         return
       }
@@ -2656,7 +2659,7 @@ function SparkbotDmPage() {
       setOpenRouterModels(models)
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
-      setSettingsError(`OpenRouter model list error: ${msg}`)
+      if (!opts?.suppressErrors) setSettingsError(`OpenRouter model list error: ${msg}`)
       setOpenRouterModels([])
     } finally {
       setLoadingOpenRouterModels(false)
@@ -2860,7 +2863,9 @@ function SparkbotDmPage() {
         })
         await refreshControls()
         if (payload.openrouter_api_key) {
-          await loadOpenRouterModels()
+          // Run model list refresh in background; suppress errors so a network
+          // blip here doesn't overwrite the "Key saved" success message.
+          loadOpenRouterModels({ suppressErrors: true })
         }
         setMessages(prev => [...prev, systemMsg("Provider tokens saved.")])
       }
