@@ -668,7 +668,6 @@ interface SparkbotSettingsDialogProps {
   savingModelStack: boolean
   savingProviderTokens: boolean
   savingDefaultSelection: boolean
-  savingOpenRouterConnect: boolean
   savingAgentOverrides: boolean
   loadingOpenRouterModels: boolean
   openRouterLoadError: string
@@ -696,7 +695,6 @@ interface SparkbotSettingsDialogProps {
   onSaveModelStack: () => void
   onSaveProviderTokens: () => void
   onSaveDefaultSelection: () => void
-  onSaveOpenRouterConnect: () => void
   onRoutingPolicyChange: (value: boolean) => void
   onSaveAgentOverrides: () => void
   onLoadOpenRouterModels: () => void
@@ -775,7 +773,6 @@ function SparkbotSettingsDialog({
   savingModelStack,
   savingProviderTokens,
   savingDefaultSelection,
-  savingOpenRouterConnect,
   savingAgentOverrides,
   loadingOpenRouterModels,
   openRouterLoadError,
@@ -803,7 +800,6 @@ function SparkbotSettingsDialog({
   onSaveModelStack,
   onSaveProviderTokens,
   onSaveDefaultSelection,
-  onSaveOpenRouterConnect,
   onRoutingPolicyChange,
   onSaveAgentOverrides,
   onLoadOpenRouterModels,
@@ -2346,7 +2342,7 @@ function SparkbotDmPage() {
   const [savingModelStack, setSavingModelStack] = useState(false)
   const [savingProviderTokens, setSavingProviderTokens] = useState(false)
   const [savingDefaultSelection, setSavingDefaultSelection] = useState(false)
-  const [savingOpenRouterConnect, setSavingOpenRouterConnect] = useState(false)
+  const [, setSavingOpenRouterConnect] = useState(false)
   const [savingAgentOverrides, setSavingAgentOverrides] = useState(false)
   const [savingComms, setSavingComms] = useState(false)
   const [policyEntries, setPolicyEntries] = useState<PolicyEntry[]>([])
@@ -4010,7 +4006,6 @@ function SparkbotDmPage() {
         savingModelStack={savingModelStack}
         savingProviderTokens={savingProviderTokens}
         savingDefaultSelection={savingDefaultSelection}
-        savingOpenRouterConnect={savingOpenRouterConnect}
         savingAgentOverrides={savingAgentOverrides}
         loadingOpenRouterModels={loadingOpenRouterModels}
         openRouterLoadError={openRouterLoadError}
@@ -4038,7 +4033,6 @@ function SparkbotDmPage() {
         onSaveModelStack={saveModelStack}
         onSaveProviderTokens={saveProviderTokens}
         onSaveDefaultSelection={saveDefaultSelection}
-        onSaveOpenRouterConnect={saveOpenRouterConnect}
         onRoutingPolicyChange={handleRoutingPolicyChange}
         onSaveAgentOverrides={saveAgentOverrides}
         onLoadOpenRouterModels={loadOpenRouterModels}
