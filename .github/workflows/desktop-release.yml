@@ -26,9 +26,9 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: "Tag name to build (e.g. desktop-v1.4.4)"
+        description: "Tag name to build (e.g. desktop-v1.5.0)"
         required: true
-        default: "desktop-v1.4.4"
+        default: "desktop-v1.5.0"
 
 jobs:
   # ─────────────────────────── Windows (NSIS) ────────────────────────────────
