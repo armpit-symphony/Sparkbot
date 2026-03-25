@@ -54,7 +54,7 @@ def _configure_environment(args: argparse.Namespace) -> tuple[Path, Path]:
     os.environ.setdefault(
         "BACKEND_CORS_ORIGINS",
         "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173"
-        ",tauri://localhost,https://tauri.localhost",
+        ",tauri://localhost,https://tauri.localhost,http://tauri.localhost",
     )
     os.environ.setdefault("FRONTEND_HOST", "http://127.0.0.1:5173")
     os.environ.setdefault("SPARKBOT_PASSPHRASE", args.passphrase or "sparkbot-local")

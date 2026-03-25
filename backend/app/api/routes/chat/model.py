@@ -500,10 +500,9 @@ async def openrouter_models(current_user: CurrentChatUser) -> dict[str, Any]:
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get("https://openrouter.ai/api/v1/models", headers=headers)
             response.raise_for_status()
+        payload = response.json()
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Could not load OpenRouter models: {exc}")
-
-    payload = response.json()
     rows: list[dict[str, Any]] = []
     for item in payload.get("data", []):
         raw_id = str(item.get("id") or "").strip()

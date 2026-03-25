@@ -549,10 +549,6 @@ def set_model_stack(
         if model and not is_valid_model(model):
             raise ValueError(f"Unknown model '{model}' for {key}.")
 
-    non_empty = [model for model in stack.values() if model]
-    if len(non_empty) != len(set(non_empty)):
-        raise ValueError("Primary, backup, and heavy hitter models must be distinct.")
-
     os.environ[PRIMARY_MODEL_ENV] = stack["primary"]
     os.environ[BACKUP_MODEL_1_ENV] = stack["backup_1"]
     os.environ[BACKUP_MODEL_2_ENV] = stack["backup_2"]

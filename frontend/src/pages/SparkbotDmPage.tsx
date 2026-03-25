@@ -1741,7 +1741,7 @@ function SparkbotSettingsDialog({
               <div className="rounded-lg border bg-background/60 px-3 py-3">
                 <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Current default</div>
                 <div className="mt-2 text-xs text-muted-foreground">
-                  {modelsConfig?.default_selection.label ?? modelsConfig?.default_selection.model ?? "No default selected"}
+                  {modelsConfig?.default_selection?.label ?? modelsConfig?.default_selection?.model ?? "No default selected"}
                 </div>
               </div>
             </div>
@@ -2423,6 +2423,7 @@ function SparkbotDmPage() {
   useEffect(() => { setShowAgentPicker(inputValue.startsWith("@") && !inputValue.includes(" ")) }, [inputValue])
 
   const applyControlsConfig = useCallback((config: ModelsControlsConfig) => {
+    if (!config?.default_selection) return  // guard: reject fallback/incomplete config objects
     setModelsConfig(config)
     setTokenGuardianMode(config.token_guardian_mode || "shadow")
     setModelStack(prev => config.stack ?? prev)
