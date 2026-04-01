@@ -11,7 +11,7 @@
 #   .\scripts\quickstart.ps1
 #
 # Or create .env.local from the template first:
-#   Copy-Item .env.example .env.local   (then edit .env.local with your keys)
+#   Copy-Item .env.local.example .env.local   (then edit .env.local with your keys)
 
 # ── checks ────────────────────────────────────────────────────────────────────
 

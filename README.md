@@ -25,7 +25,7 @@ Then open **http://localhost:3000**.
 Or manually:
 
 ```bash
-cp .env.example .env.local     # add at least one LLM API key
+cp .env.local.example .env.local     # add at least one LLM API key
 docker compose -f compose.local.yml up --build
 ```
 
@@ -62,6 +62,7 @@ That first-run panel is where users:
 ### Server / VPS (public HTTPS)
 
 See [deployment.md](./deployment.md) for the full Traefik + Docker Compose + Let's Encrypt setup.
+For the lighter-weight systemd profile that matches the working server layout more closely, see [docs/systemd-single-node.md](./docs/systemd-single-node.md) and [deploy/systemd/sparkbot-v2.service.example](./deploy/systemd/sparkbot-v2.service.example).
 
 ### Public download packaging
 
@@ -558,17 +559,39 @@ Agent Shield / Executive / Task Guardian phase notes:
 
 ## Configuration
 
-All configuration is via environment variables. The systemd service file (e.g. `/etc/systemd/system/sparkbot-v2.service`) is the canonical place to set them for production. A `.env` file in `backend/` works for local dev.
+All configuration is via environment variables, but there are now two distinct templates:
 
-### Required
+- Desktop / laptop Docker installs: copy [`.env.local.example`](./.env.local.example) to `.env.local`
+- Server / systemd installs: copy [`.env.example`](./.env.example) to repo-root `.env`
+
+Important: the backend reads the repo-root `.env` (`/home/youruser/sparkbot-v2/.env`) for the simple systemd deployment. `backend/.env` is not the production file for that layout.
+
+### Server / systemd profile
+
+The checked-in service example at [deploy/systemd/sparkbot-v2.service.example](./deploy/systemd/sparkbot-v2.service.example) matches the working server shape:
+
+- working directory: `/home/youruser/sparkbot-v2/backend`
+- environment file: `/home/youruser/sparkbot-v2/.env`
+- backend bind: `127.0.0.1:8091`
+
+Full steps: [docs/systemd-single-node.md](./docs/systemd-single-node.md)
+
+### Minimum required for a hosted install
 ```env
-OPENAI_API_KEY=sk-...
+ENVIRONMENT=production
+FRONTEND_HOST=https://chat.example.com
+BACKEND_CORS_ORIGINS=https://chat.example.com
 SECRET_KEY=<random 32+ char string>
-POSTGRES_SERVER=localhost
-POSTGRES_DB=sparkbot
-POSTGRES_USER=sparkbot
-POSTGRES_PASSWORD=...
+FIRST_SUPERUSER_PASSWORD=<strong admin password>
+SPARKBOT_PASSPHRASE=<strong passphrase>
 ```
+
+Then set either:
+
+- `DATABASE_TYPE=sqlite` plus `SPARKBOT_DATA_DIR=/home/youruser/sparkbot-v2/backend/data`
+- or `DATABASE_TYPE=postgresql` plus the `POSTGRES_*` variables
+
+And set at least one provider key such as `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `GROQ_API_KEY`, `MINIMAX_API_KEY`, or `OPENROUTER_API_KEY`.
 
 ### Optional — Additional LLM Providers
 ```env
@@ -764,6 +787,7 @@ After changing env vars: `sudo systemctl restart sparkbot-v2`
 **Docker (recommended — works on all platforms):**
 
 ```bash
+cp .env.local.example .env.local
 docker compose -f compose.local.yml up --build
 ```
 

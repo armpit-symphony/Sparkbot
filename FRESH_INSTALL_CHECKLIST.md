@@ -170,24 +170,33 @@ Before starting any path:
 - [ ] Checksum verified (same as Path A step 2)
 - [ ] `tar -xzf sparkbot-latest.tar.gz && cd sparkbot-v2`
 
-### 2. Quickstart
+### 2. Configure server env
 
-- [ ] `bash scripts/quickstart.sh`
-- [ ] Server starts and listens on expected port
-- [ ] No firewall/port errors for typical server defaults
+- [ ] `cp .env.example .env`
+- [ ] Replace every `REPLACE_WITH_...` placeholder with real values
+- [ ] At least one LLM provider key is configured
+- [ ] `DATABASE_TYPE` is chosen intentionally (`sqlite` for single-node or `postgresql` for external DB)
 
-### 3. Remote browser access
+### 3. Install the backend service
+
+- [ ] Create the venv and install backend dependencies
+- [ ] Copy `deploy/systemd/sparkbot-v2.service.example` into `/etc/systemd/system/sparkbot-v2.service`
+- [ ] Service file paths and `User=` are updated for the target machine
+- [ ] `systemctl enable --now sparkbot-v2` succeeds
+- [ ] `curl http://127.0.0.1:8091/api/v1/utils/health-check/` returns healthy
+
+### 4. Remote browser access
 
 - [ ] Navigate to `http://<server-ip>:<port>` from another machine
 - [ ] Controls opens on first visit
 - [ ] Setup completes over remote browser (no local GUI required)
 
-### 4. Cloud provider or local (server)
+### 5. Cloud provider or local (server)
 
 - [ ] Cloud path: provider key entered, model responds remotely
 - [ ] Local path: note that Ollama must run on the same server; document if it's missing
 
-### 5. Restart behavior (server)
+### 6. Restart behavior (server)
 
 - [ ] Kill and restart server process
 - [ ] Config persists on restart

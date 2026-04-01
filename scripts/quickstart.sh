@@ -12,7 +12,7 @@
 #   bash scripts/quickstart.sh
 #
 # Or create .env.local from the template first:
-#   cp .env.example .env.local   (then edit .env.local with your keys)
+#   cp .env.local.example .env.local   (then edit .env.local with your keys)
 
 set -euo pipefail
 

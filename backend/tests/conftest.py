@@ -2,8 +2,9 @@ from collections.abc import Generator
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlmodel import Session, delete
+from sqlmodel import SQLModel, Session, delete
 
+import app.models  # noqa: F401
 from app.core.config import settings
 from app.core.db import engine, init_db
 from app.main import app
@@ -14,6 +15,10 @@ from tests.utils.utils import get_superuser_token_headers
 
 @pytest.fixture(scope="session", autouse=True)
 def db() -> Generator[Session, None, None]:
+    # Reset sqlite-backed test state so service tests do not inherit a partially
+    # initialized local DB from a previous run.
+    SQLModel.metadata.drop_all(engine, checkfirst=True)
+    SQLModel.metadata.create_all(engine)
     with Session(engine) as session:
         init_db(session)
         yield session
