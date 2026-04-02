@@ -833,7 +833,7 @@
         <span class="logo-name">Sparkbot</span>
       </div>
 
-      <div class="hero-badge">Free &amp; Open Source &nbsp;·&nbsp; v1.6.0</div>
+      <div class="hero-badge">Free &amp; Open Source &nbsp;·&nbsp; <span id="version-badge">v1.6.0</span></div>
       <h1>Your own AI,<br>on your computer</h1>
 
       <p class="hero-tagline">
@@ -844,9 +844,11 @@
       <!-- PRIMARY DOWNLOAD BUTTON -->
       <div class="download-primary-wrap">
         <a
+          id="download-windows-primary"
           href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.0/Sparkbot.Local_1.6.0_x64-setup.exe"
           class="btn-download-windows"
-          aria-label="Download Sparkbot for Windows, version 1.6.0"        >
+          aria-label="Download Sparkbot for Windows, latest stable version"
+        >
           <span class="btn-icon" role="img" aria-hidden="true">🪟</span>
           <span class="btn-text-block">
             <span class="btn-label">Free Download</span>
@@ -855,17 +857,26 @@
         </a>
       </div>
 
-      <p class="download-meta">Version 1.6.0 &nbsp;·&nbsp; Windows 10 &amp; 11 &nbsp;·&nbsp; 64-bit &nbsp;·&nbsp; Free forever</p>
+      <p class="download-meta"><span id="download-version-label">Version 1.6.0</span> &nbsp;·&nbsp; Windows 10 &amp; 11 &nbsp;·&nbsp; 64-bit &nbsp;·&nbsp; Free forever</p>
+      <p class="download-meta" style="margin-top:12px; font-size:0.95rem;">
+        This page checks GitHub for the latest stable desktop release automatically. If the button does not start a download, open
+        <a href="https://github.com/armpit-symphony/Sparkbot/releases" target="_blank" rel="noopener noreferrer">All Releases</a>
+        and choose the Windows file that ends in <strong><span id="windows-file-suffix">_x64-setup.exe</span></strong>.
+      </p>
       <!-- Secondary OS links -->
       <div class="other-os">
         <a
-          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.0/Sparkbot.Local_1.6.0_aarch64.dmg"          class="btn-os-small"
+          id="download-macos-link"
+          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.0/Sparkbot.Local_1.6.0_aarch64.dmg"
+          class="btn-os-small"
           aria-label="Download Sparkbot for macOS"
         >
           <span role="img" aria-hidden="true"></span> macOS (all Macs)
         </a>
         <a
-          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.0/Sparkbot.Local_1.6.0_amd64.AppImage"          class="btn-os-small"
+          id="download-linux-link"
+          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.0/Sparkbot.Local_1.6.0_amd64.AppImage"
+          class="btn-os-small"
           aria-label="Download Sparkbot for Linux AppImage"
         >
           <span role="img" aria-hidden="true">🐧</span> Linux (AppImage)
@@ -963,14 +974,16 @@
             <div class="step-num" aria-hidden="true">1</div>
             <div class="step-body">
               <h3 class="step-title">Click the big purple "Download for Windows" button above</h3>
-              <p class="step-desc">Your browser will download a file called <strong>Sparkbot.Local_1.6.0_x64-setup.exe</strong>. This is the installer. It's about 10–20 MB so it only takes a moment on most internet connections.</p>            </div>
+              <p class="step-desc">Your browser will download a file called <strong id="windows-filename-step-1">Sparkbot.Local_1.6.0_x64-setup.exe</strong>. This is the installer. It usually arrives in less than a minute.</p>
+            </div>
           </div>
 
           <div class="step">
             <div class="step-num" aria-hidden="true">2</div>
             <div class="step-body">
               <h3 class="step-title">Find the downloaded file and open it</h3>
-              <p class="step-desc">Look at the bottom of your browser for the downloaded file, or check your <strong>Downloads folder</strong>. Double-click the file named <strong>Sparkbot.Local_1.6.0_x64-setup.exe</strong> to start installing.</p>            </div>
+              <p class="step-desc">Look at the bottom of your browser for the downloaded file, or check your <strong>Downloads folder</strong>. Double-click the file named <strong id="windows-filename-step-2">Sparkbot.Local_1.6.0_x64-setup.exe</strong> to start installing.</p>
+            </div>
           </div>
 
           <div class="step">
@@ -1039,7 +1052,8 @@
               </div>
 
               <div class="win-info-row">
-                <strong>App:</strong> <span>Sparkbot.Local_1.6.0_x64-setup.exe</span>              </div>
+                <strong>App:</strong> <span id="windows-filename-dialog">Sparkbot.Local_1.6.0_x64-setup.exe</span>
+              </div>
               <div class="win-info-row">
                 <strong>Publisher:</strong> <span>Unknown publisher</span>
               </div>
@@ -1185,7 +1199,9 @@
       <h2 id="cta-heading">Ready to try it?</h2>
       <p>Free. Private. Yours. Download takes less than a minute.</p>
       <a
-        href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.0/Sparkbot.Local_1.6.0_x64-setup.exe"        class="btn-download-windows"
+        id="download-windows-bottom"
+        href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.0/Sparkbot.Local_1.6.0_x64-setup.exe"
+        class="btn-download-windows"
         style="display:inline-flex;"
         aria-label="Download Sparkbot for Windows"
       >
@@ -1204,7 +1220,8 @@
   =========================== -->
   <footer>
     <p>
-      <span role="img" aria-hidden="true">⚡</span> <strong>Sparkbot</strong> &nbsp;·&nbsp; Version 1.6.0 &nbsp;·&nbsp; Free &amp; Open Source    </p>
+      <span role="img" aria-hidden="true">⚡</span> <strong>Sparkbot</strong> &nbsp;·&nbsp; <span id="footer-version-label">Version 1.6.0</span> &nbsp;·&nbsp; Free &amp; Open Source
+    </p>
     <p style="margin-top:10px;">
       <a href="https://github.com/armpit-symphony/Sparkbot" target="_blank" rel="noopener noreferrer">GitHub</a>
       &nbsp;·&nbsp;
@@ -1214,15 +1231,101 @@
     </p>
     <p style="margin-top:12px; font-size:0.8rem;">
       Other platforms:
-      <a href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.0/Sparkbot.Local_1.6.0_aarch64.dmg">macOS (all Macs)</a>
+      <a id="footer-macos-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.0/Sparkbot.Local_1.6.0_aarch64.dmg">macOS (all Macs)</a>
       &nbsp;·&nbsp;
-      <a href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.0/Sparkbot.Local_1.6.0_amd64.AppImage">Linux (AppImage)</a>    </p>
+      <a id="footer-linux-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.0/Sparkbot.Local_1.6.0_amd64.AppImage">Linux (AppImage)</a>
+    </p>
   </footer>
 
   <!-- ===========================
        JAVASCRIPT — FAQ accordion
   =========================== -->
   <script>
+    var fallbackRelease = {
+      version: "1.6.0",
+      windowsFilename: "Sparkbot.Local_1.6.0_x64-setup.exe",
+      windowsUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.0/Sparkbot.Local_1.6.0_x64-setup.exe",
+      macosUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.0/Sparkbot.Local_1.6.0_aarch64.dmg",
+      linuxUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.0/Sparkbot.Local_1.6.0_amd64.AppImage"
+    };
+
+    function setText(id, value) {
+      var el = document.getElementById(id);
+      if (el) {
+        el.textContent = value;
+      }
+    }
+
+    function setHref(id, value) {
+      var el = document.getElementById(id);
+      if (el) {
+        el.href = value;
+      }
+    }
+
+    function applyRelease(release) {
+      setText("version-badge", "v" + release.version);
+      setText("download-version-label", "Version " + release.version);
+      setText("footer-version-label", "Version " + release.version);
+      setText("windows-filename-step-1", release.windowsFilename);
+      setText("windows-filename-step-2", release.windowsFilename);
+      setText("windows-filename-dialog", release.windowsFilename);
+
+      setHref("download-windows-primary", release.windowsUrl);
+      setHref("download-windows-bottom", release.windowsUrl);
+      setHref("download-macos-link", release.macosUrl);
+      setHref("download-linux-link", release.linuxUrl);
+      setHref("footer-macos-link", release.macosUrl);
+      setHref("footer-linux-link", release.linuxUrl);
+    }
+
+    async function loadLatestDesktopRelease() {
+      try {
+        var response = await fetch("https://api.github.com/repos/armpit-symphony/Sparkbot/releases?per_page=20", {
+          headers: { Accept: "application/vnd.github+json" }
+        });
+        if (!response.ok) {
+          throw new Error("GitHub releases lookup failed");
+        }
+
+        var releases = await response.json();
+        if (!Array.isArray(releases)) {
+          throw new Error("Unexpected releases payload");
+        }
+
+        var desktopRelease = releases.find(function(release) {
+          return release && !release.draft && !release.prerelease && /^desktop-v/i.test(release.tag_name || "");
+        });
+        if (!desktopRelease) {
+          return;
+        }
+
+        var assets = Array.isArray(desktopRelease.assets) ? desktopRelease.assets : [];
+        var windowsAsset = assets.find(function(asset) {
+          return /_x64-setup\.exe$/i.test(asset.name || "");
+        });
+        var macosAsset = assets.find(function(asset) {
+          return /_aarch64\.dmg$/i.test(asset.name || "");
+        });
+        var linuxAsset = assets.find(function(asset) {
+          return /_amd64\.AppImage$/i.test(asset.name || "");
+        });
+
+        applyRelease({
+          version: String(desktopRelease.tag_name || "").replace(/^desktop-v/i, "") || fallbackRelease.version,
+          windowsFilename: windowsAsset && windowsAsset.name ? windowsAsset.name : fallbackRelease.windowsFilename,
+          windowsUrl: windowsAsset && windowsAsset.browser_download_url ? windowsAsset.browser_download_url : fallbackRelease.windowsUrl,
+          macosUrl: macosAsset && macosAsset.browser_download_url ? macosAsset.browser_download_url : fallbackRelease.macosUrl,
+          linuxUrl: linuxAsset && linuxAsset.browser_download_url ? linuxAsset.browser_download_url : fallbackRelease.linuxUrl
+        });
+      } catch (error) {
+        applyRelease(fallbackRelease);
+      }
+    }
+
+    applyRelease(fallbackRelease);
+    loadLatestDesktopRelease();
+
     function toggleFaq(btn) {
       var item = btn.closest('.faq-item');
       var isOpen = item.classList.contains('open');
