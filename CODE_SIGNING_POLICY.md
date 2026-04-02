@@ -7,34 +7,41 @@ Desktop builds (Windows, macOS, Linux) are distributed via GitHub Releases.
 
 ## Windows Authenticode Signing
 
-Windows desktop builds are signed using a certificate issued by the
-[SignPath Foundation](https://signpath.org) under their free Open Source program.
+Sparkbot is set up to sign Windows desktop releases through the
+[SignPath Foundation](https://signpath.org) Open Source program when the
+required GitHub Actions secrets are configured.
 
 ### What is signed
 
-- `sparkbot-backend.exe` — the PyInstaller-packaged FastAPI backend sidecar
-- `sparkbot-local-shell.exe` — the Tauri desktop shell
-- The NSIS installer (`*-setup.exe`)
+- The Windows NSIS installer published on GitHub Releases (`*-setup.exe`)
 
 ### How signing works
 
-Signing is performed automatically by GitHub Actions on every tag matching
-`desktop-v*`. The build workflow:
+On tag builds matching `desktop-v*`, the desktop release workflow:
 
-1. Builds all binaries on GitHub-hosted runners (no self-hosted runners)
-2. Uploads artifacts to GitHub
-3. Submits a signing request to SignPath via the official GitHub Action
-4. SignPath verifies the artifact was produced by this repository's workflow
-5. Signs and returns the artifacts
-6. The signed installer is published to GitHub Releases
+1. Builds the unsigned Windows installer on a GitHub-hosted runner
+2. Uploads the unsigned installer as a GitHub Actions artifact
+3. Submits a signing request to SignPath via the official GitHub Action when the SignPath secrets are present
+4. Waits for SignPath approval and completion
+5. Publishes the signed installer to GitHub Releases
+6. Falls back to the unsigned installer only when signing is not configured for that build
 
 The SignPath connector cryptographically verifies that artifacts were produced
 by this repository's CI workflow and were not tampered with.
 
+### Required secrets
+
+- `SIGNPATH_API_TOKEN`
+- `SIGNPATH_ORG_ID`
+- `SIGNPATH_PROJECT_SLUG`
+- `SIGNPATH_SIGNING_POLICY_SLUG`
+- `SIGNPATH_ARTIFACT_CONFIGURATION_SLUG` (optional)
+
 ### Who can approve signing requests
 
-Signing requests require approval from a designated Approver before SignPath
-will sign. The Approver is the repository maintainer (`armpit-symphony`).
+Signing requests may require approval from a designated approver before
+SignPath will sign. The intended approver is the repository maintainer
+(`armpit-symphony`).
 
 ## Verification
 

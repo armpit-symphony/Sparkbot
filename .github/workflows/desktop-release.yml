@@ -8,6 +8,9 @@ name: Desktop Release
 #   Set these GitHub Actions secrets to enable automatic signing:
 #     SIGNPATH_API_TOKEN     API token from your SignPath organization
 #     SIGNPATH_ORG_ID        Your SignPath organization ID
+#     SIGNPATH_PROJECT_SLUG  SignPath project slug for Sparkbot
+#     SIGNPATH_SIGNING_POLICY_SLUG  SignPath signing policy slug
+#     SIGNPATH_ARTIFACT_CONFIGURATION_SLUG  Optional artifact configuration slug
 #   Signing is skipped automatically when secrets are absent (dev/fork builds).
 #
 # macOS — Apple Developer Program ($99/yr, developer.apple.com):
@@ -35,6 +38,17 @@ jobs:
   build-windows:
     runs-on: windows-latest
     timeout-minutes: 60
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      windows_signed: ${{ steps.prepare-windows-release.outputs.signed }}
+    env:
+      SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+      SIGNPATH_ORG_ID: ${{ secrets.SIGNPATH_ORG_ID }}
+      SIGNPATH_PROJECT_SLUG: ${{ secrets.SIGNPATH_PROJECT_SLUG }}
+      SIGNPATH_SIGNING_POLICY_SLUG: ${{ secrets.SIGNPATH_SIGNING_POLICY_SLUG }}
+      SIGNPATH_ARTIFACT_CONFIGURATION_SLUG: ${{ secrets.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
 
     steps:
       - name: Checkout
@@ -116,11 +130,82 @@ jobs:
         shell: bash
         run: cargo tauri build --config src-tauri/tauri.conf.json --bundles nsis
 
-      - name: Upload installer artifact
+      - name: Upload unsigned Windows installer
+        id: upload-unsigned-windows-installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-windows-unsigned
+          path: src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Submit Windows installer to SignPath
+        id: sign-windows-installer-default-config
+        if: ${{ env.SIGNPATH_API_TOKEN != '' && env.SIGNPATH_ORG_ID != '' && env.SIGNPATH_PROJECT_SLUG != '' && env.SIGNPATH_SIGNING_POLICY_SLUG != '' && env.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG == '' }}
+        uses: signpath/github-action-submit-signing-request@v2
+        with:
+          api-token: ${{ env.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ env.SIGNPATH_ORG_ID }}
+          project-slug: ${{ env.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ env.SIGNPATH_SIGNING_POLICY_SLUG }}
+          github-artifact-id: ${{ steps.upload-unsigned-windows-installer.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 1800
+          output-artifact-directory: signed-windows
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          parameters: |
+            version: "${{ github.event.inputs.tag_name || github.ref_name }}"
+
+      - name: Submit Windows installer to SignPath (custom artifact config)
+        id: sign-windows-installer-custom-config
+        if: ${{ env.SIGNPATH_API_TOKEN != '' && env.SIGNPATH_ORG_ID != '' && env.SIGNPATH_PROJECT_SLUG != '' && env.SIGNPATH_SIGNING_POLICY_SLUG != '' && env.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG != '' }}
+        uses: signpath/github-action-submit-signing-request@v2
+        with:
+          api-token: ${{ env.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ env.SIGNPATH_ORG_ID }}
+          project-slug: ${{ env.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ env.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: ${{ env.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
+          github-artifact-id: ${{ steps.upload-unsigned-windows-installer.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 1800
+          output-artifact-directory: signed-windows
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          parameters: |
+            version: "${{ github.event.inputs.tag_name || github.ref_name }}"
+
+      - name: Prepare Windows release artifact
+        id: prepare-windows-release
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force release-windows | Out-Null
+
+          $signedInstaller = Get-ChildItem signed-windows -Recurse -Filter *.exe -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like "*-setup.exe" } |
+            Select-Object -First 1
+
+          if ($signedInstaller) {
+            Copy-Item $signedInstaller.FullName release-windows\
+            "signed=true" >> $env:GITHUB_OUTPUT
+            Write-Host "Using signed Windows installer: $($signedInstaller.Name)"
+            exit 0
+          }
+
+          $unsignedInstaller = Get-ChildItem src-tauri\target\release\bundle\nsis\*.exe | Select-Object -First 1
+          if (-not $unsignedInstaller) {
+            Write-Error "No Windows installer found."
+            exit 1
+          }
+
+          Copy-Item $unsignedInstaller.FullName release-windows\
+          "signed=false" >> $env:GITHUB_OUTPUT
+          Write-Host "Using unsigned Windows installer: $($unsignedInstaller.Name)"
+
+      - name: Upload Windows release artifact
         uses: actions/upload-artifact@v4
         with:
           name: installer-windows
-          path: src-tauri/target/release/bundle/nsis/*.exe
+          path: release-windows/*.exe
           if-no-files-found: error
           retention-days: 7
 
@@ -324,9 +409,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download all installer artifacts
+      - name: Download Windows release artifact
         uses: actions/download-artifact@v4
         with:
+          name: installer-windows
+          path: dist/
+          merge-multiple: true
+
+      - name: Download macOS release artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: installer-macos-arm
+          path: dist/
+          merge-multiple: true
+
+      - name: Download Linux release artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: installer-linux
           path: dist/
           merge-multiple: true
 
@@ -337,6 +437,62 @@ jobs:
       - name: List release files
         run: ls -lh dist/
 
+      - name: Generate release notes
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.event.inputs.tag_name || github.ref_name }}
+          WINDOWS_SIGNED: ${{ needs.build-windows.outputs.windows_signed }}
+        run: |
+          if [ "$WINDOWS_SIGNED" = "true" ]; then
+            WINDOWS_INSTALL_NOTE='**Windows:** Download `*-setup.exe` and run it.'
+            WINDOWS_SIGNING_NOTE='> The Windows installer is Authenticode-signed through SignPath Foundation.'
+            TRUST_NOTE='> Windows is signed for this release. macOS is still unsigned unless Apple signing and notarization secrets are configured.'
+          else
+            WINDOWS_INSTALL_NOTE='**Windows:** Download `*-setup.exe` and run it.'
+            WINDOWS_SIGNING_NOTE='> SmartScreen may show "Windows protected your PC". Click **More info -> Run anyway**. This warning appears because the installer is not Authenticode-signed yet.'
+            TRUST_NOTE='> Windows signing was not configured for this build, so SmartScreen may require an extra click. macOS is still unsigned unless Apple signing and notarization secrets are configured.'
+          fi
+
+          cat > release-notes.md <<EOF
+          ## Sparkbot Desktop ${RELEASE_TAG}
+
+          Double-click installer — **no Docker, no terminal, no prerequisites**.
+
+          ### Downloads
+
+          | Platform | File | Notes |
+          |----------|------|-------|
+          | Windows 10+ | \`*-setup.exe\` | NSIS installer |
+          | macOS (Apple Silicon + Intel via Rosetta 2) | \`*-aarch64.dmg\` | Drag to Applications |
+          | Linux x86-64 | \`*.AppImage\` | \`chmod +x\`, then run |
+
+          ### Install
+
+          ${WINDOWS_INSTALL_NOTE}
+          ${WINDOWS_SIGNING_NOTE}
+
+          **macOS:** Download the \`.dmg\`, open it, drag Sparkbot Local to Applications, then launch. Works on Apple Silicon natively and Intel Macs via Rosetta 2.
+          > Gatekeeper may say "Apple cannot verify this app". Right-click the app in Applications -> **Open**, then click **Open** in the dialog. You only need to do this once.
+
+          **Linux:** Download the \`.AppImage\`, make it executable (\`chmod +x *.AppImage\`), then run it.
+
+          ${TRUST_NOTE}
+
+          ### Verify checksums
+
+          \`\`\`
+          sha256sum --check SHA256SUMS
+          # macOS:
+          shasum -a 256 -c SHA256SUMS
+          # Windows (PowerShell):
+          Get-FileHash .\Sparkbot.Local_*_x64-setup.exe -Algorithm SHA256
+          \`\`\`
+
+          ### First launch
+
+          Sparkbot Controls opens on first launch for provider and model setup.
+          EOF
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -345,41 +501,6 @@ jobs:
           draft: false
           prerelease: false
           files: dist/*
-          body: |
-            ## Sparkbot Desktop ${{ github.event.inputs.tag_name || github.ref_name }}
-
-            Double-click installer — **no Docker, no terminal, no prerequisites**.
-
-            ### Downloads
-
-            | Platform | File | Notes |
-            |----------|------|-------|
-            | Windows 10+ | `*-setup.exe` | NSIS installer |
-            | macOS (Apple Silicon + Intel via Rosetta 2) | `*-aarch64.dmg` | Drag to Applications |
-            | Linux x86-64 | `*.AppImage` | `chmod +x`, then run |
-
-            ### Install
-
-            **Windows:** Download `*-setup.exe` and run it.
-            > SmartScreen may show "Windows protected your PC". Click **More info → Run anyway**. This warning appears because the installer is not yet Authenticode-signed.
-
-            **macOS:** Download the `.dmg`, open it, drag Sparkbot Local to Applications, then launch. Works on Apple Silicon natively and Intel Macs via Rosetta 2.
-            > Gatekeeper may say "Apple cannot verify this app". Right-click the app in Applications → **Open**, then click **Open** in the dialog. You only need to do this once.
-
-            **Linux:** Download the `.AppImage`, make it executable (`chmod +x *.AppImage`), then run it.
-
-            > These installers are **not yet code-signed**. macOS and Windows show one-time security prompts that require an extra click. Signed builds will eliminate this warning in a future release.
-
-            ### Verify checksums
-
-            ```
-            sha256sum --check SHA256SUMS
-            # macOS:
-            shasum -a 256 -c SHA256SUMS
-            ```
-
-            ### First launch
-
-            Sparkbot Controls opens on first launch for provider and model setup.
+          body_path: release-notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
