@@ -128,8 +128,6 @@ git -C "$repo_root" archive --format=tar --prefix="sparkbot-v2/" "$commit" | tar
 
 # Remove internal-only docs and any tracked backup/junk files from the staged public bundle.
 rm -f \
-  "$stage_repo/LOGBOOK_handoff.md" \
-  "$stage_repo/sparkbotv1_logbook_handoff.md" \
   "$stage_repo/FRESH_INSTALL_CHECKLIST.md" \
   "$stage_repo/consumer_readiness_checklist.md" \
   "$stage_repo/release-notes.md" \
@@ -192,8 +190,6 @@ chmod 755 "$output_dir/$cli_name"
   echo "- packaged from repo root folder name: sparkbot-v2"
   echo
   echo "Excluded from the public bundle:"
-  echo "- LOGBOOK_handoff.md"
-  echo "- sparkbotv1_logbook_handoff.md"
   echo "- FRESH_INSTALL_CHECKLIST.md"
   echo "- consumer_readiness_checklist.md"
   echo "- release-notes.md"

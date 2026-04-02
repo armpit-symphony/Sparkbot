@@ -76,6 +76,38 @@ Default artifacts are written to `dist/public-download/latest/`.
 To publish directly to the website download directory, pass `--publish-dir /var/www/sparkpitlabs.com/downloads/sparkbot/latest`.
 For versioned or tag-bound packaging instructions, see [docs/public-downloads.md](./docs/public-downloads.md).
 
+### Desktop release packaging
+
+Windows desktop releases are published from tags matching `desktop-v*`.
+
+Release standard:
+
+- download `*-setup.exe`
+- run the installer with standard Windows prompts
+- open Sparkbot from the Start Menu
+- finish provider setup in **Sparkbot Controls**
+- start chatting without Docker, WSL, or terminal work
+
+Create and push a desktop release tag:
+
+```bash
+git tag desktop-v1.6.1
+git push origin desktop-v1.6.1
+```
+
+The public desktop workflow is [desktop-release.yml](./.github/workflows/desktop-release.yml).
+For signed Windows installers, configure these GitHub Actions secrets before tagging:
+
+- `SIGNPATH_API_TOKEN`
+- `SIGNPATH_ORG_ID`
+- `SIGNPATH_PROJECT_SLUG`
+- `SIGNPATH_SIGNING_POLICY_SLUG`
+- `SIGNPATH_ARTIFACT_CONFIGURATION_SLUG` optional
+
+If those secrets are missing, the release still builds, but the Windows installer is published unsigned and SmartScreen may require **More info -> Run anyway**.
+
+The manual workflow [build-installer.yml](./.github/workflows/build-installer.yml) is for QA builds only. It does not publish a public GitHub Release.
+
 ---
 
 ## Recent Milestones

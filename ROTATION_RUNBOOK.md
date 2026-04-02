@@ -88,7 +88,7 @@ If any rotation breaks production:
 1. Invalidate stale sessions after `SECRET_KEY` rotation.
 2. Confirm all clients re-authenticate cleanly.
 3. Update secure secret inventory with new issue/expiry dates.
-4. Close A5 checklist items in `LOGBOOK_handoff.md`.
+4. Close the related A5 checklist items in the current release issue or operations tracker.
 
 ---
 
