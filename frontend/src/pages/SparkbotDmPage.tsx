@@ -2653,9 +2653,26 @@ function SparkbotDmPage() {
     setOpenRouterLoadError("")
     try {
       const response = await apiFetch("/api/v1/chat/openrouter/models", { credentials: "include" })
+      const contentType = response.headers.get("content-type") || ""
       if (!response.ok) {
-        const errData = await response.json().catch(() => ({ detail: `HTTP ${response.status}` }))
-        throw new Error(errData.detail ?? `HTTP ${response.status}`)
+        let detail = `HTTP ${response.status}`
+        if (contentType.includes("application/json")) {
+          const errData = await response.json().catch(() => ({ detail }))
+          detail = errData.detail ?? detail
+        } else {
+          const text = await response.text().catch(() => "")
+          if (text.includes("<!DOCTYPE") || text.includes("<html")) {
+            detail = "Sparkbot got the desktop page instead of the backend API. Restart the app and try again."
+          }
+        }
+        throw new Error(detail)
+      }
+      if (!contentType.includes("application/json")) {
+        const text = await response.text().catch(() => "")
+        if (text.includes("<!DOCTYPE") || text.includes("<html")) {
+          throw new Error("Sparkbot got the desktop page instead of the backend API. Restart the app and try again.")
+        }
+        throw new Error("OpenRouter model refresh returned a non-JSON response.")
       }
       const data = await response.json()
       setOpenRouterModels(data.models ?? [])

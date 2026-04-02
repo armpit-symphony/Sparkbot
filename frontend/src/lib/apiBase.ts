@@ -1,5 +1,6 @@
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1"])
 const DEFAULT_DESKTOP_API_BASE = "http://127.0.0.1:8000"
+const DESKTOP_HOSTS = new Set(["tauri.localhost"])
 
 function normalizeBase(value: string | undefined | null): string {
   return (value ?? "").trim().replace(/\/+$/, "")
@@ -13,6 +14,10 @@ function isDesktopProtocol(protocol: string): boolean {
   return protocol === "tauri:" || protocol === "asset:"
 }
 
+function isDesktopHost(hostname: string): boolean {
+  return DESKTOP_HOSTS.has(hostname) || hostname.endsWith(".tauri.localhost")
+}
+
 export function getApiBase(): string {
   const configuredBase = normalizeBase(import.meta.env.VITE_API_URL)
 
@@ -21,7 +26,7 @@ export function getApiBase(): string {
   }
 
   const { hostname, origin, protocol } = window.location
-  if (isDesktopProtocol(protocol) || origin === "null") {
+  if (isDesktopProtocol(protocol) || origin === "null" || isDesktopHost(hostname)) {
     return configuredBase || DEFAULT_DESKTOP_API_BASE
   }
 
