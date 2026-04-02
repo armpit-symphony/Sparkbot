@@ -3,58 +3,94 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Sparkbot — Download</title>
+  <title>Sparkbot — Download for Windows</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #0f0f0f;
-      color: #f0f0f0;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      background:
+        radial-gradient(circle at top, rgba(108, 99, 255, 0.18), transparent 28rem),
+        linear-gradient(180deg, #10111b 0%, #0b0d14 100%);
+      color: #f5f7fb;
       min-height: 100vh;
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
       padding: 2rem;
-      text-align: center;
+    }
+
+    .card {
+      width: min(100%, 860px);
+      margin: 3rem auto;
+      background: rgba(16, 18, 29, 0.92);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 28px;
+      padding: 2.5rem;
+      box-shadow: 0 20px 80px rgba(0, 0, 0, 0.35);
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.45rem 0.8rem;
+      border-radius: 999px;
+      background: rgba(108, 99, 255, 0.18);
+      color: #d9d5ff;
+      font-size: 0.9rem;
+      font-weight: 700;
+      margin-bottom: 1rem;
     }
 
     .logo {
       font-size: 3rem;
-      margin-bottom: 0.5rem;
+      margin-bottom: 0.75rem;
     }
 
     h1 {
-      font-size: 2.5rem;
+      font-size: clamp(2.4rem, 4vw, 4rem);
       font-weight: 700;
-      margin-bottom: 0.5rem;
+      margin-bottom: 0.8rem;
+      line-height: 1.05;
     }
 
     .tagline {
-      color: #999;
-      font-size: 1.1rem;
-      margin-bottom: 3rem;
+      color: #c5ccdf;
+      font-size: 1.15rem;
+      max-width: 38rem;
+      margin-bottom: 1.2rem;
+    }
+
+    .subcopy {
+      color: #9ea7c1;
+      font-size: 1rem;
+      max-width: 40rem;
+      line-height: 1.6;
+      margin-bottom: 2rem;
     }
 
     .download-btn {
       display: inline-flex;
       align-items: center;
+      justify-content: center;
       gap: 0.75rem;
-      background: #6c63ff;
+      background: linear-gradient(135deg, #7467ff 0%, #4c8dff 100%);
       color: #fff;
       text-decoration: none;
-      font-size: 1.3rem;
+      font-size: 1.25rem;
       font-weight: 600;
-      padding: 1.1rem 2.5rem;
-      border-radius: 12px;
-      transition: background 0.15s, transform 0.1s;
+      padding: 1.15rem 2.5rem;
+      border-radius: 16px;
+      transition: transform 0.12s, box-shadow 0.12s;
       margin-bottom: 1rem;
+      min-width: 18rem;
+      box-shadow: 0 14px 34px rgba(76, 141, 255, 0.32);
     }
 
     .download-btn:hover {
-      background: #574fd6;
       transform: translateY(-2px);
+      box-shadow: 0 18px 42px rgba(76, 141, 255, 0.38);
     }
 
     .download-btn:active {
@@ -65,59 +101,234 @@
       font-size: 1.6rem;
     }
 
+    .download-meta {
+      color: #dfe6f7;
+      font-size: 0.98rem;
+      margin-bottom: 0.9rem;
+    }
+
     .note {
-      color: #666;
-      font-size: 0.85rem;
+      color: #a8b2cb;
+      font-size: 0.95rem;
       margin-top: 0.5rem;
-      max-width: 420px;
+      max-width: 44rem;
+      line-height: 1.6;
+    }
+
+    .note a {
+      color: #e3e7ff;
+    }
+
+    .steps {
+      display: grid;
+      gap: 1rem;
+      margin-top: 2rem;
+      text-align: left;
+    }
+
+    .step {
+      display: grid;
+      grid-template-columns: 2.5rem 1fr;
+      gap: 1rem;
+      align-items: start;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      border-radius: 18px;
+      padding: 1rem 1.1rem;
+    }
+
+    .step-num {
+      width: 2.5rem;
+      height: 2.5rem;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(116, 103, 255, 0.22);
+      color: #fff;
+      font-weight: 700;
+    }
+
+    .step strong {
+      color: #fff;
     }
 
     .other-platforms {
-      margin-top: 3rem;
-      color: #555;
-      font-size: 0.9rem;
+      margin-top: 2.2rem;
+      color: #98a2bd;
+      font-size: 0.95rem;
     }
 
     .other-platforms a {
-      color: #888;
+      color: #d8deee;
       text-decoration: underline;
     }
 
     .other-platforms a:hover {
-      color: #aaa;
+      color: #fff;
     }
 
     .version {
-      margin-top: 2.5rem;
-      color: #444;
-      font-size: 0.8rem;
+      margin-top: 2.2rem;
+      color: #8390b0;
+      font-size: 0.88rem;
+    }
+
+    @media (max-width: 640px) {
+      body {
+        padding: 1rem;
+      }
+
+      .card {
+        margin: 1rem auto;
+        padding: 1.5rem;
+        border-radius: 22px;
+      }
+
+      .download-btn {
+        width: 100%;
+        min-width: 0;
+      }
+
+      .step {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
 </head>
 <body>
+  <main class="card">
+    <div class="logo">⚡</div>
+    <div class="eyebrow">Windows-first download page</div>
+    <h1>Download Sparkbot for Windows</h1>
+    <p class="tagline">Your private AI assistant that runs on your own computer.</p>
+    <p class="subcopy">
+      No account. No subscription. No Docker. Click the button, open the installer, and follow the prompts.
+    </p>
 
-  <div class="logo">⚡</div>
-  <h1>Sparkbot</h1>
-  <p class="tagline">Your local AI assistant — runs entirely on your computer.</p>
+    <a
+      id="download-windows-primary"
+      class="download-btn"
+      href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.0/Sparkbot.Local_1.6.0_x64-setup.exe"
+      aria-label="Download Sparkbot for Windows"
+    >
+      <span class="platform-icon">🪟</span>
+      Download for Windows
+    </a>
 
-  <a class="download-btn" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.3.18/Sparkbot.Local_1.3.18_x64-setup.exe">
-    <span class="platform-icon">🪟</span>
-    Download for Windows
-  </a>
+    <p class="download-meta"><span id="version-label">Latest stable desktop release: v1.6.0</span></p>
+    <p class="note">
+      Your download should be a file named <strong id="windows-filename">Sparkbot.Local_1.6.0_x64-setup.exe</strong>.
+      If the button does not start a download, open
+      <a href="https://github.com/armpit-symphony/Sparkbot/releases" target="_blank" rel="noopener noreferrer">All Releases</a>
+      and pick the Windows file ending in <strong>_x64-setup.exe</strong>.
+    </p>
 
-  <p class="note">
-    Windows may show a security warning — click <strong>"More info"</strong> then
-    <strong>"Run anyway"</strong> to install.
-  </p>
+    <section class="steps" aria-label="How to install Sparkbot on Windows">
+      <div class="step">
+        <div class="step-num">1</div>
+        <p>Click <strong>Download for Windows</strong>. Your browser should save <strong id="windows-filename-step-1">Sparkbot.Local_1.6.0_x64-setup.exe</strong> to your Downloads folder.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <p>Open the downloaded file. If Windows shows a warning, click <strong>More info</strong>, then click <strong>Run anyway</strong>.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <p>Click <strong>Install</strong> or <strong>Next</strong> until Sparkbot finishes installing, then open it from your Start Menu like any other app.</p>
+      </div>
+    </section>
 
-  <div class="other-platforms">
-    Also available for &nbsp;
-    <a href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.3.18/Sparkbot.Local_1.3.18_aarch64.dmg">macOS (Apple Silicon)</a>
-    &nbsp;·&nbsp;
-    <a href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.3.18/Sparkbot.Local_1.3.18_amd64.AppImage">Linux</a>
-  </div>
+    <div class="other-platforms">
+      Also available for &nbsp;
+      <a id="download-macos-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.0/Sparkbot.Local_1.6.0_aarch64.dmg">macOS (all Macs)</a>
+      &nbsp;·&nbsp;
+      <a id="download-linux-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.0/Sparkbot.Local_1.6.0_amd64.AppImage">Linux</a>
+    </div>
 
-  <p class="version">v1.3.18</p>
+    <p class="version" id="version-footer">v1.6.0</p>
+  </main>
+
+  <script>
+    var fallbackRelease = {
+      version: "1.6.0",
+      windowsFilename: "Sparkbot.Local_1.6.0_x64-setup.exe",
+      windowsUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.0/Sparkbot.Local_1.6.0_x64-setup.exe",
+      macosUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.0/Sparkbot.Local_1.6.0_aarch64.dmg",
+      linuxUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.0/Sparkbot.Local_1.6.0_amd64.AppImage"
+    };
+
+    function setText(id, value) {
+      var el = document.getElementById(id);
+      if (el) {
+        el.textContent = value;
+      }
+    }
+
+    function setHref(id, value) {
+      var el = document.getElementById(id);
+      if (el) {
+        el.href = value;
+      }
+    }
+
+    function applyRelease(release) {
+      setHref("download-windows-primary", release.windowsUrl);
+      setHref("download-macos-link", release.macosUrl);
+      setHref("download-linux-link", release.linuxUrl);
+      setText("version-label", "Latest stable desktop release: v" + release.version);
+      setText("windows-filename", release.windowsFilename);
+      setText("windows-filename-step-1", release.windowsFilename);
+      setText("version-footer", "v" + release.version);
+    }
+
+    async function loadLatestDesktopRelease() {
+      try {
+        var response = await fetch("https://api.github.com/repos/armpit-symphony/Sparkbot/releases?per_page=20", {
+          headers: { Accept: "application/vnd.github+json" }
+        });
+        if (!response.ok) {
+          throw new Error("GitHub releases lookup failed");
+        }
+
+        var releases = await response.json();
+        if (!Array.isArray(releases)) {
+          throw new Error("Unexpected releases payload");
+        }
+
+        var desktopRelease = releases.find(function(release) {
+          return release && !release.draft && !release.prerelease && /^desktop-v/i.test(release.tag_name || "");
+        });
+        if (!desktopRelease) {
+          return;
+        }
+
+        var assets = Array.isArray(desktopRelease.assets) ? desktopRelease.assets : [];
+        var windowsAsset = assets.find(function(asset) {
+          return /_x64-setup\.exe$/i.test(asset.name || "");
+        });
+        var macosAsset = assets.find(function(asset) {
+          return /_aarch64\.dmg$/i.test(asset.name || "");
+        });
+        var linuxAsset = assets.find(function(asset) {
+          return /_amd64\.AppImage$/i.test(asset.name || "");
+        });
+
+        applyRelease({
+          version: String(desktopRelease.tag_name || "").replace(/^desktop-v/i, "") || fallbackRelease.version,
+          windowsFilename: windowsAsset && windowsAsset.name ? windowsAsset.name : fallbackRelease.windowsFilename,
+          windowsUrl: windowsAsset && windowsAsset.browser_download_url ? windowsAsset.browser_download_url : fallbackRelease.windowsUrl,
+          macosUrl: macosAsset && macosAsset.browser_download_url ? macosAsset.browser_download_url : fallbackRelease.macosUrl,
+          linuxUrl: linuxAsset && linuxAsset.browser_download_url ? linuxAsset.browser_download_url : fallbackRelease.linuxUrl
+        });
+      } catch (error) {
+        applyRelease(fallbackRelease);
+      }
+    }
+
+    applyRelease(fallbackRelease);
+    loadLatestDesktopRelease();
+  </script>
 
 </body>
 </html>
