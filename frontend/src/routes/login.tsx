@@ -18,7 +18,15 @@ import {
 import { LoadingButton } from "@/components/ui/loading-button"
 import { PasswordInput } from "@/components/ui/password-input"
 import useAuth, { hasChatSession, isLoggedIn } from "@/hooks/useAuth"
+import { apiFetch } from "@/lib/apiBase"
 import { resolveChatEntryTarget } from "@/lib/sparkbotControls"
+
+// Desktop (Tauri) builds ship with a bundled passphrase — no manual login needed.
+function isDesktopApp(): boolean {
+  if (typeof window === "undefined") return false
+  const proto = window.location.protocol
+  return proto === "tauri:" || proto === "asset:" || window.location.origin === "null"
+}
 
 const formSchema = z.object({
   passphrase: z
@@ -31,6 +39,22 @@ type FormData = z.infer<typeof formSchema>
 export const Route = createFileRoute("/login")({
   component: Login,
   beforeLoad: async () => {
+    // Desktop builds: auto-authenticate so users never see the login screen.
+    if (isDesktopApp() && !isLoggedIn() && !hasChatSession()) {
+      try {
+        const res = await apiFetch("/api/v1/chat/users/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ passphrase: "sparkbot-local" }),
+        })
+        if (res.ok) {
+          sessionStorage.setItem("chat_auth", "1")
+        }
+      } catch {
+        // Auto-auth failed — fall through and show the login form
+      }
+    }
     if (isLoggedIn()) {
       throw redirect({
         to: "/",
