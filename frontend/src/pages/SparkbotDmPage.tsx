@@ -2961,8 +2961,9 @@ function SparkbotDmPage() {
       )
       return
     }
-    if (defaultSelection.provider === "openrouter" && !pageHasOpenRouterConfigured && !providerDrafts.openrouter_api_key.trim()) {
-      setSettingsError("Save an OpenRouter API key before using OpenRouter as the default.")
+    const _selectedIsFreeOpenRouterModel = openRouterModels.find(m => m.id === chosenDefaultModel)?.is_free ?? false
+    if (defaultSelection.provider === "openrouter" && !pageHasOpenRouterConfigured && !providerDrafts.openrouter_api_key.trim() && !_selectedIsFreeOpenRouterModel) {
+      setSettingsError("This is a paid OpenRouter model. Save an OpenRouter API key before setting it as default.")
       return
     }
     const _DIRECT_KEY_FIELDS: Record<string, keyof ProviderTokenDrafts> = {

@@ -104,6 +104,9 @@ services:
       - DISCORD_ENABLED=${DISCORD_ENABLED:-false}
       # Guardian policy mode: false = personal (no gates), true = office/team (full enforcement)
       - SPARKBOT_GUARDIAN_POLICY_ENABLED=${SPARKBOT_GUARDIAN_POLICY_ENABLED:-false}
+      # Persist saved API keys and runtime .env to the data volume so they survive container restarts
+      - SPARKBOT_DATA_DIR=/app/backend/data
+      - SPARKBOT_GUARDIAN_DATA_DIR=/app/backend/data/guardian
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/utils/health-check/"]
       interval: 10s
