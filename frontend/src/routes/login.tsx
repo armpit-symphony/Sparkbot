@@ -20,6 +20,7 @@ import { PasswordInput } from "@/components/ui/password-input"
 import useAuth, { hasChatSession, isLoggedIn } from "@/hooks/useAuth"
 import { apiFetch } from "@/lib/apiBase"
 import { resolveChatEntryTarget } from "@/lib/sparkbotControls"
+import { isV1LocalMode } from "@/lib/v1Local"
 
 // Desktop (Tauri) builds ship with a bundled passphrase — no manual login needed.
 function isDesktopApp(): boolean {
@@ -39,8 +40,8 @@ type FormData = z.infer<typeof formSchema>
 export const Route = createFileRoute("/login")({
   component: Login,
   beforeLoad: async () => {
-    // Desktop builds: auto-authenticate so users never see the login screen.
-    if (isDesktopApp() && !isLoggedIn() && !hasChatSession()) {
+    // Desktop and local-mode builds: auto-authenticate so users never see the login screen.
+    if ((isDesktopApp() || isV1LocalMode) && !isLoggedIn() && !hasChatSession()) {
       try {
         const res = await apiFetch("/api/v1/chat/users/login", {
           method: "POST",
