@@ -120,6 +120,7 @@ services:
       args:
         - VITE_API_URL=http://localhost:8000
         - NODE_ENV=production
+        - VITE_V1_LOCAL_MODE=true
     restart: unless-stopped
     ports:
       - "127.0.0.1:3000:80"

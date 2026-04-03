@@ -13,6 +13,8 @@ RUN bun install
 
 COPY ./frontend /app/frontend
 ARG VITE_API_URL
+ARG VITE_V1_LOCAL_MODE
+ENV VITE_V1_LOCAL_MODE=$VITE_V1_LOCAL_MODE
 
 RUN bun run build
 
