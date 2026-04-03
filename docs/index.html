@@ -762,6 +762,56 @@
     }
 
     /* ===========================
+       ADVANCED TOGGLE
+    =========================== */
+    .advanced-toggle-wrap {
+      max-width: 680px;
+      margin: 0 auto;
+      text-align: center;
+    }
+
+    .btn-advanced-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: none;
+      border: 1px solid #333;
+      color: var(--text-dim);
+      font-size: 0.9rem;
+      font-weight: 500;
+      padding: 11px 24px;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: border-color 0.18s, color 0.18s, background 0.18s;
+      font-family: var(--font);
+    }
+
+    .btn-advanced-toggle:hover {
+      border-color: rgba(108, 99, 255, 0.5);
+      color: var(--text-muted);
+      background: var(--purple-dim);
+    }
+
+    .btn-advanced-toggle .toggle-arrow {
+      font-size: 0.75rem;
+      transition: transform 0.22s;
+    }
+
+    .btn-advanced-toggle[aria-expanded="true"] .toggle-arrow {
+      transform: rotate(180deg);
+    }
+
+    .advanced-content {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.4s ease;
+    }
+
+    .advanced-content.open {
+      max-height: 2000px;
+    }
+
+    /* ===========================
        BOTTOM CTA
     =========================== */
     .bottom-cta {
@@ -1099,8 +1149,8 @@
           <div class="step">
             <div class="step-num" aria-hidden="true">5</div>
             <div class="step-body">
-              <h3 class="step-title">Open Sparkbot and start chatting</h3>
-              <p class="step-desc">Find <strong>Sparkbot</strong> in your Start Menu and open it. On the first run it will ask if you want to use a free local AI or connect your own AI key (like OpenAI). Either way works — you can always change it later.</p>
+              <h3 class="step-title">Open Sparkbot and connect your AI</h3>
+              <p class="step-desc">Find <strong>Sparkbot</strong> in your Start Menu and open it. A setup panel will appear automatically. The easiest way to get started is with <strong>OpenRouter</strong> — it's free to sign up and gives you access to many AI models. Just create a free account at <strong>openrouter.ai</strong>, copy your API key, and paste it into Sparkbot. You can also use a free local AI that runs entirely on your computer with no account needed — or connect OpenAI, Anthropic, or Google. All of this can be changed any time.</p>
             </div>
           </div>
 
@@ -1193,6 +1243,18 @@
         <p class="section-subtitle">Plain English answers to things people usually wonder about.</p>
 
         <div class="faq-list" role="list">
+
+          <div class="faq-item" role="listitem">
+            <button class="faq-q" aria-expanded="false" onclick="toggleFaq(this)">
+              How do I get started? What's an "API key"?
+              <span class="faq-arrow" aria-hidden="true">▾</span>
+            </button>
+            <div class="faq-a" role="region">
+              <p>After you install and open Sparkbot, a setup panel will pop up automatically. The easiest way to get your AI working is through <strong>OpenRouter</strong> — a free service that gives you access to many AI models.</p>
+              <p>Here's what to do: <strong>1)</strong> Go to <strong>openrouter.ai</strong> in your web browser and create a free account. <strong>2)</strong> Once logged in, go to your account settings and find "API Keys". Create a new key — it's a long string of letters and numbers. <strong>3)</strong> Copy that key and paste it into Sparkbot when it asks. That's it! You're ready to chat.</p>
+              <p>An "API key" is just a password that lets Sparkbot talk to the AI service on your behalf. You don't need to understand how it works — just copy and paste it. OpenRouter's free tier includes access to several capable AI models at no cost.</p>
+            </div>
+          </div>
 
           <div class="faq-item" role="listitem">
             <button class="faq-q" aria-expanded="false" onclick="toggleFaq(this)">
@@ -1289,65 +1351,84 @@
     <hr class="divider-line" />
 
     <!-- ===========================
-         SERVER / SELF-HOSTED
+         SERVER / SELF-HOSTED (Advanced — collapsed by default)
     =========================== -->
     <section class="section" aria-labelledby="server-heading">
       <div class="container">
-        <h2 class="section-title" id="server-heading">Self-Host on Your Own Server</h2>
-        <p class="section-subtitle">Run Sparkbot on a home server, NAS, or cloud VM — accessible from any device on your network.</p>
 
-        <div class="server-cards">
-
-          <div class="server-card">
-            <span class="server-card-icon" role="img" aria-hidden="true">🏠</span>
-            <div class="server-badge server-badge-green">No login required</div>
-            <h3 class="server-card-title">Local / Home Install</h3>
-            <p class="server-card-subtitle">Run on your own PC or home network. No passphrase screen — opens straight to chat. Perfect for personal use.</p>
-            <a href="https://github.com/armpit-symphony/Sparkbot/archive/refs/tags/server-v1.0.0.zip"
-               class="btn-server-download"
-               aria-label="Download Sparkbot Server v1.0.0 zip">
-              ⬇ Download v1.0.0 (.zip)
-            </a>
-            <a href="https://github.com/armpit-symphony/Sparkbot/archive/refs/tags/server-v1.0.0.tar.gz"
-               class="btn-server-download"
-               aria-label="Download Sparkbot Server v1.0.0 tar.gz">
-              ⬇ Download v1.0.0 (.tar.gz)
-            </a>
-            <p class="server-note">
-              After downloading: unzip, add your API key to <code>.env.local</code>, then run<br>
-              <code>docker compose -f compose.local.yml up --build</code><br>
-              Open <strong>http://localhost:3000</strong> — no login needed.
-            </p>
-          </div>
-
-          <div class="server-card">
-            <span class="server-card-icon" role="img" aria-hidden="true">🌐</span>
-            <div class="server-badge server-badge-yellow">Login required</div>
-            <h3 class="server-card-title">Remote Server Install</h3>
-            <p class="server-card-subtitle">Deploy on a VPS, cloud server, or any machine you access remotely. Login is enabled to protect access over the internet.</p>
-            <a href="https://github.com/armpit-symphony/Sparkbot/archive/refs/tags/server-v1.0.0.zip"
-               class="btn-server-download"
-               aria-label="Download Sparkbot Server v1.0.0 zip">
-              ⬇ Download v1.0.0 (.zip)
-            </a>
-            <a href="https://github.com/armpit-symphony/Sparkbot/archive/refs/tags/server-v1.0.0.tar.gz"
-               class="btn-server-download"
-               aria-label="Download Sparkbot Server v1.0.0 tar.gz">
-              ⬇ Download v1.0.0 (.tar.gz)
-            </a>
-            <p class="server-note">
-              After downloading: copy <code>.env.example</code> to <code>.env</code>, set a strong passphrase and API key, then run<br>
-              <code>docker compose up --build</code><br>
-              Users must enter the passphrase to log in.
-            </p>
-          </div>
-
+        <div class="advanced-toggle-wrap">
+          <p style="font-size:0.92rem; color:var(--text-dim); margin-bottom:18px;">
+            Most people use the desktop download above. The section below is for IT professionals and developers only.
+          </p>
+          <button
+            class="btn-advanced-toggle"
+            aria-expanded="false"
+            aria-controls="server-advanced-content"
+            onclick="toggleAdvanced(this)"
+          >
+            <span>⚙️ Advanced: Self-Hosting on a Server</span>
+            <span class="toggle-arrow" aria-hidden="true">▾</span>
+          </button>
         </div>
 
-        <p style="text-align:center; margin-top:28px; font-size:0.9rem; color:var(--text-dim);">
-          Requires <a href="https://docs.docker.com/get-docker/" target="_blank" rel="noopener noreferrer" style="color:var(--purple-light);">Docker</a> and Docker Compose &nbsp;·&nbsp;
-          <a href="https://github.com/armpit-symphony/Sparkbot/releases/tag/server-v1.0.0" target="_blank" rel="noopener noreferrer" style="color:var(--purple-light);">Release notes on GitHub</a>
-        </p>
+        <div id="server-advanced-content" class="advanced-content" role="region" aria-labelledby="server-heading">
+          <div style="height:36px;"></div>
+          <h2 class="section-title" id="server-heading" style="font-size:1.5rem;">Self-Host on Your Own Server</h2>
+          <p class="section-subtitle">Run Sparkbot on a home server, NAS, or cloud VM — accessible from any device on your network. Requires Docker.</p>
+
+          <div class="server-cards">
+
+            <div class="server-card">
+              <span class="server-card-icon" role="img" aria-hidden="true">🏠</span>
+              <div class="server-badge server-badge-green">No login required</div>
+              <h3 class="server-card-title">Local / Home Install</h3>
+              <p class="server-card-subtitle">Run on your own PC or home network. No passphrase screen — opens straight to chat. Perfect for personal use.</p>
+              <a href="https://github.com/armpit-symphony/Sparkbot/archive/refs/tags/server-v1.0.0.zip"
+                 class="btn-server-download"
+                 aria-label="Download Sparkbot Server v1.0.0 zip">
+                ⬇ Download v1.0.0 (.zip)
+              </a>
+              <a href="https://github.com/armpit-symphony/Sparkbot/archive/refs/tags/server-v1.0.0.tar.gz"
+                 class="btn-server-download"
+                 aria-label="Download Sparkbot Server v1.0.0 tar.gz">
+                ⬇ Download v1.0.0 (.tar.gz)
+              </a>
+              <p class="server-note">
+                After downloading: unzip, add your API key to <code>.env.local</code>, then run<br>
+                <code>docker compose -f compose.local.yml up --build</code><br>
+                Open <strong>http://localhost:3000</strong> — no login needed.
+              </p>
+            </div>
+
+            <div class="server-card">
+              <span class="server-card-icon" role="img" aria-hidden="true">🌐</span>
+              <div class="server-badge server-badge-yellow">Login required</div>
+              <h3 class="server-card-title">Remote Server Install</h3>
+              <p class="server-card-subtitle">Deploy on a VPS, cloud server, or any machine you access remotely. Login is enabled to protect access over the internet.</p>
+              <a href="https://github.com/armpit-symphony/Sparkbot/archive/refs/tags/server-v1.0.0.zip"
+                 class="btn-server-download"
+                 aria-label="Download Sparkbot Server v1.0.0 zip">
+                ⬇ Download v1.0.0 (.zip)
+              </a>
+              <a href="https://github.com/armpit-symphony/Sparkbot/archive/refs/tags/server-v1.0.0.tar.gz"
+                 class="btn-server-download"
+                 aria-label="Download Sparkbot Server v1.0.0 tar.gz">
+                ⬇ Download v1.0.0 (.tar.gz)
+              </a>
+              <p class="server-note">
+                After downloading: copy <code>.env.example</code> to <code>.env</code>, set a strong passphrase and API key, then run<br>
+                <code>docker compose up --build</code><br>
+                Users must enter the passphrase to log in.
+              </p>
+            </div>
+
+          </div>
+
+          <p style="text-align:center; margin-top:28px; font-size:0.9rem; color:var(--text-dim);">
+            Requires <a href="https://docs.docker.com/get-docker/" target="_blank" rel="noopener noreferrer" style="color:var(--purple-light);">Docker</a> and Docker Compose &nbsp;·&nbsp;
+            <a href="https://github.com/armpit-symphony/Sparkbot/releases/tag/server-v1.0.0" target="_blank" rel="noopener noreferrer" style="color:var(--purple-light);">Release notes on GitHub</a>
+          </p>
+        </div>
 
       </div>
     </section>
@@ -1485,6 +1566,18 @@
 
     applyRelease(fallbackRelease);
     loadLatestDesktopRelease();
+
+    function toggleAdvanced(btn) {
+      var isOpen = btn.getAttribute('aria-expanded') === 'true';
+      var content = document.getElementById(btn.getAttribute('aria-controls'));
+      if (isOpen) {
+        btn.setAttribute('aria-expanded', 'false');
+        content.classList.remove('open');
+      } else {
+        btn.setAttribute('aria-expanded', 'true');
+        content.classList.add('open');
+      }
+    }
 
     function toggleFaq(btn) {
       var item = btn.closest('.faq-item');

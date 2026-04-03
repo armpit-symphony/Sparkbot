@@ -927,25 +927,25 @@ function SparkbotSettingsDialog({
       ]
     : [
         {
-          title: "Connect AI (cloud or local)",
+          title: "Connect your AI",
           done: readyProviderCount > 0,
           detail: readyProviderCount > 0
-            ? `${readyProviderCount} AI path${readyProviderCount === 1 ? "" : "s"} ready`
-            : "Add OpenRouter for cloud AI, or keep one Ollama model on this machine",
+            ? `${readyProviderCount} AI connection${readyProviderCount === 1 ? "" : "s"} ready`
+            : "Paste an OpenRouter API key (free to sign up at openrouter.ai), or use a free local AI with no account needed",
         },
         {
-          title: "Choose your default model",
+          title: "Choose your AI model",
           done: Boolean(defaultSelection.model),
           detail: defaultSelection.model
-            ? `Default: ${modelsConfig?.model_labels?.[defaultSelection.model] ?? defaultSelection.model}`
-            : "Pick the model Sparkbot should use for everyday chat",
+            ? `Using: ${modelsConfig?.model_labels?.[defaultSelection.model] ?? defaultSelection.model}`
+            : "Pick which AI model Sparkbot will use to answer your questions",
         },
         {
-          title: "Optional agent override",
+          title: "Optional: per-assistant AI",
           done: Object.values(agentOverrides).some((override) => override.route !== "default"),
           detail: Object.values(agentOverrides).some((override) => override.route !== "default")
-            ? "One or more agents have an override path saved"
-            : "Force a selected agent to local or OpenRouter only when you need it",
+            ? "One or more assistants have a custom AI assigned"
+            : "Optionally give specific assistants their own AI model",
         },
       ]
 
@@ -1004,9 +1004,9 @@ function SparkbotSettingsDialog({
               <div className="rounded-lg border bg-background/60 px-3 py-3">
                 <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Start here</div>
                 <div className="mt-2 space-y-1.5 text-xs">
-                  <div className="flex gap-2"><span className="font-semibold text-primary shrink-0">1.</span> Connect AI: paste a cloud API key below, <strong>or</strong> set up a free local model via Ollama — no key needed.</div>
-                  <div className="flex gap-2"><span className="font-semibold text-primary shrink-0">2.</span> Pick the default model Sparkbot should use for everyday chat.</div>
-                  <div className="flex gap-2"><span className="font-semibold text-primary shrink-0">3.</span> If you want mixed mode, force one selected agent to local or OpenRouter only.</div>
+                  <div className="flex gap-2"><span className="font-semibold text-primary shrink-0">1.</span> <strong>Connect your AI:</strong> paste your OpenRouter API key below (free at openrouter.ai) — or skip to use a free local AI on this computer.</div>
+                  <div className="flex gap-2"><span className="font-semibold text-primary shrink-0">2.</span> Pick which AI model Sparkbot will use when you chat.</div>
+                  <div className="flex gap-2"><span className="font-semibold text-primary shrink-0">3.</span> Optionally give a specific assistant its own AI model.</div>
                   {showAdvancedControls ? (
                     <div className="flex gap-2"><span className="font-semibold text-primary shrink-0">4.</span> Enable one comms channel so reminders reach you on Telegram, Discord, or WhatsApp.</div>
                   ) : null}
@@ -2566,7 +2566,7 @@ function SparkbotDmPage() {
               sessionStorage.setItem(CONTROLS_AUTOOPEN_KEY, "true")
               setMessages(prev => [
                 ...prev,
-                systemMsg("Welcome to Sparkbot. Open **Sparkbot Controls** to connect cloud AI or choose a local model on this machine."),
+                systemMsg("Welcome to Sparkbot! To get started, connect an AI in the **Sparkbot Controls** panel. The easiest option is **OpenRouter** — sign up free at openrouter.ai, copy your API key, and paste it in. You can also use a free local AI with no account needed."),
               ])
             }
           }
