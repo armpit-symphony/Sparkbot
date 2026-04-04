@@ -18,7 +18,8 @@ _certifi_datas, _certifi_binaries, _certifi_hiddenimports = collect_all("certifi
 # collect_all bundles the vocab data files AND tiktoken_ext (the openai_public plugin
 # that registers cl100k_base / p50k_base / r50k_base / o200k_base).
 _tiktoken_datas, _tiktoken_binaries, _tiktoken_hiddenimports = collect_all("tiktoken")
-_tiktoken_ext_datas, _tiktoken_ext_binaries, _tiktoken_ext_hiddenimports = collect_all("tiktoken_ext")
+# tiktoken_ext is a namespace inside the tiktoken distribution, not a separate
+# PyPI package — collect_all("tiktoken") already picks it up.
 
 block_cipher = None
 
@@ -27,11 +28,11 @@ BACKEND_DIR = Path(SPECPATH) / "backend"
 a = Analysis(
     [str(BACKEND_DIR / "desktop_launcher.py")],
     pathex=[str(BACKEND_DIR)],
-    binaries=[] + _litellm_binaries + _certifi_binaries + _tiktoken_binaries + _tiktoken_ext_binaries,
+    binaries=[] + _litellm_binaries + _certifi_binaries + _tiktoken_binaries,
     datas=[
         # Email templates shipped with the bundle
         (str(BACKEND_DIR / "app" / "email-templates"), "app/email-templates"),
-    ] + _litellm_datas + _certifi_datas + _tiktoken_datas + _tiktoken_ext_datas,
+    ] + _litellm_datas + _certifi_datas + _tiktoken_datas,
     hiddenimports=[
         # uvicorn internals not auto-discovered
         "uvicorn",
@@ -79,7 +80,7 @@ a = Analysis(
         "alembic",
         "alembic.runtime.migration",
         "alembic.operations",
-    ] + _litellm_hiddenimports + _certifi_hiddenimports,
+    ] + _litellm_hiddenimports + _certifi_hiddenimports + _tiktoken_hiddenimports,
     hookspath=["pyinstaller-hooks"],
     hooksconfig={},
     runtime_hooks=["pyinstaller-hooks/rthook_tiktoken.py"],
