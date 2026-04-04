@@ -51,11 +51,14 @@ fn stop_backend(app: &tauri::AppHandle) {
 fn start_backend(app: &tauri::AppHandle) -> Result<(), String> {
     let data_dir = sparkbot_data_dir()?;
     let guardian_dir = data_dir.join("guardian");
+    let runtime_dir = data_dir.join("pyi-runtime");
     fs::create_dir_all(&data_dir).map_err(|err| err.to_string())?;
     fs::create_dir_all(&guardian_dir).map_err(|err| err.to_string())?;
+    fs::create_dir_all(&runtime_dir).map_err(|err| err.to_string())?;
 
     let data_dir_string = data_dir.to_string_lossy().to_string();
     let guardian_dir_string = guardian_dir.to_string_lossy().to_string();
+    let runtime_dir_string = runtime_dir.to_string_lossy().to_string();
     let args = vec![
         "--host".to_string(),
         BACKEND_HOST.to_string(),
@@ -74,6 +77,8 @@ fn start_backend(app: &tauri::AppHandle) -> Result<(), String> {
         .env("SPARKBOT_GUARDIAN_DATA_DIR", guardian_dir_string)
         .env("V1_LOCAL_MODE", "true")
         .env("DATABASE_TYPE", "sqlite")
+        .env("TEMP", runtime_dir_string.clone())
+        .env("TMP", runtime_dir_string)
         .env("WORKSTATION_LIVE_TERMINAL_ENABLED", "false")
         .env("ENVIRONMENT", "local")
         .env("FRONTEND_HOST", "http://tauri.localhost")
