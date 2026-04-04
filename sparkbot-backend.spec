@@ -12,6 +12,14 @@ _litellm_datas, _litellm_binaries, _litellm_hiddenimports = collect_all("litellm
 # certifi: bundle the CA certificate store so httpx/requests can verify HTTPS inside the frozen exe
 _certifi_datas, _certifi_binaries, _certifi_hiddenimports = collect_all("certifi")
 
+# tiktoken 0.8+ discovers encodings via importlib.metadata entry points which are
+# unavailable in a frozen PyInstaller bundle, causing "Unknown encoding cl100k_base"
+# after the first few LLM calls once the in-process cache expires.
+# collect_all bundles the vocab data files AND tiktoken_ext (the openai_public plugin
+# that registers cl100k_base / p50k_base / r50k_base / o200k_base).
+_tiktoken_datas, _tiktoken_binaries, _tiktoken_hiddenimports = collect_all("tiktoken")
+_tiktoken_ext_datas, _tiktoken_ext_binaries, _tiktoken_ext_hiddenimports = collect_all("tiktoken_ext")
+
 block_cipher = None
 
 BACKEND_DIR = Path(SPECPATH) / "backend"
@@ -19,11 +27,11 @@ BACKEND_DIR = Path(SPECPATH) / "backend"
 a = Analysis(
     [str(BACKEND_DIR / "desktop_launcher.py")],
     pathex=[str(BACKEND_DIR)],
-    binaries=[] + _litellm_binaries + _certifi_binaries,
+    binaries=[] + _litellm_binaries + _certifi_binaries + _tiktoken_binaries + _tiktoken_ext_binaries,
     datas=[
         # Email templates shipped with the bundle
         (str(BACKEND_DIR / "app" / "email-templates"), "app/email-templates"),
-    ] + _litellm_datas + _certifi_datas,
+    ] + _litellm_datas + _certifi_datas + _tiktoken_datas + _tiktoken_ext_datas,
     hiddenimports=[
         # uvicorn internals not auto-discovered
         "uvicorn",
@@ -46,6 +54,10 @@ a = Analysis(
         "email_validator",
         # litellm (collected via collect_all above)
         "litellm",
+        # tiktoken encoding plugins — must be explicit so frozen importlib.metadata finds them
+        "tiktoken",
+        "tiktoken_ext",
+        "tiktoken_ext.openai_public",
         # App modules
         "app",
         "app.main",
@@ -68,9 +80,9 @@ a = Analysis(
         "alembic.runtime.migration",
         "alembic.operations",
     ] + _litellm_hiddenimports + _certifi_hiddenimports,
-    hookspath=[],
+    hookspath=["pyinstaller-hooks"],
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=["pyinstaller-hooks/rthook_tiktoken.py"],
     excludes=[
         "tkinter",
         "matplotlib",
