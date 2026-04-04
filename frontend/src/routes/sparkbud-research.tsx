@@ -1,7 +1,7 @@
 import { createFileRoute, redirect } from "@tanstack/react-router"
 import SparkBudPage from "@/pages/SparkBudPage"
 import { hasChatSession } from "@/hooks/useAuth"
-import { isV1LocalMode } from "@/lib/v1Local"
+import { ensureLocalChatSession, isLocalDesktopMode } from "@/lib/localSession"
 
 function SparkBudResearch() {
   return <SparkBudPage budId="sb-research" />
@@ -10,10 +10,10 @@ function SparkBudResearch() {
 export const Route = createFileRoute("/sparkbud-research")({
   component: SparkBudResearch,
   beforeLoad: async () => {
-    if (!hasChatSession()) {
+    if (!hasChatSession() && !(await ensureLocalChatSession())) {
       throw redirect({ to: "/login" })
     }
-    if (isV1LocalMode) {
+    if (isLocalDesktopMode()) {
       throw redirect({ to: "/dm" })
     }
   },

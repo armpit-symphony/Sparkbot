@@ -3,6 +3,7 @@ import {
   createFileRoute,
   redirect,
 } from "@tanstack/react-router"
+import { useEffect, useState } from "react"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
 
@@ -18,16 +19,8 @@ import {
 import { LoadingButton } from "@/components/ui/loading-button"
 import { PasswordInput } from "@/components/ui/password-input"
 import useAuth, { hasChatSession, isLoggedIn } from "@/hooks/useAuth"
-import { apiFetch } from "@/lib/apiBase"
+import { ensureLocalChatSession, isLocalDesktopMode } from "@/lib/localSession"
 import { resolveChatEntryTarget } from "@/lib/sparkbotControls"
-import { isV1LocalMode } from "@/lib/v1Local"
-
-// Desktop (Tauri) builds ship with a bundled passphrase — no manual login needed.
-function isDesktopApp(): boolean {
-  if (typeof window === "undefined") return false
-  const proto = window.location.protocol
-  return proto === "tauri:" || proto === "asset:" || window.location.origin === "null"
-}
 
 const formSchema = z.object({
   passphrase: z
@@ -40,21 +33,8 @@ type FormData = z.infer<typeof formSchema>
 export const Route = createFileRoute("/login")({
   component: Login,
   beforeLoad: async () => {
-    // Desktop and local-mode builds: auto-authenticate so users never see the login screen.
-    if ((isDesktopApp() || isV1LocalMode) && !isLoggedIn() && !hasChatSession()) {
-      try {
-        const res = await apiFetch("/api/v1/chat/users/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ passphrase: "sparkbot-local" }),
-        })
-        if (res.ok) {
-          sessionStorage.setItem("chat_auth", "1")
-        }
-      } catch {
-        // Auto-auth failed — fall through and show the login form
-      }
+    if (!isLoggedIn() && !hasChatSession()) {
+      await ensureLocalChatSession()
     }
     if (isLoggedIn()) {
       throw redirect({
@@ -80,6 +60,7 @@ export const Route = createFileRoute("/login")({
 
 function Login() {
   const { chatLoginMutation } = useAuth()
+  const [isBootingLocal, setIsBootingLocal] = useState(isLocalDesktopMode() && !hasChatSession())
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     mode: "onChange",
@@ -89,6 +70,28 @@ function Login() {
     },
   })
 
+  useEffect(() => {
+    if (!isLocalDesktopMode() || hasChatSession()) {
+      setIsBootingLocal(false)
+      return
+    }
+
+    let cancelled = false
+
+    ensureLocalChatSession().finally(() => {
+      if (!cancelled) {
+        setIsBootingLocal(false)
+        if (hasChatSession()) {
+          window.location.replace("/dm")
+        }
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const onSubmit = (data: FormData) => {
     if (chatLoginMutation.isPending) return
     chatLoginMutation.mutate(data)
@@ -96,44 +99,53 @@ function Login() {
 
   return (
     <AuthLayout>
-      <Form {...form}>
-        <form
-          noValidate
-          onSubmit={form.handleSubmit(onSubmit)}
-          className="flex flex-col gap-6"
-        >
-          <div className="flex flex-col items-center gap-2 text-center">
-            <h1 className="text-2xl font-bold">Enter Sparkbot Passphrase</h1>
-            <p className="text-sm text-muted-foreground">
-              Enter your secret passphrase to access Sparkbot
-            </p>
-          </div>
+      {isBootingLocal ? (
+        <div className="flex flex-col gap-3 text-center">
+          <h1 className="text-2xl font-bold">Starting Sparkbot</h1>
+          <p className="text-sm text-muted-foreground">
+            Your local Sparkbot install is waking up. This screen will disappear automatically.
+          </p>
+        </div>
+      ) : (
+        <Form {...form}>
+          <form
+            noValidate
+            onSubmit={form.handleSubmit(onSubmit)}
+            className="flex flex-col gap-6"
+          >
+            <div className="flex flex-col items-center gap-2 text-center">
+              <h1 className="text-2xl font-bold">Enter Sparkbot Passphrase</h1>
+              <p className="text-sm text-muted-foreground">
+                Enter your secret passphrase to access Sparkbot
+              </p>
+            </div>
 
-          <div className="grid gap-4">
-            <FormField
-              control={form.control}
-              name="passphrase"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Passphrase</FormLabel>
-                  <FormControl>
-                    <PasswordInput
-                      placeholder="Enter your secret passphrase"
-                      {...field}
-                      formNoValidate
-                    />
-                  </FormControl>
-                  <FormMessage className="text-xs" />
-                </FormItem>
-              )}
-            />
+            <div className="grid gap-4">
+              <FormField
+                control={form.control}
+                name="passphrase"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Passphrase</FormLabel>
+                    <FormControl>
+                      <PasswordInput
+                        placeholder="Enter your secret passphrase"
+                        {...field}
+                        formNoValidate
+                      />
+                    </FormControl>
+                    <FormMessage className="text-xs" />
+                  </FormItem>
+                )}
+              />
 
-            <LoadingButton type="submit" loading={chatLoginMutation.isPending}>
-              Access Sparkbot
-            </LoadingButton>
-          </div>
-        </form>
-      </Form>
+              <LoadingButton type="submit" loading={chatLoginMutation.isPending}>
+                Access Sparkbot
+              </LoadingButton>
+            </div>
+          </form>
+        </Form>
+      )}
     </AuthLayout>
   )
 }

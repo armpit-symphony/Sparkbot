@@ -1,15 +1,15 @@
 import { createFileRoute, redirect } from "@tanstack/react-router"
 import { hasChatSession } from "@/hooks/useAuth"
+import { ensureLocalChatSession, isLocalDesktopMode } from "@/lib/localSession"
 import MeetingRoomPage from "@/pages/MeetingRoomPage"
-import { isV1LocalMode } from "@/lib/v1Local"
 
 export const Route = createFileRoute("/meeting/$roomId")({
   component: MeetingRoomRoute,
   beforeLoad: async () => {
-    if (!hasChatSession()) {
+    if (!hasChatSession() && !(await ensureLocalChatSession())) {
       throw redirect({ to: "/login" })
     }
-    if (isV1LocalMode) {
+    if (isLocalDesktopMode()) {
       throw redirect({ to: "/dm" })
     }
   },
