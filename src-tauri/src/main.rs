@@ -12,6 +12,7 @@ use tauri_plugin_shell::ShellExt;
 const SIDECAR_NAME: &str = "sparkbot-backend";
 const BACKEND_HOST: &str = "127.0.0.1";
 const BACKEND_PORT: &str = "8000";
+const BACKEND_STARTUP_TIMEOUT_SECS: u64 = 60;
 
 #[derive(Default)]
 struct BackendChild(Mutex<Option<CommandChild>>);
@@ -38,6 +39,26 @@ fn sparkbot_data_dir() -> Result<PathBuf, String> {
     }
 
     Err("Could not resolve a desktop data directory for Sparkbot".to_string())
+}
+
+/// Block until the backend TCP port accepts connections or the timeout expires.
+/// Called from setup() so the Tauri window only opens after the backend is ready.
+fn wait_for_backend() -> bool {
+    use std::net::{SocketAddr, TcpStream};
+    use std::time::{Duration, Instant};
+
+    let addr: SocketAddr = format!("{}:{}", BACKEND_HOST, BACKEND_PORT)
+        .parse()
+        .expect("invalid backend address");
+
+    let deadline = Instant::now() + Duration::from_secs(BACKEND_STARTUP_TIMEOUT_SECS);
+    while Instant::now() < deadline {
+        if TcpStream::connect_timeout(&addr, Duration::from_millis(200)).is_ok() {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    }
+    false
 }
 
 fn stop_backend(app: &tauri::AppHandle) {
@@ -120,6 +141,17 @@ fn main() {
         .setup(|app| {
             if let Err(err) = start_backend(app.handle()) {
                 return Err(std::io::Error::new(std::io::ErrorKind::Other, err).into());
+            }
+            // Block here until the backend is accepting connections.
+            // setup() runs before any window is shown, so the login screen
+            // never appears — by the time the webview loads the backend is ready
+            // and ensureLocalChatSession() succeeds on the first attempt.
+            if !wait_for_backend() {
+                eprintln!("[sparkbot] backend did not become ready within {BACKEND_STARTUP_TIMEOUT_SECS}s");
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    format!("Sparkbot backend did not start within {BACKEND_STARTUP_TIMEOUT_SECS} seconds. Check sparkbot-backend-crash.txt beside the exe for details."),
+                ).into());
             }
             Ok(())
         })

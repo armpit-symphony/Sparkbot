@@ -43,6 +43,17 @@ def init_sqlite_schema() -> None:
     # This creates the alembic_version table if absent and marks the DB as
     # fully migrated so that `alembic upgrade head` is a no-op.
     logger.info("Stamping Alembic revision to head...")
+
+    # In a frozen PyInstaller bundle sys.executable is the bundle itself, not a
+    # Python interpreter.  Running subprocess.run([sys.executable, "-m", "alembic", ...])
+    # would re-launch the entire backend instead of alembic, causing an infinite
+    # process-spawn loop that prevents uvicorn from ever starting.  Skip the stamp
+    # in that case — the schema was just created fresh from SQLModel metadata so no
+    # alembic bookkeeping is required for a clean first-run install.
+    if getattr(sys, "frozen", False):
+        logger.info("Frozen bundle detected — skipping alembic stamp (schema created fresh from metadata).")
+        return
+
     result = subprocess.run(
         [sys.executable, "-m", "alembic", "stamp", "head"],
         capture_output=True,

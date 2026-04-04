@@ -58,6 +58,15 @@ a = Analysis(
         "app.services",
         "app.services.guardian",
         "certifi",
+        # SQLAlchemy SQLite dialect — needed for local SQLite mode
+        "sqlalchemy.dialects.sqlite",
+        "sqlalchemy.dialects.sqlite.pysqlite",
+        # SQLModel (wraps SQLAlchemy + Pydantic)
+        "sqlmodel",
+        # alembic — imported at module level in some sqlmodel paths
+        "alembic",
+        "alembic.runtime.migration",
+        "alembic.operations",
     ] + _litellm_hiddenimports + _certifi_hiddenimports,
     hookspath=[],
     hooksconfig={},
@@ -91,7 +100,7 @@ exe = EXE(
     strip=False,
     upx=True,
     upx_exclude=[],
-    runtime_tmpdir="pyi-runtime",
+    runtime_tmpdir=None,
     console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,

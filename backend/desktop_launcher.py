@@ -78,29 +78,53 @@ if getattr(sys, "frozen", False):
                         os.environ.setdefault(_k2.strip(), _v2.strip())
 
 import argparse  # noqa: E402
+import logging as _root_logging  # noqa: E402
+import traceback as _traceback  # noqa: E402
 import uvicorn  # noqa: E402 (import after path fixup)
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8000)
-    parser.add_argument("--data-dir", default=None)  # consumed by Tauri; ignored here
-    args, _ = parser.parse_known_args()
-
-    # Initialize SQLite schema and seed initial superuser on fresh installs.
-    # Safe to run on every startup — create_all uses checkfirst=True.
-    try:
-        from app.local_db_init import init_sqlite_schema
-        from app.initial_data import init as _seed_initial_data
-        init_sqlite_schema()
-        _seed_initial_data()
-    except Exception as _init_err:
-        import logging as _logging
-        _logging.getLogger(__name__).warning("DB init warning (non-fatal): %s", _init_err)
-
-    uvicorn.run(
-        "app.main:app",
-        host=args.host,
-        port=args.port,
-        log_level="info",
+# Hard startup log: write every log line to a file beside the exe so crashes
+# are visible even when the Tauri console is hidden (windows_subsystem = "windows").
+if getattr(sys, "frozen", False):
+    _log_path = os.path.join(os.path.dirname(sys.executable), "sparkbot-backend.log")
+    _root_logging.basicConfig(
+        filename=_log_path,
+        level=_root_logging.DEBUG,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        force=True,
     )
+
+if __name__ == "__main__":
+    _exe_dir = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else "."
+    try:
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--host", default="127.0.0.1")
+        parser.add_argument("--port", type=int, default=8000)
+        parser.add_argument("--data-dir", default=None)  # consumed by Tauri; ignored here
+        args, _ = parser.parse_known_args()
+
+        # Initialize SQLite schema and seed initial superuser on fresh installs.
+        # Safe to run on every startup — create_all uses checkfirst=True.
+        try:
+            from app.local_db_init import init_sqlite_schema
+            from app.initial_data import init as _seed_initial_data
+            init_sqlite_schema()
+            _seed_initial_data()
+        except Exception as _init_err:
+            _root_logging.getLogger(__name__).warning("DB init warning (non-fatal): %s", _init_err)
+
+        uvicorn.run(
+            "app.main:app",
+            host=args.host,
+            port=args.port,
+            log_level="info",
+        )
+    except Exception:
+        # Write crash details beside the exe before exiting so users and devs
+        # can find them even when the console window is hidden.
+        _crash_path = os.path.join(_exe_dir, "sparkbot-backend-crash.txt")
+        try:
+            with open(_crash_path, "w") as _cf:
+                _cf.write(_traceback.format_exc())
+        except Exception:
+            pass
+        raise
