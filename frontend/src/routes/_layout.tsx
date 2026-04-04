@@ -7,14 +7,14 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar"
-import { isLoggedIn } from "@/hooks/useAuth"
+import { hasChatSession, isLoggedIn } from "@/hooks/useAuth"
 import { LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 export const Route = createFileRoute("/_layout")({
   component: Layout,
   beforeLoad: async () => {
-    if (!isLoggedIn()) {
+    if (!isLoggedIn() && !hasChatSession()) {
       throw redirect({
         to: "/login",
       })
@@ -28,6 +28,7 @@ function Layout() {
   const handleLogout = () => {
     localStorage.removeItem("access_token")
     localStorage.removeItem("sparkbot_room_id")
+    sessionStorage.removeItem("chat_auth")
     navigate({ to: "/login" })
   }
 
