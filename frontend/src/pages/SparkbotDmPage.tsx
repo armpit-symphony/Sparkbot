@@ -4079,7 +4079,7 @@ function SparkbotDmPage() {
           <div className="flex items-center justify-end gap-2">
             <SparkbotSurfaceTabs
               active={controlsRequested ? "controls" : "chat"}
-              onChat={() => navigate({ to: "/dm" })}
+              onChat={() => closeControlsPanel()}
               onWorkstation={() => navigate({ to: "/workstation" })}
               onControls={() => openControlsPanel()}
             />
