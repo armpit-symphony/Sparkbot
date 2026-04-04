@@ -786,6 +786,25 @@ async def _acompletion_with_fallback(
                     friendly_error,
                 )
                 raise RuntimeError(friendly_error) from exc
+            # OpenRouter returns 404 "No endpoints found that support the provided
+            # 'tool_choice' value" when the selected model/provider doesn't support
+            # function calling.  litellm.drop_params=True only strips params that
+            # litellm itself knows about — it can't suppress a router-level 404.
+            # Retry this candidate without tools so the model can still give a
+            # plain-text answer rather than crashing the whole request.
+            if "tool_choice" in str(exc).lower() and "tools" in kwargs:
+                try:
+                    no_tool_kwargs = {k: v for k, v in kwargs.items()
+                                      if k not in ("tools", "tool_choice")}
+                    response = await litellm.acompletion(model=candidate, **no_tool_kwargs)
+                    log.warning(
+                        "tool_choice rejected by %s — retried without tools successfully",
+                        candidate,
+                    )
+                    return chosen_candidate, response
+                except Exception as exc2:
+                    last_error = exc2
+                    errors.append(f"{candidate}(no-tools): {type(exc2).__name__}: {exc2}")
             continue
     if last_error is not None:
         log.error(
@@ -1117,6 +1136,15 @@ async def stream_chat_with_tools(
         choice = response.choices[0]
         finish_reason = choice.finish_reason
         assistant_msg = choice.message
+
+        # If the model returned plain text (tool_choice rejected and retried
+        # without tools, or the model simply chose not to call a tool), stream
+        # the content directly and exit the loop.
+        if finish_reason != "tool_calls" or not getattr(assistant_msg, "tool_calls", None):
+            text = getattr(assistant_msg, "content", None) or ""
+            if text:
+                yield {"type": "token", "token": text}
+            return
 
         if finish_reason == "tool_calls" and assistant_msg.tool_calls:
             # Append the assistant's tool-call turn
