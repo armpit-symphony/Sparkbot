@@ -23,7 +23,9 @@ _tiktoken_datas, _tiktoken_binaries, _tiktoken_hiddenimports = collect_all("tikt
 
 block_cipher = None
 
-BACKEND_DIR = Path(SPECPATH) / "backend"
+REPO_ROOT = Path(SPECPATH)          # spec lives at repo root
+BACKEND_DIR = REPO_ROOT / "backend"
+HOOKS_DIR = str(REPO_ROOT / "pyinstaller-hooks")
 
 a = Analysis(
     [str(BACKEND_DIR / "desktop_launcher.py")],
@@ -81,9 +83,9 @@ a = Analysis(
         "alembic.runtime.migration",
         "alembic.operations",
     ] + _litellm_hiddenimports + _certifi_hiddenimports + _tiktoken_hiddenimports,
-    hookspath=["pyinstaller-hooks"],
+    hookspath=[HOOKS_DIR],
     hooksconfig={},
-    runtime_hooks=["pyinstaller-hooks/rthook_tiktoken.py"],
+    runtime_hooks=[str(REPO_ROOT / "pyinstaller-hooks" / "rthook_tiktoken.py")],
     excludes=[
         "tkinter",
         "matplotlib",
