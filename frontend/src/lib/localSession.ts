@@ -43,6 +43,15 @@ export async function ensureLocalChatSession(options?: {
       })
 
       if (response.ok) {
+        // Store the bearer token from the response body so apiFetch can inject it
+        // as an Authorization header — required in the desktop build where the
+        // cross-origin cookie (tauri.localhost → 127.0.0.1) is never sent by the browser.
+        try {
+          const data = await response.json()
+          if (data?.access_token) {
+            sessionStorage.setItem("chat_token", data.access_token)
+          }
+        } catch { /* non-fatal: bearer fallback unavailable */ }
         sessionStorage.setItem(LOCAL_SESSION_KEY, "1")
         return true
       }

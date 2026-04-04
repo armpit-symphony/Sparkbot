@@ -79,7 +79,15 @@ const useAuth = () => {
       throw new Error(error.detail || "Invalid passphrase")
     }
 
-    // Server sets HttpOnly cookie — we only store a presence flag
+    // Store the bearer token so apiFetch can inject it as an Authorization header.
+    // This is necessary in the desktop build where the cross-origin cookie
+    // (tauri.localhost → 127.0.0.1) is blocked by the browser's SameSite policy.
+    try {
+      const data = await response.clone().json()
+      if (data?.access_token) {
+        sessionStorage.setItem("chat_token", data.access_token)
+      }
+    } catch { /* non-fatal */ }
     sessionStorage.setItem("chat_auth", "1")
 
     const target = await resolveChatEntryTarget()
@@ -96,6 +104,7 @@ const useAuth = () => {
   const logout = () => {
     localStorage.removeItem("access_token")
     sessionStorage.removeItem("chat_auth")
+    sessionStorage.removeItem("chat_token")
     // Clear server-side HttpOnly cookie
     apiFetch("/api/v1/chat/users/session", { method: "DELETE", credentials: "include" }).catch(() => {})
     navigate({ to: "/login" })

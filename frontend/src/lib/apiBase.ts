@@ -65,7 +65,20 @@ export function apiUrl(path: string): string {
 }
 
 export function apiFetch(input: string, init?: RequestInit): Promise<Response> {
-  return fetch(apiUrl(input), init)
+  const url = apiUrl(input)
+  // In the desktop build the frontend origin (http://tauri.localhost) differs from
+  // the backend origin (http://127.0.0.1:8000).  Browsers won't send the HttpOnly
+  // "chat_token" cookie on cross-origin requests even with credentials:include, so
+  // we pull the token we stored in sessionStorage at login and inject it as a
+  // Bearer header — the backend's chat auth accepts both cookie and bearer token.
+  const headers = new Headers(init?.headers)
+  if (!headers.has("Authorization")) {
+    const chatToken = sessionStorage.getItem("chat_token")
+    if (chatToken) {
+      headers.set("Authorization", `Bearer ${chatToken}`)
+    }
+  }
+  return fetch(url, { ...init, headers })
 }
 
 export function apiWebSocketUrl(path: string): string {

@@ -2529,11 +2529,17 @@ function SparkbotDmPage() {
   useEffect(() => {
     async function init() {
       if (!sessionStorage.getItem("chat_auth") && !localStorage.getItem("access_token")) {
+        sessionStorage.removeItem("chat_token")
         window.location.href = "/login"; return
       }
       try {
         const res = await apiFetch("/api/v1/chat/users/bootstrap", { method: "POST", credentials: "include" })
-        if (!res.ok) { window.location.href = "/login"; return }
+        if (!res.ok) {
+          // Clear the stale session so /login doesn't immediately bounce back here
+          sessionStorage.removeItem("chat_auth")
+          sessionStorage.removeItem("chat_token")
+          window.location.href = "/login"; return
+        }
         const boot = await res.json()
         setRoomId(boot.room_id)
         const roomRes = await apiFetch(`/api/v1/chat/rooms/${boot.room_id}`, { credentials: "include" })

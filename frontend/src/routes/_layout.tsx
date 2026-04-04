@@ -29,6 +29,7 @@ function Layout() {
     localStorage.removeItem("access_token")
     localStorage.removeItem("sparkbot_room_id")
     sessionStorage.removeItem("chat_auth")
+    sessionStorage.removeItem("chat_token")
     navigate({ to: "/login" })
   }
 
