@@ -78,7 +78,7 @@ export function apiFetch(input: string, init?: RequestInit): Promise<Response> {
       headers.set("Authorization", `Bearer ${chatToken}`)
     }
   }
-  return fetch(url, { ...init, headers })
+  return fetch(url, { cache: "no-store", ...init, headers })
 }
 
 export function apiWebSocketUrl(path: string): string {
