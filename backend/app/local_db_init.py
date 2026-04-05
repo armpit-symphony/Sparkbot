@@ -37,6 +37,11 @@ logger = logging.getLogger(__name__)
 # Safe to re-run: _ensure_columns silently skips columns that already exist.
 _ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("chat_rooms", "persona", "VARCHAR(500)"),
+    ("chat_rooms", "execution_allowed", "BOOLEAN NOT NULL DEFAULT 0"),
+    ("chat_rooms", "meeting_mode_enabled", "BOOLEAN NOT NULL DEFAULT 0"),
+    ("chat_rooms", "meeting_mode_bots_mention_only", "BOOLEAN NOT NULL DEFAULT 1"),
+    ("chat_rooms", "meeting_mode_max_bot_msgs_per_min", "INTEGER NOT NULL DEFAULT 3"),
+    ("chat_rooms", "meeting_mode_note_taker_bot_slug", "VARCHAR(50)"),
 ]
 
 
