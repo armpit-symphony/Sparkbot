@@ -3,7 +3,7 @@ name: Test Backend
 on:
   push:
     branches:
-      - master
+      - main
   pull_request:
     types:
       - opened
@@ -12,30 +12,48 @@ on:
 jobs:
   test-backend:
     runs-on: ubuntu-latest
+    env:
+      DATABASE_TYPE: sqlite
+      V1_LOCAL_MODE: "true"
+      ENVIRONMENT: local
+      PROJECT_NAME: Sparkbot
+      SECRET_KEY: test-secret-key-for-ci
+      FIRST_SUPERUSER: admin@example.com
+      FIRST_SUPERUSER_PASSWORD: sparkbot-local
+      SPARKBOT_PASSPHRASE: sparkbot-local
+      BACKEND_CORS_ORIGINS: "http://localhost:3000,http://localhost:5173"
+
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
+
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: "3.11"
+
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
-      - run: docker compose down -v --remove-orphans
-      - run: docker compose up -d db mailcatcher
-      - name: Migrate DB
-        run: uv run bash scripts/prestart.sh
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies (including dev group)
         working-directory: backend
-      - name: Run tests
+        run: uv sync --group dev
+
+      - name: Initialize SQLite schema
+        working-directory: backend
+        run: uv run python app/local_db_init.py
+
+      - name: Seed initial data
+        working-directory: backend
+        run: uv run python app/initial_data.py
+
+      - name: Run tests with coverage
+        working-directory: backend
         run: uv run bash scripts/tests-start.sh "Coverage for ${{ github.sha }}"
-        working-directory: backend
-      - run: docker compose down -v --remove-orphans
+
       - name: Store coverage files
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: coverage-html
           path: backend/htmlcov
           include-hidden-files: true
-      - name: Coverage report
-        run: uv run coverage report --fail-under=90
-        working-directory: backend

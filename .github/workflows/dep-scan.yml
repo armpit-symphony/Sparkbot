@@ -2,7 +2,7 @@ name: Dependency Security Scan
 
 on:
   push:
-    branches: [master]
+    branches: [main]
   pull_request:
   schedule:
     - cron: '0 3 * * 1'  # Weekly Monday 3am UTC
@@ -16,7 +16,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.11"
 
       - name: Install pip-audit
         run: pip install pip-audit
