@@ -30,6 +30,19 @@ def _load_or_create_secret_key(data_dir: Path) -> str:
     return key
 
 
+def _load_or_create_vault_key(data_dir: Path) -> str:
+    """Persist SPARKBOT_VAULT_KEY across restarts. Generated once, reused forever."""
+    key_file = data_dir / "vault.key"
+    if key_file.exists():
+        key = key_file.read_text().strip()
+        if key:
+            return key
+    from cryptography.fernet import Fernet
+    key = Fernet.generate_key().decode()
+    key_file.write_text(key)
+    return key
+
+
 def _default_data_dir() -> Path:
     if sys.platform == "win32":
         appdata = os.environ.get("APPDATA", "").strip()
@@ -94,6 +107,8 @@ def main() -> None:
 
     # Persist SECRET_KEY so sessions survive app restarts
     os.environ.setdefault("SECRET_KEY", _load_or_create_secret_key(data_dir))
+    # Persist vault encryption key so stored secrets survive app restarts
+    os.environ.setdefault("SPARKBOT_VAULT_KEY", _load_or_create_vault_key(data_dir))
 
     _initialize_local_state()
 
