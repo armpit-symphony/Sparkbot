@@ -655,6 +655,8 @@ interface SparkbotSettingsDialogProps {
   room: RoomInfo | null
   loading: boolean
   savingExecution: boolean
+  executionSaved: boolean
+  executionError: string
   dashboardSummary: ControlsDashboardSummary | null
   modelsConfig: ModelsControlsConfig | null
   modelStack: ModelStackForm
@@ -761,6 +763,8 @@ function SparkbotSettingsDialog({
   room,
   loading,
   savingExecution,
+  executionSaved,
+  executionError,
   dashboardSummary,
   modelsConfig,
   modelStack,
@@ -1119,6 +1123,12 @@ function SparkbotSettingsDialog({
                 onChange={(e) => onToggleExecution(e.target.checked)}
               />
             </label>
+            {executionSaved && (
+              <p className="mt-2 text-xs font-medium text-green-600">Gate setting saved.</p>
+            )}
+            {executionError && (
+              <p className="mt-2 text-xs font-medium text-destructive">{executionError}</p>
+            )}
           </section>
 
           <section className="rounded-xl border p-4">
@@ -2296,6 +2306,8 @@ function SparkbotDmPage() {
   const [settingsLoading, setSettingsLoading] = useState(false)
   const [settingsError, setSettingsError] = useState("")
   const [savingExecution, setSavingExecution] = useState(false)
+  const [executionSaved, setExecutionSaved] = useState(false)
+  const [executionError, setExecutionError] = useState("")
   const [controlsDashboard, setControlsDashboard] = useState<ControlsDashboardSummary | null>(null)
   const [modelsConfig, setModelsConfig] = useState<ModelsControlsConfig | null>(null)
   const [tokenGuardianMode, setTokenGuardianMode] = useState("shadow")
@@ -2725,7 +2737,8 @@ function SparkbotDmPage() {
   const toggleExecutionGate = useCallback(async (enabled: boolean) => {
     if (!roomId) return
     setSavingExecution(true)
-    setSettingsError("")
+    setExecutionError("")
+    setExecutionSaved(false)
     try {
       const res = await apiFetch(`/api/v1/chat/rooms/${roomId}`, {
         method: "PATCH",
@@ -2735,13 +2748,15 @@ function SparkbotDmPage() {
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({ detail: "Could not update execution gate." }))
-        setSettingsError(data.detail ?? "Could not update execution gate.")
+        setExecutionError(data.detail ?? "Could not update execution gate.")
       } else {
         const data = await res.json()
         setRoomInfo(data)
+        setExecutionSaved(true)
+        setTimeout(() => setExecutionSaved(false), 3000)
       }
     } catch {
-      setSettingsError("Could not update execution gate.")
+      setExecutionError("Could not update execution gate.")
     } finally {
       setSavingExecution(false)
     }
@@ -3975,6 +3990,8 @@ function SparkbotDmPage() {
         room={roomInfo}
         loading={settingsLoading}
         savingExecution={savingExecution}
+        executionSaved={executionSaved}
+        executionError={executionError}
         dashboardSummary={controlsDashboard}
         modelsConfig={modelsConfig}
         modelStack={modelStack}
