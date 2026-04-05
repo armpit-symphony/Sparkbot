@@ -1,0 +1,8 @@
+Sparkbot v1.1.0
+
+- Unlocked advanced controls in desktop app: Token Guardian, Execution Gate, Task Guardian, Function Routing, and Comms are now fully accessible
+- Fixed controls panel failing to load ("Could not load Sparkbot controls." error) — individual request failures no longer crash the entire panel
+- Fixed room persona not persisting across sessions for users upgrading from older versions (additive DB migration now runs on startup)
+- Fixed inability to type in the chat input while Sparkbot is responding — input stays active during bot streaming
+- Cross-provider fallback and Token Guardian mode can now be configured directly from the controls panel
+- Execution Gate toggle now visible and accessible in the controls panel

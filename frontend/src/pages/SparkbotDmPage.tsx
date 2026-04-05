@@ -883,7 +883,7 @@ function SparkbotSettingsDialog({
     modelsConfig?.providers?.find((p) => p.id === id)?.models ?? []
   const ollamaProvider = modelsConfig?.providers?.find((provider) => provider.id === "ollama")
   const routingAgents = modelsConfig?.available_agents ?? []
-  const showAdvancedControls = !isV1LocalMode
+  const showAdvancedControls = true
 
   const readyProviderCount = modelsConfig?.providers?.filter(
     (provider) => provider.configured || provider.models_available === true,
@@ -2594,44 +2594,48 @@ function SparkbotDmPage() {
     setSettingsLoading(true)
     setSettingsError("")
     try {
+      const safe = (p: Promise<Response>) => p.catch(() => null)
       const [roomRes, policyRes, tasksRes, runsRes, dashboardRes, modelsConfigRes] = await Promise.all([
-        apiFetch(`/api/v1/chat/rooms/${roomId}`, { credentials: "include" }),
-        apiFetch(`/api/v1/chat/audit?limit=10&room_id=${roomId}&tool=policy_decision`, { credentials: "include" }),
-        apiFetch(`/api/v1/chat/rooms/${roomId}/guardian/tasks?limit=20`, { credentials: "include" }),
-        apiFetch(`/api/v1/chat/rooms/${roomId}/guardian/runs?limit=10`, { credentials: "include" }),
-        apiFetch("/api/v1/chat/dashboard/summary", { credentials: "include" }),
-        apiFetch("/api/v1/chat/models/config", { credentials: "include" }),
+        safe(apiFetch(`/api/v1/chat/rooms/${roomId}`, { credentials: "include" })),
+        safe(apiFetch(`/api/v1/chat/audit?limit=10&room_id=${roomId}&tool=policy_decision`, { credentials: "include" })),
+        safe(apiFetch(`/api/v1/chat/rooms/${roomId}/guardian/tasks?limit=20`, { credentials: "include" })),
+        safe(apiFetch(`/api/v1/chat/rooms/${roomId}/guardian/runs?limit=10`, { credentials: "include" })),
+        safe(apiFetch("/api/v1/chat/dashboard/summary", { credentials: "include" })),
+        safe(apiFetch("/api/v1/chat/models/config", { credentials: "include" })),
       ])
 
-      if (roomRes.ok) {
-        const roomData = await roomRes.json()
-        setRoomInfo(roomData)
-        setRoomPersona(roomData.persona ?? "")
+      if (roomRes?.ok) {
+        try {
+          const roomData = await roomRes.json()
+          setRoomInfo(roomData)
+          setRoomPersona(roomData.persona ?? "")
+        } catch { /* ignore malformed response */ }
       }
-      if (policyRes.ok) {
-        const data = await policyRes.json()
-        setPolicyEntries(data.items ?? [])
+      if (policyRes?.ok) {
+        try { const data = await policyRes.json(); setPolicyEntries(data.items ?? []) } catch { /* ignore */ }
       }
-      if (tasksRes.ok) {
-        const data = await tasksRes.json()
-        setGuardianTasks(data.items ?? [])
+      if (tasksRes?.ok) {
+        try { const data = await tasksRes.json(); setGuardianTasks(data.items ?? []) } catch { /* ignore */ }
       }
-      if (runsRes.ok) {
-        const data = await runsRes.json()
-        setGuardianRuns(data.items ?? [])
+      if (runsRes?.ok) {
+        try { const data = await runsRes.json(); setGuardianRuns(data.items ?? []) } catch { /* ignore */ }
       }
-      if (dashboardRes.ok) {
-        setControlsDashboard(await dashboardRes.json())
+      if (dashboardRes?.ok) {
+        try { setControlsDashboard(await dashboardRes.json()) } catch { /* ignore */ }
       }
-      if (modelsConfigRes.ok) {
-        const config = await modelsConfigRes.json()
-        applyControlsConfig(config)
-        // Auto-set AI source mode based on config
-        const ollamaProvider = config.providers?.find((p: { id: string; configured: boolean }) => p.id === "ollama")
-        const hasCloud = config.providers?.some((p: { id: string; configured: boolean }) => p.id !== "ollama" && p.configured)
-        if (ollamaProvider?.configured && hasCloud) setAiSourceMode("hybrid")
-        else if (ollamaProvider?.configured) setAiSourceMode("local")
-        else setAiSourceMode("cloud")
+      if (modelsConfigRes?.ok) {
+        try {
+          const config = await modelsConfigRes.json()
+          applyControlsConfig(config)
+          // Auto-set AI source mode based on config
+          const ollamaProvider = config.providers?.find((p: { id: string; configured: boolean }) => p.id === "ollama")
+          const hasCloud = config.providers?.some((p: { id: string; configured: boolean }) => p.id !== "ollama" && p.configured)
+          if (ollamaProvider?.configured && hasCloud) setAiSourceMode("hybrid")
+          else if (ollamaProvider?.configured) setAiSourceMode("local")
+          else setAiSourceMode("cloud")
+        } catch { /* ignore malformed config */ }
+      } else if (modelsConfigRes && !modelsConfigRes.ok) {
+        setSettingsError("Could not load Sparkbot controls. Check that the backend is running.")
       }
       // Fetch skill list (best-effort)
       try {
@@ -2648,7 +2652,7 @@ function SparkbotDmPage() {
         }
       } catch { /* ollama unreachable — ignore */ }
     } catch {
-      setSettingsError("Could not load Sparkbot controls.")
+      setSettingsError("Could not load Sparkbot controls. Try restarting Sparkbot.")
     } finally {
       setSettingsLoading(false)
     }
@@ -4303,7 +4307,7 @@ function SparkbotDmPage() {
             }}
             placeholder={meeting.active ? "note: / decided: / action: or ask a question…" : "Message Sparkbot… or / for commands"}
             className="flex-1 rounded-full border bg-muted/40 px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-ring/30"
-            disabled={sending || uploading}
+            disabled={uploading}
           />
           <button
             onClick={handleSend}
