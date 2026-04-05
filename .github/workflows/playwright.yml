@@ -20,6 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       changed: ${{ steps.filter.outputs.changed }}
+      stack_configured: ${{ steps.check-secrets.outputs.configured }}
     steps:
     - uses: actions/checkout@v4
     - uses: dorny/paths-filter@v3
@@ -32,11 +33,21 @@ jobs:
             - .env
             - compose*.yml
             - .github/workflows/playwright.yml
+    - name: Check if Docker stack secrets are configured
+      id: check-secrets
+      run: |
+        if [ -n "${{ secrets.POSTGRES_PASSWORD }}" ] && [ -n "${{ secrets.STACK_NAME }}" ]; then
+          echo "configured=true" >> $GITHUB_OUTPUT
+        else
+          echo "configured=false" >> $GITHUB_OUTPUT
+          echo "⚠️  Docker stack secrets not configured — Playwright tests skipped."
+          echo "    Set POSTGRES_PASSWORD and STACK_NAME repository secrets to enable."
+        fi
 
   test-playwright:
     needs:
       - changes
-    if: ${{ needs.changes.outputs.changed == 'true' }}
+    if: ${{ needs.changes.outputs.changed == 'true' && needs.changes.outputs.stack_configured == 'true' }}
     timeout-minutes: 60
     runs-on: ubuntu-latest
     strategy:
@@ -80,7 +91,7 @@ jobs:
     needs:
       - test-playwright
       - changes
-    if: ${{ !cancelled() && needs.changes.outputs.changed == 'true' }}
+    if: ${{ !cancelled() && needs.changes.outputs.changed == 'true' && needs.changes.outputs.stack_configured == 'true' }}
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
