@@ -78,6 +78,9 @@ a = Analysis(
         "sqlalchemy.dialects.sqlite.pysqlite",
         # SQLModel (wraps SQLAlchemy + Pydantic)
         "sqlmodel",
+        # cryptography — used by Guardian Vault (lazy import, must be explicit)
+        "cryptography",
+        "cryptography.fernet",
         # alembic — imported at module level in some sqlmodel paths
         "alembic",
         "alembic.runtime.migration",

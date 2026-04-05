@@ -51,6 +51,19 @@ if getattr(sys, "frozen", False):
         with open(_secret_key_path, "w") as _skf:
             _skf.write(_sk)
         os.environ["SECRET_KEY"] = _sk
+    # Persist vault encryption key — generated once, reused forever.
+    _vault_key_path = os.path.join(exe_dir, "vault.key")
+    if os.path.exists(_vault_key_path):
+        with open(_vault_key_path) as _vkf:
+            _vk = _vkf.read().strip()
+            if _vk:
+                os.environ.setdefault("SPARKBOT_VAULT_KEY", _vk)
+    if not os.environ.get("SPARKBOT_VAULT_KEY"):
+        from cryptography.fernet import Fernet as _Fernet
+        _vk = _Fernet.generate_key().decode()
+        with open(_vault_key_path, "w") as _vkf:
+            _vkf.write(_vk)
+        os.environ["SPARKBOT_VAULT_KEY"] = _vk
     # Ensure a .env file exists beside the exe for pydantic-settings and key storage
     env_path = os.path.join(exe_dir, ".env")
     if not os.path.exists(env_path):
