@@ -711,6 +711,7 @@ interface SparkbotSettingsDialogProps {
   skills: SkillInfo[]
   roomPersona: string
   savingPersona: boolean
+  personaSaved: boolean
   onPersonaChange: (value: string) => void
   onSavePersona: () => void
   allAgents: Agent[]
@@ -816,6 +817,7 @@ function SparkbotSettingsDialog({
   skills,
   roomPersona,
   savingPersona,
+  personaSaved,
   onPersonaChange,
   onSavePersona,
   allAgents,
@@ -1068,7 +1070,9 @@ function SparkbotSettingsDialog({
               className="w-full rounded-md border bg-muted/30 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring/30 resize-none"
             />
             <div className="mt-2 flex items-center justify-between">
-              <span className="text-[11px] text-muted-foreground">{roomPersona.length}/500</span>
+              <span className="text-[11px] text-muted-foreground">
+                {personaSaved ? <span className="text-green-600 font-medium">Saved</span> : `${roomPersona.length}/500`}
+              </span>
               <button
                 type="button"
                 onClick={onSavePersona}
@@ -2378,6 +2382,7 @@ function SparkbotDmPage() {
   // ── Persona + skills state ───────────────────────────────────────────────────
   const [roomPersona, setRoomPersona] = useState("")
   const [savingPersona, setSavingPersona] = useState(false)
+  const [personaSaved, setPersonaSaved] = useState(false)
   const [skills, setSkills] = useState<SkillInfo[]>([])
 
   // ── Spawn Agent state ────────────────────────────────────────────────────────
@@ -2760,6 +2765,8 @@ function SparkbotDmPage() {
         const data = await res.json()
         setRoomInfo(data)
         setRoomPersona(data.persona ?? "")
+        setPersonaSaved(true)
+        setTimeout(() => setPersonaSaved(false), 3000)
       }
     } catch {
       setSettingsError("Could not save persona.")
@@ -4024,6 +4031,7 @@ function SparkbotDmPage() {
         skills={skills}
         roomPersona={roomPersona}
         savingPersona={savingPersona}
+        personaSaved={personaSaved}
         onPersonaChange={setRoomPersona}
         onSavePersona={savePersona}
         allAgents={agents}

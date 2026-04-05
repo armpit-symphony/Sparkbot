@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 # Columns added after the initial schema. Each entry is (table, column, ddl).
 # Safe to re-run: _ensure_columns silently skips columns that already exist.
 _ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
-    ("chat_room", "persona", "VARCHAR(500)"),
+    ("chat_rooms", "persona", "VARCHAR(500)"),
 ]
 
 
