@@ -89,29 +89,38 @@ class ChatLoginResponse(BaseModel):
     token_type: str = "bearer"
 
 
+_LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost"}
+
+
+def _is_local_request(request: Request) -> bool:
+    host = request.client.host if request.client else ""
+    return host in _LOCAL_HOSTS
+
+
 @router.post("/login")
 def chat_login(request: Request, body: ChatLoginRequest, session: SessionDep) -> Response:
     """
     Simple passphrase login for Sparkbot chat access.
 
+    In V1 local mode (desktop install) passphrase is skipped entirely for
+    requests from localhost — the machine is the trust boundary.
+    Passphrase is only enforced for hosted/remote deployments.
+
     Sets an HttpOnly cookie with the JWT (XSS-safe).
     Also returns the token in the body for backward compatibility.
     """
     client_ip = request.client.host if request.client else "unknown"
-    _check_chat_rate_limit(client_ip)
 
-    if not body.passphrase:
-        raise HTTPException(
-            status_code=400,
-            detail="Passphrase required"
-        )
+    # V1 local desktop: localhost requests are always trusted — no passphrase needed.
+    local_desktop = settings.V1_LOCAL_MODE and _is_local_request(request)
 
-    if body.passphrase != settings.SPARKBOT_PASSPHRASE:
-        _record_failed_chat_attempt(client_ip)
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid passphrase"
-        )
+    if not local_desktop:
+        _check_chat_rate_limit(client_ip)
+        if not body.passphrase:
+            raise HTTPException(status_code=400, detail="Passphrase required")
+        if body.passphrase != settings.SPARKBOT_PASSPHRASE:
+            _record_failed_chat_attempt(client_ip)
+            raise HTTPException(status_code=401, detail="Invalid passphrase")
 
     chat_user = _get_or_create_chat_user(session, username="sparkbot-user")
 

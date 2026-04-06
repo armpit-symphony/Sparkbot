@@ -78,14 +78,22 @@ function Login() {
 
     let cancelled = false
 
-    ensureLocalChatSession().finally(() => {
-      if (!cancelled) {
-        setIsBootingLocal(false)
-        if (hasChatSession()) {
+    // In local desktop mode keep retrying until the backend is ready — never
+    // fall through to the passphrase form. The backend is the trust boundary.
+    const tryUntilReady = async () => {
+      while (!cancelled) {
+        const ok = await ensureLocalChatSession({ retries: 30, retryDelayMs: 500 })
+        if (cancelled) return
+        if (ok && hasChatSession()) {
           window.location.replace("/dm")
+          return
         }
+        // Backend not ready yet — wait and retry the whole sequence
+        await new Promise(r => setTimeout(r, 1000))
       }
-    })
+    }
+
+    tryUntilReady()
 
     return () => {
       cancelled = true
@@ -97,16 +105,19 @@ function Login() {
     chatLoginMutation.mutate(data)
   }
 
+  // In local desktop mode never show the passphrase form — always wait for auto-login
+  const showPassphraseForm = !isLocalDesktopMode()
+
   return (
     <AuthLayout>
-      {isBootingLocal ? (
+      {(isBootingLocal || isLocalDesktopMode()) ? (
         <div className="flex flex-col gap-3 text-center">
           <h1 className="text-2xl font-bold">Starting Sparkbot</h1>
           <p className="text-sm text-muted-foreground">
             Your local Sparkbot install is waking up. This screen will disappear automatically.
           </p>
         </div>
-      ) : (
+      ) : showPassphraseForm ? (
         <Form {...form}>
           <form
             noValidate
@@ -145,7 +156,7 @@ function Login() {
             </div>
           </form>
         </Form>
-      )}
+      ) : null}
     </AuthLayout>
   )
 }
