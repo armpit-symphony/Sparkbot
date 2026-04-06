@@ -34,6 +34,8 @@ a = Analysis(
     datas=[
         # Email templates shipped with the bundle
         (str(BACKEND_DIR / "app" / "email-templates"), "app/email-templates"),
+        # Skill plugins — loaded dynamically at runtime, must be bundled explicitly
+        (str(BACKEND_DIR / "skills"), "skills"),
     ] + _litellm_datas + _certifi_datas + _tiktoken_datas,
     hiddenimports=[
         # uvicorn internals not auto-discovered

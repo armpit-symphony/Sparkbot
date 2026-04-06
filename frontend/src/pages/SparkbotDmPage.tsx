@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, type CSSProperties } from "react"
 import { useNavigate, useRouterState } from "@tanstack/react-router"
-import { Check, CornerUpLeft, Copy, Loader2, Mic, Paperclip, Pencil, RefreshCw, Search, Send, Volume2, VolumeX, X } from "lucide-react"
+import { Check, ChevronDown, CornerUpLeft, Copy, Loader2, Mic, Paperclip, Pencil, RefreshCw, Search, Send, Volume2, VolumeX, X } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter"
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism"
@@ -248,6 +248,10 @@ interface ModelsControlsConfig {
       linked_threads: number
       webhook_path: string
     }
+    google: {
+      gmail_configured: boolean
+      calendar_configured: boolean
+    }
   }
   notices: string[]
   restart_required?: boolean
@@ -316,6 +320,12 @@ interface CommsForm {
     default_repo: string
     allowed_repos: string
     enabled: boolean
+  }
+  google: {
+    client_id: string
+    client_secret: string
+    refresh_token: string
+    calendar_id: string
   }
 }
 
@@ -667,6 +677,8 @@ interface SparkbotSettingsDialogProps {
   openRouterModels: OpenRouterModelRecord[]
   providerDrafts: ProviderTokenDrafts
   commsForm: CommsForm
+  commsOpenSection: string | null
+  onCommsOpenSectionChange: (section: string | null) => void
   savingModelStack: boolean
   savingProviderTokens: boolean
   savingDefaultSelection: boolean
@@ -775,6 +787,8 @@ function SparkbotSettingsDialog({
   openRouterModels,
   providerDrafts,
   commsForm,
+  commsOpenSection,
+  onCommsOpenSectionChange,
   savingModelStack,
   savingProviderTokens,
   savingDefaultSelection,
@@ -921,7 +935,7 @@ function SparkbotSettingsDialog({
           done: enabledChannelCount > 0,
           detail: enabledChannelCount > 0
             ? `${enabledChannelCount} channel${enabledChannelCount === 1 ? "" : "s"} enabled`
-            : "Enable Telegram, Discord, WhatsApp, or GitHub after adding credentials",
+            : "Enable Telegram, Discord, WhatsApp, GitHub, or Google after adding credentials",
         },
         {
           title: "Keep write actions gated",
@@ -1765,197 +1779,306 @@ function SparkbotSettingsDialog({
             <div className="mb-3">
               <h2 className="text-sm font-semibold">Comms</h2>
               <p className="text-xs text-muted-foreground">
-                Configure Telegram, Discord, WhatsApp, and GitHub from the same control panel. Bridge startup changes require a service restart.
+                Configure messaging and calendar connectors. Edit credentials and toggle bridges, then save.
               </p>
             </div>
-            <div className="grid gap-4 lg:grid-cols-4">
-              <div className="rounded-lg border bg-muted/40 px-3 py-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="text-sm font-medium">Telegram</div>
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms?.telegram.configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
-                    {modelsConfig?.comms?.telegram.configured ? "Configured" : "Missing"}
-                  </span>
-                </div>
-                <div className="mt-0.5 text-[10px] text-muted-foreground/70">Reads messages · Sends replies · No file access</div>
-                <div className="mt-1 text-xs text-muted-foreground">Linked chats: {modelsConfig?.comms?.telegram.linked_chats ?? 0}</div>
-                <input
-                  type="password"
-                  value={commsForm.telegram.bot_token}
-                  onChange={(e) => onCommsTextChange("telegram", "bot_token", e.target.value)}
-                  placeholder="Paste Telegram bot token"
-                  className="mt-3 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
-                />
-                <label className="mt-3 flex items-center justify-between gap-2 text-xs">
-                  <span>Enable polling</span>
-                  <input
-                    type="checkbox"
-                    checked={commsForm.telegram.enabled}
-                    onChange={(e) => onCommsToggleChange("telegram", "enabled", e.target.checked)}
-                  />
-                </label>
-                <label className="mt-2 flex items-center justify-between gap-2 text-xs">
-                  <span>Private only</span>
-                  <input
-                    type="checkbox"
-                    checked={commsForm.telegram.private_only}
-                    onChange={(e) => onCommsToggleChange("telegram", "private_only", e.target.checked)}
-                  />
-                </label>
-              </div>
-
-              <div className="rounded-lg border bg-muted/40 px-3 py-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="text-sm font-medium">Discord</div>
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms?.discord.configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
-                    {modelsConfig?.comms?.discord.configured ? "Configured" : "Missing"}
-                  </span>
-                </div>
-                <div className="mt-0.5 text-[10px] text-muted-foreground/70">Reads DMs & mentions · Sends replies · No server data access</div>
-                <div className="mt-1 text-xs text-muted-foreground">Linked channels: {modelsConfig?.comms?.discord.linked_channels ?? 0}</div>
-                <input
-                  type="password"
-                  value={commsForm.discord.bot_token}
-                  onChange={(e) => onCommsTextChange("discord", "bot_token", e.target.value)}
-                  placeholder="Paste Discord bot token"
-                  className="mt-3 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
-                />
-                <label className="mt-3 flex items-center justify-between gap-2 text-xs">
-                  <span>Enable bridge</span>
-                  <input
-                    type="checkbox"
-                    checked={commsForm.discord.enabled}
-                    onChange={(e) => onCommsToggleChange("discord", "enabled", e.target.checked)}
-                  />
-                </label>
-                <label className="mt-2 flex items-center justify-between gap-2 text-xs">
-                  <span>DM only</span>
-                  <input
-                    type="checkbox"
-                    checked={commsForm.discord.dm_only}
-                    onChange={(e) => onCommsToggleChange("discord", "dm_only", e.target.checked)}
-                  />
-                </label>
-              </div>
-
-              <div className="rounded-lg border bg-muted/40 px-3 py-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="text-sm font-medium">WhatsApp</div>
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms?.whatsapp.configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
-                    {modelsConfig?.comms?.whatsapp.configured ? "Configured" : "Missing"}
-                  </span>
-                </div>
-                <div className="mt-0.5 text-[10px] text-muted-foreground/70">Reads messages · Sends replies · 24-hour session window</div>
-                <div className="mt-1 text-xs text-muted-foreground">Linked numbers: {modelsConfig?.comms?.whatsapp.linked_numbers ?? 0}</div>
-                <input
-                  type="password"
-                  value={commsForm.whatsapp.token}
-                  onChange={(e) => onCommsTextChange("whatsapp", "token", e.target.value)}
-                  placeholder="Paste WhatsApp token"
-                  className="mt-3 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
-                />
-                <input
-                  type="text"
-                  value={commsForm.whatsapp.phone_id}
-                  onChange={(e) => onCommsTextChange("whatsapp", "phone_id", e.target.value)}
-                  placeholder="WhatsApp phone ID"
-                  className="mt-2 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
-                />
-                <input
-                  type="text"
-                  value={commsForm.whatsapp.verify_token}
-                  onChange={(e) => onCommsTextChange("whatsapp", "verify_token", e.target.value)}
-                  placeholder="Verify token"
-                  className="mt-2 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
-                />
-                <label className="mt-3 flex items-center justify-between gap-2 text-xs">
-                  <span>Enable bridge</span>
-                  <input
-                    type="checkbox"
-                    checked={commsForm.whatsapp.enabled}
-                    onChange={(e) => onCommsToggleChange("whatsapp", "enabled", e.target.checked)}
-                  />
-                </label>
-              </div>
-
-              <div className="rounded-lg border bg-muted/40 px-3 py-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="text-sm font-medium">GitHub</div>
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms?.github.configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
-                    {modelsConfig?.comms?.github.configured ? "Configured" : "Missing"}
-                  </span>
-                </div>
-                <div className="mt-0.5 text-[10px] text-muted-foreground/70">Reads issues & PRs · Posts comments · Write actions require approval</div>
-                <div className="mt-1 text-xs text-muted-foreground">Linked threads: {modelsConfig?.comms?.github.linked_threads ?? 0}</div>
-                <div className="mt-1 text-xs text-muted-foreground">Webhook: {modelsConfig?.comms?.github.webhook_path ?? "/api/v1/chat/github/events"}</div>
-                <input
-                  type="password"
-                  value={commsForm.github.token}
-                  onChange={(e) => onCommsTextChange("github", "token", e.target.value)}
-                  placeholder="Paste GitHub token"
-                  className="mt-3 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
-                />
-                <input
-                  type="password"
-                  value={commsForm.github.webhook_secret}
-                  onChange={(e) => onCommsTextChange("github", "webhook_secret", e.target.value)}
-                  placeholder="Webhook secret"
-                  className="mt-2 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
-                />
-                <input
-                  type="text"
-                  value={commsForm.github.bot_login}
-                  onChange={(e) => onCommsTextChange("github", "bot_login", e.target.value)}
-                  placeholder="Bot login"
-                  className="mt-2 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
-                />
-                <input
-                  type="text"
-                  value={commsForm.github.default_repo}
-                  onChange={(e) => onCommsTextChange("github", "default_repo", e.target.value)}
-                  placeholder="Default repo (owner/repo)"
-                  className="mt-2 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
-                />
-                <input
-                  type="text"
-                  value={commsForm.github.allowed_repos}
-                  onChange={(e) => onCommsTextChange("github", "allowed_repos", e.target.value)}
-                  placeholder="Allowed repos (comma-separated)"
-                  className="mt-2 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
-                />
-                <label className="mt-3 flex items-center justify-between gap-2 text-xs">
-                  <span>Enable bridge</span>
-                  <input
-                    type="checkbox"
-                    checked={commsForm.github.enabled}
-                    onChange={(e) => onCommsToggleChange("github", "enabled", e.target.checked)}
-                  />
-                </label>
-                <div className="mt-4 rounded-lg border bg-background/70 px-3 py-3">
-                  <div className="text-[11px] uppercase tracking-wide text-muted-foreground">GitHub onboarding</div>
-                  <div className="mt-2 space-y-1 text-xs text-muted-foreground">
-                    <div>1. Paste a GitHub token and a webhook secret, then save comms.</div>
-                    <div>2. In your repo, add a webhook to <code className="rounded bg-muted px-1 py-0.5">{modelsConfig?.comms?.github.webhook_path ?? "/api/v1/chat/github/events"}</code>.</div>
-                    <div>3. Select <span className="font-medium text-foreground">Issue comments</span> and <span className="font-medium text-foreground">Pull request review comments</span>.</div>
-                    <div>4. Restart <code className="rounded bg-muted px-1 py-0.5">sparkbot-v2</code>, then test in a thread with <code className="rounded bg-muted px-1 py-0.5">/sparkbot summarize this PR</code>.</div>
+            <div className="divide-y rounded-lg border">
+              {/* Telegram */}
+              <div>
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-muted/40"
+                  onClick={() => onCommsOpenSectionChange(commsOpenSection === "telegram" ? null : "telegram")}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-medium">Telegram</span>
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms?.telegram?.configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
+                      {modelsConfig?.comms?.telegram?.configured ? "Configured" : "Missing"}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground/60">Linked chats: {modelsConfig?.comms?.telegram?.linked_chats ?? 0}</span>
                   </div>
-                  <div className="mt-3 rounded-md bg-muted/50 px-2 py-2 text-[11px] text-muted-foreground">
-                    Replies in-thread support <code className="rounded bg-background px-1 py-0.5">approve</code> and <code className="rounded bg-background px-1 py-0.5">deny</code> for pending actions.
+                  <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${commsOpenSection === "telegram" ? "rotate-180" : ""}`} />
+                </button>
+                {commsOpenSection === "telegram" && (
+                  <div className="border-t bg-muted/20 px-4 py-4 space-y-3">
+                    <p className="text-[10px] text-muted-foreground/70">Reads messages · Sends replies · No file access</p>
+                    <input
+                      type="password"
+                      value={commsForm.telegram.bot_token}
+                      onChange={(e) => onCommsTextChange("telegram", "bot_token", e.target.value)}
+                      placeholder="Paste Telegram bot token"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                    />
+                    <label className="flex items-center justify-between gap-2 text-xs">
+                      <span>Enable polling</span>
+                      <input type="checkbox" checked={commsForm.telegram.enabled} onChange={(e) => onCommsToggleChange("telegram", "enabled", e.target.checked)} />
+                    </label>
+                    <label className="flex items-center justify-between gap-2 text-xs">
+                      <span>Private only</span>
+                      <input type="checkbox" checked={commsForm.telegram.private_only} onChange={(e) => onCommsToggleChange("telegram", "private_only", e.target.checked)} />
+                    </label>
                   </div>
-                  {modelsConfig?.comms?.github?.allowed_repos_count ? (
-                    <div className="mt-2 text-[11px] text-muted-foreground">
-                      Allowlisted repos: {modelsConfig?.comms?.github?.allowed_repos?.join(", ")}
+                )}
+              </div>
+              {/* Discord */}
+              <div>
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-muted/40"
+                  onClick={() => onCommsOpenSectionChange(commsOpenSection === "discord" ? null : "discord")}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-medium">Discord</span>
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms?.discord?.configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
+                      {modelsConfig?.comms?.discord?.configured ? "Configured" : "Missing"}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground/60">Linked channels: {modelsConfig?.comms?.discord?.linked_channels ?? 0}</span>
+                  </div>
+                  <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${commsOpenSection === "discord" ? "rotate-180" : ""}`} />
+                </button>
+                {commsOpenSection === "discord" && (
+                  <div className="border-t bg-muted/20 px-4 py-4 space-y-3">
+                    <p className="text-[10px] text-muted-foreground/70">Reads DMs & mentions · Sends replies · No server data access</p>
+                    <input
+                      type="password"
+                      value={commsForm.discord.bot_token}
+                      onChange={(e) => onCommsTextChange("discord", "bot_token", e.target.value)}
+                      placeholder="Paste Discord bot token"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                    />
+                    <label className="flex items-center justify-between gap-2 text-xs">
+                      <span>Enable bridge</span>
+                      <input type="checkbox" checked={commsForm.discord.enabled} onChange={(e) => onCommsToggleChange("discord", "enabled", e.target.checked)} />
+                    </label>
+                    <label className="flex items-center justify-between gap-2 text-xs">
+                      <span>DM only</span>
+                      <input type="checkbox" checked={commsForm.discord.dm_only} onChange={(e) => onCommsToggleChange("discord", "dm_only", e.target.checked)} />
+                    </label>
+                  </div>
+                )}
+              </div>
+              {/* WhatsApp */}
+              <div>
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-muted/40"
+                  onClick={() => onCommsOpenSectionChange(commsOpenSection === "whatsapp" ? null : "whatsapp")}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-medium">WhatsApp</span>
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms?.whatsapp?.configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
+                      {modelsConfig?.comms?.whatsapp?.configured ? "Configured" : "Missing"}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground/60">Linked numbers: {modelsConfig?.comms?.whatsapp?.linked_numbers ?? 0}</span>
+                  </div>
+                  <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${commsOpenSection === "whatsapp" ? "rotate-180" : ""}`} />
+                </button>
+                {commsOpenSection === "whatsapp" && (
+                  <div className="border-t bg-muted/20 px-4 py-4 space-y-3">
+                    <p className="text-[10px] text-muted-foreground/70">Reads messages · Sends replies · 24-hour session window</p>
+                    <input
+                      type="password"
+                      value={commsForm.whatsapp.token}
+                      onChange={(e) => onCommsTextChange("whatsapp", "token", e.target.value)}
+                      placeholder="Paste WhatsApp token"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                    />
+                    <input
+                      type="text"
+                      value={commsForm.whatsapp.phone_id}
+                      onChange={(e) => onCommsTextChange("whatsapp", "phone_id", e.target.value)}
+                      placeholder="WhatsApp phone ID"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                    />
+                    <input
+                      type="text"
+                      value={commsForm.whatsapp.verify_token}
+                      onChange={(e) => onCommsTextChange("whatsapp", "verify_token", e.target.value)}
+                      placeholder="Verify token"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                    />
+                    <label className="flex items-center justify-between gap-2 text-xs">
+                      <span>Enable bridge</span>
+                      <input type="checkbox" checked={commsForm.whatsapp.enabled} onChange={(e) => onCommsToggleChange("whatsapp", "enabled", e.target.checked)} />
+                    </label>
+                  </div>
+                )}
+              </div>
+              {/* GitHub */}
+              <div>
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-muted/40"
+                  onClick={() => onCommsOpenSectionChange(commsOpenSection === "github" ? null : "github")}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-medium">GitHub</span>
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms?.github?.configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
+                      {modelsConfig?.comms?.github?.configured ? "Configured" : "Missing"}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground/60">Linked threads: {modelsConfig?.comms?.github?.linked_threads ?? 0}</span>
+                  </div>
+                  <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${commsOpenSection === "github" ? "rotate-180" : ""}`} />
+                </button>
+                {commsOpenSection === "github" && (
+                  <div className="border-t bg-muted/20 px-4 py-4 space-y-3">
+                    <p className="text-[10px] text-muted-foreground/70">Reads issues & PRs · Posts comments · Write actions require approval</p>
+                    <p className="text-[10px] text-muted-foreground/60">Webhook: {modelsConfig?.comms?.github?.webhook_path ?? "/api/v1/chat/github/events"}</p>
+                    <input
+                      type="password"
+                      value={commsForm.github.token}
+                      onChange={(e) => onCommsTextChange("github", "token", e.target.value)}
+                      placeholder="GitHub token"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                    />
+                    <input
+                      type="password"
+                      value={commsForm.github.webhook_secret}
+                      onChange={(e) => onCommsTextChange("github", "webhook_secret", e.target.value)}
+                      placeholder="Webhook secret"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                    />
+                    <input
+                      type="text"
+                      value={commsForm.github.bot_login}
+                      onChange={(e) => onCommsTextChange("github", "bot_login", e.target.value)}
+                      placeholder="Bot login (e.g. sparkbot)"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                    />
+                    <input
+                      type="text"
+                      value={commsForm.github.default_repo}
+                      onChange={(e) => onCommsTextChange("github", "default_repo", e.target.value)}
+                      placeholder="Default repo (owner/repo)"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                    />
+                    <input
+                      type="text"
+                      value={commsForm.github.allowed_repos}
+                      onChange={(e) => onCommsTextChange("github", "allowed_repos", e.target.value)}
+                      placeholder="Allowed repos (comma-separated)"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                    />
+                    <label className="flex items-center justify-between gap-2 text-xs">
+                      <span>Enable bridge</span>
+                      <input type="checkbox" checked={commsForm.github.enabled} onChange={(e) => onCommsToggleChange("github", "enabled", e.target.checked)} />
+                    </label>
+                    <div className="rounded-md bg-background/70 border px-3 py-3 text-xs text-muted-foreground space-y-1">
+                      <div className="text-[11px] uppercase tracking-wide font-medium">Onboarding</div>
+                      <div>1. Paste token + webhook secret, then save.</div>
+                      <div>2. Add webhook to your repo pointing to <code className="rounded bg-muted px-1">{modelsConfig?.comms?.github?.webhook_path ?? "/api/v1/chat/github/events"}</code>.</div>
+                      <div>3. Select <span className="text-foreground">Issue comments</span> and <span className="text-foreground">PR review comments</span>.</div>
+                      {!modelsConfig?.comms?.github?.allowed_repos_count && (
+                        <div className="text-amber-600">No repo allowlist set — bridge will accept any repo.</div>
+                      )}
                     </div>
-                  ) : (
-                    <div className="mt-2 text-[11px] text-amber-600">
-                      No repo allowlist set. Add one if you want the bridge limited to specific repositories.
+                  </div>
+                )}
+              </div>
+              {/* Gmail */}
+              <div>
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-muted/40"
+                  onClick={() => onCommsOpenSectionChange(commsOpenSection === "gmail" ? null : "gmail")}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-medium">Gmail</span>
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms?.google?.gmail_configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
+                      {modelsConfig?.comms?.google?.gmail_configured ? "Configured" : "Missing"}
+                    </span>
+                  </div>
+                  <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${commsOpenSection === "gmail" ? "rotate-180" : ""}`} />
+                </button>
+                {commsOpenSection === "gmail" && (
+                  <div className="border-t bg-muted/20 px-4 py-4 space-y-3">
+                    <p className="text-[10px] text-muted-foreground/70">Fetch inbox · Read messages · Used by morning briefing and inbox-check skills</p>
+                    <p className="text-[10px] text-muted-foreground/60">Credentials are shared with Google Calendar. Set all three OAuth fields to enable Gmail skills.</p>
+                    <input
+                      type="password"
+                      value={commsForm.google.client_id}
+                      onChange={(e) => onCommsTextChange("google", "client_id", e.target.value)}
+                      placeholder="Google Client ID"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                    />
+                    <input
+                      type="password"
+                      value={commsForm.google.client_secret}
+                      onChange={(e) => onCommsTextChange("google", "client_secret", e.target.value)}
+                      placeholder="Google Client Secret"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                    />
+                    <input
+                      type="password"
+                      value={commsForm.google.refresh_token}
+                      onChange={(e) => onCommsTextChange("google", "refresh_token", e.target.value)}
+                      placeholder="Google Refresh Token"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                    />
+                    <div className="rounded-md bg-background/70 border px-3 py-3 text-xs text-muted-foreground space-y-1">
+                      <div className="text-[11px] uppercase tracking-wide font-medium">Setup</div>
+                      <div>1. Create a project in Google Cloud Console and enable the Gmail API.</div>
+                      <div>2. Create OAuth 2.0 credentials (Desktop app type).</div>
+                      <div>3. Run the OAuth flow once to obtain a refresh token.</div>
+                      <div>4. Paste Client ID, Client Secret, and Refresh Token above, then save.</div>
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
+              </div>
+              {/* Google Calendar */}
+              <div>
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-muted/40"
+                  onClick={() => onCommsOpenSectionChange(commsOpenSection === "google_calendar" ? null : "google_calendar")}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-medium">Google Calendar</span>
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms?.google?.calendar_configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
+                      {modelsConfig?.comms?.google?.calendar_configured ? "Configured" : "Missing"}
+                    </span>
+                  </div>
+                  <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${commsOpenSection === "google_calendar" ? "rotate-180" : ""}`} />
+                </button>
+                {commsOpenSection === "google_calendar" && (
+                  <div className="border-t bg-muted/20 px-4 py-4 space-y-3">
+                    <p className="text-[10px] text-muted-foreground/70">List events · Used by morning briefing and calendar-today skills</p>
+                    <p className="text-[10px] text-muted-foreground/60">Uses the same OAuth credentials as Gmail. Set the Calendar ID below to enable calendar skills.</p>
+                    <input
+                      type="password"
+                      value={commsForm.google.client_id}
+                      onChange={(e) => onCommsTextChange("google", "client_id", e.target.value)}
+                      placeholder="Google Client ID (shared with Gmail)"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                    />
+                    <input
+                      type="password"
+                      value={commsForm.google.client_secret}
+                      onChange={(e) => onCommsTextChange("google", "client_secret", e.target.value)}
+                      placeholder="Google Client Secret (shared with Gmail)"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                    />
+                    <input
+                      type="password"
+                      value={commsForm.google.refresh_token}
+                      onChange={(e) => onCommsTextChange("google", "refresh_token", e.target.value)}
+                      placeholder="Google Refresh Token (shared with Gmail)"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                    />
+                    <input
+                      type="text"
+                      value={commsForm.google.calendar_id}
+                      onChange={(e) => onCommsTextChange("google", "calendar_id", e.target.value)}
+                      placeholder="Calendar ID (e.g. primary or your@email.com)"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                    />
+                  </div>
+                )}
               </div>
             </div>
             <div className="mt-3 flex items-center justify-between gap-3">
               <div className="text-xs text-muted-foreground">
-                Save comms first, then restart `sparkbot-v2` to apply bridge startup changes.
+                Google credentials are available to skills immediately after saving. Bridge changes (Telegram, Discord, WhatsApp, GitHub) require a restart.
               </div>
               <button
                 type="button"
@@ -2354,7 +2477,9 @@ function SparkbotDmPage() {
       allowed_repos: "",
       enabled: false,
     },
+    google: { client_id: "", client_secret: "", refresh_token: "", calendar_id: "" },
   })
+  const [commsOpenSection, setCommsOpenSection] = useState<string | null>(null)
   const [savingModelStack, setSavingModelStack] = useState(false)
   const [savingProviderTokens, setSavingProviderTokens] = useState(false)
   const [savingDefaultSelection, setSavingDefaultSelection] = useState(false)
@@ -2492,6 +2617,7 @@ function SparkbotDmPage() {
         allowed_repos: (config.comms?.github?.allowed_repos ?? []).join(", "),
         enabled: Boolean(config.comms?.github?.enabled),
       },
+      google: { client_id: "", client_secret: "", refresh_token: "", calendar_id: "" },
     })
     setOllamaBaseUrl(config.local_runtime?.base_url || "http://localhost:11434")
     if (config.ollama_status) {
@@ -4002,6 +4128,8 @@ function SparkbotDmPage() {
         openRouterModels={openRouterModels}
         providerDrafts={providerDrafts}
         commsForm={commsForm}
+        commsOpenSection={commsOpenSection}
+        onCommsOpenSectionChange={setCommsOpenSection}
         savingModelStack={savingModelStack}
         savingProviderTokens={savingProviderTokens}
         savingDefaultSelection={savingDefaultSelection}

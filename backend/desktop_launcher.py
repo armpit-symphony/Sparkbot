@@ -64,6 +64,10 @@ if getattr(sys, "frozen", False):
         with open(_vault_key_path, "w") as _vkf:
             _vkf.write(_vk)
         os.environ["SPARKBOT_VAULT_KEY"] = _vk
+    # Point the skill loader at the bundled skills directory inside sys._MEIPASS.
+    # Without this, skills.py falls back to "skills" relative to __file__ which
+    # does not exist in a frozen binary — all skills return "Unknown tool".
+    os.environ.setdefault("SPARKBOT_SKILLS_DIR", os.path.join(sys._MEIPASS, "skills"))  # noqa: SLF001
     # Ensure a .env file exists beside the exe for pydantic-settings and key storage
     env_path = os.path.join(exe_dir, ".env")
     if not os.path.exists(env_path):

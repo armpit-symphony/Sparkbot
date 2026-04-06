@@ -175,15 +175,30 @@ def _provider_catalog(ollama_status: dict[str, Any] | None = None) -> list[dict[
     return items
 
 
+def _build_google_comms_status() -> dict[str, Any]:
+    """Return configured status for Google (Gmail + Calendar) credentials."""
+    has_oauth = bool(
+        os.getenv("GOOGLE_CLIENT_ID", "").strip()
+        and os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
+        and os.getenv("GOOGLE_REFRESH_TOKEN", "").strip()
+    )
+    return {
+        "gmail_configured": has_oauth,
+        "calendar_configured": has_oauth and bool(os.getenv("GOOGLE_CALENDAR_ID", "").strip()),
+    }
+
+
 def _build_comms_status() -> dict[str, Any]:
     """Return bridge comms status. Imports bridge modules lazily so that
     discord.py / pywa / telegram are not loaded in V1_LOCAL_MODE."""
+    google_status = _build_google_comms_status()
     if settings.V1_LOCAL_MODE:
         return {
             "telegram": {"poll_enabled": False, "private_only": True},
             "discord": {"enabled": False, "dm_only": False},
             "whatsapp": {"enabled": False},
             "github": {"enabled": False, "bot_login": "sparkbot", "default_repo": "", "allowed_repos": []},
+            "google": google_status,
         }
     from app.services.discord_bridge import get_status as get_discord_status
     from app.services.github_bridge import get_status as get_github_status
@@ -194,6 +209,7 @@ def _build_comms_status() -> dict[str, Any]:
         "discord": get_discord_status(),
         "whatsapp": get_whatsapp_status(),
         "github": get_github_status(),
+        "google": google_status,
     }
 
 
@@ -348,11 +364,19 @@ class GitHubConfigInput(BaseModel):
     enabled: bool | None = None
 
 
+class GoogleConfigInput(BaseModel):
+    client_id: str | None = None
+    client_secret: str | None = None
+    refresh_token: str | None = None
+    calendar_id: str | None = None
+
+
 class CommsConfigInput(BaseModel):
     telegram: TelegramConfigInput | None = None
     discord: DiscordConfigInput | None = None
     whatsapp: WhatsAppConfigInput | None = None
     github: GitHubConfigInput | None = None
+    google: GoogleConfigInput | None = None
 
 
 class ControlsConfigUpdate(BaseModel):
@@ -671,6 +695,16 @@ async def update_models_config(body: ControlsConfigUpdate, current_user: Current
             if body.comms.github.enabled is not None:
                 env_updates["GITHUB_BRIDGE_ENABLED"] = "true" if body.comms.github.enabled else "false"
             restart_required = True
+        if body.comms.google is not None:
+            if body.comms.google.client_id:
+                env_updates["GOOGLE_CLIENT_ID"] = body.comms.google.client_id
+            if body.comms.google.client_secret:
+                env_updates["GOOGLE_CLIENT_SECRET"] = body.comms.google.client_secret
+            if body.comms.google.refresh_token:
+                env_updates["GOOGLE_REFRESH_TOKEN"] = body.comms.google.refresh_token
+            if body.comms.google.calendar_id is not None:
+                env_updates["GOOGLE_CALENDAR_ID"] = body.comms.google.calendar_id
+            notices.append("Google credentials saved — Gmail and Calendar skills are live immediately.")
 
     if body.token_guardian_mode is not None:
         env_updates["SPARKBOT_TOKEN_GUARDIAN_MODE"] = body.token_guardian_mode

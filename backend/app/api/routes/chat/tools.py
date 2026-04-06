@@ -14,6 +14,7 @@ import operator
 import os
 import re
 import shlex
+import sys
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -3756,19 +3757,61 @@ def _ops_profile_commands(
     if profile not in _SERVER_READ_COMMANDS:
         return None, f"Unsupported server command. Allowed: {', '.join(sorted(_SERVER_READ_COMMANDS))}"
 
+    _is_windows = sys.platform == "win32"
+
     if profile == "system_overview":
+        if _is_windows:
+            return [
+                ("uptime", ["powershell", "-NoProfile", "-Command",
+                    "(Get-Date) - (gcim Win32_OperatingSystem).LastBootUpTime | "
+                    "Select-Object -Property Days,Hours,Minutes | Format-List"]),
+                ("disk_usage", ["powershell", "-NoProfile", "-Command",
+                    "Get-PSDrive -PSProvider FileSystem | "
+                    "Select-Object Name,@{N='Used(GB)';E={[math]::Round($_.Used/1GB,1)}},"
+                    "@{N='Free(GB)';E={[math]::Round($_.Free/1GB,1)}} | Format-Table -AutoSize"]),
+                ("memory", ["powershell", "-NoProfile", "-Command",
+                    "$os=gcim Win32_OperatingSystem; "
+                    "[PSCustomObject]@{"
+                    "TotalGB=[math]::Round($os.TotalVisibleMemorySize/1MB,1);"
+                    "FreeGB=[math]::Round($os.FreePhysicalMemory/1MB,1);"
+                    "UsedGB=[math]::Round(($os.TotalVisibleMemorySize-$os.FreePhysicalMemory)/1MB,1)"
+                    "} | Format-List"]),
+            ], None
         return [
             ("uptime", ["uptime"]),
             ("disk_usage", ["df", "-h", "/"]),
             ("memory", ["free", "-h"]),
         ], None
     if profile == "disk_usage":
+        if _is_windows:
+            return [("disk_usage", ["powershell", "-NoProfile", "-Command",
+                "Get-PSDrive -PSProvider FileSystem | "
+                "Select-Object Name,@{N='Used(GB)';E={[math]::Round($_.Used/1GB,1)}},"
+                "@{N='Free(GB)';E={[math]::Round($_.Free/1GB,1)}} | Format-Table -AutoSize"])], None
         return [("disk_usage", ["df", "-h"])], None
     if profile == "memory":
+        if _is_windows:
+            return [("memory", ["powershell", "-NoProfile", "-Command",
+                "$os=gcim Win32_OperatingSystem; "
+                "[PSCustomObject]@{"
+                "TotalGB=[math]::Round($os.TotalVisibleMemorySize/1MB,1);"
+                "FreeGB=[math]::Round($os.FreePhysicalMemory/1MB,1);"
+                "UsedGB=[math]::Round(($os.TotalVisibleMemorySize-$os.FreePhysicalMemory)/1MB,1)"
+                "} | Format-List"])], None
         return [("memory", ["free", "-h"])], None
     if profile == "network_listeners":
+        if _is_windows:
+            return [("network_listeners", ["powershell", "-NoProfile", "-Command",
+                "Get-NetTCPConnection -State Listen | "
+                "Select-Object LocalAddress,LocalPort,OwningProcess | "
+                "Sort-Object LocalPort | Format-Table -AutoSize"])], None
         return [("network_listeners", ["ss", "-ltnp"])], None
     if profile == "process_snapshot":
+        if _is_windows:
+            return [("process_snapshot", ["powershell", "-NoProfile", "-Command",
+                "Get-Process | Sort-Object CPU -Descending | Select-Object -First 20 "
+                "Id,ProcessName,@{N='CPU(s)';E={[math]::Round($_.CPU,1)}},"
+                "@{N='Mem(MB)';E={[math]::Round($_.WorkingSet/1MB,1)}} | Format-Table -AutoSize"])], None
         return [("process_snapshot", ["ps", "-eo", "pid,ppid,%cpu,%mem,comm", "--sort=-%cpu"])], None
 
     unit, err = _validate_service_name(service, allowed_services)
@@ -3776,9 +3819,16 @@ def _ops_profile_commands(
         return None, err
 
     if profile == "service_status":
+        if _is_windows:
+            return [("service_status", ["powershell", "-NoProfile", "-Command",
+                f"Get-Service -Name '{unit}' | Select-Object Name,Status,StartType | Format-List"])], None
         return [("service_status", ["systemctl", "status", "--no-pager", unit])], None
 
     safe_lines = max(1, min(int(lines), 200))
+    if _is_windows:
+        return [("service_logs", ["powershell", "-NoProfile", "-Command",
+            f"Get-EventLog -LogName Application -Source '{unit}' -Newest {safe_lines} "
+            f"-ErrorAction SilentlyContinue | Format-List TimeGenerated,EntryType,Message"])], None
     return [("service_logs", ["journalctl", "-u", unit, "-n", str(safe_lines), "--no-pager"])], None
 
 
@@ -3822,13 +3872,17 @@ async def _server_manage_service(service: str, action: str) -> str:
             "For status or logs, use the read-only server command tool."
         )
 
-    argv = ["systemctl", op, unit]
-    if _SERVICE_USE_SUDO:
-        argv = ["sudo", "-n", *argv]
+    if sys.platform == "win32":
+        ps_action = {"start": "Start-Service", "stop": "Stop-Service", "restart": "Restart-Service"}[op]
+        argv = ["powershell", "-NoProfile", "-Command", f"{ps_action} -Name '{unit}'"]
+    else:
+        argv = ["systemctl", op, unit]
+        if _SERVICE_USE_SUDO:
+            argv = ["sudo", "-n", *argv]
 
     code, output = await _run_exec(argv, timeout=_SERVER_COMMAND_TIMEOUT_SECONDS)
     if code != 0:
-        if _SERVICE_USE_SUDO and ("password" in output.lower() or "sudo" in output.lower()):
+        if not sys.platform == "win32" and _SERVICE_USE_SUDO and ("password" in output.lower() or "sudo" in output.lower()):
             return (
                 f"FAILED: service action failed for {unit}. Passwordless sudo may be required for this Sparkbot service user.\n\n{output}"
             )
