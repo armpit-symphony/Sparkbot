@@ -282,6 +282,18 @@ def decide_tool_use(
 ) -> PolicyDecision:
     policy = get_tool_policy(tool_name, args)
 
+    # Vault tools always require operator identity regardless of policy mode.
+    if tool_name.startswith("vault_") and not is_operator:
+        return PolicyDecision(
+            tool_name=tool_name,
+            scope=policy.scope,
+            resource=policy.resource,
+            action="deny",
+            action_type=policy.action_type,
+            high_risk=True,
+            reason="Vault tools are restricted to configured Sparkbot operators.",
+        )
+
     # Personal mode (default): no gates, no confirms, no denials — everything runs freely.
     # Switch to office mode by setting SPARKBOT_GUARDIAN_POLICY_ENABLED=true.
     if not _policy_enabled():
@@ -293,17 +305,6 @@ def decide_tool_use(
             action_type=policy.action_type,
             high_risk=policy.high_risk,
             reason="Personal mode: policy restrictions disabled.",
-        )
-
-    if tool_name.startswith("vault_") and not is_operator:
-        return PolicyDecision(
-            tool_name=tool_name,
-            scope=policy.scope,
-            resource=policy.resource,
-            action="deny",
-            action_type=policy.action_type,
-            high_risk=True,
-            reason="Vault tools are restricted to configured Sparkbot operators.",
         )
 
     if policy.default_action == "deny":

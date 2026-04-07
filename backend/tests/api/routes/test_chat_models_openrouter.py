@@ -196,6 +196,7 @@ def test_stream_chat_with_tools_keeps_forced_local_off_token_guardian(monkeypatc
 
     class _FakeMessage:
         tool_calls = None
+        content = "LOCAL_ONLY"
 
         def model_dump(self, exclude_none: bool = True):
             return {"role": "assistant", "content": "LOCAL_ONLY"}
@@ -256,7 +257,6 @@ def test_stream_chat_with_tools_keeps_forced_local_off_token_guardian(monkeypatc
 
     assert calls == [
         ("ollama/custom-local:latest", False),
-        ("ollama/custom-local:latest", True),
     ]
     assert any(event.get("type") == "routing" for event in events)
     assert any(event.get("token") == "LOCAL_ONLY" for event in events)
@@ -321,7 +321,6 @@ def test_stream_chat_with_tools_keeps_default_openrouter_on_openrouter_provider(
 
     assert calls == [
         ("openrouter/openrouter/free", False),
-        ("openrouter/openrouter/free", True),
     ]
     assert route_model_available_models
     assert route_model_available_models[0] == {"openrouter/openrouter/free", "openrouter/openai/gpt-4o-mini"}
@@ -401,7 +400,6 @@ def test_stream_chat_with_tools_keeps_default_local_on_ollama_provider(monkeypat
 
     assert calls == [
         ("ollama/custom-local:latest", False),
-        ("ollama/custom-local:latest", True),
     ]
     assert route_model_available_models
     assert "ollama/custom-local:latest" in route_model_available_models[0]
