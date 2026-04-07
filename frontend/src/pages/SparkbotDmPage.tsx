@@ -1207,7 +1207,8 @@ function SparkbotSettingsDialog({
               {/* Token Guardian */}
               {(() => {
                 const mode = dashboardSummary?.summary?.token_guardian_mode ?? tokenGuardianMode ?? "off"
-                const liveReady = dashboardSummary?.today?.token_guardian.live_ready
+                const liveReady = dashboardSummary?.today?.token_guardian?.live_ready
+                const tg = dashboardSummary?.today?.token_guardian
                 return (
                   <div className={`rounded-lg px-3 py-3 ${mode === "live" ? "bg-emerald-50/50 dark:bg-emerald-950/30 border border-emerald-500/20" : mode === "shadow" ? "bg-sky-50/50 dark:bg-sky-950/30 border border-sky-500/20" : "bg-muted/40 border"}`}>
                     <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Token Guardian</div>
@@ -1217,6 +1218,26 @@ function SparkbotSettingsDialog({
                     <div className="mt-0.5 text-[11px] text-muted-foreground">
                       {mode === "shadow" ? "Observing — no auto-routing" : mode === "live" ? (liveReady ? "Live routing active" : "No targets configured") : "Routing disabled"}
                     </div>
+                    {tg && (
+                      <div className="mt-2 grid grid-cols-2 gap-1">
+                        <div className="rounded bg-background/60 px-2 py-1 text-center">
+                          <div className="text-[10px] text-muted-foreground">Requests</div>
+                          <div className="text-xs font-semibold tabular-nums">{tg.requests ?? 0}</div>
+                        </div>
+                        <div className="rounded bg-background/60 px-2 py-1 text-center">
+                          <div className="text-[10px] text-muted-foreground">Tokens</div>
+                          <div className="text-xs font-semibold tabular-nums">{(tg.total_tokens ?? 0).toLocaleString()}</div>
+                        </div>
+                        <div className="rounded bg-background/60 px-2 py-1 text-center">
+                          <div className="text-[10px] text-muted-foreground">Switches</div>
+                          <div className="text-xs font-semibold tabular-nums">{tg.suggested_switches_24h ?? 0}</div>
+                        </div>
+                        <div className="rounded bg-background/60 px-2 py-1 text-center">
+                          <div className="text-[10px] text-muted-foreground">Saved (24h)</div>
+                          <div className="text-xs font-semibold tabular-nums">${(tg.estimated_savings_24h ?? 0).toFixed(4)}</div>
+                        </div>
+                      </div>
+                    )}
                     <div className="mt-2 flex gap-1.5">
                       <select
                         value={tokenGuardianMode}
@@ -1279,13 +1300,13 @@ function SparkbotSettingsDialog({
                   <option value="live">Live</option>
                 </select>
                 <div className="mt-1 text-xs text-muted-foreground">
-                  {dashboardSummary?.today?.token_guardian.live_ready ? "Live-ready" : "No live route targets configured"}
+                  {dashboardSummary?.today?.token_guardian?.live_ready ? "Live-ready" : "No live route targets configured"}
                 </div>
               </div>
               <div className="rounded-lg bg-muted/40 px-3 py-3">
                 <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Allowed models</div>
                 <div className="mt-1 text-xs text-muted-foreground">
-                  {dashboardSummary?.today?.token_guardian.allowed_live_models.join(", ") || "None"}
+                  {dashboardSummary?.today?.token_guardian?.allowed_live_models?.join(", ") || "None"}
                 </div>
               </div>
             </div>
