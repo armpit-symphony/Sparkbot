@@ -3,6 +3,6 @@
 set -e
 set -x
 
-coverage run -m pytest tests/
+coverage run -m pytest tests/ -v --tb=short
 coverage report
 coverage html --title "${@-coverage}"
