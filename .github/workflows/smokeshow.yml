@@ -7,8 +7,9 @@ on:
 
 jobs:
   smokeshow:
-    if: ${{ secrets.SMOKESHOW_AUTH_KEY != '' }}
+    if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
+    continue-on-error: true
     permissions:
       actions: read
       statuses: write
