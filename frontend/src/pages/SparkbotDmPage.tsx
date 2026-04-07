@@ -1218,26 +1218,24 @@ function SparkbotSettingsDialog({
                     <div className="mt-0.5 text-[11px] text-muted-foreground">
                       {mode === "shadow" ? "Observing — no auto-routing" : mode === "live" ? (liveReady ? "Live routing active" : "No targets configured") : "Routing disabled"}
                     </div>
-                    {tg && (
-                      <div className="mt-2 grid grid-cols-2 gap-1">
-                        <div className="rounded bg-background/60 px-2 py-1 text-center">
-                          <div className="text-[10px] text-muted-foreground">Requests</div>
-                          <div className="text-xs font-semibold tabular-nums">{tg.requests ?? 0}</div>
-                        </div>
-                        <div className="rounded bg-background/60 px-2 py-1 text-center">
-                          <div className="text-[10px] text-muted-foreground">Tokens</div>
-                          <div className="text-xs font-semibold tabular-nums">{(tg.total_tokens ?? 0).toLocaleString()}</div>
-                        </div>
-                        <div className="rounded bg-background/60 px-2 py-1 text-center">
-                          <div className="text-[10px] text-muted-foreground">Switches</div>
-                          <div className="text-xs font-semibold tabular-nums">{tg.suggested_switches_24h ?? 0}</div>
-                        </div>
-                        <div className="rounded bg-background/60 px-2 py-1 text-center">
-                          <div className="text-[10px] text-muted-foreground">Saved (24h)</div>
-                          <div className="text-xs font-semibold tabular-nums">${(tg.estimated_savings_24h ?? 0).toFixed(4)}</div>
-                        </div>
+                    <div className="mt-2 grid grid-cols-2 gap-1">
+                      <div className="rounded bg-background/60 px-2 py-1 text-center">
+                        <div className="text-[10px] text-muted-foreground">Requests</div>
+                        <div className="text-xs font-semibold tabular-nums">{tg?.requests ?? 0}</div>
                       </div>
-                    )}
+                      <div className="rounded bg-background/60 px-2 py-1 text-center">
+                        <div className="text-[10px] text-muted-foreground">Tokens</div>
+                        <div className="text-xs font-semibold tabular-nums">{(tg?.total_tokens ?? 0).toLocaleString()}</div>
+                      </div>
+                      <div className="rounded bg-background/60 px-2 py-1 text-center">
+                        <div className="text-[10px] text-muted-foreground">Switches</div>
+                        <div className="text-xs font-semibold tabular-nums">{tg?.suggested_switches_24h ?? 0}</div>
+                      </div>
+                      <div className="rounded bg-background/60 px-2 py-1 text-center">
+                        <div className="text-[10px] text-muted-foreground">Saved (24h)</div>
+                        <div className="text-xs font-semibold tabular-nums">${(tg?.estimated_savings_24h ?? 0).toFixed(4)}</div>
+                      </div>
+                    </div>
                     <div className="mt-2 flex gap-1.5">
                       <select
                         value={tokenGuardianMode}
@@ -1313,23 +1311,27 @@ function SparkbotSettingsDialog({
             {/* Stats row */}
             {(() => {
               const tg = dashboardSummary?.today?.token_guardian
-              if (!tg) return null
               const rows = [
-                { label: "Requests", value: tg.requests ?? 0 },
-                { label: "Suggested switches", value: tg.suggested_switches_24h ?? 0 },
-                { label: "Live routes (24h)", value: tg.live_routes_24h ?? 0 },
-                { label: "Total tokens", value: (tg.total_tokens ?? 0).toLocaleString() },
-                { label: "Est. savings (24h)", value: `$${((tg.estimated_savings_24h ?? 0)).toFixed(6)}` },
+                { label: "Requests", value: tg?.requests ?? 0 },
+                { label: "Suggested switches", value: tg?.suggested_switches_24h ?? 0 },
+                { label: "Live routes (24h)", value: tg?.live_routes_24h ?? 0 },
+                { label: "Total tokens", value: (tg?.total_tokens ?? 0).toLocaleString() },
+                { label: "Est. savings (24h)", value: `$${((tg?.estimated_savings_24h ?? 0)).toFixed(6)}` },
               ]
               return (
-                <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5">
-                  {rows.map(r => (
-                    <div key={r.label} className="rounded-lg bg-muted/40 px-3 py-2 text-center">
-                      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{r.label}</div>
-                      <div className="mt-0.5 text-sm font-semibold tabular-nums">{r.value}</div>
-                    </div>
-                  ))}
-                </div>
+                <>
+                  <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5">
+                    {rows.map(r => (
+                      <div key={r.label} className="rounded-lg bg-muted/40 px-3 py-2 text-center">
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{r.label}</div>
+                        <div className="mt-0.5 text-sm font-semibold tabular-nums">{r.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {!tg && (
+                    <p className="mt-2 text-xs text-muted-foreground">Stats populate after your first routed message. Send a chat message to see activity here.</p>
+                  )}
+                </>
               )
             })()}
             {/* Top models */}
