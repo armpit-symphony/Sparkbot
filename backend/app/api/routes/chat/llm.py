@@ -1096,7 +1096,7 @@ async def stream_chat_with_tools(
                         "current_model": route_payload.get("current_model", chosen),
                     }
                 ),
-                tool_result=json.dumps(route_payload)[:1000],
+                tool_result=json.dumps(route_payload)[:8000],
                 user_id=_uuid.UUID(user_id),
                 room_id=_uuid.UUID(room_id),
                 agent_name=agent_name,

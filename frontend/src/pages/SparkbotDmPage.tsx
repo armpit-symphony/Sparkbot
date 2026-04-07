@@ -161,6 +161,13 @@ interface ControlsDashboardSummary {
       live_ready: boolean
       configured_models: string[]
       allowed_live_models: string[]
+      total_tokens: number
+      total_cost: number
+      requests: number
+      live_routes_24h: number
+      suggested_switches_24h: number
+      estimated_savings_24h: number
+      top_models: Array<{ model: string; tokens: number }>
       last_route: {
         created_at: string
         classification: string | null
@@ -1282,6 +1289,45 @@ function SparkbotSettingsDialog({
                 </div>
               </div>
             </div>
+            {/* Stats row */}
+            {(() => {
+              const tg = dashboardSummary?.today?.token_guardian
+              if (!tg) return null
+              const rows = [
+                { label: "Requests", value: tg.requests ?? 0 },
+                { label: "Suggested switches", value: tg.suggested_switches_24h ?? 0 },
+                { label: "Live routes (24h)", value: tg.live_routes_24h ?? 0 },
+                { label: "Total tokens", value: (tg.total_tokens ?? 0).toLocaleString() },
+                { label: "Est. savings (24h)", value: `$${((tg.estimated_savings_24h ?? 0)).toFixed(6)}` },
+              ]
+              return (
+                <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5">
+                  {rows.map(r => (
+                    <div key={r.label} className="rounded-lg bg-muted/40 px-3 py-2 text-center">
+                      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{r.label}</div>
+                      <div className="mt-0.5 text-sm font-semibold tabular-nums">{r.value}</div>
+                    </div>
+                  ))}
+                </div>
+              )
+            })()}
+            {/* Top models */}
+            {(() => {
+              const top = dashboardSummary?.today?.token_guardian?.top_models
+              if (!top?.length) return null
+              return (
+                <div className="mt-2 rounded-lg bg-muted/40 px-3 py-2">
+                  <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Top models (by tokens)</div>
+                  <div className="mt-1 flex flex-wrap gap-2">
+                    {top.map(m => (
+                      <span key={m.model} className="text-xs text-muted-foreground">
+                        <span className="font-medium text-foreground">{m.model}</span> {m.tokens.toLocaleString()}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )
+            })()}
             <div className="mt-3 rounded-lg bg-muted/40 px-3 py-3">
               <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Last route</div>
               {dashboardSummary?.today?.token_guardian?.last_route ? (
