@@ -22,6 +22,7 @@ jobs:
       FIRST_SUPERUSER_PASSWORD: sparkbot-local
       SPARKBOT_PASSPHRASE: sparkbot-local
       BACKEND_CORS_ORIGINS: "http://localhost:3000,http://localhost:5173"
+      WORKSTATION_LIVE_TERMINAL_ENABLED: "false"
 
     steps:
       - name: Checkout
