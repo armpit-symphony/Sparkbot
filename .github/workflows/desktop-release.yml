@@ -448,9 +448,9 @@ jobs:
             WINDOWS_SIGNING_NOTE='> The Windows installer is Authenticode-signed through SignPath Foundation.'
             TRUST_NOTE='> Windows is signed for this release. macOS is still unsigned unless Apple signing and notarization secrets are configured.'
           else
-            WINDOWS_INSTALL_NOTE='**Windows:** Download `*-setup.exe` and run it.'
-            WINDOWS_SIGNING_NOTE='> SmartScreen may show "Windows protected your PC". Click **More info -> Run anyway**. This warning appears because the installer is not Authenticode-signed yet.'
-            TRUST_NOTE='> Windows signing was not configured for this build, so SmartScreen may require an extra click. macOS is still unsigned unless Apple signing and notarization secrets are configured.'
+            WINDOWS_INSTALL_NOTE='**Windows:** Download `*-setup.exe`, then if SmartScreen or your browser blocks it, run this in PowerShell before launching:'$'\n''```powershell'$'\n''Unblock-File "$env:USERPROFILE\Downloads\Sparkbot.Local_*_x64-setup.exe"'$'\n''```'
+            WINDOWS_SIGNING_NOTE='> The installer is not Authenticode-signed. `Unblock-File` removes the browser download flag that triggers the block — no security settings need to be changed.'
+            TRUST_NOTE='> Windows signing was not configured for this build. Use `Unblock-File` as shown above. macOS is still unsigned unless Apple signing and notarization secrets are configured.'
           fi
 
           cat > release-notes.md <<EOF
