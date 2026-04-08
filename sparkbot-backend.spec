@@ -36,6 +36,9 @@ a = Analysis(
         (str(BACKEND_DIR / "app" / "email-templates"), "app/email-templates"),
         # Skill plugins — loaded dynamically at runtime, must be bundled explicitly
         (str(BACKEND_DIR / "skills"), "skills"),
+        # Token Guardian config files (routing.yaml, guardian.yaml, models.yaml)
+        (str(BACKEND_DIR / "app" / "services" / "guardian" / "tokenguardian" / "config"),
+         "app/services/guardian/tokenguardian/config"),
     ] + _litellm_datas + _certifi_datas + _tiktoken_datas,
     hiddenimports=[
         # uvicorn internals not auto-discovered

@@ -1346,8 +1346,8 @@ function SparkbotSettingsDialog({
                       </div>
                     ))}
                   </div>
-                  {!tg && (
-                    <p className="mt-2 text-xs text-muted-foreground">Stats populate after your first routed message. Send a chat message to see activity here.</p>
+                  {(!tg || (tg.requests === 0)) && (
+                    <p className="mt-2 text-xs text-muted-foreground">Stats come from chat messages — type something in the chat box and send it. Task Guardian jobs do not count toward these stats.</p>
                   )}
                 </>
               )
