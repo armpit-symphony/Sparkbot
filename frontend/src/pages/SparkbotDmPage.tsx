@@ -894,6 +894,20 @@ function SparkbotSettingsDialog({
     ?? openRouterModels.find((model) => model.id === modelId)?.label
     ?? modelId.replace("ollama/", "")
 
+  // Grouped stack options for <optgroup> rendering
+  const _providerOrder: Array<[string, string, (id: string) => boolean]> = [
+    ["openrouter", "OpenRouter (OPENROUTER_API_KEY)", (id) => id.startsWith("openrouter/")],
+    ["openai", "OpenAI direct (OPENAI_API_KEY)", (id) => id.startsWith("gpt-")],
+    ["anthropic", "Anthropic direct (ANTHROPIC_API_KEY)", (id) => id.startsWith("claude")],
+    ["google", "Google direct (GOOGLE_API_KEY)", (id) => id.startsWith("gemini/")],
+    ["groq", "Groq direct (GROQ_API_KEY)", (id) => id.startsWith("groq/")],
+    ["minimax", "MiniMax direct (MINIMAX_API_KEY)", (id) => id.startsWith("minimax/")],
+    ["ollama", "Local (Ollama — no API key)", (id) => id.startsWith("ollama/")],
+  ]
+  const stackModelGroups: Array<{ label: string; models: string[] }> = _providerOrder
+    .map(([, label, test]) => ({ label, models: stackModelOptions.filter(test) }))
+    .filter((g) => g.models.length > 0)
+
   const hasOpenRouterConfigured = Boolean(
     modelsConfig?.providers?.find((provider) => provider.id === "openrouter")?.configured,
   )
@@ -1178,7 +1192,11 @@ function SparkbotSettingsDialog({
                   {readyProviderCount > 0 ? `${readyProviderCount} provider path${readyProviderCount > 1 ? "s" : ""}` : "No provider"}
                 </div>
                 <div className="mt-0.5 text-[11px] text-muted-foreground truncate">
-                  {modelStack?.primary || "No model selected"}
+                  {modelsConfig?.default_selection?.model
+                    ? modelOptionLabel(modelsConfig.default_selection.model)
+                    : modelStack?.primary
+                      ? modelOptionLabel(modelStack.primary)
+                      : "No model selected"}
                 </div>
               </div>
 
@@ -1705,16 +1723,16 @@ function SparkbotSettingsDialog({
                   <div className="mb-3">
                     <h3 className="text-sm font-semibold">Four-model stack</h3>
                     <p className="text-xs text-muted-foreground">
-                      Keep the original primary, backup, and heavy-hitter stack available for legacy routing and manual model switching.
+                      Token Guardian routes between these models. <strong>Primary is your active chat model</strong> — saving this stack updates it. Backups are used when the primary is unavailable. Heavy hitter handles complex tasks in live mode.
                     </p>
                   </div>
 
                   <div className="grid gap-3 md:grid-cols-2">
                     {([
-                      ["primary", "Primary"],
+                      ["primary", "Primary (= your active model)"],
                       ["backup_1", "Backup 1"],
                       ["backup_2", "Backup 2"],
-                      ["heavy_hitter", "Heavy hitter"],
+                      ["heavy_hitter", "Heavy hitter (complex tasks)"],
                     ] as const).map(([field, label]) => (
                       <div key={field}>
                         <label className="mb-1 block text-xs font-medium text-muted-foreground">{label}</label>
@@ -1724,10 +1742,14 @@ function SparkbotSettingsDialog({
                           className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
                         >
                           <option value="">Choose a model</option>
-                          {stackModelOptions.map((modelId) => (
-                            <option key={`${field}-${modelId}`} value={modelId}>
-                              {modelOptionLabel(modelId)}
-                            </option>
+                          {stackModelGroups.map((group) => (
+                            <optgroup key={group.label} label={group.label}>
+                              {group.models.map((modelId) => (
+                                <option key={`${field}-${modelId}`} value={modelId}>
+                                  {modelOptionLabel(modelId)}
+                                </option>
+                              ))}
+                            </optgroup>
                           ))}
                         </select>
                       </div>
