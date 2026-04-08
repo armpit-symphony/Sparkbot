@@ -1,10 +1,15 @@
 confidence_threshold: 0.80
 
+safe_fallback:
+  model: openrouter/openai/gpt-4o-mini
+
 routing_rules:
   coding:
     preferred: claude-sonnet-4-5
     alternatives:
+      - openrouter/anthropic/claude-sonnet-4-5
       - gpt-4o
+      - openrouter/openai/gpt-4o
       - groq/llama-3.3-70b-versatile
     keywords:
       - code
@@ -25,8 +30,11 @@ routing_rules:
   data_analysis:
     preferred: gpt-4o
     alternatives:
+      - openrouter/openai/gpt-4o
       - claude-sonnet-4-5
+      - openrouter/anthropic/claude-sonnet-4-5
       - gemini/gemini-2.0-flash
+      - openrouter/google/gemini-2.0-flash-001
     keywords:
       - analyze
       - data
@@ -44,7 +52,9 @@ routing_rules:
   creative:
     preferred: claude-sonnet-4-5
     alternatives:
+      - openrouter/anthropic/claude-sonnet-4-5
       - gpt-4o-mini
+      - openrouter/openai/gpt-4o-mini
     keywords:
       - write
       - story
@@ -60,7 +70,9 @@ routing_rules:
   reasoning:
     preferred: claude-sonnet-4-5
     alternatives:
+      - openrouter/anthropic/claude-sonnet-4-5
       - gpt-4o
+      - openrouter/openai/gpt-4o
     keywords:
       - explain
       - reason
@@ -76,8 +88,11 @@ routing_rules:
   simple_qa:
     preferred: minimax/MiniMax-M2.5
     alternatives:
+      - openrouter/minimax/minimax-01
       - gpt-4o-mini
+      - openrouter/openai/gpt-4o-mini
       - gemini/gemini-2.0-flash
+      - openrouter/google/gemini-2.0-flash-001
     max_length: 100
     keywords:
       - what
@@ -103,5 +118,7 @@ routing_rules:
   general:
     preferred: gpt-4o-mini
     alternatives:
+      - openrouter/openai/gpt-4o-mini
       - gemini/gemini-2.0-flash
+      - openrouter/google/gemini-2.0-flash-001
       - minimax/MiniMax-M2.5

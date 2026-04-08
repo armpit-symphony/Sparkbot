@@ -259,11 +259,28 @@ def route_model(
     *,
     available_models: set[str] | list[str] | tuple[str, ...] | None = None,
 ) -> tuple[str, dict[str, Any] | None]:
+    import logging as _logging
+    _log = _logging.getLogger(__name__)
+
     mode = token_guardian_mode()
     if mode == "off":
         return current_model, None
 
-    payload = _build_route_payload(query, current_model, mode)
+    try:
+        payload = _build_route_payload(query, current_model, mode)
+    except Exception as _pipe_err:
+        _log.debug("Token Guardian pipeline error (route_model): %s", _pipe_err, exc_info=True)
+        # Pipeline failed — count the attempt but don't block the request
+        try:
+            _monitor().record_usage(
+                _estimate_tokens(query),
+                current_model,
+                action=f"token_guardian_{mode}_pipeline_error",
+            )
+        except Exception:
+            pass
+        return current_model, None
+
     if not payload:
         return current_model, None
 
@@ -308,12 +325,28 @@ def route_model(
     return chosen_model, payload
 
 
+def _user_stack_models() -> list[str]:
+    """Return the user's configured model stack (primary + backups) as a flat list."""
+    try:
+        from app.api.routes.chat.llm import get_model_stack, _default_model
+        stack = get_model_stack()
+        primary = _default_model()
+        all_models = [primary] + [v for v in stack.values() if v and v != primary]
+        return [m for m in all_models if m]
+    except Exception:
+        return []
+
+
 def get_token_guardian_stats() -> dict[str, Any]:
     stats = _monitor().get_stats()
     stats["mode"] = token_guardian_mode()
     stats["shadow_enabled"] = token_guardian_shadow_enabled()
     stats["live_enabled"] = token_guardian_live_enabled()
-    model_pool = _known_routable_models()
+    # Merge routing.yaml model pool with user's actual stack so OpenRouter users
+    # see their models as "configured" even if routing.yaml uses direct-provider IDs.
+    routing_pool = _known_routable_models()
+    stack_pool = _user_stack_models()
+    model_pool = list(dict.fromkeys(routing_pool + stack_pool))  # deduped, order preserved
     configured_models = _configured_models(model_pool)
     allowed_models = _live_allowlist(model_pool)
     stats["configured_models"] = configured_models

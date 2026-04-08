@@ -1006,7 +1006,8 @@ async def stream_chat_with_tools(
                 )
                 route_payload["cross_provider_fallback"] = bool(route_context.get("cross_provider_fallback"))
                 route_payload["provider_authoritative"] = not bool(route_context.get("cross_provider_fallback"))
-            except Exception:
+            except Exception as _tg_err:
+                log.debug("Token Guardian route_model raised: %s", _tg_err, exc_info=True)
                 route_payload = _provider_authoritative_route_payload(
                     message=latest_user_message,
                     route_context=route_context,
