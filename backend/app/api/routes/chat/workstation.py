@@ -15,7 +15,7 @@ from sqlalchemy import select
 
 from app.api.deps import CurrentChatUser, SessionDep
 from app.models import ChatRoom, ChatRoomMember
-from app.services.guardian import task_guardian as tg
+from app.services.guardian.task_guardian import list_tasks_by_user
 from app.api.routes.chat.llm import get_model_stack, model_label
 
 router = APIRouter(tags=["workstation"])
@@ -32,7 +32,7 @@ def get_workstation_overview(
     stack_labels = {k: model_label(v) if v else "" for k, v in stack.items()}
 
     # All guardian tasks for this user across all rooms
-    tasks = tg.list_tasks_by_user(user_id=str(current_user.id), limit=50)
+    tasks = list_tasks_by_user(user_id=str(current_user.id), limit=50)
 
     # Recent meeting rooms the user belongs to
     stmt = (
