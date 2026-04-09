@@ -64,6 +64,7 @@ _PROVIDER_ENV_KEYS = {
     "google_api_key": "GOOGLE_API_KEY",
     "groq_api_key": "GROQ_API_KEY",
     "minimax_api_key": "MINIMAX_API_KEY",
+    "xai_api_key": "XAI_API_KEY",
 }
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[5]
@@ -133,6 +134,7 @@ def _provider_catalog(ollama_status: dict[str, Any] | None = None) -> list[dict[
         ("google", "Google", "GOOGLE_API_KEY"),
         ("groq", "Groq", "GROQ_API_KEY"),
         ("minimax", "MiniMax", "MINIMAX_API_KEY"),
+        ("xai", "xAI (Grok)", "XAI_API_KEY"),
     ]
     items: list[dict[str, Any]] = []
     for provider_id, label, env_key in ordered:
@@ -325,6 +327,7 @@ class ProviderSecretsInput(BaseModel):
     google_api_key: str | None = None
     groq_api_key: str | None = None
     minimax_api_key: str | None = None
+    xai_api_key: str | None = None
     ollama_base_url: str | None = None
 
 

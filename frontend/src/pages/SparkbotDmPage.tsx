@@ -278,10 +278,11 @@ interface ProviderTokenDrafts {
   google_api_key: string
   groq_api_key: string
   minimax_api_key: string
+  xai_api_key: string
 }
 
 interface DefaultModelSelectionForm {
-  provider: "openrouter" | "ollama" | "openai" | "anthropic" | "google" | "groq" | "minimax"
+  provider: "openrouter" | "ollama" | "openai" | "anthropic" | "google" | "groq" | "minimax" | "xai"
   model: string
 }
 
@@ -788,7 +789,6 @@ function SparkbotSettingsDialog({
   modelsConfig,
   modelStack,
   defaultSelection,
-  routingPolicy,
   localDefaultModel,
   agentOverrides,
   openRouterModels,
@@ -826,7 +826,6 @@ function SparkbotSettingsDialog({
   onSaveModelStack,
   onSaveProviderTokens,
   onSaveDefaultSelection,
-  onRoutingPolicyChange,
   onSaveAgentOverrides,
   onLoadOpenRouterModels,
   onSaveComms,
@@ -900,6 +899,7 @@ function SparkbotSettingsDialog({
     ["openai", "OpenAI direct (OPENAI_API_KEY)", (id) => id.startsWith("gpt-")],
     ["anthropic", "Anthropic direct (ANTHROPIC_API_KEY)", (id) => id.startsWith("claude")],
     ["google", "Google direct (GOOGLE_API_KEY)", (id) => id.startsWith("gemini/")],
+    ["xai", "xAI direct (XAI_API_KEY)", (id) => id.startsWith("xai/")],
     ["groq", "Groq direct (GROQ_API_KEY)", (id) => id.startsWith("groq/")],
     ["minimax", "MiniMax direct (MINIMAX_API_KEY)", (id) => id.startsWith("minimax/")],
     ["ollama", "Local (Ollama — no API key)", (id) => id.startsWith("ollama/")],
@@ -912,11 +912,11 @@ function SparkbotSettingsDialog({
     modelsConfig?.providers?.find((provider) => provider.id === "openrouter")?.configured,
   )
   const directProviderLabel: Record<string, string> = {
-    openai: "OpenAI", anthropic: "Anthropic", google: "Google", groq: "Groq", minimax: "MiniMax",
+    openai: "OpenAI", anthropic: "Anthropic", google: "Google", groq: "Groq", minimax: "MiniMax", xai: "xAI",
   }
   const directProviderKeyField: Record<string, keyof ProviderTokenDrafts> = {
     openai: "openai_api_key", anthropic: "anthropic_api_key",
-    google: "google_api_key", groq: "groq_api_key", minimax: "minimax_api_key",
+    google: "google_api_key", groq: "groq_api_key", minimax: "minimax_api_key", xai: "xai_api_key",
   }
   const directProviderIsConfigured = (id: string) =>
     Boolean(modelsConfig?.providers?.find((p) => p.id === id)?.configured)
@@ -1054,20 +1054,30 @@ function SparkbotSettingsDialog({
                 </div>
               </div>
               <div className="rounded-lg border bg-background/60 px-3 py-3">
-                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                  {showAdvancedControls ? "Good first prompts" : "Good first checks"}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Room execution gate</div>
+                  <button onClick={onRefresh} className="rounded border px-1.5 py-0.5 text-[10px] hover:bg-muted" type="button">
+                    <span className="inline-flex items-center gap-1"><RefreshCw className="size-3" /> Refresh</span>
+                  </button>
                 </div>
-                <div className="mt-2 space-y-2 text-xs text-muted-foreground">
-                  <div><code className="rounded bg-muted px-1 py-0.5">Reply with the single word HELLO.</code></div>
-                  <div><code className="rounded bg-muted px-1 py-0.5">@researcher Reply with the single word LOCAL.</code></div>
-                  <div><code className="rounded bg-muted px-1 py-0.5">@coder Reply with the single word CLOUD.</code></div>
-                  {showAdvancedControls ? (
-                    <>
-                      <div><code className="rounded bg-muted px-1 py-0.5">Give me a morning brief for today.</code></div>
-                      <div><code className="rounded bg-muted px-1 py-0.5">Show me anything waiting on my approval.</code></div>
-                    </>
-                  ) : null}
+                <div className="mt-2 text-xs text-muted-foreground">
+                  Server and SSH tools fail closed unless this room is explicitly allowed to execute them.
                 </div>
+                <label className="mt-2 flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 h-4 w-4 shrink-0"
+                    checked={Boolean(room?.execution_allowed)}
+                    disabled={savingExecution || !room}
+                    onChange={(e) => onToggleExecution(e.target.checked)}
+                  />
+                  <div>
+                    <div className="text-xs font-medium">Allow machine operations in this room</div>
+                    <div className="text-[10px] text-muted-foreground">Required for `server_read_command`, `ssh_read_command`, and `server_manage_service`.</div>
+                  </div>
+                </label>
+                {executionSaved && <p className="mt-1 text-[10px] font-medium text-green-600">Saved.</p>}
+                {executionError && <p className="mt-1 text-[10px] font-medium text-destructive">{executionError}</p>}
               </div>
               <div className="rounded-lg border border-emerald-500/20 bg-emerald-50/30 dark:bg-emerald-950/20 px-3 py-3">
                 <div className="text-[11px] uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
@@ -1093,77 +1103,111 @@ function SparkbotSettingsDialog({
             </div>
           </section>
 
-          <section className="rounded-xl border p-4">
-            <div className="mb-3">
-              <h2 className="text-sm font-semibold">Room persona</h2>
-              <p className="text-xs text-muted-foreground">
-                Optional instruction injected at the start of every system prompt in this room. Use it to set a tone, focus, or role. Leave blank for the default Sparkbot personality.
-              </p>
-            </div>
-            <textarea
-              value={roomPersona}
-              onChange={(e) => onPersonaChange(e.target.value)}
-              placeholder='e.g. "You are a concise office assistant. Always reply in bullet points and keep answers under 5 lines."'
-              rows={3}
-              maxLength={500}
-              className="w-full rounded-md border bg-muted/30 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring/30 resize-none"
-            />
-            <div className="mt-2 flex items-center justify-between">
-              <span className="text-[11px] text-muted-foreground">
-                {personaSaved ? <span className="text-green-600 font-medium">Saved</span> : `${roomPersona.length}/500`}
-              </span>
-              <button
-                type="button"
-                onClick={onSavePersona}
-                disabled={savingPersona}
-                className="rounded-md bg-primary px-4 py-1.5 text-xs text-primary-foreground disabled:opacity-50"
-              >
-                {savingPersona ? "Saving…" : "Save persona"}
-              </button>
-            </div>
-          </section>
-
           {showAdvancedControls ? <div className="grid gap-4 lg:grid-cols-2">
           <section className="rounded-xl border p-4">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-sm font-semibold">Room execution gate</h2>
-                <p className="text-xs text-muted-foreground">
-                  Server and SSH tools fail closed unless this room is explicitly allowed to execute them.
-                </p>
-              </div>
-              <button
-                onClick={onRefresh}
-                className="rounded-md border px-2 py-1 text-xs hover:bg-muted"
-                type="button"
-              >
-                <span className="inline-flex items-center gap-1">
-                  <RefreshCw className="size-3.5" />
-                  Refresh
-                </span>
-              </button>
+            <div className="mb-3">
+              <h2 className="text-sm font-semibold">Token Guardian</h2>
+              <p className="text-xs text-muted-foreground">
+                Model routing is global — routes requests to the best-fit model based on query classification.
+              </p>
             </div>
-            <label className="flex items-center justify-between gap-3 rounded-lg bg-muted/40 px-3 py-3">
-              <div>
-                <div className="text-sm font-medium">Allow machine operations in this room</div>
-                <div className="text-xs text-muted-foreground">
-                  Required for `server_read_command`, `ssh_read_command`, and `server_manage_service`.
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="rounded-lg bg-muted/40 px-3 py-3">
+                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Mode</div>
+                <select
+                  value={tokenGuardianMode}
+                  onChange={(e) => onTokenGuardianModeChange(e.target.value)}
+                  className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                >
+                  <option value="off">Off</option>
+                  <option value="shadow">Shadow</option>
+                  <option value="live">Live</option>
+                </select>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {dashboardSummary?.today?.token_guardian?.live_ready ? "Live-ready" : "No live route targets configured"}
                 </div>
               </div>
-              <input
-                type="checkbox"
-                className="h-4 w-4"
-                checked={Boolean(room?.execution_allowed)}
-                disabled={savingExecution || !room}
-                onChange={(e) => onToggleExecution(e.target.checked)}
-              />
-            </label>
-            {executionSaved && (
-              <p className="mt-2 text-xs font-medium text-green-600">Gate setting saved.</p>
-            )}
-            {executionError && (
-              <p className="mt-2 text-xs font-medium text-destructive">{executionError}</p>
-            )}
+              <div className="rounded-lg bg-muted/40 px-3 py-3">
+                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Allowed models</div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {dashboardSummary?.today?.token_guardian?.allowed_live_models?.join(", ") || "None"}
+                </div>
+              </div>
+            </div>
+            {(() => {
+              const tg = dashboardSummary?.today?.token_guardian
+              const rows = [
+                { label: "Requests", value: tg?.requests ?? 0 },
+                { label: "Suggested switches", value: tg?.suggested_switches_24h ?? 0 },
+                { label: "Live routes (24h)", value: tg?.live_routes_24h ?? 0 },
+                { label: "Total tokens", value: (tg?.total_tokens ?? 0).toLocaleString() },
+                { label: "Est. savings (24h)", value: `$${((tg?.estimated_savings_24h ?? 0)).toFixed(6)}` },
+              ]
+              return (
+                <>
+                  <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5">
+                    {rows.map(r => (
+                      <div key={r.label} className="rounded-lg bg-muted/40 px-3 py-2 text-center">
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{r.label}</div>
+                        <div className="mt-0.5 text-sm font-semibold tabular-nums">{r.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {(!tg || (tg.requests === 0)) && (
+                    <p className="mt-2 text-xs text-muted-foreground">Stats come from chat messages — type something in the chat box and send it. Task Guardian jobs do not count toward these stats.</p>
+                  )}
+                </>
+              )
+            })()}
+            {(() => {
+              const top = dashboardSummary?.today?.token_guardian?.top_models
+              if (!top?.length) return null
+              return (
+                <div className="mt-2 rounded-lg bg-muted/40 px-3 py-2">
+                  <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Top models (by tokens)</div>
+                  <div className="mt-1 flex flex-wrap gap-2">
+                    {top.map(m => (
+                      <span key={m.model} className="text-xs text-muted-foreground">
+                        <span className="font-medium text-foreground">{m.model}</span> {m.tokens.toLocaleString()}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )
+            })()}
+            <div className="mt-3 rounded-lg bg-muted/40 px-3 py-3">
+              <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Last route</div>
+              {dashboardSummary?.today?.token_guardian?.last_route ? (
+                <div className="mt-1 space-y-1 text-xs text-muted-foreground">
+                  <div>
+                    {dashboardSummary.today?.token_guardian?.last_route?.current_model || "unknown"} →{" "}
+                    <span className="font-medium text-foreground">
+                      {dashboardSummary.today?.token_guardian?.last_route?.applied_model || "unknown"}
+                    </span>
+                  </div>
+                  <div>
+                    {dashboardSummary.today?.token_guardian?.last_route?.classification || "general"} ·{" "}
+                    {new Date(dashboardSummary.today?.token_guardian?.last_route?.created_at || "").toLocaleString()}
+                  </div>
+                  <div>Requested {dashboardSummary.today?.token_guardian?.last_route?.selected_model || "unknown"}</div>
+                  {dashboardSummary.today?.token_guardian?.last_route?.fallback_reason ? (
+                    <div>{dashboardSummary.today?.token_guardian?.last_route?.fallback_reason}</div>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="mt-1 text-xs text-muted-foreground">No routed request recorded yet.</div>
+              )}
+            </div>
+            <div className="mt-3 flex justify-end">
+              <button
+                type="button"
+                onClick={onSaveTokenGuardianMode}
+                disabled={savingTokenGuardianMode}
+                className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50"
+              >
+                {savingTokenGuardianMode ? "Saving..." : "Save routing mode"}
+              </button>
+            </div>
           </section>
 
           <section className="rounded-xl border p-4">
@@ -1222,61 +1266,6 @@ function SparkbotSettingsDialog({
                 )
               })()}
 
-              {/* Token Guardian */}
-              {(() => {
-                const mode = dashboardSummary?.summary?.token_guardian_mode ?? tokenGuardianMode ?? "off"
-                const liveReady = dashboardSummary?.today?.token_guardian?.live_ready
-                const tg = dashboardSummary?.today?.token_guardian
-                return (
-                  <div className={`rounded-lg px-3 py-3 ${mode === "live" ? "bg-emerald-50/50 dark:bg-emerald-950/30 border border-emerald-500/20" : mode === "shadow" ? "bg-sky-50/50 dark:bg-sky-950/30 border border-sky-500/20" : "bg-muted/40 border"}`}>
-                    <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Token Guardian</div>
-                    <div className={`mt-1 text-sm font-semibold capitalize ${mode === "live" ? "text-emerald-700 dark:text-emerald-400" : mode === "shadow" ? "text-sky-700 dark:text-sky-400" : "text-muted-foreground"}`}>
-                      {mode}
-                    </div>
-                    <div className="mt-0.5 text-[11px] text-muted-foreground">
-                      {mode === "shadow" ? "Observing — no auto-routing" : mode === "live" ? (liveReady ? "Live routing active" : "No targets configured") : "Routing disabled"}
-                    </div>
-                    <div className="mt-2 grid grid-cols-2 gap-1">
-                      <div className="rounded bg-background/60 px-2 py-1 text-center">
-                        <div className="text-[10px] text-muted-foreground">Requests</div>
-                        <div className="text-xs font-semibold tabular-nums">{tg?.requests ?? 0}</div>
-                      </div>
-                      <div className="rounded bg-background/60 px-2 py-1 text-center">
-                        <div className="text-[10px] text-muted-foreground">Tokens</div>
-                        <div className="text-xs font-semibold tabular-nums">{(tg?.total_tokens ?? 0).toLocaleString()}</div>
-                      </div>
-                      <div className="rounded bg-background/60 px-2 py-1 text-center">
-                        <div className="text-[10px] text-muted-foreground">Switches</div>
-                        <div className="text-xs font-semibold tabular-nums">{tg?.suggested_switches_24h ?? 0}</div>
-                      </div>
-                      <div className="rounded bg-background/60 px-2 py-1 text-center">
-                        <div className="text-[10px] text-muted-foreground">Saved (24h)</div>
-                        <div className="text-xs font-semibold tabular-nums">${(tg?.estimated_savings_24h ?? 0).toFixed(4)}</div>
-                      </div>
-                    </div>
-                    <div className="mt-2 flex gap-1.5">
-                      <select
-                        value={tokenGuardianMode}
-                        onChange={(e) => onTokenGuardianModeChange(e.target.value)}
-                        className="flex-1 rounded border bg-background px-1.5 py-1 text-xs outline-none"
-                      >
-                        <option value="off">Off</option>
-                        <option value="shadow">Shadow</option>
-                        <option value="live">Live</option>
-                      </select>
-                      <button
-                        type="button"
-                        onClick={onSaveTokenGuardianMode}
-                        disabled={savingTokenGuardianMode}
-                        className="rounded bg-primary px-2 py-1 text-[11px] text-primary-foreground disabled:opacity-50"
-                      >
-                        {savingTokenGuardianMode ? "…" : "Apply"}
-                      </button>
-                    </div>
-                  </div>
-                )
-              })()}
-
               {/* Comms + Approvals */}
               <div className={`rounded-lg px-3 py-3 ${enabledChannelCount > 0 ? "bg-emerald-50/50 dark:bg-emerald-950/30 border border-emerald-500/20" : "bg-muted/40 border"}`}>
                 <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Comms</div>
@@ -1296,124 +1285,12 @@ function SparkbotSettingsDialog({
           </section>
           </div> : null}
 
-          {showAdvancedControls ? <section className="rounded-xl border p-4">
-            <div className="mb-3">
-              <h2 className="text-sm font-semibold">Function routing</h2>
-              <p className="text-xs text-muted-foreground">
-                Token Guardian model routing is global. This room gate still separately controls machine operations.
-              </p>
-            </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="rounded-lg bg-muted/40 px-3 py-3">
-                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Mode</div>
-                <select
-                  value={tokenGuardianMode}
-                  onChange={(e) => onTokenGuardianModeChange(e.target.value)}
-                  className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
-                >
-                  <option value="off">Off</option>
-                  <option value="shadow">Shadow</option>
-                  <option value="live">Live</option>
-                </select>
-                <div className="mt-1 text-xs text-muted-foreground">
-                  {dashboardSummary?.today?.token_guardian?.live_ready ? "Live-ready" : "No live route targets configured"}
-                </div>
-              </div>
-              <div className="rounded-lg bg-muted/40 px-3 py-3">
-                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Allowed models</div>
-                <div className="mt-1 text-xs text-muted-foreground">
-                  {dashboardSummary?.today?.token_guardian?.allowed_live_models?.join(", ") || "None"}
-                </div>
-              </div>
-            </div>
-            {/* Stats row */}
-            {(() => {
-              const tg = dashboardSummary?.today?.token_guardian
-              const rows = [
-                { label: "Requests", value: tg?.requests ?? 0 },
-                { label: "Suggested switches", value: tg?.suggested_switches_24h ?? 0 },
-                { label: "Live routes (24h)", value: tg?.live_routes_24h ?? 0 },
-                { label: "Total tokens", value: (tg?.total_tokens ?? 0).toLocaleString() },
-                { label: "Est. savings (24h)", value: `$${((tg?.estimated_savings_24h ?? 0)).toFixed(6)}` },
-              ]
-              return (
-                <>
-                  <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5">
-                    {rows.map(r => (
-                      <div key={r.label} className="rounded-lg bg-muted/40 px-3 py-2 text-center">
-                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{r.label}</div>
-                        <div className="mt-0.5 text-sm font-semibold tabular-nums">{r.value}</div>
-                      </div>
-                    ))}
-                  </div>
-                  {(!tg || (tg.requests === 0)) && (
-                    <p className="mt-2 text-xs text-muted-foreground">Stats come from chat messages — type something in the chat box and send it. Task Guardian jobs do not count toward these stats.</p>
-                  )}
-                </>
-              )
-            })()}
-            {/* Top models */}
-            {(() => {
-              const top = dashboardSummary?.today?.token_guardian?.top_models
-              if (!top?.length) return null
-              return (
-                <div className="mt-2 rounded-lg bg-muted/40 px-3 py-2">
-                  <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Top models (by tokens)</div>
-                  <div className="mt-1 flex flex-wrap gap-2">
-                    {top.map(m => (
-                      <span key={m.model} className="text-xs text-muted-foreground">
-                        <span className="font-medium text-foreground">{m.model}</span> {m.tokens.toLocaleString()}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )
-            })()}
-            <div className="mt-3 rounded-lg bg-muted/40 px-3 py-3">
-              <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Last route</div>
-              {dashboardSummary?.today?.token_guardian?.last_route ? (
-                <div className="mt-1 space-y-1 text-xs text-muted-foreground">
-                  <div>
-                    {dashboardSummary.today?.token_guardian?.last_route?.current_model || "unknown"} →{" "}
-                    <span className="font-medium text-foreground">
-                      {dashboardSummary.today?.token_guardian?.last_route?.applied_model || "unknown"}
-                    </span>
-                  </div>
-                  <div>
-                    {dashboardSummary.today?.token_guardian?.last_route?.classification || "general"} ·{" "}
-                    {new Date(dashboardSummary.today?.token_guardian?.last_route?.created_at || "").toLocaleString()}
-                  </div>
-                  <div>
-                    Requested {dashboardSummary.today?.token_guardian?.last_route?.selected_model || "unknown"}
-                  </div>
-                  {dashboardSummary.today?.token_guardian?.last_route?.fallback_reason ? (
-                    <div>{dashboardSummary.today?.token_guardian?.last_route?.fallback_reason}</div>
-                  ) : null}
-                </div>
-              ) : (
-                <div className="mt-1 text-xs text-muted-foreground">
-                  No routed request recorded yet.
-                </div>
-              )}
-            </div>
-            <div className="mt-3 flex justify-end">
-              <button
-                type="button"
-                onClick={onSaveTokenGuardianMode}
-                disabled={savingTokenGuardianMode}
-                className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50"
-              >
-                {savingTokenGuardianMode ? "Saving..." : "Save routing mode"}
-              </button>
-            </div>
-          </section> : null}
-
           <section className="rounded-xl border p-4">
             <div className="mb-4 flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-sm font-semibold">AI setup</h2>
                 <p className="text-xs text-muted-foreground">
-                  Choose your default AI provider. OpenRouter is the easiest all-in-one cloud path. Use direct keys for OpenAI, Anthropic, Google, Groq, or MiniMax. Ollama runs models privately on this machine.
+                  Choose your default AI provider. OpenRouter is the easiest all-in-one cloud path. Use direct keys for OpenAI, Anthropic, Google, Groq, MiniMax, or xAI. Ollama runs models privately on this machine.
                 </p>
               </div>
               <div className="flex flex-col items-end gap-1">
@@ -1442,6 +1319,7 @@ function SparkbotSettingsDialog({
                       ["google", "Google"],
                       ["groq", "Groq"],
                       ["minimax", "MiniMax"],
+                      ["xai", "xAI"],
                       ["ollama", "Local (Ollama)"],
                     ] as [string, string][]).map(([providerId, label]) => (
                       <button
@@ -1586,30 +1464,6 @@ function SparkbotSettingsDialog({
                       </div>
                     </div>
                   )}
-
-                  <div className="mt-4 rounded-lg border bg-background/60 px-3 py-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-sm font-medium">Default provider is authoritative</div>
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          Everyday chat stays on your chosen default provider. Cross-provider fallback stays off unless you explicitly allow it.
-                        </div>
-                      </div>
-                      <label className="flex items-center gap-2 text-xs font-medium">
-                        <input
-                          type="checkbox"
-                          checked={routingPolicy.crossProviderFallback}
-                          onChange={(e) => onRoutingPolicyChange(e.target.checked)}
-                        />
-                        Allow cross-provider fallback
-                      </label>
-                    </div>
-                    <p className="mt-2 text-[11px] text-muted-foreground">
-                      {routingPolicy.crossProviderFallback
-                        ? "Sparkbot may fall back to another provider if your default provider cannot satisfy a default-route request."
-                        : "Sparkbot will only try models on your chosen default provider for normal everyday chat."}
-                    </p>
-                  </div>
 
                   {error && (defaultSelection.provider === "openrouter" || defaultSelection.provider === "ollama" || directProviderKeyField[defaultSelection.provider] !== undefined) && (
                     <p className="mt-2 text-xs font-medium text-destructive">{error}</p>
@@ -1844,25 +1698,43 @@ function SparkbotSettingsDialog({
               </div>
             </div>
 
-            <div className="mt-4 grid gap-3 md:grid-cols-3">
-              <div className="rounded-lg border bg-background/60 px-3 py-3">
-                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Recommended setup</div>
-                <div className="mt-2 text-xs text-muted-foreground">
-                  Use OpenRouter as the default cloud path, then keep one local Ollama model ready for private or specialist work.
-                </div>
-              </div>
-              <div className="rounded-lg border bg-background/60 px-3 py-3">
-                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Mixed mode</div>
-                <div className="mt-2 text-xs text-muted-foreground">
-                  Default to OpenRouter for everyday chat, then force selected agents to local when you want work kept on this machine.
-                </div>
-              </div>
+            <div className="mt-4">
               <div className="rounded-lg border bg-background/60 px-3 py-3">
                 <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Current default</div>
                 <div className="mt-2 text-xs text-muted-foreground">
                   {modelsConfig?.default_selection?.label ?? modelsConfig?.default_selection?.model ?? "No default selected"}
                 </div>
               </div>
+            </div>
+          </section>
+
+          <section className="rounded-xl border p-4">
+            <div className="mb-3">
+              <h2 className="text-sm font-semibold">Room persona</h2>
+              <p className="text-xs text-muted-foreground">
+                Optional instruction injected at the start of every system prompt in this room. Use it to set a tone, focus, or role. Leave blank for the default Sparkbot personality.
+              </p>
+            </div>
+            <textarea
+              value={roomPersona}
+              onChange={(e) => onPersonaChange(e.target.value)}
+              placeholder='e.g. "You are a concise office assistant. Always reply in bullet points and keep answers under 5 lines."'
+              rows={3}
+              maxLength={500}
+              className="w-full rounded-md border bg-muted/30 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring/30 resize-none"
+            />
+            <div className="mt-2 flex items-center justify-between">
+              <span className="text-[11px] text-muted-foreground">
+                {personaSaved ? <span className="text-green-600 font-medium">Saved</span> : `${roomPersona.length}/500`}
+              </span>
+              <button
+                type="button"
+                onClick={onSavePersona}
+                disabled={savingPersona}
+                className="rounded-md bg-primary px-4 py-1.5 text-xs text-primary-foreground disabled:opacity-50"
+              >
+                {savingPersona ? "Saving…" : "Save persona"}
+              </button>
             </div>
           </section>
 
@@ -2555,6 +2427,7 @@ function SparkbotDmPage() {
     google_api_key: "",
     groq_api_key: "",
     minimax_api_key: "",
+    xai_api_key: "",
   })
   const [commsForm, setCommsForm] = useState<CommsForm>({
     telegram: { bot_token: "", enabled: true, private_only: true },
@@ -2660,7 +2533,7 @@ function SparkbotDmPage() {
     setModelsConfig(config)
     setTokenGuardianMode(config.token_guardian_mode || "shadow")
     setModelStack(prev => config.stack ?? prev)
-    const _validProviders = new Set(["openrouter", "ollama", "openai", "anthropic", "google", "groq", "minimax"])
+    const _validProviders = new Set(["openrouter", "ollama", "openai", "anthropic", "google", "groq", "minimax", "xai"])
     const _savedProvider = config.default_selection?.provider ?? "openrouter"
     const _resolvedProvider = (_validProviders.has(_savedProvider) ? _savedProvider : "openrouter")
     const _savedModel = config.default_selection?.model || ""
@@ -3046,7 +2919,7 @@ function SparkbotDmPage() {
 
   const handleDefaultSelectionChange = useCallback((field: keyof DefaultModelSelectionForm, value: string) => {
     if (field === "provider") {
-      const _validProviders = new Set(["openrouter", "ollama", "openai", "anthropic", "google", "groq", "minimax"])
+      const _validProviders = new Set(["openrouter", "ollama", "openai", "anthropic", "google", "groq", "minimax", "xai"])
       const nextProvider = (_validProviders.has(value) ? value : "openrouter") as DefaultModelSelectionForm["provider"]
       setDefaultSelection((prev) => {
         let nextModel = ""
@@ -3146,6 +3019,7 @@ function SparkbotDmPage() {
           google_api_key: "",
           groq_api_key: "",
           minimax_api_key: "",
+          xai_api_key: "",
         })
         if (payload.openrouter_api_key) {
           await loadOpenRouterModels()
@@ -3198,7 +3072,7 @@ function SparkbotDmPage() {
     if (!chosenDefaultModel) {
       const _PROVIDER_NAMES: Record<string, string> = {
         openrouter: "OpenRouter", ollama: "Ollama", openai: "OpenAI",
-        anthropic: "Anthropic", google: "Google", groq: "Groq", minimax: "MiniMax",
+        anthropic: "Anthropic", google: "Google", groq: "Groq", minimax: "MiniMax", xai: "xAI",
       }
       const _pName = _PROVIDER_NAMES[defaultSelection.provider] ?? defaultSelection.provider
       setSettingsError(
@@ -3217,10 +3091,10 @@ function SparkbotDmPage() {
     }
     const _DIRECT_KEY_FIELDS: Record<string, keyof ProviderTokenDrafts> = {
       openai: "openai_api_key", anthropic: "anthropic_api_key",
-      google: "google_api_key", groq: "groq_api_key", minimax: "minimax_api_key",
+      google: "google_api_key", groq: "groq_api_key", minimax: "minimax_api_key", xai: "xai_api_key",
     }
     const _DIRECT_NAMES: Record<string, string> = {
-      openai: "OpenAI", anthropic: "Anthropic", google: "Google", groq: "Groq", minimax: "MiniMax",
+      openai: "OpenAI", anthropic: "Anthropic", google: "Google", groq: "Groq", minimax: "MiniMax", xai: "xAI",
     }
     const _directKeyField = _DIRECT_KEY_FIELDS[defaultSelection.provider]
     if (_directKeyField) {

@@ -123,16 +123,42 @@ SYSTEM_PROMPT = _load_system_prompt()
 
 # Curated model list — only show what's actually usable given configured keys
 AVAILABLE_MODELS: dict[str, str] = {
-    "openrouter/openai/gpt-4o-mini": "OpenRouter · GPT-4o Mini — easy cloud default",
-    "gpt-4o-mini":                   "GPT-4o Mini — fast, cost-effective (default)",
-    "gpt-4o":                        "GPT-4o — most capable OpenAI model",
-    "gpt-4.5":                       "GPT-4.5 — OpenAI advanced reasoning model",
-    "gpt-5-mini":                    "GPT-5 Mini — fast, cost-effective next-gen model",
-    "claude-3-5-haiku-20241022":     "Claude Haiku — fast Anthropic model",
-    "claude-sonnet-4-5":             "Claude Sonnet — balanced Anthropic model",
-    "gemini/gemini-2.0-flash":       "Gemini Flash — fast Google model",
+    # ── OpenRouter (proxy for any model) ───────────────────────────────────────
+    "openrouter/openai/gpt-4o-mini":  "OpenRouter · GPT-4o Mini — easy cloud default",
+    # ── OpenAI ─────────────────────────────────────────────────────────────────
+    "gpt-4o-mini":      "GPT-4o Mini — fast, cost-effective",
+    "gpt-4o":           "GPT-4o — flagship OpenAI model",
+    "gpt-4.5":          "GPT-4.5 — advanced reasoning",
+    "gpt-4.1":          "GPT-4.1 — long-context flagship",
+    "gpt-4.1-mini":     "GPT-4.1 Mini — fast long-context",
+    "gpt-4.1-nano":     "GPT-4.1 Nano — cheapest long-context",
+    "gpt-5":            "GPT-5 — most capable OpenAI model",
+    "gpt-5-mini":       "GPT-5 Mini — fast, cost-effective next-gen",
+    "gpt-5-nano":       "GPT-5 Nano — ultra-fast next-gen",
+    "gpt-5.4":          "GPT-5.4 — latest OpenAI flagship",
+    "gpt-5.4-mini":     "GPT-5.4 Mini — fast 5.4 series",
+    "gpt-5.4-nano":     "GPT-5.4 Nano — lightest 5.4 series",
+    # ── Anthropic ──────────────────────────────────────────────────────────────
+    "claude-haiku-4-5":          "Claude Haiku 4.5 — fastest Anthropic model",
+    "claude-sonnet-4-5":         "Claude Sonnet 4.5 — balanced Anthropic model",
+    "claude-sonnet-4-6":         "Claude Sonnet 4.6 — latest balanced Anthropic",
+    "claude-opus-4-6":           "Claude Opus 4.6 — most capable Anthropic model",
+    # ── Google ─────────────────────────────────────────────────────────────────
+    "gemini/gemini-2.0-flash":       "Gemini 2.0 Flash — fast Google model",
+    "gemini/gemini-3-flash":         "Gemini 3 Flash — fast Gemini 3 model",
+    "gemini/gemini-3.1-flash-lite":  "Gemini 3.1 Flash Lite — lightest Gemini 3.1",
+    "gemini/gemini-3.1-pro":         "Gemini 3.1 Pro — flagship Google model",
+    # ── Groq ───────────────────────────────────────────────────────────────────
     "groq/llama-3.3-70b-versatile":  "Llama 3.3 70B via Groq — very fast",
-    "minimax/MiniMax-M2.5":          "MiniMax M2.5 — reasoning + tool calling (MINIMAX_API_KEY)",
+    # ── MiniMax ────────────────────────────────────────────────────────────────
+    "minimax/MiniMax-M2.5":  "MiniMax M2.5 — reasoning + tool calling",
+    "minimax/MiniMax-M2.7":  "MiniMax M2.7 — latest MiniMax model",
+    # ── xAI (Grok) ─────────────────────────────────────────────────────────────
+    "xai/grok-4.20-0309-reasoning":      "Grok 4.20 Reasoning — xAI deep reasoning",
+    "xai/grok-4.20-0309-non-reasoning":  "Grok 4.20 — xAI fast non-reasoning",
+    "xai/grok-4.20-multi-agent-0309":    "Grok 4.20 Multi-Agent — xAI agentic mode",
+    "xai/grok-4-1-fast-reasoning":       "Grok 4.1 Fast Reasoning — xAI balanced",
+    "xai/grok-4-1-fast-non-reasoning":   "Grok 4.1 Fast — xAI cost-effective",
 }
 
 OLLAMA_MODELS: dict[str, str] = {
@@ -474,6 +500,8 @@ def model_provider(model: str) -> str:
         return "groq"
     if normalized.startswith("minimax/"):
         return "minimax"
+    if normalized.startswith("xai/"):
+        return "xai"
     if normalized.startswith("ollama/"):
         return "ollama"
     return "other"
@@ -493,6 +521,8 @@ def model_is_configured(model: str) -> bool:
         return bool(os.getenv("GROQ_API_KEY", "").strip())
     if provider == "minimax":
         return bool(os.getenv("MINIMAX_API_KEY", "").strip())
+    if provider == "xai":
+        return bool(os.getenv("XAI_API_KEY", "").strip())
     if provider == "ollama":
         # Ollama is always "configured" — it's local, no API key needed
         return True

@@ -123,6 +123,8 @@ def _model_is_configured(model: str) -> bool:
         return _env_or_vault_has("GROQ_API_KEY", "api_key_groq")
     if normalized.startswith("minimax/"):
         return _env_or_vault_has("MINIMAX_API_KEY", "api_key_minimax")
+    if normalized.startswith("xai/"):
+        return _env_or_vault_has("XAI_API_KEY", "api_key_xai")
     if normalized.startswith("openrouter/"):
         return _env_or_vault_has("OPENROUTER_API_KEY", "api_key_openrouter")
     return True
