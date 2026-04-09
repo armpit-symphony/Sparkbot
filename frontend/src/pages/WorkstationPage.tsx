@@ -24,6 +24,10 @@ import {
   Code2,
   LineChart,
   Rocket,
+  Briefcase,
+  Clock,
+  Play,
+  RefreshCw,
 } from "lucide-react"
 import SparkbotSurfaceTabs from "@/components/Common/SparkbotSurfaceTabs"
 import SparkbotSurfaceInfoDialog from "@/components/Common/SparkbotSurfaceInfoDialog"
@@ -50,10 +54,15 @@ import {
 } from "@/lib/sparkbudLaunch"
 import {
   launchMeetingRoom,
+  launchTaskMeeting,
   ROUND_TABLE_SEAT_COUNT,
   loadMeetingDraft,
+  loadTaskMeetingLink,
   normalizeMeetingSeats,
   saveMeetingDraft,
+  saveTaskMeetingLink,
+  type GuardianTaskInfo,
+  type WorkstationMeetingSeatMeta,
 } from "@/lib/workstationMeeting"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -85,6 +94,21 @@ interface CompanionSlotMeta {
   fallbackLabel: string
   fallbackSubtitle: string
   accentHex: string
+}
+
+interface WorkstationTaskRecord extends GuardianTaskInfo {
+  enabled: boolean
+  room_id: string
+  last_run_at: string | null
+  next_run_at: string | null
+  consecutive_failures: number
+}
+
+interface WorkstationOverview {
+  stack: { primary: string; backup_1: string; backup_2: string; heavy_hitter: string }
+  stack_labels: { primary: string; backup_1: string; backup_2: string; heavy_hitter: string }
+  tasks: WorkstationTaskRecord[]
+  meetings: Array<{ id: string; name: string; description?: string; updated_at: string | null; created_at: string | null }>
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -1581,6 +1605,7 @@ interface RoundTablePanelProps {
   eligibleStations: Station[]
   onPickSeat: (seatIndex: number) => void
   onLaunchMeeting: () => void
+  onAutoFillStack: () => void
   launchingMeeting: boolean
   meetingLaunchError?: string | null
 }
@@ -1593,6 +1618,7 @@ function RoundTablePanel({
   eligibleStations,
   onPickSeat,
   onLaunchMeeting,
+  onAutoFillStack,
   launchingMeeting,
   meetingLaunchError,
 }: RoundTablePanelProps) {
@@ -1702,6 +1728,35 @@ function RoundTablePanel({
             hand the floor to the next participant.
           </p>
         </div>
+      </div>
+
+      <div style={{ padding: "12px 16px 0" }}>
+        <button
+          onClick={onAutoFillStack}
+          style={{
+            width: "100%",
+            padding: "8px 0",
+            fontSize: 11,
+            fontWeight: 700,
+            color: "#8b93ff",
+            backgroundColor: "transparent",
+            border: "1px solid rgba(139,147,255,0.3)",
+            borderRadius: 6,
+            cursor: "pointer",
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+            fontFamily: "monospace",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 6,
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.borderColor = "rgba(139,147,255,0.6)" }}
+          onMouseLeave={(e) => { e.currentTarget.style.borderColor = "rgba(139,147,255,0.3)" }}
+        >
+          <Layers size={11} />
+          Auto-fill Stack
+        </button>
       </div>
 
       <div style={{ padding: "14px 16px 0" }}>
@@ -2897,25 +2952,37 @@ export default function WorkstationPage() {
     new Map(),
   )
   const [controlsConfig, setControlsConfig] = useState<SparkbotControlsConfig | null>(null)
+  const [overview, setOverview] = useState<WorkstationOverview | null>(null)
   const [infoOpen, setInfoOpen] = useState(false)
   const [seatPicker, setSeatPicker] = useState<SeatPickerState | null>(null)
   const [launchingSparkBudId, setLaunchingSparkBudId] = useState<string | null>(null)
   const [launchingMeeting, setLaunchingMeeting] = useState(false)
   const [meetingLaunchError, setMeetingLaunchError] = useState<string | null>(null)
+  const [showNewProject, setShowNewProject] = useState(false)
+  const [newProjectName, setNewProjectName] = useState("")
+  const [creatingProject, setCreatingProject] = useState(false)
 
-  useEffect(() => {
-    let cancelled = false
-
-    fetchControlsConfig().then((config) => {
-      if (!cancelled) setControlsConfig(config)
-    }).catch(() => {
-      if (!cancelled) setControlsConfig(null)
-    })
-
-    return () => {
-      cancelled = true
+  const fetchOverview = useCallback(async () => {
+    try {
+      const [configRes, overviewRes] = await Promise.all([
+        fetchControlsConfig(),
+        fetch("/api/v1/chat/workstation/overview", { credentials: "include" }).then((r) =>
+          r.ok ? r.json() : null
+        ).catch(() => null),
+      ])
+      setControlsConfig(configRes)
+      if (overviewRes) setOverview(overviewRes as WorkstationOverview)
+    } catch {
+      // ignore
     }
   }, [])
+
+  useEffect(() => {
+    fetchOverview()
+    const onFocus = () => fetchOverview()
+    window.addEventListener("focus", onFocus)
+    return () => window.removeEventListener("focus", onFocus)
+  }, [fetchOverview])
 
   useEffect(() => {
     saveMeetingDraft({
@@ -2925,7 +2992,47 @@ export default function WorkstationPage() {
     })
   }, [projectRoom])
 
+  // ── Derived from config ────────────────────────────────────────────────────
+  const companionModelStations = buildCompanionModelStations(controlsConfig)
+  const resolvedInviteStations = INVITE_DESKS.map((station) =>
+    resolveInviteStation(station, configuredInvites),
+  )
+  const localTerminalDesk = TERMINALS[0]
+  const roomEligibleStations = [
+    MAIN_DESK,
+    ...companionModelStations.filter((station) => station.status !== "empty"),
+    ...resolvedInviteStations.filter((station) => station.status !== "empty"),
+    ...SPECIALTY_PLACEHOLDERS.filter((station) => station.status !== "empty"),
+  ]
+
   // ── Handlers ───────────────────────────────────────────────────────────────
+
+  // Build seat meta for the 4 stack bots (used for auto-fill and task meetings)
+  const buildStackSeatMeta = useCallback(
+    (companionStations: Station[]): WorkstationMeetingSeatMeta[] => {
+      const meta: WorkstationMeetingSeatMeta[] = [
+        {
+          seatIndex: 0,
+          stationId: MAIN_DESK.id,
+          label: MAIN_DESK.label,
+          accentHex: MAIN_DESK.accentHex,
+        },
+      ]
+      companionStations.forEach((station, i) => {
+        if (station.status !== "empty") {
+          meta.push({
+            seatIndex: i + 1,
+            stationId: station.id,
+            label: station.label,
+            accentHex: station.accentHex,
+          })
+        }
+      })
+      return meta
+    },
+    [],
+  )
+
   const handleNavigate = useCallback(
     (route: string) => {
       if (route === "/dm?controls=open") {
@@ -2944,6 +3051,71 @@ export default function WorkstationPage() {
   const handleRemoveFromRoom = useCallback((id: string) => {
     setProjectRoom((prev) => removeStationFromSeats(prev, id))
   }, [])
+
+  // Auto-fill the 4 stack bots into seats 1-4
+  const handleAutoFillStack = useCallback(() => {
+    const stackIds = [
+      MAIN_DESK.id,
+      "stack-backup_1",
+      "stack-backup_2",
+      "stack-heavy_hitter",
+    ]
+    const newSeats = normalizeMeetingSeats([])
+    let seatIdx = 0
+    for (const id of stackIds) {
+      if (seatIdx >= ROUND_TABLE_SEAT_COUNT) break
+      if (id === MAIN_DESK.id) {
+        newSeats[seatIdx++] = id
+      } else {
+        const companion = companionModelStations.find((s) => s.id === id && s.status !== "empty")
+        if (companion) newSeats[seatIdx++] = id
+      }
+    }
+    setProjectRoom((prev) => ({ ...prev, seats: newSeats }))
+  }, [companionModelStations])
+
+  // Enter (or create) the meeting room for a guardian task
+  const handleEnterTaskMeeting = useCallback(
+    async (task: WorkstationTaskRecord) => {
+      const existingRoomId = loadTaskMeetingLink(task.id)
+      if (existingRoomId) {
+        navigate({ to: "/meeting/$roomId", params: { roomId: existingRoomId } })
+        return
+      }
+      const seatMeta = buildStackSeatMeta(companionModelStations)
+      setLaunchingMeeting(true)
+      setMeetingLaunchError(null)
+      try {
+        const meta = await launchTaskMeeting({ task, seats: seatMeta })
+        saveTaskMeetingLink(task.id, meta.roomId)
+        await fetchOverview()
+        navigate({ to: "/meeting/$roomId", params: { roomId: meta.roomId } })
+      } catch (e) {
+        setMeetingLaunchError(e instanceof Error ? e.message : "Could not launch project meeting.")
+      } finally {
+        setLaunchingMeeting(false)
+      }
+    },
+    [buildStackSeatMeta, companionModelStations, fetchOverview, navigate],
+  )
+
+  // Create a new project as a meeting room (no guardian task)
+  const handleCreateProject = useCallback(async () => {
+    if (!newProjectName.trim() || creatingProject) return
+    setCreatingProject(true)
+    try {
+      const seatMeta = buildStackSeatMeta(companionModelStations)
+      const meta = await launchMeetingRoom({ roomName: newProjectName.trim(), seats: seatMeta })
+      setShowNewProject(false)
+      setNewProjectName("")
+      await fetchOverview()
+      navigate({ to: "/meeting/$roomId", params: { roomId: meta.roomId } })
+    } catch (e) {
+      console.error("Could not create project:", e)
+    } finally {
+      setCreatingProject(false)
+    }
+  }, [buildStackSeatMeta, companionModelStations, creatingProject, fetchOverview, navigate, newProjectName])
 
   const handleAssignSeat = useCallback((seatIndex: number, stationId: string) => {
     setProjectRoom((prev) => assignStationToSeat(prev, stationId, seatIndex))
@@ -2968,17 +3140,6 @@ export default function WorkstationPage() {
   }, [])
 
   const handleClosePanel = useCallback(() => setPanel(null), [])
-  const companionModelStations = buildCompanionModelStations(controlsConfig)
-  const resolvedInviteStations = INVITE_DESKS.map((station) =>
-    resolveInviteStation(station, configuredInvites),
-  )
-  const localTerminalDesk = TERMINALS[0]
-  const roomEligibleStations = [
-    MAIN_DESK,
-    ...companionModelStations.filter((station) => station.status !== "empty"),
-    ...resolvedInviteStations.filter((station) => station.status !== "empty"),
-    ...SPECIALTY_PLACEHOLDERS.filter((station) => station.status !== "empty"),
-  ]
 
   const handleStationClick = useCallback(
     (station: Station) => {
@@ -3466,6 +3627,353 @@ export default function WorkstationPage() {
               </div>
             </div>
           </section>
+
+          {/* ─── Company Operations ────────────────────────────────────── */}
+          <section
+            style={{
+              border: `1px solid ${PLASMA_BORDER}`,
+              borderRadius: 20,
+              background: "linear-gradient(180deg, rgba(7,11,24,0.96), rgba(8,14,28,0.96))",
+              boxShadow: "0 8px 32px rgba(0,0,0,0.24)",
+              padding: 18,
+              display: "flex",
+              flexDirection: "column",
+              gap: 14,
+            }}
+          >
+            {/* Section header */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Briefcase size={14} style={{ color: PLASMA_PRIMARY }} />
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: PLASMA_PRIMARY,
+                    letterSpacing: "0.1em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Company Operations
+                </span>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  onClick={() => fetchOverview()}
+                  style={{
+                    background: "none",
+                    border: "1px solid #1f2937",
+                    borderRadius: 4,
+                    cursor: "pointer",
+                    color: "#6b7280",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    padding: "4px 8px",
+                    fontSize: 9,
+                    letterSpacing: "0.06em",
+                    textTransform: "uppercase",
+                    fontFamily: "monospace",
+                  }}
+                >
+                  <RefreshCw size={10} />
+                  Refresh
+                </button>
+                <button
+                  onClick={() => setShowNewProject((prev) => !prev)}
+                  style={{
+                    background: "none",
+                    border: "1px solid rgba(139,147,255,0.3)",
+                    borderRadius: 4,
+                    cursor: "pointer",
+                    color: "#8b93ff",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    padding: "4px 8px",
+                    fontSize: 9,
+                    letterSpacing: "0.06em",
+                    textTransform: "uppercase",
+                    fontFamily: "monospace",
+                  }}
+                >
+                  <Plus size={10} />
+                  New Project
+                </button>
+              </div>
+            </div>
+
+            {/* New Project form */}
+            {showNewProject && (
+              <div
+                style={{
+                  backgroundColor: "rgba(139,147,255,0.06)",
+                  border: "1px solid rgba(139,147,255,0.2)",
+                  borderRadius: 10,
+                  padding: "12px 14px",
+                  display: "flex",
+                  gap: 8,
+                  alignItems: "center",
+                }}
+              >
+                <input
+                  type="text"
+                  value={newProjectName}
+                  onChange={(e) => setNewProjectName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") void handleCreateProject() }}
+                  placeholder="Project name…"
+                  autoFocus
+                  style={{
+                    flex: 1,
+                    backgroundColor: "#030508",
+                    border: "1px solid rgba(139,147,255,0.3)",
+                    borderRadius: 6,
+                    padding: "7px 10px",
+                    fontSize: 12,
+                    color: "#e2e8f0",
+                    fontFamily: "monospace",
+                    outline: "none",
+                  }}
+                />
+                <button
+                  onClick={() => void handleCreateProject()}
+                  disabled={!newProjectName.trim() || creatingProject}
+                  style={{
+                    padding: "7px 14px",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: newProjectName.trim() && !creatingProject ? "#04101d" : "#374151",
+                    backgroundColor: newProjectName.trim() && !creatingProject ? "#8b93ff" : "#1a2235",
+                    border: "none",
+                    borderRadius: 6,
+                    cursor: newProjectName.trim() && !creatingProject ? "pointer" : "not-allowed",
+                    fontFamily: "monospace",
+                    letterSpacing: "0.06em",
+                    textTransform: "uppercase",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {creatingProject ? "Creating…" : "Launch"}
+                </button>
+                <button
+                  onClick={() => { setShowNewProject(false); setNewProjectName("") }}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    color: "#6b7280",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: 4,
+                  }}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            )}
+
+            {/* Two-column: Active Tasks | Recent Meetings */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+              {/* Active Guardian Tasks */}
+              <div>
+                <div
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    color: "#c7d2fe",
+                    letterSpacing: "0.1em",
+                    textTransform: "uppercase",
+                    marginBottom: 10,
+                  }}
+                >
+                  Guardian Tasks
+                </div>
+                {!overview?.tasks.length ? (
+                  <div
+                    style={{
+                      padding: "10px 12px",
+                      border: "1px dashed rgba(125,211,252,0.14)",
+                      borderRadius: 8,
+                      fontSize: 11,
+                      color: "#4b5563",
+                    }}
+                  >
+                    No tasks yet. Create tasks in Controls → Task Guardian.
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {overview.tasks.map((task) => {
+                      const statusColor =
+                        task.last_status === "success" ? "#4ade80"
+                        : task.last_status === "failed" ? "#f87171"
+                        : task.last_status === "running" ? "#fbbf24"
+                        : "#4b5563"
+                      const linkedRoomId = loadTaskMeetingLink(task.id)
+                      return (
+                        <div
+                          key={task.id}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            padding: "8px 10px",
+                            backgroundColor: "rgba(7,13,28,0.72)",
+                            border: "1px solid rgba(125,211,252,0.1)",
+                            borderRadius: 8,
+                          }}
+                        >
+                          <span
+                            style={{
+                              width: 7,
+                              height: 7,
+                              borderRadius: "50%",
+                              backgroundColor: statusColor,
+                              boxShadow: task.last_status === "running" ? `0 0 6px ${statusColor}` : undefined,
+                              flexShrink: 0,
+                            }}
+                          />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div
+                              style={{
+                                fontSize: 11,
+                                fontWeight: 700,
+                                color: "#cbd5e1",
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                fontFamily: "monospace",
+                              }}
+                            >
+                              {task.name}
+                            </div>
+                            <div style={{ fontSize: 9, color: "#4b5563", marginTop: 1, fontFamily: "monospace" }}>
+                              {task.tool_name}
+                              {task.last_run_at ? ` · ${new Date(task.last_run_at).toLocaleDateString()}` : ""}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => void handleEnterTaskMeeting(task)}
+                            disabled={launchingMeeting}
+                            title={linkedRoomId ? "Re-enter meeting" : "Start project meeting"}
+                            style={{
+                              background: "none",
+                              border: `1px solid ${linkedRoomId ? "rgba(245,158,11,0.4)" : "rgba(139,147,255,0.3)"}`,
+                              borderRadius: 4,
+                              cursor: launchingMeeting ? "not-allowed" : "pointer",
+                              color: linkedRoomId ? "#f59e0b" : "#8b93ff",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 4,
+                              padding: "4px 7px",
+                              fontSize: 9,
+                              letterSpacing: "0.06em",
+                              textTransform: "uppercase",
+                              fontFamily: "monospace",
+                              flexShrink: 0,
+                            }}
+                          >
+                            <Play size={9} />
+                            {linkedRoomId ? "Enter" : "Meet"}
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Recent Meetings */}
+              <div>
+                <div
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    color: "#c7d2fe",
+                    letterSpacing: "0.1em",
+                    textTransform: "uppercase",
+                    marginBottom: 10,
+                  }}
+                >
+                  Active Meetings
+                </div>
+                {!overview?.meetings.length ? (
+                  <div
+                    style={{
+                      padding: "10px 12px",
+                      border: "1px dashed rgba(125,211,252,0.14)",
+                      borderRadius: 8,
+                      fontSize: 11,
+                      color: "#4b5563",
+                    }}
+                  >
+                    No meetings yet. Launch one from the Roundtable or start a project above.
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {overview.meetings.map((meeting) => (
+                      <button
+                        key={meeting.id}
+                        onClick={() => navigate({ to: "/meeting/$roomId", params: { roomId: meeting.id } })}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          padding: "8px 10px",
+                          backgroundColor: "rgba(7,13,28,0.72)",
+                          border: "1px solid rgba(125,211,252,0.1)",
+                          borderRadius: 8,
+                          cursor: "pointer",
+                          textAlign: "left",
+                          width: "100%",
+                          transition: "border-color 0.15s",
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.borderColor = "rgba(245,158,11,0.3)" }}
+                        onMouseLeave={(e) => { e.currentTarget.style.borderColor = "rgba(125,211,252,0.1)" }}
+                      >
+                        <span
+                          style={{
+                            width: 7,
+                            height: 7,
+                            borderRadius: "50%",
+                            backgroundColor: "#f59e0b",
+                            boxShadow: "0 0 5px rgba(245,158,11,0.5)",
+                            flexShrink: 0,
+                          }}
+                        />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div
+                            style={{
+                              fontSize: 11,
+                              fontWeight: 700,
+                              color: "#cbd5e1",
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              fontFamily: "monospace",
+                            }}
+                          >
+                            {meeting.name}
+                          </div>
+                          {meeting.updated_at && (
+                            <div style={{ fontSize: 9, color: "#4b5563", marginTop: 1, fontFamily: "monospace" }}>
+                              <Clock size={8} style={{ display: "inline", verticalAlign: "middle", marginRight: 3 }} />
+                              {new Date(meeting.updated_at).toLocaleDateString()}
+                            </div>
+                          )}
+                        </div>
+                        <ChevronRight size={12} style={{ color: "#374151", flexShrink: 0 }} />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {meetingLaunchError && (
+              <p style={{ fontSize: 11, color: "#f87171", margin: 0 }}>{meetingLaunchError}</p>
+            )}
+          </section>
         </main>
 
         {/* ─── Side panels ─────────────────────────────────────────────── */}
@@ -3491,6 +3999,7 @@ export default function WorkstationPage() {
             eligibleStations={roomEligibleStations}
             onPickSeat={(seatIndex) => setSeatPicker({ seatIndex })}
             onLaunchMeeting={handleLaunchMeeting}
+            onAutoFillStack={handleAutoFillStack}
             launchingMeeting={launchingMeeting}
             meetingLaunchError={meetingLaunchError}
           />

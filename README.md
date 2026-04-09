@@ -112,6 +112,16 @@ The manual workflow [build-installer.yml](./.github/workflows/build-installer.ym
 
 ## Recent Milestones
 
+### April 9, 2026
+
+- **Workstation is now a company operations dashboard.** The Workstation page is connected to Guardian Suite end-to-end: it loads all Guardian Tasks across every room, lists active Meeting rooms, and lets you launch or re-enter a project meeting in one click.
+- **Top 4 bots always synced.** The four model-stack desks (Primary, Backup 1, Backup 2, Heavy Hitter) now refresh automatically whenever you return focus to the Workstation after saving a stack change in Controls.
+- **Auto-fill Stack.** The Round Table side panel has an "Auto-fill Stack" button that seats all four stack models into chairs instantly — no manual drag required.
+- **Company Operations section.** A new panel below the office floor shows your Guardian Tasks with live status dots and a "Meet" button per task, plus a scrollable list of active meetings. One click enters or creates the project meeting for that task.
+- **Task-linked project meetings.** When you hit "Meet" on a Guardian Task, a dedicated meeting room is created with task context pre-seeded (task name, tool, schedule, last status), the stack bots auto-seated, and a project notes artifact ready. Re-entering the same task re-opens the same room.
+- **New Project button.** Launch a named meeting room from the Company Operations section without needing to go through the round table — stack bots are auto-seated, autonomous meeting mode enabled.
+- **Meeting room Tasks tab.** Every meeting room now has a third sidebar tab ("Tasks") showing the Guardian Tasks registered in that room with live status, last run time, and a one-click Run trigger.
+
 ### March 17, 2026
 
 - **Code interpreter shipped.** Sparkbot can now execute Python 3, Node.js, and Bash directly from chat via `run_code(language, code)`. Subprocess-sandboxed with configurable timeout (default 30s, max 120s). Disable with `SPARKBOT_CODE_DISABLE=true`.

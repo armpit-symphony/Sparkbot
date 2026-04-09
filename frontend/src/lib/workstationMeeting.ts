@@ -1,5 +1,20 @@
 export const ROUND_TABLE_SEAT_COUNT = 8
 
+// ─── Task-meeting link ────────────────────────────────────────────────────────
+// Maps a guardian task ID → the meeting room that was opened for it.
+
+const TASK_MEETING_LINK_PREFIX = "sparkbot_task_meeting_link:"
+
+export function saveTaskMeetingLink(taskId: string, roomId: string): void {
+  if (typeof window === "undefined") return
+  window.localStorage.setItem(`${TASK_MEETING_LINK_PREFIX}${taskId}`, roomId)
+}
+
+export function loadTaskMeetingLink(taskId: string): string | null {
+  if (typeof window === "undefined") return null
+  return window.localStorage.getItem(`${TASK_MEETING_LINK_PREFIX}${taskId}`)
+}
+
 const WORKSTATION_MEETING_DRAFT_KEY = "sparkbot_workstation_roundtable_draft"
 const WORKSTATION_MEETING_META_PREFIX = "sparkbot_workstation_meeting_room:"
 
@@ -205,6 +220,131 @@ export async function launchMeetingRoom({
     roomName,
     launchedAt: launchedAt.toISOString(),
     protocolLabel: "Autonomous meeting",
+    seats,
+  }
+  saveMeetingRoomMeta(meetingMeta)
+  return meetingMeta
+}
+
+// ─── launchTaskMeeting ────────────────────────────────────────────────────────
+// Like launchMeetingRoom but pre-seeded with a guardian task's context.
+
+export interface GuardianTaskInfo {
+  id: string
+  name: string
+  tool_name: string
+  schedule: string
+  last_status?: string | null
+  last_message?: string | null
+}
+
+export async function launchTaskMeeting({
+  task,
+  seats,
+}: {
+  task: GuardianTaskInfo
+  seats: WorkstationMeetingSeatMeta[]
+}): Promise<WorkstationMeetingRoomMeta> {
+  const roomName = `Project: ${task.name}`
+  const description = `Workstation project meeting for task: ${task.name} (${task.tool_name})`
+
+  const createRes = await fetch("/api/v1/chat/rooms/", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ name: roomName, description }),
+  })
+  if (!createRes.ok) throw new Error("Could not create project meeting room.")
+
+  const created = await createRes.json()
+  const roomId = created.id as string
+  if (!roomId) throw new Error("Project meeting room id missing after creation.")
+
+  const statusNote = task.last_status
+    ? `Last run: ${task.last_status}${task.last_message ? ` — ${task.last_message.slice(0, 120)}` : ""}`
+    : "No runs yet."
+
+  const patchRes = await fetch(`/api/v1/chat/rooms/${roomId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({
+      name: roomName,
+      description,
+      meeting_mode_enabled: true,
+      meeting_mode_bots_mention_only: true,
+      meeting_mode_max_bot_msgs_per_min: 7,
+      persona:
+        "Project meeting mode. The team is working on a specific task. " +
+        "After the owner defines the goal, participants work autonomously: one at a time, " +
+        "no waiting between turns. Stop only when blocked, looped, or when owner input is needed.",
+    }),
+  })
+  if (!patchRes.ok) throw new Error("Could not configure project meeting room.")
+
+  const launchedAt = new Date()
+  const participantLines = seats.map((s) => `- Chair ${s.seatIndex + 1}: ${s.label}`).join("\n")
+
+  await fetch(`/api/v1/chat/rooms/${roomId}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({
+      content: [
+        `Project meeting launched from Workstation.`,
+        ``,
+        `**Task:** ${task.name}`,
+        `**Tool:** ${task.tool_name}`,
+        `**Schedule:** ${task.schedule}`,
+        `**Status:** ${statusNote}`,
+        ``,
+        `Autonomous meeting mode is on. Define your goal below to begin.`,
+        ``,
+        `Seated team:`,
+        participantLines,
+      ].join("\n"),
+    }),
+  }).catch(() => {})
+
+  const artifactMarkdown = [
+    `# Project Meeting — ${task.name}`,
+    ``,
+    `_Started: ${launchedAt.toISOString().replace("T", " ").slice(0, 16)} UTC_`,
+    ``,
+    `## Task`,
+    `- **Name:** ${task.name}`,
+    `- **Tool:** ${task.tool_name}`,
+    `- **Schedule:** ${task.schedule}`,
+    `- **Status:** ${statusNote}`,
+    ``,
+    `## Team`,
+    ...seats.map((s) => `- **Chair ${s.seatIndex + 1}:** ${s.label}`),
+    ``,
+    `## Goal`,
+    `_To be defined by owner._`,
+    ``,
+    `## Discussion`,
+    `_Meeting in progress._`,
+    ``,
+    `## Decisions`,
+    `- _None recorded yet._`,
+    ``,
+    `## Action Items`,
+    `- [ ] _None recorded yet._`,
+  ].join("\n")
+
+  await fetch(`/api/v1/chat/rooms/${roomId}/artifacts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ type: "notes", content_markdown: artifactMarkdown }),
+  }).catch(() => {})
+
+  const meetingMeta: WorkstationMeetingRoomMeta = {
+    roomId,
+    roomName,
+    launchedAt: launchedAt.toISOString(),
+    protocolLabel: "Project meeting",
     seats,
   }
   saveMeetingRoomMeta(meetingMeta)

@@ -60,9 +60,15 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
   const [streamingToken, setStreamingToken] = useState("")
   const [streamingAgent, setStreamingAgent] = useState<string | null>(null)
   const [streamError, setStreamError] = useState("")
-  const [sidebarTab, setSidebarTab] = useState<"current" | "meetings">("current")
+  const [sidebarTab, setSidebarTab] = useState<"current" | "meetings" | "tasks">("current")
   const [meetingRooms, setMeetingRooms] = useState<MeetingListItem[]>([])
   const [meetingActionId, setMeetingActionId] = useState<string | null>(null)
+  const [roomTasks, setRoomTasks] = useState<Array<{
+    id: string; name: string; tool_name: string; schedule: string;
+    enabled: boolean; last_status: string | null; last_run_at: string | null;
+    consecutive_failures: number;
+  }>>([])
+  const [runningTaskId, setRunningTaskId] = useState<string | null>(null)
   const streamAbortRef = useRef<AbortController | null>(null)
   const activeStreamIdRef = useRef(0)
 
@@ -107,7 +113,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
           setCurrentUser(membership.user ?? null)
         }
         if (!cancelled) {
-          await reloadMeetingRooms()
+          await Promise.all([reloadMeetingRooms(), reloadRoomTasks()])
         }
       } finally {
         if (!cancelled) setLoading(false)
@@ -125,6 +131,19 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
     () => meetingMeta?.seats ?? [],
     [meetingMeta],
   )
+
+  const reloadRoomTasks = async () => {
+    try {
+      const res = await fetch(`/api/v1/chat/rooms/${roomId}/guardian/tasks?limit=20`, {
+        credentials: "include",
+      })
+      if (!res.ok) return
+      const data = await res.json()
+      setRoomTasks(data.items ?? [])
+    } catch {
+      // guardian may not have tasks for this room
+    }
+  }
 
   const reloadMeetingRooms = async () => {
     const res = await fetch("/api/v1/chat/rooms/", { credentials: "include" })
@@ -497,7 +516,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "1fr 1fr",
+                gridTemplateColumns: "1fr 1fr 1fr",
                 gap: 8,
                 padding: 4,
                 borderRadius: 12,
@@ -505,17 +524,20 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                 border: "1px solid rgba(125,211,252,0.12)",
               }}
             >
-              {(["current", "meetings"] as const).map((tab) => (
+              {(["current", "tasks", "meetings"] as const).map((tab) => (
                 <button
                   key={tab}
                   type="button"
-                  onClick={() => setSidebarTab(tab)}
+                  onClick={() => {
+                    setSidebarTab(tab)
+                    if (tab === "tasks") void reloadRoomTasks()
+                  }}
                   style={{
                     borderRadius: 9,
                     border: sidebarTab === tab ? "1px solid rgba(125,211,252,0.3)" : "1px solid transparent",
                     backgroundColor: sidebarTab === tab ? "rgba(59,130,246,0.16)" : "transparent",
                     color: sidebarTab === tab ? "#e2e8f0" : "#94a3b8",
-                    padding: "9px 10px",
+                    padding: "9px 6px",
                     fontSize: 10,
                     letterSpacing: "0.08em",
                     textTransform: "uppercase",
@@ -661,6 +683,91 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                   </div>
                 </div>
               </>
+            ) : sidebarTab === "tasks" ? (
+              <div
+                style={{
+                  border: "1px solid rgba(125,211,252,0.14)",
+                  borderRadius: 12,
+                  padding: "12px 14px",
+                  backgroundColor: "rgba(10,17,32,0.72)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 10,
+                }}
+              >
+                <div style={{ fontSize: 10, color: "#cbd5f5", letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700 }}>
+                  Guardian Tasks
+                </div>
+                {roomTasks.length === 0 ? (
+                  <p style={{ fontSize: 11, color: "#4b5563", margin: 0, lineHeight: 1.6 }}>
+                    No Task Guardian jobs in this room yet. Create them via Controls → Task Guardian.
+                  </p>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {roomTasks.map((task) => {
+                      const statusColor =
+                        task.last_status === "success" ? "#4ade80"
+                        : task.last_status === "failed" ? "#f87171"
+                        : task.last_status === "running" ? "#fbbf24"
+                        : "#4b5563"
+                      return (
+                        <div
+                          key={task.id}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            padding: "8px 10px",
+                            backgroundColor: "rgba(7,13,28,0.6)",
+                            border: "1px solid rgba(125,211,252,0.08)",
+                            borderRadius: 8,
+                          }}
+                        >
+                          <span style={{ width: 7, height: 7, borderRadius: "50%", backgroundColor: statusColor, flexShrink: 0 }} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: "#cbd5e1", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                              {task.name}
+                            </div>
+                            <div style={{ fontSize: 9, color: "#4b5563", marginTop: 1 }}>
+                              {task.tool_name}{task.last_run_at ? ` · ${new Date(task.last_run_at).toLocaleDateString()}` : ""}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={runningTaskId === task.id}
+                            onClick={async () => {
+                              setRunningTaskId(task.id)
+                              try {
+                                await fetch(`/api/v1/chat/rooms/${roomId}/guardian/tasks/${task.id}/run`, {
+                                  method: "POST",
+                                  credentials: "include",
+                                })
+                                await reloadRoomTasks()
+                              } finally {
+                                setRunningTaskId(null)
+                              }
+                            }}
+                            style={{
+                              background: "none",
+                              border: "1px solid rgba(125,211,252,0.2)",
+                              borderRadius: 4,
+                              cursor: runningTaskId === task.id ? "not-allowed" : "pointer",
+                              color: "#bae6fd",
+                              fontSize: 9,
+                              padding: "3px 7px",
+                              letterSpacing: "0.06em",
+                              textTransform: "uppercase",
+                              flexShrink: 0,
+                            }}
+                          >
+                            {runningTaskId === task.id ? "…" : "Run"}
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
             ) : (
               <div
                 style={{

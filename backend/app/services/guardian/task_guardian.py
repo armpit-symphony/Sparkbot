@@ -355,6 +355,22 @@ def list_tasks(*, room_id: str, limit: int = 25) -> list[GuardianTask]:
     return [GuardianTask(**dict(row)) for row in rows]
 
 
+def list_tasks_by_user(*, user_id: str, limit: int = 50) -> list[GuardianTask]:
+    """Return all guardian tasks for a user across all rooms, newest first."""
+    _init_store()
+    with _conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT * FROM guardian_tasks
+            WHERE user_id = ?
+            ORDER BY updated_at DESC
+            LIMIT ?
+            """,
+            (user_id, max(1, min(limit, 200))),
+        ).fetchall()
+    return [GuardianTask(**dict(row)) for row in rows]
+
+
 def list_runs(*, room_id: str, limit: int = 25) -> list[GuardianTaskRun]:
     _init_store()
     with _conn() as conn:
