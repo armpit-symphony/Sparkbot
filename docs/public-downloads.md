@@ -29,9 +29,9 @@ If the target directory needs elevated permissions, run the script from a shell 
 
 ```bash
 bash scripts/package-public-download.sh \
-  --ref sparkbot-v1.3.0 \
-  --artifact-prefix sparkbot-1.3.0 \
-  --output-dir dist/public-download/1.3.0
+  --ref sparkbot-v1.2.2 \
+  --artifact-prefix sparkbot-1.2.2 \
+  --output-dir dist/public-download/1.2.2
 ```
 
 This ties the package to a specific tag or commit instead of the current `HEAD`.
@@ -40,7 +40,7 @@ This ties the package to a specific tag or commit instead of the current `HEAD`.
 
 ```bash
 bash scripts/package-public-download.sh \
-  --notes-file docs/release-notes/v1.3.0.txt
+  --notes-file docs/release-notes/v1.2.2.txt
 ```
 
 The script always stamps `RELEASE-NOTES.txt` with:

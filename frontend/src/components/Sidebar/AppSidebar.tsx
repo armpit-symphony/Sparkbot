@@ -24,7 +24,7 @@ const baseItems: Item[] = [
 export function AppSidebar() {
   const { user: currentUser } = useAuth()
   const visibleBaseItems = isV1LocalMode
-    ? baseItems.filter((item) => item.path !== "/workstation")
+    ? baseItems.filter((item) => item.path !== "/workstation" && item.path !== "/chat")
     : baseItems
 
   const items = hasChatSession()

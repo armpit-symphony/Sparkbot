@@ -1,0 +1,5 @@
+Sparkbot v1.2.2
+
+- Routed V1 local desktop users onto the newer Sparkbot DM flow
+- Hid the legacy Chat surface in V1 local mode to avoid the older non-streaming path
+- Updated downloader-visible version markers so the next installer is easy to identify
