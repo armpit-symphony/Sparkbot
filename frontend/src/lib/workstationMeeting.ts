@@ -1,3 +1,5 @@
+import { apiFetch } from "@/lib/apiBase"
+
 export const ROUND_TABLE_SEAT_COUNT = 8
 
 // ─── Task-meeting link ────────────────────────────────────────────────────────
@@ -135,7 +137,7 @@ export async function launchMeetingRoom({
   seats,
 }: LaunchMeetingRoomOptions): Promise<WorkstationMeetingRoomMeta> {
   const description = "Launched from Sparkbot Workstation. Autonomous meeting mode."
-  const createRes = await fetch("/api/v1/chat/rooms/", {
+  const createRes = await apiFetch("/api/v1/chat/rooms/", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
@@ -147,7 +149,7 @@ export async function launchMeetingRoom({
   const roomId = created.id as string
   if (!roomId) throw new Error("Roundtable room id missing after creation.")
 
-  const patchRes = await fetch(`/api/v1/chat/rooms/${roomId}`, {
+  const patchRes = await apiFetch(`/api/v1/chat/rooms/${roomId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
@@ -168,7 +170,7 @@ export async function launchMeetingRoom({
   const launchedAt = new Date()
   const participantLines = seats.map((seat) => `- Chair ${seat.seatIndex + 1}: ${seat.label}`).join("\n")
 
-  await fetch(`/api/v1/chat/rooms/${roomId}/messages`, {
+  await apiFetch(`/api/v1/chat/rooms/${roomId}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
@@ -205,7 +207,7 @@ export async function launchMeetingRoom({
     "- _To be determined._",
   ].join("\n")
 
-  await fetch(`/api/v1/chat/rooms/${roomId}/artifacts`, {
+  await apiFetch(`/api/v1/chat/rooms/${roomId}/artifacts`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
@@ -248,7 +250,7 @@ export async function launchTaskMeeting({
   const roomName = `Project: ${task.name}`
   const description = `Workstation project meeting for task: ${task.name} (${task.tool_name})`
 
-  const createRes = await fetch("/api/v1/chat/rooms/", {
+  const createRes = await apiFetch("/api/v1/chat/rooms/", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
@@ -264,7 +266,7 @@ export async function launchTaskMeeting({
     ? `Last run: ${task.last_status}${task.last_message ? ` — ${task.last_message.slice(0, 120)}` : ""}`
     : "No runs yet."
 
-  const patchRes = await fetch(`/api/v1/chat/rooms/${roomId}`, {
+  const patchRes = await apiFetch(`/api/v1/chat/rooms/${roomId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
@@ -285,7 +287,7 @@ export async function launchTaskMeeting({
   const launchedAt = new Date()
   const participantLines = seats.map((s) => `- Chair ${s.seatIndex + 1}: ${s.label}`).join("\n")
 
-  await fetch(`/api/v1/chat/rooms/${roomId}/messages`, {
+  await apiFetch(`/api/v1/chat/rooms/${roomId}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
@@ -333,7 +335,7 @@ export async function launchTaskMeeting({
     `- [ ] _None recorded yet._`,
   ].join("\n")
 
-  await fetch(`/api/v1/chat/rooms/${roomId}/artifacts`, {
+  await apiFetch(`/api/v1/chat/rooms/${roomId}/artifacts`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",

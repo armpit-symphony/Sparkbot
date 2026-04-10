@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "@tanstack/react-router"
+import { apiFetch } from "@/lib/apiBase"
 import { ArrowLeft, Info, Loader2, Users } from "lucide-react"
 import SparkbotSurfaceTabs from "@/components/Common/SparkbotSurfaceTabs"
 import SparkbotSurfaceInfoDialog from "@/components/Common/SparkbotSurfaceInfoDialog"
@@ -78,7 +79,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
 
   useEffect(() => {
     if (!roomId) return
-    fetch(`/api/v1/chat/rooms/${roomId}/artifacts?type=notes&limit=1`, {
+    apiFetch(`/api/v1/chat/rooms/${roomId}/artifacts?type=notes&limit=1`, {
       credentials: "include",
     })
       .then((r) => (r.ok ? r.json() : []))
@@ -94,9 +95,9 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
     async function loadRoomState() {
       try {
         const [roomRes, messagesRes, meRes] = await Promise.all([
-          fetch(`/api/v1/chat/rooms/${roomId}`, { credentials: "include" }),
-          fetch(`/api/v1/chat/rooms/${roomId}/messages`, { credentials: "include" }),
-          fetch(`/api/v1/chat/rooms/${roomId}/members/me`, { credentials: "include" }),
+          apiFetch(`/api/v1/chat/rooms/${roomId}`, { credentials: "include" }),
+          apiFetch(`/api/v1/chat/rooms/${roomId}/messages`, { credentials: "include" }),
+          apiFetch(`/api/v1/chat/rooms/${roomId}/members/me`, { credentials: "include" }),
         ])
 
         if (!cancelled && roomRes.ok) {
@@ -134,7 +135,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
 
   const reloadRoomTasks = async () => {
     try {
-      const res = await fetch(`/api/v1/chat/rooms/${roomId}/guardian/tasks?limit=20`, {
+      const res = await apiFetch(`/api/v1/chat/rooms/${roomId}/guardian/tasks?limit=20`, {
         credentials: "include",
       })
       if (!res.ok) return
@@ -146,7 +147,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
   }
 
   const reloadMeetingRooms = async () => {
-    const res = await fetch("/api/v1/chat/rooms/", { credentials: "include" })
+    const res = await apiFetch("/api/v1/chat/rooms/", { credentials: "include" })
     if (!res.ok) return
     const rooms = await res.json()
     const metaIndex = new Map(listMeetingRoomMetas().map((meta) => [meta.roomId, meta]))
@@ -171,8 +172,8 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
 
   const reloadMessages = async () => {
     const [messagesRes, artifactRes] = await Promise.all([
-      fetch(`/api/v1/chat/rooms/${roomId}/messages`, { credentials: "include" }),
-      fetch(`/api/v1/chat/rooms/${roomId}/artifacts?type=notes&limit=1`, { credentials: "include" }),
+      apiFetch(`/api/v1/chat/rooms/${roomId}/messages`, { credentials: "include" }),
+      apiFetch(`/api/v1/chat/rooms/${roomId}/artifacts?type=notes&limit=1`, { credentials: "include" }),
     ])
     if (messagesRes.ok) {
       const data = await messagesRes.json()
@@ -217,7 +218,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
       const nextDescription = [targetDescription, `Ended ${new Date().toISOString()}`]
         .filter(Boolean)
         .join("\n\n")
-      const res = await fetch(`/api/v1/chat/rooms/${targetRoomId}`, {
+      const res = await apiFetch(`/api/v1/chat/rooms/${targetRoomId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -249,7 +250,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
     setMeetingActionId(`delete:${targetRoomId}`)
     setStreamError("")
     try {
-      const res = await fetch(`/api/v1/chat/rooms/${targetRoomId}`, {
+      const res = await apiFetch(`/api/v1/chat/rooms/${targetRoomId}`, {
         method: "DELETE",
         credentials: "include",
       })
@@ -290,7 +291,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
       : undefined
 
     try {
-      const response = await fetch(`/api/v1/chat/rooms/${roomId}/messages/stream`, {
+      const response = await apiFetch(`/api/v1/chat/rooms/${roomId}/messages/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -373,7 +374,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
     if (generatingNotes) return
     setGeneratingNotes(true)
     try {
-      const res = await fetch(`/api/v1/chat/rooms/${roomId}/artifacts/generate`, {
+      const res = await apiFetch(`/api/v1/chat/rooms/${roomId}/artifacts/generate`, {
         method: "POST",
         credentials: "include",
       })
@@ -738,7 +739,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                             onClick={async () => {
                               setRunningTaskId(task.id)
                               try {
-                                await fetch(`/api/v1/chat/rooms/${roomId}/guardian/tasks/${task.id}/run`, {
+                                await apiFetch(`/api/v1/chat/rooms/${roomId}/guardian/tasks/${task.id}/run`, {
                                   method: "POST",
                                   credentials: "include",
                                 })

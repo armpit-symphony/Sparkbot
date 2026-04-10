@@ -46,6 +46,7 @@ import { useTerminalSession } from "@/hooks/useTerminalSession"
 const XtermTerminal = lazy(() =>
   import("@/components/Terminal/XtermTerminal").then((m) => ({ default: m.XtermTerminal }))
 )
+import { apiFetch } from "@/lib/apiBase"
 import { fetchControlsConfig, type SparkbotControlsConfig } from "@/lib/sparkbotControls"
 import {
   buildSparkBudChatLaunchText,
@@ -2966,7 +2967,7 @@ export default function WorkstationPage() {
     try {
       const [configRes, overviewRes] = await Promise.all([
         fetchControlsConfig(),
-        fetch("/api/v1/chat/workstation/overview", { credentials: "include" }).then((r) =>
+        apiFetch("/api/v1/chat/workstation/overview", { credentials: "include" }).then((r) =>
           r.ok ? r.json() : null
         ).catch(() => null),
       ])
@@ -3206,7 +3207,7 @@ export default function WorkstationPage() {
           return "Use a lowercase handle with letters, numbers, or underscores."
         }
 
-        const response = await fetch("/api/v1/chat/agents", {
+        const response = await apiFetch("/api/v1/chat/agents", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
