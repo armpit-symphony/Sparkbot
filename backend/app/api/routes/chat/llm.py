@@ -827,6 +827,20 @@ def _assistant_message_text(message: Any) -> str:
     return ""
 
 
+def _should_retry_without_tools(error: Exception, candidate: str, kwargs: dict[str, Any]) -> bool:
+    if "tools" not in kwargs:
+        return False
+    text = str(error).lower()
+    if "tool_choice" in text:
+        return True
+    provider = model_provider(candidate)
+    if provider in {"ollama", "minimax"} and any(
+        token in text for token in ("bad_request_error", "invalid", "unsupported", "tool", "function")
+    ):
+        return True
+    return False
+
+
 async def _acompletion_with_fallback(
     *,
     model: str,
@@ -888,13 +902,13 @@ async def _acompletion_with_fallback(
             # litellm itself knows about — it can't suppress a router-level 404.
             # Retry this candidate without tools so the model can still give a
             # plain-text answer rather than crashing the whole request.
-            if "tool_choice" in str(exc).lower() and "tools" in kwargs:
+            if _should_retry_without_tools(exc, candidate, kwargs):
                 try:
                     no_tool_kwargs = {k: v for k, v in kwargs.items()
                                       if k not in ("tools", "tool_choice")}
                     response = await litellm.acompletion(model=candidate, **no_tool_kwargs)
                     log.warning(
-                        "tool_choice rejected by %s — retried without tools successfully",
+                        "tool-enabled request rejected by %s — retried without tools successfully",
                         candidate,
                     )
                     return chosen_candidate, response

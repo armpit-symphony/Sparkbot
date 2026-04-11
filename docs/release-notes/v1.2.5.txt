@@ -1,0 +1,7 @@
+Sparkbot v1.2.5
+
+- Fix meeting roundtables that could start and then stay silent when invited seats did not resolve to real chat agents
+- Improve meeting stream parsing in the desktop UI so agent turns and errors render reliably from SSE frames
+- Wire invite desks and stack seats to real participant handles with per-seat model overrides for meetings
+- Retry MiniMax and Ollama calls without tools when providers reject tool-related request params during meeting handoffs
+- Keep desktop downloader and docs aligned to the new 1.2.5 installer name

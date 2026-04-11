@@ -1931,6 +1931,21 @@ async def stream_room_message(
             seen_participants.add(p_handle)
             valid_participants.append(p_handle)
 
+        if participants_requested and not valid_participants:
+            async def unresolved_participants_stream():
+                yield f"data: {json.dumps({'type': 'human_message', 'message_id': human_msg_id})}\n\n"
+                message_text = (
+                    "No valid meeting participants were resolved for this room. "
+                    "Relaunch the meeting from Workstation or rewire the invited desks so each seat maps to a real chat agent."
+                )
+                yield f"data: {json.dumps({'type': 'error', 'error': message_text})}\n\n"
+
+            return StreamingResponse(
+                unresolved_participants_stream(),
+                media_type="text/event-stream",
+                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            )
+
         if room.meeting_mode_enabled and valid_participants:
             return StreamingResponse(
                 autonomous_meeting_stream(valid_participants),

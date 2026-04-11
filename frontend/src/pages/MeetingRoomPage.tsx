@@ -8,9 +8,12 @@ import ChatInput from "@/components/chat/ChatInput"
 import ChatWindow from "@/components/chat/ChatWindow"
 import {
   deleteMeetingRoomMeta,
+  getMeetingParticipantHandles,
   launchMeetingRoom,
   listMeetingRoomMetas,
   loadMeetingRoomMeta,
+  prepareMeetingSeats,
+  saveMeetingRoomMeta,
   type WorkstationMeetingRoomMeta,
 } from "@/lib/workstationMeeting"
 import type { Message, User } from "@/lib/chat/types"
@@ -286,11 +289,19 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
 
     // Derive participant handles from seated agents (when no @mention present)
     const hasMention = /^@\w+/.test(content.trim())
-    const participants = (!hasMention && seatedParticipants.length > 0)
-      ? seatedParticipants
-          .map((s) => (s.agentHandle || "").trim().toLowerCase())
-          .filter((handle): handle is string => Boolean(handle))
+    const preparedSeats = await prepareMeetingSeats(seatedParticipants)
+    if (meetingMeta) {
+      const nextMeta = { ...meetingMeta, seats: preparedSeats }
+      setMeetingMeta(nextMeta)
+      saveMeetingRoomMeta(nextMeta)
+    }
+    const participants = (!hasMention && preparedSeats.length > 0)
+      ? getMeetingParticipantHandles(preparedSeats)
       : undefined
+    if (!hasMention && room?.meeting_mode_enabled && (!participants || participants.length === 0)) {
+      setStreamError("This meeting has no valid participant handles wired to chat. Relaunch it from Workstation.")
+      return
+    }
 
     try {
       const response = await apiFetch(`/api/v1/chat/rooms/${roomId}/messages/stream`, {
@@ -308,7 +319,8 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
 
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
-      let accumulated = ""
+      let accumulatedToken = ""
+      let sseBuffer = ""
       let streamDone = false
 
       while (!streamDone) {
@@ -316,25 +328,31 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
         const { done, value } = await reader.read()
         if (done) break
 
-        const chunk = decoder.decode(value, { stream: true })
-        for (const line of chunk.split("\n")) {
-          if (!line.startsWith("data: ")) continue
+        sseBuffer += decoder.decode(value, { stream: true })
+        const frames = sseBuffer.split(/\r?\n\r?\n/)
+        sseBuffer = frames.pop() ?? ""
+        for (const frame of frames) {
+          const dataLines = frame
+            .split(/\r?\n/)
+            .filter((line) => line.startsWith("data: "))
+            .map((line) => line.slice(6))
+          if (dataLines.length === 0) continue
           if (activeStreamIdRef.current !== streamId) {
             streamDone = true
             break
           }
           try {
-            const evt = JSON.parse(line.slice(6))
+            const evt = JSON.parse(dataLines.join("\n"))
             if (evt.type === "token") {
-              accumulated += evt.token
-              setStreamingToken(accumulated)
+              accumulatedToken += evt.token
+              setStreamingToken(accumulatedToken)
             } else if (evt.type === "agent_start") {
               // New agent starting — reset accumulated and update label
-              accumulated = ""
+              accumulatedToken = ""
               setStreamingToken("")
               setStreamingAgent(evt.label || evt.agent || null)
             } else if (evt.type === "agent_done") {
-              accumulated = ""
+              accumulatedToken = ""
               setStreamingToken("")
               setStreamingAgent(null)
               await reloadMessages()
@@ -1124,7 +1142,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                   {sending
                     ? "Meeting is running. Send a new message to interrupt, redirect, or add owner input."
                     : seatedParticipants.length > 0
-                    ? `Kick off the topic once, or call on someone directly with ${seatedParticipants.map((s) => `@${s.label.toLowerCase().replace(/\s+/g, "")}`).join("  ")}`
+                    ? `Kick off the topic once, or call on someone directly with ${getMeetingParticipantHandles(seatedParticipants).map((handle) => `@${handle}`).join("  ")}`
                     : "Type your kickoff and the roundtable will continue autonomously."}
                 </div>
                 <ChatInput

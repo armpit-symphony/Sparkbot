@@ -131,16 +131,19 @@ function resolveInviteStation(
   }
 }
 
+function slugifyMeetingHandleLabel(value: string, fallback: string): string {
+  const normalized = (value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+  return normalized || fallback
+}
+
 function deriveMeetingAgentHandle(station: Station): string | null {
   switch (station.id) {
     case MAIN_DESK.id:
       return "sparkbot"
-    case "stack-backup_1":
-      return "workstation_backup_1"
-    case "stack-backup_2":
-      return "workstation_backup_2"
-    case "stack-heavy_hitter":
-      return "workstation_heavy_hitter"
     case "sb-researcher":
       return "researcher"
     case "sb-coder":
@@ -151,9 +154,8 @@ function deriveMeetingAgentHandle(station: Station): string | null {
       break
   }
 
-  if (station.isInviteSlot) {
-    const normalized = station.id.replace(/[^a-z0-9]+/gi, "_").replace(/^_+|_+$/g, "").toLowerCase()
-    return normalized ? `workstation_${normalized}` : null
+  if (station.isInviteSlot || station.id.startsWith("stack-")) {
+    return slugifyMeetingHandleLabel(station.label, station.id)
   }
 
   return null
@@ -162,6 +164,7 @@ function deriveMeetingAgentHandle(station: Station): string | null {
 function buildMeetingSeatMeta(
   station: Station,
   seatIndex: number,
+  modelId?: string,
 ): WorkstationMeetingSeatMeta {
   const agentHandle = deriveMeetingAgentHandle(station)
   return {
@@ -169,8 +172,9 @@ function buildMeetingSeatMeta(
     stationId: station.id,
     label: station.label,
     accentHex: station.accentHex,
+    ...(modelId ? { modelId, route: "default" as const } : {}),
     ...(agentHandle ? { agentHandle } : {}),
-    ...(station.isInviteSlot && agentHandle
+    ...((station.isInviteSlot || Boolean(modelId)) && agentHandle
       ? {
           agentProvisioning: "custom" as const,
           agentProvider: station.subtitle,
@@ -3057,6 +3061,11 @@ export default function WorkstationPage() {
     ...resolvedInviteStations.filter((station) => station.status !== "empty"),
     ...SPECIALTY_PLACEHOLDERS.filter((station) => station.status !== "empty"),
   ]
+  const stackModelByStationId = {
+    "stack-backup_1": controlsConfig?.stack.backup_1 ?? "",
+    "stack-backup_2": controlsConfig?.stack.backup_2 ?? "",
+    "stack-heavy_hitter": controlsConfig?.stack.heavy_hitter ?? "",
+  }
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
@@ -3068,12 +3077,12 @@ export default function WorkstationPage() {
       ]
       companionStations.forEach((station, i) => {
         if (station.status !== "empty") {
-          meta.push(buildMeetingSeatMeta(station, i + 1))
+          meta.push(buildMeetingSeatMeta(station, i + 1, stackModelByStationId[station.id as keyof typeof stackModelByStationId] || undefined))
         }
       })
       return meta
     },
-    [],
+    [stackModelByStationId],
   )
 
   const handleNavigate = useCallback(
@@ -3289,7 +3298,11 @@ export default function WorkstationPage() {
         if (!stationId) return null
         const station = roomEligibleStations.find((candidate) => candidate.id === stationId)
         if (!station) return null
-        return buildMeetingSeatMeta(station, seatIndex)
+        return buildMeetingSeatMeta(
+          station,
+          seatIndex,
+          stackModelByStationId[station.id as keyof typeof stackModelByStationId] || undefined,
+        )
       })
       .filter((seat): seat is NonNullable<typeof seat> => Boolean(seat))
 

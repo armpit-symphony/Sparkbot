@@ -1,4 +1,5 @@
 import { apiFetch } from "@/lib/apiBase"
+import { fetchControlsConfig } from "@/lib/sparkbotControls"
 
 export const ROUND_TABLE_SEAT_COUNT = 8
 
@@ -35,6 +36,8 @@ export interface WorkstationMeetingSeatMeta {
   agentProvisioning?: "builtin" | "custom"
   agentProvider?: string
   agentDescription?: string
+  modelId?: string
+  route?: "default" | "openrouter" | "local"
 }
 
 export interface WorkstationMeetingRoomMeta {
@@ -48,6 +51,99 @@ export interface WorkstationMeetingRoomMeta {
 export interface LaunchMeetingRoomOptions {
   roomName?: string
   seats: WorkstationMeetingSeatMeta[]
+}
+
+export function slugifyMeetingHandle(value: string, fallback = "participant"): string {
+  const normalized = (value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+  return normalized || fallback
+}
+
+function enrichMeetingSeats(
+  seats: WorkstationMeetingSeatMeta[],
+  stack?: {
+    primary: string
+    backup_1: string
+    backup_2: string
+    heavy_hitter: string
+  },
+): WorkstationMeetingSeatMeta[] {
+  return seats.map((seat) => {
+    const nextSeat = { ...seat }
+    if (!nextSeat.agentHandle) {
+      if (nextSeat.stationId === "sparkbot") nextSeat.agentHandle = "sparkbot"
+      else if (nextSeat.stationId === "sb-researcher") nextSeat.agentHandle = "researcher"
+      else if (nextSeat.stationId === "sb-coder") nextSeat.agentHandle = "coder"
+      else if (nextSeat.stationId === "sb-analyst") nextSeat.agentHandle = "analyst"
+      else nextSeat.agentHandle = slugifyMeetingHandle(nextSeat.label, nextSeat.stationId)
+    }
+    if (!nextSeat.modelId && stack) {
+      if (nextSeat.stationId === "stack-backup_1") nextSeat.modelId = stack.backup_1 || undefined
+      if (nextSeat.stationId === "stack-backup_2") nextSeat.modelId = stack.backup_2 || undefined
+      if (nextSeat.stationId === "stack-heavy_hitter") nextSeat.modelId = stack.heavy_hitter || undefined
+    }
+    if (!nextSeat.route && nextSeat.modelId) {
+      nextSeat.route = "default"
+    }
+    if (!nextSeat.agentProvisioning) {
+      nextSeat.agentProvisioning =
+        nextSeat.agentHandle && !["sparkbot", "researcher", "coder", "analyst"].includes(nextSeat.agentHandle)
+          ? "custom"
+          : "builtin"
+    }
+    return nextSeat
+  })
+}
+
+export function getMeetingParticipantHandles(seats: WorkstationMeetingSeatMeta[]): string[] {
+  return seats
+    .map((seat) => slugifyMeetingHandle(seat.agentHandle || seat.label || seat.stationId, seat.stationId))
+    .filter((handle, index, values): handle is string => Boolean(handle) && values.indexOf(handle) === index)
+}
+
+async function ensureMeetingAgentOverrides(seats: WorkstationMeetingSeatMeta[]): Promise<void> {
+  const routedSeats = seats.filter((seat) => seat.agentHandle && seat.modelId)
+  if (routedSeats.length === 0) return
+  const config = await fetchControlsConfig()
+  if (!config) return
+
+  const nextOverrides = { ...(config.agent_overrides || {}) }
+  let changed = false
+  for (const seat of routedSeats) {
+    const handle = slugifyMeetingHandle(seat.agentHandle || "", seat.stationId)
+    const nextOverride = {
+      route: seat.route || "default",
+      model: seat.modelId,
+    }
+    const existing = nextOverrides[handle]
+    if (existing?.route !== nextOverride.route || existing?.model !== nextOverride.model) {
+      nextOverrides[handle] = nextOverride
+      changed = true
+    }
+  }
+  if (!changed) return
+
+  const response = await apiFetch("/api/v1/chat/models/config", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ agent_overrides: nextOverrides }),
+  })
+  if (!response.ok) {
+    const detail = await response.json().catch(() => ({ detail: "Could not prepare meeting agent routing." }))
+    throw new Error(String(detail.detail ?? "Could not prepare meeting agent routing."))
+  }
+}
+
+export async function prepareMeetingSeats(seats: WorkstationMeetingSeatMeta[]): Promise<WorkstationMeetingSeatMeta[]> {
+  const config = await fetchControlsConfig()
+  const enrichedSeats = enrichMeetingSeats(seats, config?.stack)
+  await ensureMeetingSeatAgents(enrichedSeats)
+  await ensureMeetingAgentOverrides(enrichedSeats)
+  return enrichedSeats
 }
 
 export function buildEmptyMeetingDraft(): WorkstationMeetingDraft {
@@ -140,7 +236,7 @@ export async function launchMeetingRoom({
   roomName = "Roundtable",
   seats,
 }: LaunchMeetingRoomOptions): Promise<WorkstationMeetingRoomMeta> {
-  await ensureMeetingSeatAgents(seats)
+  const preparedSeats = await prepareMeetingSeats(seats)
   const description = "Launched from Sparkbot Workstation. Autonomous meeting mode."
   const createRes = await apiFetch("/api/v1/chat/rooms/", {
     method: "POST",
@@ -173,7 +269,7 @@ export async function launchMeetingRoom({
   }
 
   const launchedAt = new Date()
-  const participantLines = seats.map((seat) => `- Chair ${seat.seatIndex + 1}: ${seat.label}`).join("\n")
+  const participantLines = preparedSeats.map((seat) => `- Chair ${seat.seatIndex + 1}: ${seat.label}`).join("\n")
 
   await apiFetch(`/api/v1/chat/rooms/${roomId}/messages`, {
     method: "POST",
@@ -191,7 +287,7 @@ export async function launchMeetingRoom({
     "_To be defined by participants._",
     "",
     "## Participants",
-    ...seats.map((seat) => `- **Chair ${seat.seatIndex + 1}:** ${seat.label}`),
+    ...preparedSeats.map((seat) => `- **Chair ${seat.seatIndex + 1}:** ${seat.label}`),
     "",
     "## Agenda",
     "- _To be defined._",
@@ -227,7 +323,7 @@ export async function launchMeetingRoom({
     roomName,
     launchedAt: launchedAt.toISOString(),
     protocolLabel: "Autonomous meeting",
-    seats,
+    seats: preparedSeats,
   }
   saveMeetingRoomMeta(meetingMeta)
   return meetingMeta
@@ -252,7 +348,7 @@ export async function launchTaskMeeting({
   task: GuardianTaskInfo
   seats: WorkstationMeetingSeatMeta[]
 }): Promise<WorkstationMeetingRoomMeta> {
-  await ensureMeetingSeatAgents(seats)
+  const preparedSeats = await prepareMeetingSeats(seats)
   const roomName = `Project: ${task.name}`
   const description = `Workstation project meeting for task: ${task.name} (${task.tool_name})`
 
@@ -291,7 +387,7 @@ export async function launchTaskMeeting({
   if (!patchRes.ok) throw new Error("Could not configure project meeting room.")
 
   const launchedAt = new Date()
-  const participantLines = seats.map((s) => `- Chair ${s.seatIndex + 1}: ${s.label}`).join("\n")
+  const participantLines = preparedSeats.map((s) => `- Chair ${s.seatIndex + 1}: ${s.label}`).join("\n")
 
   await apiFetch(`/api/v1/chat/rooms/${roomId}/messages`, {
     method: "POST",
@@ -326,7 +422,7 @@ export async function launchTaskMeeting({
     `- **Status:** ${statusNote}`,
     ``,
     `## Team`,
-    ...seats.map((s) => `- **Chair ${s.seatIndex + 1}:** ${s.label}`),
+    ...preparedSeats.map((s) => `- **Chair ${s.seatIndex + 1}:** ${s.label}`),
     ``,
     `## Goal`,
     `_To be defined by owner._`,
@@ -353,7 +449,7 @@ export async function launchTaskMeeting({
     roomName,
     launchedAt: launchedAt.toISOString(),
     protocolLabel: "Project meeting",
-    seats,
+    seats: preparedSeats,
   }
   saveMeetingRoomMeta(meetingMeta)
   return meetingMeta
@@ -361,10 +457,12 @@ export async function launchTaskMeeting({
 
 function buildCustomSeatSystemPrompt(seat: WorkstationMeetingSeatMeta): string {
   const provider = (seat.agentProvider || "configured provider").trim()
+  const modelLine = seat.modelId ? `Your assigned model is ${seat.modelId}.` : ""
   const roleSummary = (seat.agentDescription || `${seat.label} contributes a distinct perspective in workstation meetings.`).trim()
   return [
     `You are ${seat.label}, a workstation meeting participant.`,
     `Your configured provider context is ${provider}.`,
+    modelLine,
     roleSummary,
     "In roundtable meetings, contribute one distinct perspective at a time.",
     "Avoid filler, avoid repeating prior points, and push the discussion toward a clear recommendation or next action.",
