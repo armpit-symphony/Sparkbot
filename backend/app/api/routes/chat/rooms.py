@@ -2006,6 +2006,7 @@ def create_meeting_artifact_endpoint(
         content_markdown=artifact_in.content_markdown,
         window_start_ts=artifact_in.window_start_ts,
         window_end_ts=artifact_in.window_end_ts,
+        meta_json=artifact_in.meta_json,
     )
     return artifact
 

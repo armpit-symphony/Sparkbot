@@ -2,6 +2,7 @@ import { apiFetch } from "@/lib/apiBase"
 import { fetchControlsConfig } from "@/lib/sparkbotControls"
 
 export const ROUND_TABLE_SEAT_COUNT = 8
+const DEFAULT_MEETING_HEARTBEAT_SCHEDULE = "every:3600"
 
 // ─── Task-meeting link ────────────────────────────────────────────────────────
 // Maps a guardian task ID → the meeting room that was opened for it.
@@ -51,6 +52,76 @@ export interface WorkstationMeetingRoomMeta {
 export interface LaunchMeetingRoomOptions {
   roomName?: string
   seats: WorkstationMeetingSeatMeta[]
+}
+
+function buildMeetingManifestMeta(
+  roomName: string,
+  protocolLabel: string,
+  seats: WorkstationMeetingSeatMeta[],
+) {
+  return {
+    source: "meeting_manifest",
+    room_name: roomName,
+    protocol_label: protocolLabel,
+    heartbeat_schedule: DEFAULT_MEETING_HEARTBEAT_SCHEDULE,
+    auto_heartbeat: true,
+    participants: seats.map((seat) => ({
+      seatIndex: seat.seatIndex,
+      stationId: seat.stationId,
+      label: seat.label,
+      handle: slugifyMeetingHandle(seat.agentHandle || seat.label || seat.stationId, seat.stationId),
+      modelId: seat.modelId || null,
+      route: seat.route || null,
+    })),
+  }
+}
+
+async function persistMeetingManifest(
+  roomId: string,
+  roomName: string,
+  protocolLabel: string,
+  seats: WorkstationMeetingSeatMeta[],
+): Promise<void> {
+  const manifestMeta = buildMeetingManifestMeta(roomName, protocolLabel, seats)
+  const response = await apiFetch(`/api/v1/chat/rooms/${roomId}/artifacts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({
+      type: "agenda",
+      content_markdown: [
+        `# Meeting Manifest — ${roomName}`,
+        "",
+        `Protocol: ${protocolLabel}`,
+        `Heartbeat: ${DEFAULT_MEETING_HEARTBEAT_SCHEDULE}`,
+        "",
+        "## Participants",
+        ...manifestMeta.participants.map((participant) => `- @${participant.handle} — ${participant.label}`),
+      ].join("\n"),
+      meta_json: manifestMeta,
+    }),
+  })
+  if (!response.ok) {
+    throw new Error("Could not persist meeting manifest.")
+  }
+}
+
+async function ensureMeetingHeartbeatTask(roomId: string, roomName: string): Promise<void> {
+  const response = await apiFetch(`/api/v1/chat/rooms/${roomId}/guardian/tasks`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({
+      name: `${roomName} heartbeat`,
+      tool_name: "meeting_heartbeat",
+      schedule: DEFAULT_MEETING_HEARTBEAT_SCHEDULE,
+      tool_args: {},
+    }),
+  })
+  if (!response.ok) {
+    const detail = await response.json().catch(() => ({ detail: "Could not schedule meeting heartbeat." }))
+    throw new Error(String(detail.detail ?? "Could not schedule meeting heartbeat."))
+  }
 }
 
 export function slugifyMeetingHandle(value: string, fallback = "participant"): string {
@@ -237,6 +308,7 @@ export async function launchMeetingRoom({
   seats,
 }: LaunchMeetingRoomOptions): Promise<WorkstationMeetingRoomMeta> {
   const preparedSeats = await prepareMeetingSeats(seats)
+  const protocolLabel = "Autonomous meeting"
   const description = "Launched from Sparkbot Workstation. Autonomous meeting mode."
   const createRes = await apiFetch("/api/v1/chat/rooms/", {
     method: "POST",
@@ -318,11 +390,14 @@ export async function launchMeetingRoom({
     }),
   }).catch(() => {})
 
+  await persistMeetingManifest(roomId, roomName, protocolLabel, preparedSeats)
+  await ensureMeetingHeartbeatTask(roomId, roomName)
+
   const meetingMeta: WorkstationMeetingRoomMeta = {
     roomId,
     roomName,
     launchedAt: launchedAt.toISOString(),
-    protocolLabel: "Autonomous meeting",
+    protocolLabel,
     seats: preparedSeats,
   }
   saveMeetingRoomMeta(meetingMeta)
@@ -350,6 +425,7 @@ export async function launchTaskMeeting({
 }): Promise<WorkstationMeetingRoomMeta> {
   const preparedSeats = await prepareMeetingSeats(seats)
   const roomName = `Project: ${task.name}`
+  const protocolLabel = "Project meeting"
   const description = `Workstation project meeting for task: ${task.name} (${task.tool_name})`
 
   const createRes = await apiFetch("/api/v1/chat/rooms/", {
@@ -444,11 +520,14 @@ export async function launchTaskMeeting({
     body: JSON.stringify({ type: "notes", content_markdown: artifactMarkdown }),
   }).catch(() => {})
 
+  await persistMeetingManifest(roomId, roomName, protocolLabel, preparedSeats)
+  await ensureMeetingHeartbeatTask(roomId, roomName)
+
   const meetingMeta: WorkstationMeetingRoomMeta = {
     roomId,
     roomName,
     launchedAt: launchedAt.toISOString(),
-    protocolLabel: "Project meeting",
+    protocolLabel,
     seats: preparedSeats,
   }
   saveMeetingRoomMeta(meetingMeta)

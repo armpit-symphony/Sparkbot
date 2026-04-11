@@ -1,0 +1,7 @@
+Sparkbot v1.2.8
+
+- Persist roundtable participant manifests in meeting artifacts so the backend can resume meetings without desktop local state
+- Auto-create an hourly `meeting_heartbeat` Guardian task for new Workstation meetings
+- Add a server-side meeting heartbeat runner that continues autonomous rounds until the room reaches a terminal status
+- Disable meeting heartbeat tasks automatically when a room reaches recommendation-ready, solved, blocked, approval-needed, or owner-input-needed status
+- Keep desktop downloader and docs aligned to the new 1.2.8 installer name

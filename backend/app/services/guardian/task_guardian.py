@@ -49,6 +49,7 @@ TASK_GUARDIAN_RETRY_MAX_SECONDS = max(
 )
 
 ALLOWED_TASK_TOOLS = {
+    "meeting_heartbeat",
     "web_search",
     "github_list_prs",
     "github_get_ci_status",
@@ -575,6 +576,15 @@ async def _execute_internal_tool(task: GuardianTask, session: Session) -> tuple[
     from app.api.routes.chat.llm import mask_tool_result_for_external
     from app.api.routes.chat.tools import execute_tool
     from app.services.guardian.auth import is_operator_user_id
+    from app.services.guardian.meeting_heartbeat import HEARTBEAT_TOOL_NAME, run_meeting_heartbeat
+
+    if task.tool_name == HEARTBEAT_TOOL_NAME:
+        payload = await run_meeting_heartbeat(
+            session=session,
+            room_id=task.room_id,
+            user_id=task.user_id,
+        )
+        return "success", json.dumps(payload, ensure_ascii=False)
 
     room = session.get(ChatRoom, uuid.UUID(task.room_id))
     execution_allowed = bool(room.execution_allowed) if room else False
@@ -626,15 +636,46 @@ async def run_task_once(task: GuardianTask, session: Session) -> dict[str, Any]:
     from app.services.guardian.spine import ingest_task_guardian_result
 
     execution_status, output = await _execute_internal_tool(task, session)
-    verification = verify_task_run(
-        task_name=task.name,
-        tool_name=task.tool_name,
-        output=output,
-        execution_status=execution_status,
-    )
-    status = verification.status
-    excerpt = _safe_excerpt(output)
-    message = verification.summary
+    heartbeat_payload: dict[str, Any] | None = None
+    if task.tool_name == "meeting_heartbeat":
+        try:
+            parsed = json.loads(output)
+        except Exception:
+            parsed = None
+        if isinstance(parsed, dict):
+            heartbeat_payload = parsed
+
+    if heartbeat_payload is not None:
+        heartbeat_status = str(heartbeat_payload.get("heartbeat_status") or "continue").strip().lower() or "continue"
+        message = str(heartbeat_payload.get("summary") or "Meeting heartbeat completed.").strip()
+        verification = VerificationResult(
+            status="verified" if execution_status == "success" else "failed",
+            confidence=0.92 if execution_status == "success" else 0.6,
+            summary=message,
+            evidence=[
+                {"type": "meeting_status", "detail": heartbeat_status},
+                *(
+                    [{"type": "notes_artifact", "detail": str(heartbeat_payload.get("notes_artifact_id"))}]
+                    if heartbeat_payload.get("notes_artifact_id")
+                    else []
+                ),
+            ],
+            recommended_next_action=None
+            if heartbeat_payload.get("terminal")
+            else "Heartbeat will run again on the next schedule unless the room reaches a terminal status.",
+        )
+        status = heartbeat_status
+        excerpt = _safe_excerpt(message)
+    else:
+        verification = verify_task_run(
+            task_name=task.name,
+            tool_name=task.tool_name,
+            output=output,
+            execution_status=execution_status,
+        )
+        status = verification.status
+        excerpt = _safe_excerpt(output)
+        message = verification.summary
     run_id = _record_run(
         task_id=task.id,
         room_id=task.room_id,
@@ -645,6 +686,21 @@ async def run_task_once(task: GuardianTask, session: Session) -> dict[str, Any]:
         output_excerpt=excerpt,
     )
     followup = _apply_followup_state(task, verification)
+    if heartbeat_payload and heartbeat_payload.get("terminal"):
+        now_iso = _now_iso()
+        terminal_reason = str(heartbeat_payload.get("summary") or "").strip() or None
+        with _conn() as conn:
+            conn.execute(
+                """
+                UPDATE guardian_tasks
+                SET next_run_at = NULL, enabled = 0, updated_at = ?, last_blocked_reason = ?
+                WHERE id = ?
+                """,
+                (now_iso, terminal_reason, task.id),
+            )
+        followup["next_run_at"] = None
+        followup["enabled"] = False
+        followup["last_blocked_reason"] = terminal_reason
 
     create_audit_log(
         session=session,

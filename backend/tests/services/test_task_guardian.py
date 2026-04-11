@@ -29,6 +29,23 @@ def test_task_guardian_schedule_and_list(monkeypatch, tmp_path) -> None:
     assert tasks[0].tool_name == "gmail_fetch_inbox"
 
 
+def test_task_guardian_allows_meeting_heartbeat(monkeypatch, tmp_path) -> None:
+    task_guardian = _reload_task_guardian(monkeypatch, tmp_path)
+
+    scheduled = task_guardian.schedule_task(
+        name="Roundtable heartbeat",
+        tool_name="meeting_heartbeat",
+        tool_args={},
+        schedule="every:3600",
+        room_id="room-123",
+        user_id="user-123",
+    )
+
+    task = task_guardian.get_task(scheduled["id"])
+    assert task is not None
+    assert task.tool_name == "meeting_heartbeat"
+
+
 def test_task_guardian_rejects_non_allowlisted_tool(monkeypatch, tmp_path) -> None:
     task_guardian = _reload_task_guardian(monkeypatch, tmp_path)
 
@@ -146,3 +163,51 @@ def test_task_guardian_retries_then_escalates_unverified_runs(monkeypatch, tmp_p
     assert after_second.consecutive_failures == 2
     assert bool(after_second.enabled) is False
     assert after_second.escalated_at is not None
+
+
+def test_task_guardian_disables_terminal_meeting_heartbeat(monkeypatch, tmp_path) -> None:
+    task_guardian = _reload_task_guardian(monkeypatch, tmp_path)
+
+    room_id = str(uuid.uuid4())
+    user_id = str(uuid.uuid4())
+    scheduled = task_guardian.schedule_task(
+        name="Roundtable heartbeat",
+        tool_name="meeting_heartbeat",
+        tool_args={},
+        schedule="every:3600",
+        room_id=room_id,
+        user_id=user_id,
+    )
+    task = task_guardian.get_task(scheduled["id"])
+    assert task is not None
+
+    async def _fake_execute(_task, _session):
+        return "success", (
+            '{"tool":"meeting_heartbeat","heartbeat_status":"recommendation_ready",'
+            '"summary":"Heartbeat reached a recommendation.","terminal":true}'
+        )
+
+    class _FakeBot:
+        id = "bot-user"
+
+    monkeypatch.setattr(task_guardian, "_execute_internal_tool", _fake_execute)
+    monkeypatch.setattr(task_guardian, "_find_or_create_bot_user", lambda _session: _FakeBot())
+    monkeypatch.setattr(task_guardian, "create_chat_message", lambda **kwargs: type("Msg", (), {"id": "msg-1"})())
+    monkeypatch.setattr(task_guardian, "create_audit_log", lambda **kwargs: None)
+    monkeypatch.setattr(task_guardian, "remember_tool_event", lambda **kwargs: None)
+
+    async def _noop(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(task_guardian, "_broadcast_task_message", _noop)
+
+    result = asyncio.run(task_guardian.run_task_once(task, object()))
+    refreshed = task_guardian.get_task(task.id)
+
+    assert result["status"] == "recommendation_ready"
+    assert result["verification_status"] == "verified"
+    assert result["enabled"] is False
+    assert result["next_run_at"] is None
+    assert refreshed is not None
+    assert bool(refreshed.enabled) is False
+    assert refreshed.next_run_at is None

@@ -183,7 +183,7 @@ class MeetingArtifactBase(BaseModel):
 
 
 class MeetingArtifactCreate(MeetingArtifactBase):
-    pass
+    meta_json: Optional[dict] = None
 
 
 class MeetingArtifactResponse(MeetingArtifactBase):
