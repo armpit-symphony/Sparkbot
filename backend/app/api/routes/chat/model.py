@@ -80,6 +80,58 @@ def _env_path() -> Path:
     return _repo_root() / ".env"
 
 
+def _load_version_markers() -> dict[str, str]:
+    """Best-effort version markers for runtime self-inspection.
+
+    Prefer explicit env overrides for packaged builds. Fall back to tracked
+    source files when running from a checkout. If neither exists, keep the
+    currently shipped desktop release visible instead of letting the model guess.
+    """
+    markers = {
+        "app_version": os.getenv("SPARKBOT_VERSION", "").strip(),
+        "backend_version": "",
+        "frontend_version": "",
+        "desktop_shell_version": "",
+    }
+    root = _repo_root()
+
+    backend_pyproject = root / "backend" / "pyproject.toml"
+    if backend_pyproject.is_file():
+        try:
+            text = backend_pyproject.read_text(encoding="utf-8")
+            match = re.search(r'(?m)^version\s*=\s*"([^"]+)"', text)
+            if match:
+                markers["backend_version"] = match.group(1).strip()
+        except Exception:
+            pass
+
+    frontend_package = root / "frontend" / "package.json"
+    if frontend_package.is_file():
+        try:
+            payload = json.loads(frontend_package.read_text(encoding="utf-8"))
+            markers["frontend_version"] = str(payload.get("version") or "").strip()
+        except Exception:
+            pass
+
+    tauri_conf = root / "src-tauri" / "tauri.conf.json"
+    if tauri_conf.is_file():
+        try:
+            payload = json.loads(tauri_conf.read_text(encoding="utf-8"))
+            markers["desktop_shell_version"] = str(payload.get("version") or "").strip()
+        except Exception:
+            pass
+
+    if not markers["app_version"]:
+        markers["app_version"] = (
+            markers["desktop_shell_version"]
+            or markers["backend_version"]
+            or markers["frontend_version"]
+            or "1.2.3"
+        )
+
+    return markers
+
+
 def _require_operator(current_user: CurrentChatUser) -> None:
     if not current_user or not get_guardian_suite().auth.is_operator_identity(
         username=current_user.username,
@@ -288,8 +340,13 @@ async def build_safe_runtime_state(current_user: CurrentChatUser) -> dict[str, A
     }
     active_session = get_active_session(str(current_user.id))
     default_provider = str((config.get("default_selection") or {}).get("provider") or "")
+    version_markers = _load_version_markers()
     return {
         "assistant_name": "Sparkbot",
+        "app_version": version_markers.get("app_version") or "",
+        "backend_version": version_markers.get("backend_version") or "",
+        "frontend_version": version_markers.get("frontend_version") or "",
+        "desktop_shell_version": version_markers.get("desktop_shell_version") or "",
         "active_model": str(config.get("active_model") or ""),
         "default_selection": config.get("default_selection") or {},
         "model_stack": config.get("stack") or {},

@@ -248,6 +248,9 @@ def _looks_like_self_inspection_query(content: str) -> bool:
     if not normalized:
         return False
     patterns = (
+        r"\b(?:what|which)\s+version(?:\s+of)?\s+sparkbot\b",
+        r"\bwhat\s+version\s+are\s+you\s+running\b",
+        r"\bversion\s+of\s+sparkbot\b",
         r"\b(ai stack|model stack|runtime state|safe operational state)\b",
         r"\bwhat (?:ai )?(?:stack|model|provider|route)\b",
         r"\bwhat are you running\b",
@@ -264,6 +267,10 @@ def _looks_like_self_inspection_query(content: str) -> bool:
 
 
 def _render_runtime_state_markdown(runtime_state: dict[str, Any]) -> str:
+    app_version = str(runtime_state.get("app_version") or "").strip()
+    backend_version = str(runtime_state.get("backend_version") or "").strip()
+    frontend_version = str(runtime_state.get("frontend_version") or "").strip()
+    desktop_shell_version = str(runtime_state.get("desktop_shell_version") or "").strip()
     default_selection = runtime_state.get("default_selection") or {}
     model_stack = runtime_state.get("model_stack") or {}
     routing_policy = runtime_state.get("routing_policy") or {}
@@ -298,6 +305,10 @@ def _render_runtime_state_markdown(runtime_state: dict[str, Any]) -> str:
 
     lines = [
         "## Sparkbot Runtime State",
+        f"- app version: `{app_version or 'unknown'}`",
+        f"- backend version: `{backend_version or 'unknown'}`",
+        f"- frontend version: `{frontend_version or 'unknown'}`",
+        f"- desktop shell version: `{desktop_shell_version or 'unknown'}`",
         f"- active model: `{runtime_state.get('active_model') or 'unknown'}`",
         f"- primary stack model: `{model_stack.get('primary') or 'unknown'}`",
         f"- backup stack model 1: `{model_stack.get('backup_1') or 'none'}`",

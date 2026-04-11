@@ -1,0 +1,5 @@
+Sparkbot v1.2.3
+
+- Answer version and runtime-state questions through a deterministic backend path
+- Stop version questions from falling through to the model and returning junk like `{}`
+- Keep desktop downloader and docs aligned to the new 1.2.3 installer name
