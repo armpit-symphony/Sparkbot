@@ -287,7 +287,9 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
     // Derive participant handles from seated agents (when no @mention present)
     const hasMention = /^@\w+/.test(content.trim())
     const participants = (!hasMention && seatedParticipants.length > 0)
-      ? seatedParticipants.map((s) => s.label.toLowerCase().replace(/\s+/g, ""))
+      ? seatedParticipants
+          .map((s) => (s.agentHandle || "").trim().toLowerCase())
+          .filter((handle): handle is string => Boolean(handle))
       : undefined
 
     try {

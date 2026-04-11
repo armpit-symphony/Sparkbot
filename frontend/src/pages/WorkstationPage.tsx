@@ -125,8 +125,60 @@ function resolveInviteStation(
     ...station,
     label: config.label,
     subtitle: config.provider,
+    description: config.description || station.description,
     status: "idle" as StationStatus,
     invitePrompt: undefined,
+  }
+}
+
+function deriveMeetingAgentHandle(station: Station): string | null {
+  switch (station.id) {
+    case MAIN_DESK.id:
+      return "sparkbot"
+    case "stack-backup_1":
+      return "workstation_backup_1"
+    case "stack-backup_2":
+      return "workstation_backup_2"
+    case "stack-heavy_hitter":
+      return "workstation_heavy_hitter"
+    case "sb-researcher":
+      return "researcher"
+    case "sb-coder":
+      return "coder"
+    case "sb-analyst":
+      return "analyst"
+    default:
+      break
+  }
+
+  if (station.isInviteSlot) {
+    const normalized = station.id.replace(/[^a-z0-9]+/gi, "_").replace(/^_+|_+$/g, "").toLowerCase()
+    return normalized ? `workstation_${normalized}` : null
+  }
+
+  return null
+}
+
+function buildMeetingSeatMeta(
+  station: Station,
+  seatIndex: number,
+): WorkstationMeetingSeatMeta {
+  const agentHandle = deriveMeetingAgentHandle(station)
+  return {
+    seatIndex,
+    stationId: station.id,
+    label: station.label,
+    accentHex: station.accentHex,
+    ...(agentHandle ? { agentHandle } : {}),
+    ...(station.isInviteSlot && agentHandle
+      ? {
+          agentProvisioning: "custom" as const,
+          agentProvider: station.subtitle,
+          agentDescription: station.description,
+        }
+      : agentHandle
+      ? { agentProvisioning: "builtin" as const }
+      : {}),
   }
 }
 
@@ -3012,21 +3064,11 @@ export default function WorkstationPage() {
   const buildStackSeatMeta = useCallback(
     (companionStations: Station[]): WorkstationMeetingSeatMeta[] => {
       const meta: WorkstationMeetingSeatMeta[] = [
-        {
-          seatIndex: 0,
-          stationId: MAIN_DESK.id,
-          label: MAIN_DESK.label,
-          accentHex: MAIN_DESK.accentHex,
-        },
+        buildMeetingSeatMeta(MAIN_DESK, 0),
       ]
       companionStations.forEach((station, i) => {
         if (station.status !== "empty") {
-          meta.push({
-            seatIndex: i + 1,
-            stationId: station.id,
-            label: station.label,
-            accentHex: station.accentHex,
-          })
+          meta.push(buildMeetingSeatMeta(station, i + 1))
         }
       })
       return meta
@@ -3247,12 +3289,7 @@ export default function WorkstationPage() {
         if (!stationId) return null
         const station = roomEligibleStations.find((candidate) => candidate.id === stationId)
         if (!station) return null
-        return {
-          seatIndex,
-          stationId,
-          label: station.label,
-          accentHex: station.accentHex,
-        }
+        return buildMeetingSeatMeta(station, seatIndex)
       })
       .filter((seat): seat is NonNullable<typeof seat> => Boolean(seat))
 

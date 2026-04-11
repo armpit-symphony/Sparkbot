@@ -31,6 +31,10 @@ export interface WorkstationMeetingSeatMeta {
   stationId: string
   label: string
   accentHex: string
+  agentHandle?: string
+  agentProvisioning?: "builtin" | "custom"
+  agentProvider?: string
+  agentDescription?: string
 }
 
 export interface WorkstationMeetingRoomMeta {
@@ -136,6 +140,7 @@ export async function launchMeetingRoom({
   roomName = "Roundtable",
   seats,
 }: LaunchMeetingRoomOptions): Promise<WorkstationMeetingRoomMeta> {
+  await ensureMeetingSeatAgents(seats)
   const description = "Launched from Sparkbot Workstation. Autonomous meeting mode."
   const createRes = await apiFetch("/api/v1/chat/rooms/", {
     method: "POST",
@@ -247,6 +252,7 @@ export async function launchTaskMeeting({
   task: GuardianTaskInfo
   seats: WorkstationMeetingSeatMeta[]
 }): Promise<WorkstationMeetingRoomMeta> {
+  await ensureMeetingSeatAgents(seats)
   const roomName = `Project: ${task.name}`
   const description = `Workstation project meeting for task: ${task.name} (${task.tool_name})`
 
@@ -351,4 +357,37 @@ export async function launchTaskMeeting({
   }
   saveMeetingRoomMeta(meetingMeta)
   return meetingMeta
+}
+
+function buildCustomSeatSystemPrompt(seat: WorkstationMeetingSeatMeta): string {
+  const provider = (seat.agentProvider || "configured provider").trim()
+  const roleSummary = (seat.agentDescription || `${seat.label} contributes a distinct perspective in workstation meetings.`).trim()
+  return [
+    `You are ${seat.label}, a workstation meeting participant.`,
+    `Your configured provider context is ${provider}.`,
+    roleSummary,
+    "In roundtable meetings, contribute one distinct perspective at a time.",
+    "Avoid filler, avoid repeating prior points, and push the discussion toward a clear recommendation or next action.",
+  ].join(" ")
+}
+
+async function ensureMeetingSeatAgents(seats: WorkstationMeetingSeatMeta[]): Promise<void> {
+  for (const seat of seats) {
+    if (seat.agentProvisioning !== "custom" || !seat.agentHandle) continue
+    const response = await apiFetch("/api/v1/chat/agents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        name: seat.agentHandle,
+        emoji: "🤖",
+        description: `${seat.label} workstation invite desk`,
+        system_prompt: buildCustomSeatSystemPrompt(seat),
+      }),
+    })
+    if (!response.ok && response.status !== 409) {
+      const detail = await response.json().catch(() => ({ detail: "Could not prepare meeting participant." }))
+      throw new Error(String(detail.detail ?? "Could not prepare meeting participant."))
+    }
+  }
 }

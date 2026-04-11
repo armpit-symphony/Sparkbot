@@ -461,26 +461,47 @@ def get_agent_route_context(
     overrides = get_agent_model_overrides()
     effective_agent = (agent_name or "sparkbot").strip().lower()
     override = overrides.get(effective_agent)
+    workstation_stack_slots = {
+        "workstation_backup_1": "backup_1",
+        "workstation_backup_2": "backup_2",
+        "workstation_heavy_hitter": "heavy_hitter",
+    }
+    if effective_agent in workstation_stack_slots:
+        slot_model = str(get_model_stack().get(workstation_stack_slots[effective_agent]) or "").strip()
+        chosen_model = slot_model or default_model
+        return {
+            "agent_name": effective_agent,
+            "route": "default",
+            "provider_locked": True,
+            "model": chosen_model,
+            "requested_provider": model_provider(chosen_model),
+            "cross_provider_fallback": False,
+        }
 
     route = str((override or {}).get("route") or "default").strip().lower()
     if route not in {"default", "openrouter", "local"}:
         route = "default"
 
+    override_model = str((override or {}).get("model") or "").strip()
     chosen_model = default_model
     if route == "openrouter":
-        chosen_model = str((override or {}).get("model") or "").strip() or get_openrouter_default_model()
+        chosen_model = override_model or get_openrouter_default_model()
     elif route == "local":
-        chosen_model = str((override or {}).get("model") or "").strip() or get_local_default_model()
+        chosen_model = override_model or get_local_default_model()
+    elif override_model:
+        chosen_model = override_model
+
+    provider_locked = route in {"openrouter", "local"} or bool(override_model)
 
     return {
         "agent_name": effective_agent,
         "route": route,
-        "provider_locked": route in {"openrouter", "local"},
+        "provider_locked": provider_locked,
         "model": chosen_model,
         "requested_provider": model_provider(chosen_model),
         "cross_provider_fallback": (
             default_cross_provider_fallback_enabled()
-            if route == "default"
+            if route == "default" and not provider_locked
             else False
         ),
     }
@@ -688,15 +709,15 @@ def _provider_authoritative_route_payload(
 
 
 async def _ensure_locked_route_ready(route_context: dict[str, Any]) -> None:
-    route = str(route_context.get("route") or "default").strip().lower()
     model_name = str(route_context.get("model") or "").strip()
-    if route == "openrouter":
+    locked_provider = model_provider(model_name) if route_context.get("provider_locked") else ""
+    if locked_provider == "openrouter":
         if not os.getenv("OPENROUTER_API_KEY", "").strip():
             raise RuntimeError(
                 "OpenRouter is forced for this agent, but no OpenRouter API key is saved in Controls."
             )
         return
-    if route == "local":
+    if locked_provider == "ollama":
         ollama_status = await get_ollama_status()
         if not ollama_status.get("reachable"):
             raise RuntimeError(
@@ -709,14 +730,14 @@ async def _ensure_locked_route_ready(route_context: dict[str, Any]) -> None:
 
 
 def _format_locked_route_error(route_context: dict[str, Any], error: Exception) -> str:
-    route = str(route_context.get("route") or "default").strip().lower()
     model_name = str(route_context.get("model") or "").strip()
-    if route == "openrouter":
+    locked_provider = model_provider(model_name) if route_context.get("provider_locked") else ""
+    if locked_provider == "openrouter":
         return (
             f"OpenRouter is forced for this agent, but model '{model_name}' could not run. "
             f"Fix the OpenRouter setup or change this agent back to Use default. Details: {error}"
         )
-    if route == "local":
+    if locked_provider == "ollama":
         return (
             f"Local Ollama is forced for this agent, but model '{model_name}' could not run. "
             f"Make sure Ollama is running and the model is downloaded, or change this agent back to Use default. Details: {error}"
@@ -759,6 +780,51 @@ def _candidate_models(
     if filtered:
         return filtered
     return [primary_model]
+
+
+async def _retry_plain_text_without_tools(
+    *,
+    chosen: str,
+    route_payload: dict | None,
+    route_context: dict[str, Any],
+    messages: list[dict],
+    temperature: float,
+) -> str:
+    retry_kwargs = {
+        "messages": messages,
+        "temperature": temperature,
+    }
+    retry_model, retry_response = await _acompletion_with_fallback(
+        model=chosen,
+        route_payload=route_payload,
+        route_context=route_context,
+        **retry_kwargs,
+    )
+    retry_choice = retry_response.choices[0]
+    retry_text = getattr(retry_choice.message, "content", None) or ""
+    if retry_text:
+        log.warning(
+            "LLM empty tool response recovered without tools: requested=%s applied=%s provider=%s",
+            chosen,
+            retry_model,
+            model_provider(retry_model),
+        )
+    return retry_text
+
+
+def _assistant_message_text(message: Any) -> str:
+    text = getattr(message, "content", None)
+    if isinstance(text, str) and text:
+        return text
+    if text is None and hasattr(message, "model_dump"):
+        try:
+            dumped = message.model_dump(exclude_none=False)
+        except Exception:
+            dumped = {}
+        dumped_text = dumped.get("content") if isinstance(dumped, dict) else None
+        if isinstance(dumped_text, str) and dumped_text:
+            return dumped_text
+    return ""
 
 
 async def _acompletion_with_fallback(
@@ -1172,7 +1238,15 @@ async def stream_chat_with_tools(
         # without tools, or the model simply chose not to call a tool), stream
         # the content directly and exit the loop.
         if finish_reason != "tool_calls" or not getattr(assistant_msg, "tool_calls", None):
-            text = getattr(assistant_msg, "content", None) or ""
+            text = _assistant_message_text(assistant_msg)
+            if not text:
+                text = await _retry_plain_text_without_tools(
+                    chosen=chosen,
+                    route_payload=route_payload,
+                    route_context=route_context,
+                    messages=msgs,
+                    temperature=0.2,
+                )
             if text:
                 yield {"type": "token", "token": text}
             return

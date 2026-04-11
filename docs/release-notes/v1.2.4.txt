@@ -1,0 +1,6 @@
+Sparkbot v1.2.4
+
+- Fix local Ollama chats that could return no reply when a model emitted an empty tool-aware response
+- Let local desktop builds stay in the Workstation meeting room instead of redirecting back to DM
+- Wire Workstation roundtable seats to real participant handles so Sparkbot, stack companions, and built-in specialists can take turns in autonomous meetings
+- Keep desktop downloader and docs aligned to the new 1.2.4 installer name
