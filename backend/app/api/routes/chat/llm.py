@@ -812,6 +812,60 @@ async def _retry_plain_text_without_tools(
     return retry_text
 
 
+async def _stream_text_with_fallback(
+    *,
+    model: str,
+    route_payload: dict | None,
+    route_context: dict[str, Any],
+    messages: list[dict],
+    temperature: float,
+) -> AsyncGenerator[str, None]:
+    streamed_any = False
+    try:
+        _, response = await _acompletion_with_fallback(
+            model=model,
+            route_payload=route_payload,
+            route_context=route_context,
+            messages=messages,
+            stream=True,
+            temperature=temperature,
+        )
+        async for chunk in response:
+            delta = chunk.choices[0].delta.content or ""
+            if delta:
+                streamed_any = True
+                yield delta
+    except Exception as exc:
+        if streamed_any:
+            raise
+        log.warning(
+            "streaming completion failed before tokens for %s; retrying non-streaming: %s",
+            model,
+            exc,
+        )
+
+    if streamed_any:
+        return
+
+    retry_model, retry_response = await _acompletion_with_fallback(
+        model=model,
+        route_payload=route_payload,
+        route_context=route_context,
+        messages=messages,
+        stream=False,
+        temperature=temperature,
+    )
+    retry_text = _assistant_message_text(retry_response.choices[0].message)
+    if retry_text:
+        log.warning(
+            "streaming completion produced no tokens; retried non-streaming successfully: requested=%s applied=%s provider=%s",
+            model,
+            retry_model,
+            model_provider(retry_model),
+        )
+        yield retry_text
+
+
 def _assistant_message_text(message: Any) -> str:
     text = getattr(message, "content", None)
     if isinstance(text, str) and text:
@@ -1037,17 +1091,14 @@ async def stream_chat(
         await _ensure_locked_route_ready(route_context)
     elif route_context["route"] == "default" and not route_context.get("cross_provider_fallback"):
         chosen = route_context["model"]
-    _, response = await _acompletion_with_fallback(
+    async for delta in _stream_text_with_fallback(
         model=chosen,
+        route_payload=None,
         route_context=route_context,
         messages=messages,
-        stream=True,
         temperature=0.2,
-    )
-    async for chunk in response:
-        delta = chunk.choices[0].delta.content or ""
-        if delta:
-            yield delta
+    ):
+        yield delta
 
 
 async def stream_chat_with_tools(
@@ -1502,18 +1553,14 @@ async def stream_chat_with_tools(
                     pass  # Disabled aggressive continuation - causes tool loop issues
         else:
             # No more tool calls — stream the final answer
-            chosen, stream = await _acompletion_with_fallback(
+            async for delta in _stream_text_with_fallback(
                 model=chosen,
                 route_payload=route_payload,
                 route_context=route_context,
                 messages=msgs,
-                stream=True,
                 temperature=0.2,
-            )
-            async for chunk in stream:
-                delta = chunk.choices[0].delta.content or ""
-                if delta:
-                    yield {"type": "token", "token": delta}
+            ):
+                yield {"type": "token", "token": delta}
             return
 
     # Safety: too many tool rounds

@@ -357,6 +357,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
               setStreamingAgent(null)
               await reloadMessages()
             } else if (evt.type === "done") {
+              await autoGenerateNotesAfterMeeting()
               streamDone = true
               break
             } else if (evt.type === "error") {
@@ -413,6 +414,20 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
       console.error("Generate notes error:", err)
     } finally {
       setGeneratingNotes(false)
+    }
+  }
+
+  async function autoGenerateNotesAfterMeeting() {
+    try {
+      const res = await apiFetch(`/api/v1/chat/rooms/${roomId}/artifacts/generate`, {
+        method: "POST",
+        credentials: "include",
+      })
+      if (!res.ok) return
+      const artifact = await res.json()
+      setLatestArtifact(artifact)
+    } catch {
+      // Best effort only; do not interrupt the room.
     }
   }
 

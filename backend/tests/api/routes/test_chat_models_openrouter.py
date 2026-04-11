@@ -544,6 +544,63 @@ def test_stream_chat_with_tools_keeps_default_local_on_ollama_provider(monkeypat
     assert routing_event["payload"]["cross_provider_fallback"] is False
 
 
+def test_stream_chat_falls_back_to_non_streaming_when_stream_is_empty(monkeypatch) -> None:
+    calls: list[tuple[str, bool]] = []
+
+    class _FakeMessage:
+        tool_calls = None
+        content = "OLLAMA_VISIBLE_REPLY"
+
+        def model_dump(self, exclude_none: bool = True):
+            return {"role": "assistant", "content": "OLLAMA_VISIBLE_REPLY"}
+
+    class _FakeResponse:
+        choices = [SimpleNamespace(finish_reason="stop", message=_FakeMessage())]
+
+    class _EmptyStream:
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            raise StopAsyncIteration
+
+    async def fake_acompletion(*, model: str, stream: bool = False, **kwargs):
+        calls.append((model, stream))
+        return _EmptyStream() if stream else _FakeResponse()
+
+    async def fake_ollama_status():
+        return {
+            "reachable": True,
+            "base_url": "http://localhost:11434",
+            "models": ["qwen2:latest"],
+            "model_ids": ["ollama/qwen2:latest"],
+            "models_available": True,
+        }
+
+    monkeypatch.setenv("SPARKBOT_MODEL", "ollama/qwen2:latest")
+    monkeypatch.setenv("SPARKBOT_DEFAULT_PROVIDER", "ollama")
+    monkeypatch.setenv("SPARKBOT_LOCAL_MODEL", "ollama/qwen2:latest")
+    monkeypatch.setattr(llm.litellm, "acompletion", fake_acompletion)
+    monkeypatch.setattr(llm, "get_ollama_status", fake_ollama_status)
+
+    async def _collect_tokens():
+        tokens: list[str] = []
+        async for token in llm.stream_chat(
+            [{"role": "user", "content": "Reply with OLLAMA_VISIBLE_REPLY"}],
+            user_id="test-user",
+        ):
+            tokens.append(token)
+        return tokens
+
+    tokens = asyncio.run(_collect_tokens())
+
+    assert tokens == ["OLLAMA_VISIBLE_REPLY"]
+    assert calls == [
+        ("ollama/qwen2:latest", True),
+        ("ollama/qwen2:latest", False),
+    ]
+
+
 def test_models_config_reports_live_ollama_status_separately(
     client: TestClient,
     monkeypatch,

@@ -1,0 +1,6 @@
+Sparkbot v1.2.7
+
+- Fall back from streaming to non-streaming completions when Ollama or other providers emit no visible tokens, so local-model replies still print in chat
+- Auto-generate meeting notes when an autonomous round ends so the room gets a summary artifact without a manual notes pass
+- Add regression coverage for silent-stream local model replies
+- Keep desktop downloader and docs aligned to the new 1.2.7 installer name
