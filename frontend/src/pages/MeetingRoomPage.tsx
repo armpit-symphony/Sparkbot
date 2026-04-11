@@ -366,6 +366,14 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                 : msg.includes("NotFoundError") || msg.includes("404")
                 ? "Model not found. Please check your model settings in Controls."
                 : msg.substring(0, 120)
+              const nonFatal = evt.fatal === false || Boolean(evt.agent)
+              if (nonFatal) {
+                accumulatedToken = ""
+                setStreamingToken("")
+                setStreamingAgent(null)
+                setStreamError(friendly)
+                continue
+              }
               setStreamError(friendly)
               streamDone = true
               break

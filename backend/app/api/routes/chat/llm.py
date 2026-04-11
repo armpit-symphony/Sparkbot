@@ -886,16 +886,6 @@ async def _acompletion_with_fallback(
         except Exception as exc:
             last_error = exc
             errors.append(f"{candidate}: {type(exc).__name__}: {exc}")
-            if route_context and route_context.get("provider_locked"):
-                friendly_error = _format_locked_route_error(route_context, exc)
-                log.error(
-                    "LLM locked route failed: route=%s requested_provider=%s requested_model=%s error=%s",
-                    route_mode,
-                    requested_provider,
-                    model,
-                    friendly_error,
-                )
-                raise RuntimeError(friendly_error) from exc
             # OpenRouter returns 404 "No endpoints found that support the provided
             # 'tool_choice' value" when the selected model/provider doesn't support
             # function calling.  litellm.drop_params=True only strips params that
@@ -915,6 +905,17 @@ async def _acompletion_with_fallback(
                 except Exception as exc2:
                     last_error = exc2
                     errors.append(f"{candidate}(no-tools): {type(exc2).__name__}: {exc2}")
+                    exc = exc2
+            if route_context and route_context.get("provider_locked"):
+                friendly_error = _format_locked_route_error(route_context, exc)
+                log.error(
+                    "LLM locked route failed: route=%s requested_provider=%s requested_model=%s error=%s",
+                    route_mode,
+                    requested_provider,
+                    model,
+                    friendly_error,
+                )
+                raise RuntimeError(friendly_error) from exc
             continue
     if last_error is not None:
         log.error(

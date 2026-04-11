@@ -1589,9 +1589,9 @@ async def stream_room_message(
                 if db2:
                     db2.close()
                 emitted_events.append(
-                    f"data: {json.dumps({'type': 'error', 'error': str(e), 'agent': participant_handle})}\n\n"
+                    f"data: {json.dumps({'type': 'error', 'error': str(e), 'agent': participant_handle, 'fatal': False})}\n\n"
                 )
-                return {"content": "", "status": "blocked", "halted": True, "events": emitted_events}
+                return {"content": "", "status": "blocked", "halted": False, "failed": True, "events": emitted_events}
 
             if stop_event:
                 if db2:
@@ -1669,9 +1669,9 @@ async def stream_room_message(
                 if db2:
                     db2.close()
                 emitted_events.append(
-                    f"data: {json.dumps({'type': 'error', 'error': f'Save failed for {participant_handle}: {e}'})}\n\n"
+                    f"data: {json.dumps({'type': 'error', 'error': f'Save failed for {participant_handle}: {e}', 'agent': participant_handle, 'fatal': False})}\n\n"
                 )
-                return {"content": "", "status": "blocked", "halted": True, "events": emitted_events}
+                return {"content": "", "status": "blocked", "halted": False, "failed": True, "events": emitted_events}
 
         async def autonomous_meeting_stream(valid_participants: list[str]):
             yield f"data: {json.dumps({'type': 'human_message', 'message_id': human_msg_id})}\n\n"
@@ -1894,7 +1894,7 @@ async def stream_room_message(
                             yield f"data: {json.dumps(event)}\n\n"
                             break
                 except Exception as e:
-                    yield f"data: {json.dumps({'type': 'error', 'error': str(e), 'agent': p_handle})}\n\n"
+                    yield f"data: {json.dumps({'type': 'error', 'error': str(e), 'agent': p_handle, 'fatal': False})}\n\n"
                     continue
 
                 if agent_full_text:
@@ -1917,7 +1917,7 @@ async def stream_room_message(
                         db2.close()
                         yield f"data: {json.dumps({'type': 'agent_done', 'agent': p_handle, 'message_id': agent_msg_id})}\n\n"
                     except Exception as e:
-                        yield f"data: {json.dumps({'type': 'error', 'error': f'Save failed for {p_handle}: {e}'})}\n\n"
+                        yield f"data: {json.dumps({'type': 'error', 'error': f'Save failed for {p_handle}: {e}', 'agent': p_handle, 'fatal': False})}\n\n"
 
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
 

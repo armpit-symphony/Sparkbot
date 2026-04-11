@@ -217,6 +217,54 @@ def test_locked_local_completion_returns_clear_error_without_cloud_fallback(monk
     assert calls == ["ollama/custom-local:latest"]
 
 
+def test_locked_provider_retries_without_tools_before_failing(monkeypatch) -> None:
+    calls: list[tuple[str, bool]] = []
+
+    class _FakeMessage:
+        tool_calls = None
+        content = "MINIMAX_OK"
+
+        def model_dump(self, exclude_none: bool = True):
+            return {"role": "assistant", "content": "MINIMAX_OK"}
+
+    class _FakeResponse:
+        choices = [SimpleNamespace(finish_reason="stop", message=_FakeMessage())]
+
+    async def fake_acompletion(*, model: str, **kwargs):
+        calls.append((model, "tools" in kwargs))
+        if "tools" in kwargs:
+            raise RuntimeError('bad_request_error: invalid param "tools"')
+        return _FakeResponse()
+
+    monkeypatch.setattr(llm.litellm, "acompletion", fake_acompletion)
+
+    route_context = {
+        "route": "default",
+        "provider_locked": True,
+        "requested_provider": "minimax",
+        "model": "minimax/MiniMax-M2.5",
+        "cross_provider_fallback": False,
+    }
+
+    chosen_model, response = asyncio.run(
+        llm._acompletion_with_fallback(
+            model="minimax/MiniMax-M2.5",
+            route_context=route_context,
+            messages=[{"role": "user", "content": "test"}],
+            tools=[{"type": "function", "function": {"name": "noop", "parameters": {"type": "object"}}}],
+            tool_choice="auto",
+            stream=False,
+        )
+    )
+
+    assert chosen_model == "minimax/MiniMax-M2.5"
+    assert response.choices[0].message.content == "MINIMAX_OK"
+    assert calls == [
+        ("minimax/MiniMax-M2.5", True),
+        ("minimax/MiniMax-M2.5", False),
+    ]
+
+
 def test_stream_chat_with_tools_keeps_forced_local_off_token_guardian(monkeypatch) -> None:
     calls: list[tuple[str, bool]] = []
 

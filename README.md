@@ -91,8 +91,8 @@ Release standard:
 Create and push a desktop release tag:
 
 ```bash
-git tag desktop-v1.2.5
-git push origin desktop-v1.2.5
+git tag desktop-v1.2.6
+git push origin desktop-v1.2.6
 ```
 
 The public desktop workflow is [desktop-release.yml](./.github/workflows/desktop-release.yml).

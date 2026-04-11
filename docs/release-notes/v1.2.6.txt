@@ -1,0 +1,7 @@
+Sparkbot v1.2.6
+
+- Fix locked provider routes for meeting participants so MiniMax and other invited model desks retry cleanly without tools before failing
+- Keep autonomous meetings running when one invited participant errors instead of silencing the whole room after Sparkbot speaks
+- Treat agent-scoped meeting SSE errors as non-fatal in the desktop UI so remaining participants can keep taking turns
+- Add a regression test for locked-provider tool fallback during meeting routing
+- Keep desktop downloader and docs aligned to the new 1.2.6 installer name
