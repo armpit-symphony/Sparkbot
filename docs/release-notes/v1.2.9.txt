@@ -1,0 +1,7 @@
+Sparkbot v1.2.9
+
+- Fix local Ollama replies that were returning from the model but not surfacing in Sparkbot chat when the provider emitted structured content blocks
+- Add a durable improvement loop that scores successful chat outcomes and stores per-classification model performance over time
+- Promote successful room workflow patterns into reusable prompt memory so Sparkbot can reuse effective models, tools, and specialist desks on later work
+- Adapt real model selection and fallback ordering toward models with better success history on similar work instead of relying only on static routing rules
+- Keep desktop downloader and docs aligned to the new 1.2.9 installer name

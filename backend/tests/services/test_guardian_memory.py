@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from app.services.guardian import memory
+from app.services.guardian import improvement
 
 
 def _reset_memory_guardian(monkeypatch, tmp_path: Path) -> None:
@@ -8,6 +9,7 @@ def _reset_memory_guardian(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("SPARKBOT_MEMORY_GUARDIAN_DATA_DIR", str(tmp_path / "memory_guardian"))
     monkeypatch.setenv("SPARKBOT_MEMORY_GUARDIAN_MAX_TOKENS", "1200")
     monkeypatch.setenv("SPARKBOT_MEMORY_GUARDIAN_RETRIEVE_LIMIT", "6")
+    monkeypatch.setenv("SPARKBOT_IMPROVEMENT_DATA_DIR", str(tmp_path / "improvement_loop"))
     memory._guardian.cache_clear()
 
 
@@ -130,3 +132,31 @@ def test_memory_guardian_redacts_sensitive_content_from_context(monkeypatch, tmp
     assert "[REDACTED_PHONE]" in context
     assert "[REDACTED_EMAIL]" in context
     assert "[REDACTED_TOKEN]" in context
+
+
+def test_memory_guardian_includes_promoted_workflow_patterns(monkeypatch, tmp_path: Path) -> None:
+    _reset_memory_guardian(monkeypatch, tmp_path)
+
+    improvement.record_outcome(
+        user_id="user-1",
+        room_id="room-1",
+        route_payload={
+            "classification": "coding",
+            "applied_model": "ollama/qwen2:latest",
+            "fallback_triggered": False,
+        },
+        output_text="Implemented a durable parser and verified the result.",
+        tool_usage_counts={"github_get_pr": 1},
+        success=True,
+        agent_name="sparkbot",
+    )
+
+    context = memory.build_memory_context(
+        user_id="user-1",
+        room_id="room-1",
+        query="How should I handle coding work here?",
+    )
+
+    assert "Promoted Workflow Patterns" in context
+    assert "ollama/qwen2:latest" in context
+    assert "github get pr" in context.lower()

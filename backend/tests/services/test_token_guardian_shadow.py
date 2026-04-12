@@ -1,6 +1,17 @@
 from app.services.guardian import token_guardian
 
 
+def _fake_monitor():
+    class _FakeMonitor:
+        def record_usage(self, tokens: int, model: str, action: str = "unknown", is_output: bool = False):
+            return None
+
+        def get_stats(self):
+            return {}
+
+    return _FakeMonitor()
+
+
 def test_token_guardian_shadow_route_returns_decision(monkeypatch) -> None:
     monkeypatch.setenv("SPARKBOT_TOKEN_GUARDIAN_MODE", "shadow")
     monkeypatch.setenv("SPARKBOT_TOKEN_GUARDIAN_SHADOW_ENABLED", "true")
@@ -160,3 +171,44 @@ def test_token_guardian_live_respects_allowlist(monkeypatch) -> None:
     assert payload is not None
     assert payload["selected_model_allowed"] is False
     assert payload["allowed_live_models"] == ["gpt-4o-mini"]
+
+
+def test_token_guardian_shadow_applies_learned_route_bias(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKBOT_TOKEN_GUARDIAN_MODE", "shadow")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-openai")
+    monkeypatch.setattr(token_guardian, "_monitor", _fake_monitor)
+    monkeypatch.setattr(
+        token_guardian,
+        "_build_route_payload",
+        lambda query, current_model, mode: {
+            "mode": mode,
+            "classification": "coding",
+            "selected_model": current_model,
+            "current_model": current_model,
+            "estimated_tokens": 17,
+            "estimated_cost": 0.0001,
+            "estimated_current_cost": 0.0001,
+            "estimated_savings": 0.0,
+            "would_switch_models": False,
+        },
+    )
+    monkeypatch.setattr(
+        token_guardian.improvement,
+        "choose_best_model",
+        lambda **kwargs: (
+            "claude-sonnet-4-5",
+            "Outcome learning preferred claude-sonnet-4-5.",
+            [{"model": "claude-sonnet-4-5", "score": 0.9, "attempts": 3, "successes": 3}],
+        ),
+    )
+
+    chosen, payload = token_guardian.route_model(
+        "Write a parser",
+        "gpt-4o-mini",
+        available_models={"gpt-4o-mini", "claude-sonnet-4-5"},
+    )
+
+    assert chosen == "claude-sonnet-4-5"
+    assert payload is not None
+    assert payload["learned_route_applied"] is True
+    assert payload["selected_model"] == "claude-sonnet-4-5"

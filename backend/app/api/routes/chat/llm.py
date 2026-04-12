@@ -16,6 +16,7 @@ from typing import Any, AsyncGenerator
 
 import litellm
 from app.services.guardian import get_guardian_suite
+from app.services.guardian import improvement as guardian_improvement
 
 litellm.drop_params = True  # ignore unsupported params instead of erroring
 
@@ -777,6 +778,11 @@ def _candidate_models(
         add(stack["heavy_hitter"])
 
     filtered = [candidate for candidate in candidates if model_is_configured(candidate)]
+    classification = str((route_payload or {}).get("classification") or "").strip() or "general"
+    filtered = guardian_improvement.reorder_candidate_models(
+        classification=classification,
+        candidates=filtered,
+    )
     if filtered:
         return filtered
     return [primary_model]
@@ -801,7 +807,7 @@ async def _retry_plain_text_without_tools(
         **retry_kwargs,
     )
     retry_choice = retry_response.choices[0]
-    retry_text = getattr(retry_choice.message, "content", None) or ""
+    retry_text = _assistant_message_text(retry_choice.message)
     if retry_text:
         log.warning(
             "LLM empty tool response recovered without tools: requested=%s applied=%s provider=%s",
@@ -831,7 +837,7 @@ async def _stream_text_with_fallback(
             temperature=temperature,
         )
         async for chunk in response:
-            delta = chunk.choices[0].delta.content or ""
+            delta = _assistant_message_text(chunk.choices[0].delta)
             if delta:
                 streamed_any = True
                 yield delta
@@ -867,17 +873,47 @@ async def _stream_text_with_fallback(
 
 
 def _assistant_message_text(message: Any) -> str:
-    text = getattr(message, "content", None)
-    if isinstance(text, str) and text:
+    text = _extract_text_content(getattr(message, "content", None))
+    if text:
         return text
-    if text is None and hasattr(message, "model_dump"):
+    if hasattr(message, "model_dump"):
         try:
             dumped = message.model_dump(exclude_none=False)
         except Exception:
             dumped = {}
-        dumped_text = dumped.get("content") if isinstance(dumped, dict) else None
-        if isinstance(dumped_text, str) and dumped_text:
-            return dumped_text
+        if isinstance(dumped, dict):
+            return _extract_text_content(dumped.get("content"))
+        return _extract_text_content(dumped)
+    return ""
+
+
+def _extract_text_content(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        parts = [_extract_text_content(item) for item in value]
+        return "".join(part for part in parts if part)
+    if isinstance(value, dict):
+        for key in ("text", "content", "value"):
+            text = _extract_text_content(value.get(key))
+            if text:
+                return text
+        return ""
+    if hasattr(value, "text"):
+        text = _extract_text_content(getattr(value, "text", None))
+        if text:
+            return text
+    if hasattr(value, "content"):
+        text = _extract_text_content(getattr(value, "content", None))
+        if text:
+            return text
+    if hasattr(value, "model_dump"):
+        try:
+            return _extract_text_content(value.model_dump(exclude_none=False))
+        except Exception:
+            return ""
     return ""
 
 
@@ -1270,97 +1306,240 @@ async def stream_chat_with_tools(
 
     tool_usage_counts: dict[str, int] = {}
     _max_tool_rounds = max(5, min(int(os.getenv("SPARKBOT_MAX_TOOL_ROUNDS", "20")), 50))
+    final_output_text = ""
 
-    for _round in range(_max_tool_rounds):
-        tool_choice: str = "auto"
-        if tool_usage_counts.get("web_search", 0) >= 2:
-            msgs.append(
-                {
-                    "role": "system",
-                    "content": (
-                        "You already have live search results. "
-                        "Do not call web_search again. Synthesize the answer from the tool results you already received."
-                    ),
-                }
+    try:
+        for _round in range(_max_tool_rounds):
+            tool_choice: str = "auto"
+            if tool_usage_counts.get("web_search", 0) >= 2:
+                msgs.append(
+                    {
+                        "role": "system",
+                        "content": (
+                            "You already have live search results. "
+                            "Do not call web_search again. Synthesize the answer from the tool results you already received."
+                        ),
+                    }
+                )
+                tool_choice = "none"
+
+            # Non-streaming call to resolve any tool calls
+            chosen, response = await _acompletion_with_fallback(
+                model=chosen,
+                route_payload=route_payload,
+                route_context=route_context,
+                messages=msgs,
+                tools=TOOL_DEFINITIONS,
+                tool_choice=tool_choice,
+                temperature=0.2,
             )
-            tool_choice = "none"
 
-        # Non-streaming call to resolve any tool calls
-        chosen, response = await _acompletion_with_fallback(
-            model=chosen,
-            route_payload=route_payload,
-            route_context=route_context,
-            messages=msgs,
-            tools=TOOL_DEFINITIONS,
-            tool_choice=tool_choice,
-            temperature=0.2,
-        )
+            choice = response.choices[0]
+            finish_reason = choice.finish_reason
+            assistant_msg = choice.message
 
-        choice = response.choices[0]
-        finish_reason = choice.finish_reason
-        assistant_msg = choice.message
+            # If the model returned plain text (tool_choice rejected and retried
+            # without tools, or the model simply chose not to call a tool), stream
+            # the content directly and exit the loop.
+            if finish_reason != "tool_calls" or not getattr(assistant_msg, "tool_calls", None):
+                text = _assistant_message_text(assistant_msg)
+                if not text:
+                    text = await _retry_plain_text_without_tools(
+                        chosen=chosen,
+                        route_payload=route_payload,
+                        route_context=route_context,
+                        messages=msgs,
+                        temperature=0.2,
+                    )
+                if text:
+                    final_output_text += text
+                    yield {"type": "token", "token": text}
+                    guardian_improvement.record_outcome(
+                        user_id=user_id,
+                        room_id=room_id,
+                        route_payload=route_payload,
+                        output_text=final_output_text,
+                        tool_usage_counts=tool_usage_counts,
+                        success=True,
+                        agent_name=agent_name,
+                    )
+                else:
+                    guardian_improvement.record_outcome(
+                        user_id=user_id,
+                        room_id=room_id,
+                        route_payload=route_payload,
+                        output_text="",
+                        tool_usage_counts=tool_usage_counts,
+                        success=False,
+                        agent_name=agent_name,
+                        error="empty assistant response",
+                    )
+                return
 
-        # If the model returned plain text (tool_choice rejected and retried
-        # without tools, or the model simply chose not to call a tool), stream
-        # the content directly and exit the loop.
-        if finish_reason != "tool_calls" or not getattr(assistant_msg, "tool_calls", None):
-            text = _assistant_message_text(assistant_msg)
-            if not text:
-                text = await _retry_plain_text_without_tools(
-                    chosen=chosen,
-                    route_payload=route_payload,
-                    route_context=route_context,
-                    messages=msgs,
-                    temperature=0.2,
-                )
-            if text:
-                yield {"type": "token", "token": text}
-            return
+            if finish_reason == "tool_calls" and assistant_msg.tool_calls:
+                # Append the assistant's tool-call turn
+                msgs.append(assistant_msg.model_dump(exclude_none=True))
 
-        if finish_reason == "tool_calls" and assistant_msg.tool_calls:
-            # Append the assistant's tool-call turn
-            msgs.append(assistant_msg.model_dump(exclude_none=True))
-
-            for tc in assistant_msg.tool_calls:
-                tool_name = tc.function.name
-                try:
-                    tool_args = json.loads(tc.function.arguments)
-                except Exception:
-                    tool_args = {}
-
-                decision = guardian_suite.policy.decide_tool_use(
-                    tool_name,
-                    tool_args if isinstance(tool_args, dict) else {},
-                    room_execution_allowed=room_execution_allowed,
-                    is_operator=is_operator,
-                    is_privileged=is_privileged,
-                )
-
-                if db_session is not None:
+                for tc in assistant_msg.tool_calls:
+                    tool_name = tc.function.name
                     try:
-                        import uuid as _uuid
-                        from app.crud import create_audit_log
-
-                        create_audit_log(
-                            session=db_session,
-                            tool_name="policy_decision",
-                            tool_input=json.dumps(
-                                {
-                                    "tool_name": tool_name,
-                                    "tool_args": json.loads(serialize_tool_args_for_audit(tool_name, tool_args)),
-                                }
-                            )[:2000],
-                            tool_result=decision.to_json()[:1000],
-                            user_id=_uuid.UUID(user_id) if user_id else None,
-                            room_id=_uuid.UUID(room_id) if room_id else None,
-                            agent_name=agent_name,
-                            model=chosen,
-                        )
+                        tool_args = json.loads(tc.function.arguments)
                     except Exception:
-                        pass
+                        tool_args = {}
 
-                if decision.action == "deny":
-                    result = f"POLICY DENIED: {decision.reason}"
+                    decision = guardian_suite.policy.decide_tool_use(
+                        tool_name,
+                        tool_args if isinstance(tool_args, dict) else {},
+                        room_execution_allowed=room_execution_allowed,
+                        is_operator=is_operator,
+                        is_privileged=is_privileged,
+                    )
+
+                    if db_session is not None:
+                        try:
+                            import uuid as _uuid
+                            from app.crud import create_audit_log
+
+                            create_audit_log(
+                                session=db_session,
+                                tool_name="policy_decision",
+                                tool_input=json.dumps(
+                                    {
+                                        "tool_name": tool_name,
+                                        "tool_args": json.loads(serialize_tool_args_for_audit(tool_name, tool_args)),
+                                    }
+                                )[:2000],
+                                tool_result=decision.to_json()[:1000],
+                                user_id=_uuid.UUID(user_id) if user_id else None,
+                                room_id=_uuid.UUID(room_id) if room_id else None,
+                                agent_name=agent_name,
+                                model=chosen,
+                            )
+                        except Exception:
+                            pass
+
+                    if decision.action == "deny":
+                        result = f"POLICY DENIED: {decision.reason}"
+                        verification = None
+                        if guardian_suite.verifier.should_verify_interactive_tool_run(
+                            action_type=decision.action_type,
+                            high_risk=decision.high_risk,
+                        ):
+                            verification = guardian_suite.verifier.verify_interactive_tool_run(
+                                tool_name=tool_name,
+                                output=result,
+                                execution_status="denied",
+                            )
+                        yield {"type": "tool_start", "tool": tool_name, "input": tool_args}
+                        tool_done_event = {"type": "tool_done", "tool": tool_name, "result": result[:300]}
+                        if verification is not None:
+                            tool_done_event["verification_status"] = verification.status
+                            tool_done_event["confidence"] = verification.confidence
+                            if verification.recommended_next_action:
+                                tool_done_event["recommended_next_action"] = verification.recommended_next_action
+                        yield tool_done_event
+                        msgs.append({
+                            "role": "tool",
+                            "tool_call_id": tc.id,
+                            "content": (
+                                f"{result}\n\n{guardian_suite.verifier.format_verifier_note(verification)}"
+                                if verification is not None
+                                else result
+                            ),
+                        })
+                        continue
+
+                    if decision.action in ("privileged", "privileged_reveal"):
+                        confirm_id = str(_uuid_module.uuid4())
+                        _pending_ttl_cleanup()
+                        pending_entry = {
+                            "tool": tool_name,
+                            "args": tool_args,
+                            "user_id": user_id,
+                            "room_id": room_id,
+                            "created_at": time.time(),
+                        }
+                        _pending[confirm_id] = pending_entry
+                        try:
+                            guardian_suite.pending_approvals.store_pending_approval(
+                                confirm_id=confirm_id,
+                                tool_name=tool_name,
+                                tool_args=tool_args if isinstance(tool_args, dict) else {},
+                                user_id=user_id,
+                                room_id=room_id,
+                            )
+                        except Exception:
+                            pass
+                        yield {
+                            "type": "privileged_required",
+                            "confirm_id": confirm_id,
+                            "tool": tool_name,
+                            "input": tool_args,
+                            "risk": decision.reason,
+                            "requires_confirm_after_auth": decision.action == "privileged_reveal",
+                        }
+                        return
+
+                    if decision.action == "confirm":
+                        # Don't prompt for confirmation when email sending is unavailable.
+                        # Let the tool return the concrete configuration error instead.
+                        if tool_name == "email_send" and not _email_configured_smtp():
+                            pass
+                        elif tool_name in {"gmail_send", "drive_create_folder", "calendar_create_event"} and not _google_configured():
+                            pass
+                        else:
+                            already_confirmed = confirmed_ids and any(
+                                c for c in (confirmed_ids or set()) if c
+                            )
+                            if not already_confirmed:
+                                confirm_id = str(_uuid_module.uuid4())
+                                _pending_ttl_cleanup()
+                                pending_entry = {
+                                    "tool": tool_name,
+                                    "args": tool_args,
+                                    "user_id": user_id,
+                                    "room_id": room_id,
+                                    "created_at": time.time(),
+                                }
+                                _pending[confirm_id] = pending_entry
+                                try:
+                                    guardian_suite.pending_approvals.store_pending_approval(
+                                        confirm_id=confirm_id,
+                                        tool_name=tool_name,
+                                        tool_args=tool_args if isinstance(tool_args, dict) else {},
+                                        user_id=user_id,
+                                        room_id=room_id,
+                                    )
+                                except Exception:
+                                    pass
+                                yield {
+                                    "type": "confirm_required",
+                                    "confirm_id": confirm_id,
+                                    "tool": tool_name,
+                                    "input": tool_args,
+                                }
+                                return
+
+                    yield {"type": "tool_start", "tool": tool_name, "input": tool_args}
+
+                    result = await guardian_suite.executive.exec_with_guard(
+                        tool_name=tool_name,
+                        action_type=decision.action_type,
+                        expected_outcome=f"Successful tool execution for {tool_name}",
+                        perform_fn=lambda: execute_tool(
+                            tool_name,
+                            tool_args,
+                            user_id=user_id,
+                            session=db_session,
+                            room_id=room_id,
+                        ),
+                        metadata={
+                            "room_id": room_id,
+                            "user_id": user_id,
+                            "scope": decision.scope,
+                            "resource": decision.resource,
+                        },
+                    )
                     verification = None
                     if guardian_suite.verifier.should_verify_interactive_tool_run(
                         action_type=decision.action_type,
@@ -1368,17 +1547,54 @@ async def stream_chat_with_tools(
                     ):
                         verification = guardian_suite.verifier.verify_interactive_tool_run(
                             tool_name=tool_name,
-                            output=result,
-                            execution_status="denied",
+                            output=str(result),
+                            execution_status="success",
                         )
-                    yield {"type": "tool_start", "tool": tool_name, "input": tool_args}
-                    tool_done_event = {"type": "tool_done", "tool": tool_name, "result": result[:300]}
+
+                    # Vault-internal tools: mask plaintext in all outward-facing paths.
+                    # The full plaintext stays in `result` for the LLM context only.
+                    outward_result = mask_tool_result_for_external(tool_name, tool_args, result)
+                    tool_done_event = {"type": "tool_done", "tool": tool_name, "result": outward_result[:300]}
                     if verification is not None:
                         tool_done_event["verification_status"] = verification.status
                         tool_done_event["confidence"] = verification.confidence
                         if verification.recommended_next_action:
                             tool_done_event["recommended_next_action"] = verification.recommended_next_action
                     yield tool_done_event
+                    tool_usage_counts[tool_name] = tool_usage_counts.get(tool_name, 0) + 1
+
+                    # Audit log — best-effort, never let it break the chat stream
+                    if db_session is not None:
+                        try:
+                            import uuid as _uuid
+                            from app.crud import create_audit_log
+                            redacted_input, redacted_result = redact_tool_call_for_audit(
+                                tool_name, tool_args, result
+                            )
+                            if verification is not None:
+                                redacted_result = f"{redacted_result}\n\n{guardian_suite.verifier.format_verifier_note(verification)}"
+                            create_audit_log(
+                                session=db_session,
+                                tool_name=tool_name,
+                                tool_input=redacted_input,
+                                tool_result=redacted_result,
+                                user_id=_uuid.UUID(user_id) if user_id else None,
+                                room_id=_uuid.UUID(room_id) if room_id else None,
+                                agent_name=agent_name,
+                                model=chosen,
+                            )
+                            if user_id and room_id:
+                                parsed_input = json.loads(redacted_input)
+                                guardian_suite.memory.remember_tool_event(
+                                    user_id=user_id,
+                                    room_id=room_id,
+                                    tool_name=tool_name,
+                                    args=parsed_input if isinstance(parsed_input, dict) else {},
+                                    result=redacted_result,
+                                )
+                        except Exception:
+                            pass  # never fail the stream because of logging
+
                     msgs.append({
                         "role": "tool",
                         "tool_call_id": tc.id,
@@ -1388,180 +1604,51 @@ async def stream_chat_with_tools(
                             else result
                         ),
                     })
-                    continue
-
-                if decision.action in ("privileged", "privileged_reveal"):
-                    confirm_id = str(_uuid_module.uuid4())
-                    _pending_ttl_cleanup()
-                    pending_entry = {
-                        "tool": tool_name,
-                        "args": tool_args,
-                        "user_id": user_id,
-                        "room_id": room_id,
-                        "created_at": time.time(),
-                    }
-                    _pending[confirm_id] = pending_entry
-                    try:
-                        guardian_suite.pending_approvals.store_pending_approval(
-                            confirm_id=confirm_id,
-                            tool_name=tool_name,
-                            tool_args=tool_args if isinstance(tool_args, dict) else {},
-                            user_id=user_id,
-                            room_id=room_id,
-                        )
-                    except Exception:
+                    # Continue working directive - only if task likely incomplete
+                    if _round < _max_tool_rounds - 2:
                         pass
-                    yield {
-                        "type": "privileged_required",
-                        "confirm_id": confirm_id,
-                        "tool": tool_name,
-                        "input": tool_args,
-                        "risk": decision.reason,
-                        "requires_confirm_after_auth": decision.action == "privileged_reveal",
-                    }
-                    return
-
-                if decision.action == "confirm":
-                    # Don't prompt for confirmation when email sending is unavailable.
-                    # Let the tool return the concrete configuration error instead.
-                    if tool_name == "email_send" and not _email_configured_smtp():
-                        pass
-                    elif tool_name in {"gmail_send", "drive_create_folder", "calendar_create_event"} and not _google_configured():
-                        pass
-                    else:
-                        already_confirmed = confirmed_ids and any(
-                            c for c in (confirmed_ids or set()) if c
-                        )
-                        if not already_confirmed:
-                            confirm_id = str(_uuid_module.uuid4())
-                            _pending_ttl_cleanup()
-                            pending_entry = {
-                                "tool": tool_name,
-                                "args": tool_args,
-                                "user_id": user_id,
-                                "room_id": room_id,
-                                "created_at": time.time(),
-                            }
-                            _pending[confirm_id] = pending_entry
-                            try:
-                                guardian_suite.pending_approvals.store_pending_approval(
-                                    confirm_id=confirm_id,
-                                    tool_name=tool_name,
-                                    tool_args=tool_args if isinstance(tool_args, dict) else {},
-                                    user_id=user_id,
-                                    room_id=room_id,
-                                )
-                            except Exception:
-                                pass
-                            yield {
-                                "type": "confirm_required",
-                                "confirm_id": confirm_id,
-                                "tool": tool_name,
-                                "input": tool_args,
-                            }
-                            return
-
-                yield {"type": "tool_start", "tool": tool_name, "input": tool_args}
-
-                result = await guardian_suite.executive.exec_with_guard(
-                    tool_name=tool_name,
-                    action_type=decision.action_type,
-                    expected_outcome=f"Successful tool execution for {tool_name}",
-                    perform_fn=lambda: execute_tool(
-                        tool_name,
-                        tool_args,
-                        user_id=user_id,
-                        session=db_session,
-                        room_id=room_id,
-                    ),
-                    metadata={
-                        "room_id": room_id,
-                        "user_id": user_id,
-                        "scope": decision.scope,
-                        "resource": decision.resource,
-                    },
-                )
-                verification = None
-                if guardian_suite.verifier.should_verify_interactive_tool_run(
-                    action_type=decision.action_type,
-                    high_risk=decision.high_risk,
+            else:
+                async for delta in _stream_text_with_fallback(
+                    model=chosen,
+                    route_payload=route_payload,
+                    route_context=route_context,
+                    messages=msgs,
+                    temperature=0.2,
                 ):
-                    verification = guardian_suite.verifier.verify_interactive_tool_run(
-                        tool_name=tool_name,
-                        output=str(result),
-                        execution_status="success",
-                    )
+                    final_output_text += delta
+                    yield {"type": "token", "token": delta}
+                guardian_improvement.record_outcome(
+                    user_id=user_id,
+                    room_id=room_id,
+                    route_payload=route_payload,
+                    output_text=final_output_text,
+                    tool_usage_counts=tool_usage_counts,
+                    success=bool(final_output_text.strip()),
+                    agent_name=agent_name,
+                    error="" if final_output_text.strip() else "empty final streaming response",
+                )
+                return
+    except Exception as exc:
+        guardian_improvement.record_outcome(
+            user_id=user_id,
+            room_id=room_id,
+            route_payload=route_payload,
+            output_text=final_output_text,
+            tool_usage_counts=tool_usage_counts,
+            success=False,
+            agent_name=agent_name,
+            error=str(exc),
+        )
+        raise
 
-                # Vault-internal tools: mask plaintext in all outward-facing paths.
-                # The full plaintext stays in `result` for the LLM context only.
-                outward_result = mask_tool_result_for_external(tool_name, tool_args, result)
-                tool_done_event = {"type": "tool_done", "tool": tool_name, "result": outward_result[:300]}
-                if verification is not None:
-                    tool_done_event["verification_status"] = verification.status
-                    tool_done_event["confidence"] = verification.confidence
-                    if verification.recommended_next_action:
-                        tool_done_event["recommended_next_action"] = verification.recommended_next_action
-                yield tool_done_event
-                tool_usage_counts[tool_name] = tool_usage_counts.get(tool_name, 0) + 1
-
-                # Audit log — best-effort, never let it break the chat stream
-                if db_session is not None:
-                    try:
-                        import uuid as _uuid
-                        from app.crud import create_audit_log
-                        redacted_input, redacted_result = redact_tool_call_for_audit(
-                            tool_name, tool_args, result
-                        )
-                        if verification is not None:
-                            redacted_result = f"{redacted_result}\n\n{guardian_suite.verifier.format_verifier_note(verification)}"
-                        create_audit_log(
-                            session=db_session,
-                            tool_name=tool_name,
-                            tool_input=redacted_input,
-                            tool_result=redacted_result,
-                            user_id=_uuid.UUID(user_id) if user_id else None,
-                            room_id=_uuid.UUID(room_id) if room_id else None,
-                            agent_name=agent_name,
-                            model=chosen,
-                        )
-                        if user_id and room_id:
-                            parsed_input = json.loads(redacted_input)
-                            guardian_suite.memory.remember_tool_event(
-                                user_id=user_id,
-                                room_id=room_id,
-                                tool_name=tool_name,
-                                args=parsed_input if isinstance(parsed_input, dict) else {},
-                                result=redacted_result,
-                            )
-                    except Exception:
-                        pass  # never fail the stream because of logging
-
-                msgs.append({
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "content": (
-                        f"{result}\n\n{guardian_suite.verifier.format_verifier_note(verification)}"
-                        if verification is not None
-                        else result
-                    ),  # full plaintext for LLM context only
-                })
-                # Continue working directive - only if task likely incomplete
-                # Check if the last tool result indicates more work needed
-                if _round < _max_tool_rounds - 2:
-                    # Only suggest continuing, not mandate - make it optional
-                    # Remove aggressive "CONTINUE WORKING" - let LLM decide
-                    pass  # Disabled aggressive continuation - causes tool loop issues
-        else:
-            # No more tool calls — stream the final answer
-            async for delta in _stream_text_with_fallback(
-                model=chosen,
-                route_payload=route_payload,
-                route_context=route_context,
-                messages=msgs,
-                temperature=0.2,
-            ):
-                yield {"type": "token", "token": delta}
-            return
-
-    # Safety: too many tool rounds
+    guardian_improvement.record_outcome(
+        user_id=user_id,
+        room_id=room_id,
+        route_payload=route_payload,
+        output_text=final_output_text,
+        tool_usage_counts=tool_usage_counts,
+        success=False,
+        agent_name=agent_name,
+        error="tool loop limit reached",
+    )
     yield {"type": "token", "token": "\n\n⚠️ Tool loop limit reached."}

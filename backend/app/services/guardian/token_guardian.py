@@ -10,6 +10,7 @@ from typing import Any
 
 import yaml
 
+from . import improvement
 from .tokenguardian.monitor import Monitor
 from .tokenguardian.pipeline import RoutingDecision, UnifiedPipeline
 
@@ -309,6 +310,24 @@ def route_model(
         payload["candidate_models"] = candidate_models
         if live_fallback_reason:
             payload["fallback_reason"] = live_fallback_reason
+    candidate_pool = _normalize_model_pool(
+        allowed_models if mode == "live" else (available_models or configured_models or [chosen_model])
+    )
+    if chosen_model and chosen_model not in candidate_pool:
+        candidate_pool.insert(0, chosen_model)
+    learned_model, learned_reason, learned_ranking = improvement.choose_best_model(
+        classification=str(payload.get("classification") or "general"),
+        current_model=chosen_model,
+        candidates=candidate_pool,
+    )
+    payload["learned_route_candidates"] = learned_ranking
+    payload["learned_route_applied"] = False
+    if learned_reason and learned_model != chosen_model:
+        payload["classifier_selected_model"] = payload.get("selected_model") or chosen_model
+        payload["selected_model"] = learned_model
+        payload["learned_route_applied"] = True
+        payload["learned_route_reason"] = learned_reason
+        chosen_model = learned_model
     payload["applied_model"] = chosen_model
     payload["live_routed"] = mode == "live" and chosen_model != current_model
     _record_route_usage(payload, chosen_model)

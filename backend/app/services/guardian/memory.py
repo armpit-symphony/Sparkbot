@@ -459,6 +459,18 @@ def build_memory_context(*, user_id: str, room_id: str, query: str) -> str:
         workflow_lines.extend(f"- Recent focus: {snippet}" for snippet in recent_focus)
     if workflow_lines:
         blocks.append("## Active Workflow Memory\n" + "\n".join(workflow_lines))
+    try:
+        from . import improvement
+
+        promoted_block = improvement.build_promoted_workflow_context(
+            user_id=user_id,
+            room_id=room_id,
+            query=prompt_query,
+        ).strip()
+    except Exception:
+        promoted_block = ""
+    if promoted_block:
+        blocks.append(promoted_block)
 
     guardian = _guardian()
     limit = _retrieve_limit()
