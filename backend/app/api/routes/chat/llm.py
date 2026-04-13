@@ -887,6 +887,13 @@ def _assistant_message_text(message: Any) -> str:
     return ""
 
 
+def _looks_like_placeholder_text(text: str) -> bool:
+    normalized = " ".join((text or "").split()).strip()
+    if not normalized:
+        return True
+    return normalized in {"{}", "[]", "null", '""', "```json {} ```", "```json\n{}\n```"}
+
+
 def _extract_text_content(value: Any) -> str:
     if value is None:
         return ""
@@ -1307,6 +1314,7 @@ async def stream_chat_with_tools(
     tool_usage_counts: dict[str, int] = {}
     _max_tool_rounds = max(5, min(int(os.getenv("SPARKBOT_MAX_TOOL_ROUNDS", "20")), 50))
     final_output_text = ""
+    selected_provider = model_provider(chosen)
 
     try:
         for _round in range(_max_tool_rounds):
@@ -1343,7 +1351,7 @@ async def stream_chat_with_tools(
             # the content directly and exit the loop.
             if finish_reason != "tool_calls" or not getattr(assistant_msg, "tool_calls", None):
                 text = _assistant_message_text(assistant_msg)
-                if not text:
+                if (selected_provider in {"ollama", "minimax"} and _looks_like_placeholder_text(text)) or not text:
                     text = await _retry_plain_text_without_tools(
                         chosen=chosen,
                         route_payload=route_payload,
@@ -1372,7 +1380,7 @@ async def stream_chat_with_tools(
                         tool_usage_counts=tool_usage_counts,
                         success=False,
                         agent_name=agent_name,
-                        error="empty assistant response",
+                        error="empty or placeholder assistant response",
                     )
                 return
 

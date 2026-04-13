@@ -1,0 +1,6 @@
+Sparkbot v1.2.10
+
+- Treat literal placeholder replies like `{}` from tool-enabled local models as invalid instead of surfacing them directly in Sparkbot chat
+- Retry affected Ollama and MiniMax turns without tools when the first assistant reply is only a placeholder payload
+- Add targeted backend coverage for placeholder local-model replies so this regression stays pinned
+- Keep desktop downloader and docs aligned to the new 1.2.10 installer name

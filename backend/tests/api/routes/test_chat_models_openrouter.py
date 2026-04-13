@@ -395,6 +395,66 @@ def test_stream_chat_with_tools_retries_empty_plain_text_without_tools(monkeypat
     assert any(event.get("type") == "routing" for event in events)
 
 
+def test_stream_chat_with_tools_retries_placeholder_local_content_without_tools(monkeypatch) -> None:
+    calls: list[tuple[str, bool, bool]] = []
+
+    class _PlaceholderMessage:
+        tool_calls = None
+        content = "{}"
+
+        def model_dump(self, exclude_none: bool = True):
+            return {"role": "assistant", "content": "{}"}
+
+    class _TextMessage:
+        tool_calls = None
+        content = "LLAMA_LOCAL_OK"
+
+        def model_dump(self, exclude_none: bool = True):
+            return {"role": "assistant", "content": "LLAMA_LOCAL_OK"}
+
+    class _FakeResponse:
+        def __init__(self, message) -> None:
+            self.choices = [SimpleNamespace(finish_reason="stop", message=message)]
+
+    async def fake_acompletion(*, model: str, stream: bool = False, **kwargs):
+        calls.append((model, stream, "tools" in kwargs))
+        if "tools" in kwargs:
+            return _FakeResponse(_PlaceholderMessage())
+        return _FakeResponse(_TextMessage())
+
+    def fake_route_model(query, current_model, *, available_models=None):
+        return current_model, {
+            "classification": "general",
+            "selected_model": current_model,
+            "fallback_triggered": False,
+            "fallback_reason": None,
+        }
+
+    monkeypatch.setenv("SPARKBOT_MODEL", "ollama/llama3.2:3b")
+    monkeypatch.setenv("SPARKBOT_DEFAULT_PROVIDER", "ollama")
+    monkeypatch.setenv("SPARKBOT_LOCAL_MODEL", "ollama/llama3.2:3b")
+    monkeypatch.setenv("SPARKBOT_DEFAULT_CROSS_PROVIDER_FALLBACK", "false")
+    monkeypatch.setattr(llm.litellm, "acompletion", fake_acompletion)
+    monkeypatch.setattr(token_guardian, "route_model", fake_route_model)
+
+    async def _collect_events():
+        events = []
+        async for event in llm.stream_chat_with_tools(
+            [{"role": "user", "content": "Reply with LLAMA_LOCAL_OK"}],
+            user_id="test-user",
+        ):
+            events.append(event)
+        return events
+
+    events = asyncio.run(_collect_events())
+
+    assert calls == [
+        ("ollama/llama3.2:3b", False, True),
+        ("ollama/llama3.2:3b", False, False),
+    ]
+    assert [event["token"] for event in events if event.get("type") == "token"] == ["LLAMA_LOCAL_OK"]
+
+
 def test_stream_chat_with_tools_reads_structured_local_content(monkeypatch) -> None:
     calls: list[tuple[str, bool, bool]] = []
 
