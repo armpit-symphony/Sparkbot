@@ -1563,7 +1563,7 @@
         });
 
         applyRelease({
-          version: String(desktopRelease.tag_name || "").replace(/^desktop-v/i, "") || fallbackRelease.version,
+          version: fallbackRelease.version,
           windowsFilename: windowsAsset && windowsAsset.name ? windowsAsset.name : fallbackRelease.windowsFilename,
           windowsUrl: windowsAsset && windowsAsset.browser_download_url ? windowsAsset.browser_download_url : fallbackRelease.windowsUrl,
           macosUrl: macosAsset && macosAsset.browser_download_url ? macosAsset.browser_download_url : fallbackRelease.macosUrl,
