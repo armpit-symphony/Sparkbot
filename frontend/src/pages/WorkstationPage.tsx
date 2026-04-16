@@ -597,7 +597,11 @@ function InviteConfigModal({ station, onSave, onCancel }: InviteConfigModalProps
   const [label, setLabel] = useState(
     station.label === "Add Agent" ? "" : station.label,
   )
-  const [provider, setProvider] = useState("OpenAI")
+  const defaultProvider =
+    station.id === "invite-claude" ? "Anthropic" :
+    station.id === "invite-gpt" ? "OpenAI" :
+    "Custom"
+  const [provider, setProvider] = useState(defaultProvider)
   const [description, setDescription] = useState("")
 
   const { accentHex } = station
@@ -3005,9 +3009,16 @@ export default function WorkstationPage() {
       seats: normalizeMeetingSeats(draft.seats),
     }
   })
-  const [configuredInvites, setConfiguredInvites] = useState<Map<string, InviteConfig>>(
-    new Map(),
-  )
+  const [configuredInvites, setConfiguredInvites] = useState<Map<string, InviteConfig>>(() => {
+    try {
+      const raw = window.localStorage.getItem("sparkbot_invite_configs")
+      if (!raw) return new Map()
+      const entries = JSON.parse(raw) as Array<[string, InviteConfig]>
+      return new Map(entries)
+    } catch {
+      return new Map()
+    }
+  })
   const [controlsConfig, setControlsConfig] = useState<SparkbotControlsConfig | null>(null)
   const [overview, setOverview] = useState<WorkstationOverview | null>(null)
   const [infoOpen, setInfoOpen] = useState(false)
@@ -3187,7 +3198,13 @@ export default function WorkstationPage() {
   }, [])
 
   const handleSaveInvite = useCallback((stationId: string, config: InviteConfig) => {
-    setConfiguredInvites((prev) => new Map([...prev, [stationId, config]]))
+    setConfiguredInvites((prev) => {
+      const next = new Map([...prev, [stationId, config]])
+      try {
+        window.localStorage.setItem("sparkbot_invite_configs", JSON.stringify([...next]))
+      } catch {}
+      return next
+    })
     setInviteModalTarget(null)
   }, [])
 
@@ -3318,6 +3335,7 @@ export default function WorkstationPage() {
         ...prev,
         roomId: null,
         roomName,
+        seats: normalizeMeetingSeats([]),
       }))
       navigate({ to: "/meeting/$roomId", params: { roomId: meetingMeta.roomId } })
     } catch (error) {

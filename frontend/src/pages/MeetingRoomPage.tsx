@@ -536,6 +536,10 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
               flexDirection: "column",
               gap: 14,
               alignSelf: "start",
+              position: "sticky",
+              top: 16,
+              maxHeight: "calc(100dvh - 88px)",
+              overflowY: "auto",
             }}
           >
             <div>
