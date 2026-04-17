@@ -432,6 +432,25 @@ def default_cross_provider_fallback_enabled() -> bool:
     return os.getenv("V1_LOCAL_MODE", "false").strip().lower() not in {"1", "true", "yes", "on"}
 
 
+# Runtime store for invite-seat custom API keys and model IDs.
+# Populated via POST /agents/{name}/invite-route; cleared on process restart.
+_invite_agent_configs: dict[str, dict[str, str]] = {}
+
+
+def set_invite_agent_config(agent_name: str, *, model: str | None, api_key: str | None) -> None:
+    key = agent_name.strip().lower()
+    if not model and not api_key:
+        _invite_agent_configs.pop(key, None)
+        return
+    _invite_agent_configs[key] = {
+        k: v for k, v in {"model": (model or "").strip(), "api_key": (api_key or "").strip()}.items() if v
+    }
+
+
+def get_invite_agent_config(agent_name: str) -> dict[str, str]:
+    return _invite_agent_configs.get(agent_name.strip().lower(), {})
+
+
 def get_agent_model_overrides() -> dict[str, dict[str, str]]:
     raw = os.getenv(AGENT_MODEL_OVERRIDES_ENV, "").strip()
     if not raw:
@@ -479,11 +498,15 @@ def get_agent_route_context(
             "cross_provider_fallback": False,
         }
 
+    invite_conf = get_invite_agent_config(effective_agent)
+    invite_model = invite_conf.get("model", "").strip()
+    invite_api_key = invite_conf.get("api_key", "").strip()
+
     route = str((override or {}).get("route") or "default").strip().lower()
     if route not in {"default", "openrouter", "local"}:
         route = "default"
 
-    override_model = str((override or {}).get("model") or "").strip()
+    override_model = invite_model or str((override or {}).get("model") or "").strip()
     chosen_model = default_model
     if route == "openrouter":
         chosen_model = override_model or get_openrouter_default_model()
@@ -494,7 +517,7 @@ def get_agent_route_context(
 
     provider_locked = route in {"openrouter", "local"} or bool(override_model)
 
-    return {
+    ctx: dict[str, Any] = {
         "agent_name": effective_agent,
         "route": route,
         "provider_locked": provider_locked,
@@ -506,6 +529,9 @@ def get_agent_route_context(
             else False
         ),
     }
+    if invite_api_key:
+        ctx["invite_api_key"] = invite_api_key
+    return ctx
 
 
 def model_provider(model: str) -> str:
@@ -959,10 +985,12 @@ async def _acompletion_with_fallback(
         bool((route_context or {}).get("cross_provider_fallback")),
         candidates,
     )
+    invite_api_key = str((route_context or {}).get("invite_api_key") or "").strip() or None
     for candidate in candidates:
         try:
             chosen_candidate = candidate
-            response = await litellm.acompletion(model=candidate, **kwargs)
+            call_kwargs = {**kwargs, **({"api_key": invite_api_key} if invite_api_key else {})}
+            response = await litellm.acompletion(model=candidate, **call_kwargs)
             log.info(
                 "LLM route applied: route=%s requested_provider=%s requested_model=%s cross_provider_fallback=%s applied_provider=%s applied_model=%s",
                 route_mode,
@@ -991,7 +1019,7 @@ async def _acompletion_with_fallback(
             # plain-text answer rather than crashing the whole request.
             if _should_retry_without_tools(exc, candidate, kwargs):
                 try:
-                    no_tool_kwargs = {k: v for k, v in kwargs.items()
+                    no_tool_kwargs = {k: v for k, v in call_kwargs.items()
                                       if k not in ("tools", "tool_choice")}
                     response = await litellm.acompletion(model=candidate, **no_tool_kwargs)
                     log.warning(

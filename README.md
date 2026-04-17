@@ -91,8 +91,8 @@ Release standard:
 Create and push a desktop release tag:
 
 ```bash
-git tag desktop-v1.2.10
-git push origin desktop-v1.2.10
+git tag desktop-v1.6.12
+git push origin desktop-v1.6.12
 ```
 
 The public desktop workflow is [desktop-release.yml](./.github/workflows/desktop-release.yml).
@@ -111,6 +111,11 @@ The manual workflow [build-installer.yml](./.github/workflows/build-installer.ym
 ---
 
 ## Recent Milestones
+
+### April 17, 2026
+
+- **Workstation opens to a clean floor view.** The Corner Office (Sparkbot DM panel) no longer auto-opens when you enter the Workstation page — it opens only when you click Sparkbot's desk, so the full office floor is always visible on load.
+- **Invite Wing now routes to real external APIs.** The invite seat modal has two new fields — Model ID and API Key — with provider-specific hints (e.g. `claude-sonnet-4-6`, `gpt-4o`, `ollama/phi4-mini`). Entering a key for an Anthropic, OpenAI, or Ollama seat wires that seat to the real provider at meeting launch using your own key, not Sparkbot's configured stack.
 
 ### April 9, 2026
 

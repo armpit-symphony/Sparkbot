@@ -84,6 +84,8 @@ interface InviteConfig {
   label: string
   provider: string
   description: string
+  modelId?: string
+  apiKey?: string
 }
 
 interface SeatPickerState {
@@ -128,6 +130,7 @@ function resolveInviteStation(
     description: config.description || station.description,
     status: "idle" as StationStatus,
     invitePrompt: undefined,
+    ...(config.apiKey ? { inviteApiKey: config.apiKey } : {}),
   }
 }
 
@@ -183,6 +186,7 @@ function buildMeetingSeatMeta(
       : agentHandle
       ? { agentProvisioning: "builtin" as const }
       : {}),
+    ...(station.inviteApiKey ? { inviteApiKey: station.inviteApiKey } : {}),
   }
 }
 
@@ -593,6 +597,14 @@ const PROVIDER_OPTIONS = [
   { value: "Custom", label: "Custom Provider" },
 ]
 
+const MODEL_ID_PLACEHOLDER: Record<string, string> = {
+  Anthropic: "e.g. claude-sonnet-4-6",
+  OpenAI: "e.g. gpt-4o",
+  Ollama: "e.g. ollama/phi4-mini",
+  Google: "e.g. gemini/gemini-1.5-pro",
+  Custom: "e.g. openrouter/openai/gpt-4o",
+}
+
 function InviteConfigModal({ station, onSave, onCancel }: InviteConfigModalProps) {
   const [label, setLabel] = useState(
     station.label === "Add Agent" ? "" : station.label,
@@ -603,6 +615,8 @@ function InviteConfigModal({ station, onSave, onCancel }: InviteConfigModalProps
     "Custom"
   const [provider, setProvider] = useState(defaultProvider)
   const [description, setDescription] = useState("")
+  const [modelId, setModelId] = useState("")
+  const [apiKey, setApiKey] = useState("")
 
   const { accentHex } = station
   const canSave = label.trim().length > 0
@@ -613,8 +627,10 @@ function InviteConfigModal({ station, onSave, onCancel }: InviteConfigModalProps
       label: label.trim(),
       provider,
       description: description.trim(),
+      modelId: modelId.trim() || undefined,
+      apiKey: apiKey.trim() || undefined,
     })
-  }, [canSave, label, provider, description, station.id, onSave])
+  }, [canSave, label, provider, description, modelId, apiKey, station.id, onSave])
 
   const inputStyle: React.CSSProperties = {
     width: "100%",
@@ -746,11 +762,45 @@ function InviteConfigModal({ station, onSave, onCancel }: InviteConfigModalProps
             </select>
           </div>
           <div>
+            <label style={labelStyle}>Model ID</label>
+            <input
+              style={inputStyle}
+              value={modelId}
+              onChange={(e) => setModelId(e.target.value)}
+              placeholder={MODEL_ID_PLACEHOLDER[provider] ?? "e.g. gpt-4o"}
+              maxLength={80}
+              spellCheck={false}
+            />
+            <div style={{ fontSize: 10, color: "#4b5563", marginTop: 4 }}>
+              {provider === "Ollama"
+                ? "No API key needed — Ollama runs locally."
+                : "Leave blank to use the model configured in Controls."}
+            </div>
+          </div>
+          {provider !== "Ollama" && (
+            <div>
+              <label style={labelStyle}>API Key</label>
+              <input
+                style={inputStyle}
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="sk-… or your provider key"
+                maxLength={200}
+                spellCheck={false}
+                autoComplete="off"
+              />
+              <div style={{ fontSize: 10, color: "#4b5563", marginTop: 4 }}>
+                Stored locally — used only when this seat joins a meeting.
+              </div>
+            </div>
+          )}
+          <div>
             <label style={labelStyle}>Description (optional)</label>
             <textarea
               style={{
                 ...inputStyle,
-                height: 64,
+                height: 56,
                 resize: "vertical",
                 verticalAlign: "top",
               }}
@@ -2999,7 +3049,7 @@ export default function WorkstationPage() {
   const navigate = useNavigate()
 
   // ── State ──────────────────────────────────────────────────────────────────
-  const [panel, setPanel] = useState<PanelMode>({ kind: "station", station: MAIN_DESK })
+  const [panel, setPanel] = useState<PanelMode>(null)
   const [inviteModalTarget, setInviteModalTarget] = useState<Station | null>(null)
   const [projectRoom, setProjectRoom] = useState<ProjectRoom>(() => {
     const draft = loadMeetingDraft()
@@ -3315,11 +3365,12 @@ export default function WorkstationPage() {
         if (!stationId) return null
         const station = roomEligibleStations.find((candidate) => candidate.id === stationId)
         if (!station) return null
-        return buildMeetingSeatMeta(
-          station,
-          seatIndex,
-          stackModelByStationId[station.id as keyof typeof stackModelByStationId] || undefined,
-        )
+        const inviteConf = station.isInviteSlot ? configuredInvites.get(station.id) : null
+        const seatModelId =
+          stackModelByStationId[station.id as keyof typeof stackModelByStationId] ||
+          inviteConf?.modelId ||
+          undefined
+        return buildMeetingSeatMeta(station, seatIndex, seatModelId)
       })
       .filter((seat): seat is NonNullable<typeof seat> => Boolean(seat))
 

@@ -47,6 +47,7 @@ from app.api.routes.chat.llm import (
     model_label,
     model_is_configured,
     model_provider,
+    set_invite_agent_config,
     set_model,
     set_model_stack,
 )
@@ -545,6 +546,24 @@ def delete_agent(name: str, current_user: CurrentChatUser, session: SessionDep) 
     session.commit()
     unregister_agent(name)
     return {"deleted": name}
+
+
+class InviteRouteConfig(BaseModel):
+    model: str | None = Field(default=None)
+    api_key: str | None = Field(default=None)
+
+
+@router.post("/agents/{name}/invite-route", status_code=200)
+def set_agent_invite_route(name: str, body: InviteRouteConfig, current_user: CurrentChatUser) -> dict:
+    """Register a custom model and API key for an invite-seat agent (runtime only, cleared on restart)."""
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    set_invite_agent_config(
+        name.lower().strip(),
+        model=(body.model or "").strip() or None,
+        api_key=(body.api_key or "").strip() or None,
+    )
+    return {"name": name.lower().strip(), "configured": True}
 
 
 @router.post("/model")

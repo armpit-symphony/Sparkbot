@@ -39,6 +39,7 @@ export interface WorkstationMeetingSeatMeta {
   agentDescription?: string
   modelId?: string
   route?: "default" | "openrouter" | "local"
+  inviteApiKey?: string
 }
 
 export interface WorkstationMeetingRoomMeta {
@@ -213,6 +214,7 @@ export async function prepareMeetingSeats(seats: WorkstationMeetingSeatMeta[]): 
   const config = await fetchControlsConfig()
   const enrichedSeats = enrichMeetingSeats(seats, config?.stack)
   await ensureMeetingSeatAgents(enrichedSeats)
+  await ensureInviteAgentRoutes(enrichedSeats)
   await ensureMeetingAgentOverrides(enrichedSeats)
   return enrichedSeats
 }
@@ -566,5 +568,21 @@ async function ensureMeetingSeatAgents(seats: WorkstationMeetingSeatMeta[]): Pro
       const detail = await response.json().catch(() => ({ detail: "Could not prepare meeting participant." }))
       throw new Error(String(detail.detail ?? "Could not prepare meeting participant."))
     }
+  }
+}
+
+async function ensureInviteAgentRoutes(seats: WorkstationMeetingSeatMeta[]): Promise<void> {
+  for (const seat of seats) {
+    if (seat.agentProvisioning !== "custom" || !seat.agentHandle) continue
+    if (!seat.modelId && !seat.inviteApiKey) continue
+    await apiFetch(`/api/v1/chat/agents/${encodeURIComponent(seat.agentHandle)}/invite-route`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        model: seat.modelId || null,
+        api_key: seat.inviteApiKey || null,
+      }),
+    }).catch(() => {})
   }
 }

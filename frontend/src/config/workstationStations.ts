@@ -23,6 +23,7 @@ export interface Station {
   capabilities: string[]
   invitePrompt?: string
   isInviteSlot?: boolean
+  inviteApiKey?: string
   shellType?: "bash" | "zsh" | "ssh" | "powershell"
   host?: string
 }
