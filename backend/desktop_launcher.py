@@ -14,6 +14,15 @@ os.environ.setdefault("ENVIRONMENT", "local")
 os.environ.setdefault("WORKSTATION_LIVE_TERMINAL_ENABLED", "true")
 os.environ.setdefault("SPARKBOT_BROWSER_HEADLESS", "false")  # show browser window on desktop
 os.environ.setdefault("SPARKBOT_DM_EXECUTION_DEFAULT", "true")  # enable shell/terminal/browser in DM
+
+# Point Playwright at a stable persistent directory so Chromium survives app restarts.
+# Without this, Playwright installs browsers relative to the PyInstaller temp dir
+# which gets a new random path (_MEIxxxxxx) on every launch, losing Chromium each time.
+_pw_browsers_dir = os.path.join(
+    os.environ.get("APPDATA", os.path.expanduser("~")), "Sparkbot", "playwright-browsers"
+)
+os.makedirs(_pw_browsers_dir, exist_ok=True)
+os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", _pw_browsers_dir)
 os.environ.setdefault("V1_LOCAL_MODE", "true")
 os.environ.setdefault("SPARKBOT_PASSPHRASE", "sparkbot-local")
 os.environ.setdefault("FIRST_SUPERUSER", "admin@example.com")
@@ -88,8 +97,14 @@ if getattr(sys, "frozen", False):
     # Chromium browser binary lives outside the bundle (~150 MB; downloaded once
     # to %LOCALAPPDATA%\ms-playwright on Windows).  We download it on first
     # launch so browser_open / browser_fill_field work without manual setup.
+    # Check both the marker AND that Chromium actually exists at the stable path.
+    # If the marker exists but no chrome.exe is found, re-run the install.
     _playwright_marker = os.path.join(exe_dir, ".playwright_ready")
-    if not os.path.exists(_playwright_marker):
+    _chromium_found = any(
+        True for _, _, files in os.walk(_pw_browsers_dir)
+        if any(f in ("chrome.exe", "chrome") for f in files)
+    ) if os.path.isdir(_pw_browsers_dir) else False
+    if not os.path.exists(_playwright_marker) or not _chromium_found:
         try:
             import subprocess as _pw_subprocess
             _pw_log = _root_logging.getLogger("sparkbot.playwright_install")

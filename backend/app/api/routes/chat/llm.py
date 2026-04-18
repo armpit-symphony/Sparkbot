@@ -1384,6 +1384,30 @@ async def stream_chat_with_tools(
                 )
                 tool_choice = "none"
 
+            if tool_usage_counts.get("shell_run", 0) >= 2:
+                msgs.append(
+                    {
+                        "role": "system",
+                        "content": (
+                            "You already have shell_run output. "
+                            "Do not call shell_run again. Respond directly using the output you already received."
+                        ),
+                    }
+                )
+                tool_choice = "none"
+
+            if tool_usage_counts.get("browser_open", 0) >= 1 and tool_usage_counts.get("browser_snapshot", 0) >= 1:
+                msgs.append(
+                    {
+                        "role": "system",
+                        "content": (
+                            "You have already opened the browser and taken a snapshot. "
+                            "Do not call browser_open or browser_snapshot again. Respond with what you found."
+                        ),
+                    }
+                )
+                tool_choice = "none"
+
             # Non-streaming call to resolve any tool calls
             chosen, response = await _acompletion_with_fallback(
                 model=chosen,
