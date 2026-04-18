@@ -25,7 +25,12 @@ This document is the complete technical reference for every feature, tool, comma
 17. [Environment Variables — Full Reference](#environment-variables--full-reference)
 18. [API Endpoints](#api-endpoints)
 19. [Guardian Spine — Operator Reference](#guardian-spine--operator-reference)
-20. [Project File Map](#project-file-map)
+20. [Process Watcher & Model Throttling](#process-watcher--model-throttling)
+21. [Model Latency Tracking](#model-latency-tracking)
+22. [Skill Sandboxing](#skill-sandboxing)
+23. [API Usage Examples](#api-usage-examples)
+24. [Versioning & Compatibility](#versioning--compatibility)
+25. [Project File Map](#project-file-map)
 
 ---
 
@@ -1114,6 +1119,388 @@ Guardian Spine is Sparkbot's background operating subsystem — the canonical cr
 | `GET /api/v1/chat/spine/operator/task-master/overview` | Global Task Master view |
 | `GET /api/v1/chat/spine/operator/signals/high-priority-blocked` | High-priority blocked |
 | `GET /api/v1/chat/spine/operator/signals/fragmentation` | Fragmentation indicators |
+
+---
+
+## Process Watcher & Model Throttling
+
+Sparkbot automatically monitors and throttles local model processes (Ollama, LM Studio, llama.cpp) to prevent them from saturating the CPU and blocking UI responsiveness.
+
+### How it works
+
+A background asyncio task (`backend/app/services/process_watcher.py`) polls every 30 seconds. When a watched process exceeds the CPU threshold, its OS priority is lowered automatically. When it drops back below the restore threshold, priority is restored.
+
+- **Windows:** uses Win32 `SetPriorityClass` to set `BELOW_NORMAL_PRIORITY_CLASS`
+- **Linux/macOS:** uses `os.nice(10)`
+- No processes are killed or paused — only priority is adjusted
+
+### Configuration
+
+```env
+SPARKBOT_PROCESS_WATCHER_ENABLED=true   # auto-enabled in desktop (V1_LOCAL_MODE)
+SPARKBOT_PROCESS_WATCHER_INTERVAL=30    # poll interval in seconds
+SPARKBOT_CPU_THRESHOLD=70               # % CPU above which priority is lowered
+SPARKBOT_CPU_RESTORE_THRESHOLD=40       # % CPU below which priority is restored
+SPARKBOT_WATCHED_PROCESSES=ollama,ollama_llama_server,lmstudio,llama-server,llama.cpp
+```
+
+### Status endpoint
+
+```
+GET /api/v1/chat/system/watcher
+```
+
+Response:
+```json
+{
+  "enabled": true,
+  "poll_interval_seconds": 30,
+  "cpu_threshold_pct": 70.0,
+  "restore_threshold_pct": 40.0,
+  "watched_process_names": ["llama-server", "lmstudio", "ollama", "ollama_llama_server"],
+  "currently_throttled": [
+    {"pid": 4821, "name": "ollama.exe"}
+  ]
+}
+```
+
+### Manual process management (PowerShell)
+
+```powershell
+# Check if Ollama is running and its CPU usage
+Get-Process -Name "ollama" -ErrorAction SilentlyContinue | Select-Object Id, CPU, WorkingSet
+
+# Manually lower priority
+$proc = Get-Process -Name "ollama" -ErrorAction SilentlyContinue
+if ($proc) { $proc.PriorityClass = [System.Diagnostics.ProcessPriorityClass]::BelowNormal }
+
+# Stop Ollama entirely
+Stop-Process -Name "ollama" -Force -ErrorAction SilentlyContinue
+
+# Limit Ollama thread count before starting (set in system/user env)
+[System.Environment]::SetEnvironmentVariable("OLLAMA_NUM_THREAD", "4", "User")
+```
+
+### Manual process management (bash)
+
+```bash
+# Check Ollama CPU usage
+ps aux | grep ollama | grep -v grep
+
+# Lower priority (nice = 10, range -20 to 19, higher = lower priority)
+OLLAMA_PID=$(pgrep ollama); [ -n "$OLLAMA_PID" ] && renice 10 $OLLAMA_PID
+
+# Stop Ollama
+pkill -f ollama
+
+# Linux: limit Ollama to 4 CPU cores via cgroup
+systemctl set-property ollama.service CPUQuota=400%  # 400% = 4 cores
+```
+
+---
+
+## Model Latency Tracking
+
+Sparkbot records the wall-clock response time for every successful LLM call per model. Latency is surfaced in the `/models` endpoint and a dedicated `/models/latency` endpoint.
+
+### How it works
+
+`_acompletion_with_fallback` in `llm.py` wraps every `litellm.acompletion` call with `time.perf_counter()`. The last 10 samples per model are kept in memory (resets on restart). Stats are computed on-demand.
+
+### Endpoints
+
+**All models with latency stats:**
+```
+GET /api/v1/chat/models
+```
+
+Latency added to each model entry:
+```json
+{
+  "id": "gpt-4o-mini",
+  "description": "GPT-4o Mini — fast, cost-effective",
+  "active": true,
+  "configured": true,
+  "provider": "openai",
+  "latency": {
+    "samples": 10,
+    "avg_s": 1.43,
+    "min_s": 0.91,
+    "max_s": 3.12,
+    "last_s": 1.21
+  }
+}
+```
+
+`null` values mean no calls have been made to that model this session.
+
+**Dedicated latency view (models with data only):**
+```
+GET /api/v1/chat/models/latency
+```
+
+```json
+{
+  "latency": {
+    "gpt-4o-mini": {"samples": 10, "avg_s": 1.43, "min_s": 0.91, "max_s": 3.12, "last_s": 1.21},
+    "claude-sonnet-4-5": {"samples": 4, "avg_s": 2.11, "min_s": 1.87, "max_s": 2.54, "last_s": 1.99}
+  }
+}
+```
+
+### Latency also appears in the backend log
+
+Every successful LLM call logs:
+```
+INFO LLM route applied: ... applied_model=gpt-4o-mini latency_s=1.43
+```
+
+Use this to correlate slow responses with specific models or times of day:
+```powershell
+# Windows — find slowest LLM calls today
+Select-String -Path "$env:LOCALAPPDATA\Sparkbot Local\sparkbot-backend.log" -Pattern "latency_s" |
+  Where-Object { $_ -match "latency_s=([5-9]\d|[1-9]\d{2})" }
+```
+```bash
+# Linux — calls over 5 seconds
+grep "latency_s" ~/.sparkbot/sparkbot-backend.log | awk -F'latency_s=' '{print $2}' | awk '$1 > 5'
+```
+
+---
+
+## Skill Sandboxing
+
+Every skill execution is wrapped by `backend/app/services/skill_executor.py` with timeout and memory guardrails.
+
+### Timeout enforcement
+
+All skill calls use `asyncio.wait_for()` with a configurable wall-clock limit. Skills that hang (e.g., waiting on a slow network call) are cancelled after the timeout and return a clean error message to the LLM.
+
+```env
+SPARKBOT_SKILL_TIMEOUT_SECONDS=60    # default timeout for all skills
+```
+
+Individual skills can override this by setting `TIMEOUT = 30` at module level.
+
+**Timeout error returned to LLM:**
+```
+Skill [my_tool] timed out after 62.1s (limit: 60s). The operation may still
+be running in the background. To increase the limit set SPARKBOT_SKILL_TIMEOUT_SECONDS.
+```
+
+### Memory monitoring
+
+```env
+SPARKBOT_SKILL_MAX_MEMORY_MB=0       # 0 = disabled (default)
+                                      # e.g. 2048 = refuse to start skill if process > 2 GB
+```
+
+When enabled:
+- **Pre-execution:** if process RSS already exceeds the limit, the skill is refused before running
+- **Post-execution:** if RSS grew past the limit during execution, a warning is logged
+
+### Error reporting
+
+Skills no longer surface raw Python tracebacks to the LLM. All errors — timeout, memory, uncaught exception — are returned as structured strings the LLM can report back to the user.
+
+For skill authoring guidance, see **[docs/skill-author-guide.md](./skill-author-guide.md)**.
+
+---
+
+## API Usage Examples
+
+### Authentication
+
+All endpoints require an HttpOnly session cookie. Obtain it at login:
+
+```bash
+curl -c cookies.txt -X POST http://localhost:8000/api/v1/chat/users/login \
+  -H "Content-Type: application/json" \
+  -d '{"passphrase": "sparkbot-local"}'
+```
+
+Subsequent requests use the cookie automatically:
+```bash
+curl -b cookies.txt http://localhost:8000/api/v1/utils/health-check/
+# → true
+```
+
+### Send a message and stream the response
+
+```bash
+# Replace ROOM_ID with your room ID (get it from /users/bootstrap)
+ROOM_ID="your-room-id"
+
+curl -b cookies.txt -N \
+  -X POST "http://localhost:8000/api/v1/chat/rooms/$ROOM_ID/messages/stream" \
+  -H "Content-Type: application/json" \
+  -d '{"content": "What is the weather in New York?"}'
+```
+
+SSE response format:
+```
+data: {"type": "token", "token": "The"}
+data: {"type": "token", "token": " weather"}
+data: {"type": "token", "token": " in"}
+...
+data: {"type": "done", "message_id": "abc123"}
+```
+
+### Bootstrap a new user and get their room ID
+
+```bash
+curl -c cookies.txt -X POST http://localhost:8000/api/v1/chat/users/bootstrap \
+  -H "Content-Type: application/json" \
+  -d '{"passphrase": "sparkbot-local"}'
+# → {"room_id": "uuid-here", "user_id": "uuid-here"}
+```
+
+### Switch the active model
+
+```bash
+curl -b cookies.txt -X POST http://localhost:8000/api/v1/chat/model \
+  -H "Content-Type: application/json" \
+  -d '{"model": "claude-sonnet-4-5"}'
+```
+
+### Run code via shell_run tool (triggering from API)
+
+```bash
+curl -b cookies.txt -N \
+  -X POST "http://localhost:8000/api/v1/chat/rooms/$ROOM_ID/messages/stream" \
+  -H "Content-Type: application/json" \
+  -d '{"content": "Run: echo Hello from the API"}'
+```
+
+### JavaScript / TypeScript (fetch)
+
+```typescript
+// Login
+const loginRes = await fetch('/api/v1/chat/users/login', {
+  method: 'POST',
+  credentials: 'include',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ passphrase: 'sparkbot-local' }),
+});
+
+// Stream a message
+const res = await fetch(`/api/v1/chat/rooms/${roomId}/messages/stream`, {
+  method: 'POST',
+  credentials: 'include',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ content: 'What can you do?' }),
+});
+
+const reader = res.body!.getReader();
+const decoder = new TextDecoder();
+
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+  const text = decoder.decode(value);
+  for (const line of text.split('\n')) {
+    if (!line.startsWith('data: ')) continue;
+    const event = JSON.parse(line.slice(6));
+    if (event.type === 'token') process.stdout.write(event.token);
+    if (event.type === 'done') console.log('\n[done]');
+  }
+}
+```
+
+### Check model latency
+
+```bash
+curl -b cookies.txt http://localhost:8000/api/v1/chat/models/latency | python -m json.tool
+```
+
+### Check process watcher status
+
+```bash
+curl -b cookies.txt http://localhost:8000/api/v1/chat/system/watcher | python -m json.tool
+```
+
+---
+
+## Versioning & Compatibility
+
+### Version scheme
+
+| Component | Version | Location |
+|-----------|---------|----------|
+| Desktop app | `src-tauri/tauri.conf.json` → `version` |
+| Download page | `docs/index.html` |
+| Python backend | `backend/pyproject.toml` → `version` |
+| Desktop release tag | `desktop-v{major}.{minor}.{patch}` |
+
+Desktop release tags (`desktop-v1.6.x`) and app versions (`1.2.x`) are bumped together on each release.
+
+### How to upgrade safely
+
+1. **Read the release notes** in `release-notes.md` for breaking changes
+2. **Back up your `.env`** (contains API keys) before upgrading the desktop app
+3. **Check skill POLICY dicts** after upgrading — see the known breaking change below
+4. **Restart the backend** after any env var change
+
+### Known breaking changes
+
+**v1.2.5 — ToolPolicy signature change**
+
+Skills written before v1.2.5 may use incorrect POLICY keys and will crash on load with:
+```
+TypeError: ToolPolicy.__init__() got an unexpected keyword argument 'category'
+```
+
+**Fix:** Replace `category` and `description` with the correct keys:
+```python
+# ❌ Old (broken)
+POLICY = {
+    "category": "read",
+    "description": "My tool",
+    "default_action": "allow",
+    "high_risk": False,
+}
+
+# ✅ New (correct)
+POLICY = {
+    "scope": "read",
+    "resource": "external",
+    "default_action": "allow",
+    "action_type": "data_read",
+    "high_risk": False,
+    "requires_execution_gate": False,
+}
+```
+
+The CI skill test suite (`tests/test_skills.py`) catches this automatically on every push.
+
+### Pinned dependency recommendations
+
+For stable desktop builds, pin these key packages in `backend/pyproject.toml`:
+
+```toml
+"litellm>=1.0.0,<2.0.0"       # major version bump may change tool-call API
+"playwright>=1.52.0"            # minor versions add browser support; safe to float
+"psutil>=5.9.0"                 # stable API; safe to float
+"pywinpty>=2.0.0"               # Windows PTY; major version may break terminal
+"fastapi[standard]<1.0.0"       # pre-1.0 FastAPI; pin to avoid breaking changes
+"pydantic>2.0"                  # Pydantic v2+ required; v1 is incompatible
+```
+
+### How to check your installed versions
+
+```bash
+cd backend
+uv pip list | grep -E "litellm|playwright|psutil|fastapi|pydantic"
+```
+
+### Migration checklist (version upgrades)
+
+- [ ] Back up `%APPDATA%\Sparkbot\.env` (desktop) or `.env` (server)
+- [ ] Read `release-notes.md` for this version
+- [ ] If skills exist outside `backend/skills/`: run `pytest tests/test_skills.py` against them
+- [ ] After upgrade: verify health check responds: `curl .../api/v1/utils/health-check/`
+- [ ] After upgrade: send a test message and confirm streaming works
+- [ ] After upgrade: check `sparkbot-backend.log` for any `WARNING` or `ERROR` lines at startup
 
 ---
 

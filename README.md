@@ -346,6 +346,9 @@ User message → Token Guardian → Memory Guardian → LLM
 ## Full Reference
 
 - **[docs/capabilities.md](./docs/capabilities.md)** — every tool, command, integration, env var, API endpoint, and Guardian Spine route
+- **[docs/skill-author-guide.md](./docs/skill-author-guide.md)** — how to write, test, and ship a skill plugin
+- **[docs/guardian-job-examples.md](./docs/guardian-job-examples.md)** — copy-paste Task Guardian job templates
+- **[Troubleshooting.md](./Troubleshooting.md)** — Playwright, Ollama CPU, terminal, SmartScreen, first-run checklist
 - **[SECURITY.md](./SECURITY.md)** — security architecture
 - **[deployment.md](./deployment.md)** — Traefik + Docker + HTTPS server setup
 - **[docs/systemd-single-node.md](./docs/systemd-single-node.md)** — systemd + nginx server setup
