@@ -11,12 +11,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { TerminalSessionInfo, TerminalStatus } from "@/types/terminal"
+import { apiFetch, apiWebSocketUrl } from "@/lib/apiBase"
 
 const API_BASE = "/api/v1/terminal"
 
 function buildWsUrl(sessionId: string): string {
-  const proto = window.location.protocol === "https:" ? "wss:" : "ws:"
-  return `${proto}//${window.location.host}${API_BASE}/ws/${sessionId}`
+  return apiWebSocketUrl(`${API_BASE}/ws/${sessionId}`)
 }
 
 function storageKey(stationId: string): string {
@@ -36,7 +36,7 @@ function clearSessionId(stationId: string): void {
 }
 
 async function fetchSessionList(): Promise<TerminalSessionInfo[]> {
-  const res = await fetch(`${API_BASE}/sessions`, { credentials: "include" })
+  const res = await apiFetch(`${API_BASE}/sessions`, { credentials: "include" })
   if (!res.ok) return []
   const data: Array<{
     session_id: string; user_id: string; host: string; shell: string
@@ -139,7 +139,7 @@ export function useTerminalSession(
     }
 
     setError(null)
-    setSessionInfo({ sessionId: "", userId: "", host: "localhost", shell: "/bin/bash", status: "connecting", startedAt: 0, lastActivityAt: 0, stationId })
+    setSessionInfo({ sessionId: "", userId: "", host: "localhost", shell: "default", status: "connecting", startedAt: 0, lastActivityAt: 0, stationId })
 
     // Try to reconnect to a stored session for this station
     const storedId = loadSessionId(stationId)
@@ -162,13 +162,13 @@ export function useTerminalSession(
     // ── Create new session via HTTP ──────────────────────────────────────────
     let session: TerminalSessionInfo
     try {
-      const res = await fetch(`${API_BASE}/sessions`, {
+      const res = await apiFetch(`${API_BASE}/sessions`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           host: opts.host || "localhost",
-          shell: opts.shell || "/bin/bash",
+          shell: opts.shell || undefined,
           station_id: stationId,
         }),
       })
@@ -213,7 +213,7 @@ export function useTerminalSession(
 
     // Best-effort HTTP close
     if (sessionRef.current?.sessionId) {
-      fetch(`${API_BASE}/sessions/${sessionRef.current.sessionId}`, {
+      apiFetch(`${API_BASE}/sessions/${sessionRef.current.sessionId}`, {
         method: "DELETE",
         credentials: "include",
       }).catch(() => {})

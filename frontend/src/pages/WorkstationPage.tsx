@@ -28,6 +28,10 @@ import {
   Clock,
   Play,
   RefreshCw,
+  MonitorCog,
+  Terminal,
+  Globe,
+  Zap,
 } from "lucide-react"
 import SparkbotSurfaceTabs from "@/components/Common/SparkbotSurfaceTabs"
 import SparkbotSurfaceInfoDialog from "@/components/Common/SparkbotSurfaceInfoDialog"
@@ -72,6 +76,7 @@ type PanelMode =
   | { kind: "station"; station: Station }
   | { kind: "table" }
   | { kind: "terminal"; station: Station }
+  | { kind: "computercontrol" }
   | null
 
 interface ProjectRoom {
@@ -2310,6 +2315,228 @@ function SeatPickerModal({
   )
 }
 
+// ─── ComputerControlPanel ─────────────────────────────────────────────────────
+// Hub showing Shell, Terminal, and Browser capabilities with quick-start prompts.
+
+interface ComputerControlPanelProps {
+  onClose: () => void
+  onOpenTerminal: () => void
+}
+
+function ComputerControlPanel({ onClose, onOpenTerminal }: ComputerControlPanelProps) {
+  const ACCENT = "#38bdf8"
+
+  const cap = (
+    icon: React.ReactNode,
+    title: string,
+    badge: string,
+    badgeColor: string,
+    desc: string,
+    actionLabel: string,
+    onAction: () => void,
+    examples: string[],
+  ) => (
+    <div
+      style={{
+        border: `1px solid ${ACCENT}1a`,
+        borderRadius: 10,
+        padding: "14px 16px",
+        backgroundColor: "#040d1a",
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ color: ACCENT }}>{icon}</span>
+        <span style={{ fontSize: 13, fontWeight: 700, color: "#e2e8f0", letterSpacing: "0.04em" }}>
+          {title}
+        </span>
+        <span
+          style={{
+            marginLeft: "auto",
+            fontSize: 9,
+            color: badgeColor,
+            border: `1px solid ${badgeColor}44`,
+            borderRadius: 3,
+            padding: "1px 7px",
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+          }}
+        >
+          {badge}
+        </span>
+      </div>
+      <p style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.65, margin: 0 }}>{desc}</p>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {examples.map((ex) => (
+          <span
+            key={ex}
+            style={{
+              fontSize: 10,
+              color: "#7dd3fc",
+              backgroundColor: "#0c1f35",
+              borderRadius: 4,
+              padding: "2px 8px",
+              fontFamily: "monospace",
+            }}
+          >
+            {ex}
+          </span>
+        ))}
+      </div>
+      <button
+        onClick={onAction}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          background: `${ACCENT}18`,
+          border: `1px solid ${ACCENT}44`,
+          borderRadius: 6,
+          cursor: "pointer",
+          color: ACCENT,
+          fontSize: 11,
+          padding: "6px 12px",
+          letterSpacing: "0.06em",
+          textTransform: "uppercase",
+          fontWeight: 600,
+          alignSelf: "flex-start",
+        }}
+      >
+        <Zap size={11} />
+        {actionLabel}
+      </button>
+    </div>
+  )
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        top: 0,
+        right: 0,
+        bottom: 0,
+        width: 380,
+        backgroundColor: "#07101e",
+        borderLeft: `1px solid ${ACCENT}`,
+        boxShadow: `-4px 0 32px ${ACCENT}22`,
+        zIndex: 50,
+        display: "flex",
+        flexDirection: "column",
+        fontFamily: "system-ui, sans-serif",
+        overflow: "hidden",
+        animation: "slideInPanel 0.2s ease-out",
+      }}
+    >
+      {/* Header */}
+      <div
+        style={{
+          backgroundColor: `${ACCENT}18`,
+          borderBottom: `1px solid ${ACCENT}33`,
+          padding: "12px 16px",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          flexShrink: 0,
+        }}
+      >
+        <MonitorCog size={15} style={{ color: ACCENT }} />
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: ACCENT, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+            Computer Control
+          </div>
+          <div style={{ fontSize: 10, color: "#6b7280", marginTop: 1 }}>
+            Shell · Terminal · Browser
+          </div>
+        </div>
+        <button
+          onClick={onClose}
+          style={{
+            background: "none",
+            border: "1px solid #1f2937",
+            borderRadius: 4,
+            cursor: "pointer",
+            color: "#6b7280",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 28,
+            height: 28,
+          }}
+        >
+          <X size={14} />
+        </button>
+      </div>
+
+      {/* Capabilities */}
+      <div style={{ flex: 1, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
+        <p style={{ fontSize: 11, color: "#64748b", margin: 0, lineHeight: 1.65 }}>
+          Sparkbot can control your local machine. Just ask it in chat — or use the terminal panel
+          to interact live. All three capabilities are active when this app is running.
+        </p>
+
+        {cap(
+          <Code2 size={14} />,
+          "Shell Commands",
+          "Active",
+          "#4ade80",
+          "Sparkbot runs PowerShell (Windows) or bash commands directly on this machine. Results stream back into chat. Working directory persists per conversation.",
+          "Ask Sparkbot",
+          () => {
+            onClose()
+            // Focus the chat input — user can type their command request
+          },
+          ['"run dir in shell"', '"list running processes"', '"check disk space"'],
+        )}
+
+        {cap(
+          <Terminal size={14} />,
+          "Live Terminal",
+          "Active",
+          "#4ade80",
+          "An interactive xterm.js terminal connected to a live PTY on this machine. Sparkbot can also type into open terminal sessions via terminal_send.",
+          "Open Terminal",
+          () => {
+            onClose()
+            onOpenTerminal()
+          },
+          ['"open terminal and run npm install"', '"check my terminal sessions"'],
+        )}
+
+        {cap(
+          <Globe size={14} />,
+          "Browser Control",
+          "Active",
+          "#4ade80",
+          "Sparkbot can open a Chromium browser, navigate pages, read content, fill forms, and click buttons. On first use, Chromium downloads automatically (~150 MB).",
+          "Ask Sparkbot",
+          () => { onClose() },
+          ['"open chrome and go to google.com"', '"fill the login form on example.com"'],
+        )}
+
+        <div
+          style={{
+            border: "1px dashed #1e3a5f",
+            borderRadius: 8,
+            padding: "12px 14px",
+            backgroundColor: "#040d1a",
+          }}
+        >
+          <div style={{ fontSize: 10, color: "#7dd3fc", letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700, marginBottom: 6 }}>
+            How to activate
+          </div>
+          <ol style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.8, margin: 0, paddingLeft: 16 }}>
+            <li>Open Sparkbot chat (click Sparkbot's desk)</li>
+            <li>Tell Sparkbot what you want it to do</li>
+            <li>For terminal control, connect the terminal panel first</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── TerminalDetailPanel ──────────────────────────────────────────────────────
 // Phase 3: Live xterm.js terminal backed by a WebSocket PTY session.
 
@@ -2322,7 +2549,7 @@ function TerminalDetailPanel({ station, onClose }: TerminalDetailPanelProps) {
   const { accentHex, label, id, shellType, host } = station
   const { sessionInfo, ws, error, connect, disconnect, listSessions } = useTerminalSession(id, {
     host: host || "localhost",
-    shell: shellType === "zsh" ? "/bin/zsh" : shellType === "ssh" ? undefined : "/bin/bash",
+    shell: shellType === "zsh" ? "/bin/zsh" : shellType === "ssh" ? undefined : undefined,
   })
   const [activeSessions, setActiveSessions] = useState<import("@/types/terminal").TerminalSessionInfo[]>([])
 
@@ -3666,6 +3893,35 @@ export default function WorkstationPage() {
                   isSelected={panel?.kind === "terminal" && panel.station.id === localTerminalDesk.id}
                   compact
                 />
+                {/* Computer Control hub card */}
+                <button
+                  onClick={() => setPanel(panel?.kind === "computercontrol" ? null : { kind: "computercontrol" })}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    background: panel?.kind === "computercontrol" ? "rgba(56,189,248,0.12)" : "rgba(7,13,28,0.56)",
+                    border: panel?.kind === "computercontrol" ? "1px solid rgba(56,189,248,0.5)" : "1px solid rgba(56,189,248,0.18)",
+                    borderRadius: 12,
+                    padding: "10px 14px",
+                    cursor: "pointer",
+                    textAlign: "left",
+                    width: "100%",
+                  }}
+                >
+                  <MonitorCog size={15} style={{ color: "#38bdf8", flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#38bdf8", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                      Computer Control
+                    </div>
+                    <div style={{ fontSize: 10, color: "#64748b", marginTop: 1 }}>
+                      Shell · Terminal · Browser
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 9, color: "#4ade80", border: "1px solid #4ade8044", borderRadius: 3, padding: "1px 6px", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                    Active
+                  </span>
+                </button>
               </div>
 
               <div style={{ gridColumn: "2 / span 2", gridRow: "2" }}>
@@ -4126,6 +4382,12 @@ export default function WorkstationPage() {
         )}
         {panel?.kind === "terminal" && (
           <TerminalDetailPanel station={panel.station} onClose={handleClosePanel} />
+        )}
+        {panel?.kind === "computercontrol" && (
+          <ComputerControlPanel
+            onClose={handleClosePanel}
+            onOpenTerminal={() => setPanel({ kind: "terminal", station: localTerminalDesk })}
+          />
         )}
 
         {/* ─── Invite config modal ────────────────────────────────────── */}
