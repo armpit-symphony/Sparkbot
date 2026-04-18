@@ -2100,7 +2100,10 @@ async def _browser_create_session() -> tuple[str | None, dict | None, str | None
     context = None
     try:
         playwright = await async_playwright().start()
-        browser = await playwright.chromium.launch(headless=_BROWSER_HEADLESS)
+        browser = await playwright.chromium.launch(
+            headless=_BROWSER_HEADLESS,
+            timeout=60000,  # 60s max — fail fast if Chromium isn't installed
+        )
         context = await browser.new_context(ignore_https_errors=_BROWSER_ALLOW_INSECURE_SSL)
         page = await context.new_page()
     except Exception as exc:
@@ -2296,7 +2299,7 @@ async def _browser_restore_session(name: str, url: str = "") -> str:
     context = None
     try:
         playwright = await async_playwright().start()
-        browser = await playwright.chromium.launch(headless=_BROWSER_HEADLESS)
+        browser = await playwright.chromium.launch(headless=_BROWSER_HEADLESS, timeout=60000)
         context = await browser.new_context(
             storage_state=state,
             ignore_https_errors=_BROWSER_ALLOW_INSECURE_SSL,
