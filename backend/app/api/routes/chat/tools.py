@@ -4895,10 +4895,13 @@ async def execute_tool(
 
     # Fall through to skill plugins
     if name in _skill_registry.executors:
-        try:
-            return await _skill_registry.executors[name](
-                args, user_id=user_id, room_id=room_id, session=session
-            )
-        except Exception as exc:
-            return f"Skill error [{name}]: {exc}"
+        from app.services.skill_executor import run_skill
+        return await run_skill(
+            name,
+            _skill_registry.executors[name],
+            args,
+            user_id=user_id,
+            room_id=room_id,
+            session=session,
+        )
     return f"Unknown tool: {name}"
