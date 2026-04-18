@@ -144,6 +144,14 @@ Sparkbot v2 has completed a full internal security audit across five phases:
 
 ---
 
+## Audit History
+
+| Date | Version | Scope | Report |
+|------|---------|-------|--------|
+| 2026-04-18 | v1.3.0 | Full codebase — auth, SSRF, tools, WebSocket, deps | [SECURITY-AUDIT.md](./SECURITY-AUDIT.md) |
+
+---
+
 ## Reporting a Vulnerability
 
 Please report security issues privately to **security@sparkpitlabs.com** rather than opening a public issue. Include reproduction steps and any relevant code or logs. We will respond within 48 hours.

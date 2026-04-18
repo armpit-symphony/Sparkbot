@@ -1881,6 +1881,28 @@ async def _fetch_url(url: str, instruction: str = "") -> str:
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
 
+    # SSRF guard — block private/internal network targets
+    try:
+        _parsed = urlparse(url)
+        _host = (_parsed.hostname or "").lower()
+        if _host in ("localhost", "127.0.0.1", "::1") or _host.endswith(".local"):
+            return f"fetch_url blocked: local/private network URLs are not allowed"
+        try:
+            _addr = ipaddress.ip_address(_host)
+            if (
+                _addr.is_private
+                or _addr.is_loopback
+                or _addr.is_link_local
+                or _addr.is_reserved
+                or _addr.is_multicast
+                or _addr.is_unspecified
+            ):
+                return "fetch_url blocked: private or reserved IP targets are not allowed"
+        except ValueError:
+            pass
+    except Exception:
+        pass
+
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "

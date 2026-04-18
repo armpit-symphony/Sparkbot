@@ -86,7 +86,30 @@ def _get_conn() -> sqlite3.Connection:
 
 async def _fetch_url_text(url: str) -> str:
     """Fetch URL and return plain text. Requires httpx."""
+    import ipaddress
     import httpx
+    from urllib.parse import urlparse
+
+    # SSRF guard — block private/internal network targets
+    _parsed = urlparse(url)
+    _host = (_parsed.hostname or "").lower()
+    if _host in ("localhost", "127.0.0.1", "::1") or _host.endswith(".local"):
+        raise ValueError("local/private network URLs are not allowed")
+    try:
+        _addr = ipaddress.ip_address(_host)
+        if (
+            _addr.is_private
+            or _addr.is_loopback
+            or _addr.is_link_local
+            or _addr.is_reserved
+            or _addr.is_multicast
+            or _addr.is_unspecified
+        ):
+            raise ValueError("private or reserved IP targets are not allowed")
+    except ValueError as _ve:
+        if "not allowed" in str(_ve):
+            raise
+
     headers = {"User-Agent": "Sparkbot/2.0 (knowledge base ingestor)"}
     async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
         resp = await client.get(url, headers=headers)
@@ -156,7 +179,7 @@ def _ingest_sync(name: str, content: str, source: str, user_id: str) -> str:
         conn.close()
 
 
-def _search_sync(query: str, top_k: int) -> list[dict[str, Any]]:
+def _search_sync(query: str, top_k: int, user_id: str = "") -> list[dict[str, Any]]:
     conn = _get_conn()
     try:
         rows = conn.execute(
@@ -165,32 +188,36 @@ def _search_sync(query: str, top_k: int) -> list[dict[str, Any]]:
                    bm25(kb_fts) AS score
             FROM kb_fts
             JOIN kb_documents d ON kb_fts.id = d.id
-            WHERE kb_fts MATCH ?
+            WHERE kb_fts MATCH ? AND (d.user_id = ? OR d.user_id = '')
             ORDER BY score
             LIMIT ?
             """,
-            (query, top_k),
+            (query, user_id, top_k),
         ).fetchall()
         return [dict(r) for r in rows]
     finally:
         conn.close()
 
 
-def _list_sync() -> list[dict[str, Any]]:
+def _list_sync(user_id: str = "") -> list[dict[str, Any]]:
     conn = _get_conn()
     try:
         rows = conn.execute(
-            "SELECT name, source, length(content) as chars, added_at FROM kb_documents ORDER BY added_at DESC"
+            "SELECT name, source, length(content) as chars, added_at FROM kb_documents WHERE user_id = ? OR user_id = '' ORDER BY added_at DESC",
+            (user_id,),
         ).fetchall()
         return [dict(r) for r in rows]
     finally:
         conn.close()
 
 
-def _delete_sync(name: str) -> int:
+def _delete_sync(name: str, user_id: str = "") -> int:
     conn = _get_conn()
     try:
-        cur = conn.execute("DELETE FROM kb_documents WHERE name = ? OR name LIKE ?", (name, f"{name} [chunk%]"))
+        cur = conn.execute(
+            "DELETE FROM kb_documents WHERE (name = ? OR name LIKE ?) AND (user_id = ? OR user_id = '')",
+            (name, f"{name} [chunk%]", user_id),
+        )
         conn.commit()
         return cur.rowcount
     finally:
@@ -223,7 +250,7 @@ async def _ingest_document(args: dict, *, user_id: str = "", **_) -> str:
     )
 
 
-async def _search_knowledge(args: dict, **_) -> str:
+async def _search_knowledge(args: dict, *, user_id=None, **_) -> str:
     query = (args.get("query") or "").strip()
     top_k = min(max(int(args.get("top_k") or 5), 1), 20)
 
@@ -231,7 +258,7 @@ async def _search_knowledge(args: dict, **_) -> str:
         return "Error: 'query' is required."
 
     loop = asyncio.get_event_loop()
-    results = await loop.run_in_executor(None, _search_sync, query, top_k)
+    results = await loop.run_in_executor(None, _search_sync, query, top_k, user_id or "")
 
     if not results:
         return f"No results found for '{query}'. Try ingesting relevant documents with ingest_document()."
@@ -244,9 +271,9 @@ async def _search_knowledge(args: dict, **_) -> str:
     return "\n".join(parts)
 
 
-async def _list_knowledge(args: dict, **_) -> str:
+async def _list_knowledge(args: dict, *, user_id=None, **_) -> str:
     loop = asyncio.get_event_loop()
-    docs = await loop.run_in_executor(None, _list_sync)
+    docs = await loop.run_in_executor(None, _list_sync, user_id or "")
     if not docs:
         return "Knowledge base is empty. Use ingest_document() to add content."
     lines = [f"## Knowledge base ({len(docs)} entries)\n"]
@@ -257,12 +284,12 @@ async def _list_knowledge(args: dict, **_) -> str:
     return "\n".join(lines)
 
 
-async def _delete_knowledge(args: dict, **_) -> str:
+async def _delete_knowledge(args: dict, *, user_id=None, **_) -> str:
     name = (args.get("name") or "").strip()
     if not name:
         return "Error: 'name' is required."
     loop = asyncio.get_event_loop()
-    deleted = await loop.run_in_executor(None, _delete_sync, name)
+    deleted = await loop.run_in_executor(None, _delete_sync, name, user_id or "")
     if deleted == 0:
         return f"No document named '{name}' found."
     return f"Deleted '{name}' ({deleted} row(s) removed)."

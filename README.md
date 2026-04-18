@@ -350,6 +350,7 @@ User message → Token Guardian → Memory Guardian → LLM
 - **[docs/guardian-job-examples.md](./docs/guardian-job-examples.md)** — copy-paste Task Guardian job templates
 - **[Troubleshooting.md](./Troubleshooting.md)** — Playwright, Ollama CPU, terminal, SmartScreen, first-run checklist
 - **[SECURITY.md](./SECURITY.md)** — security architecture
+- **[SECURITY-AUDIT.md](./SECURITY-AUDIT.md)** — full security audit (v1.3.0): findings, fixes, residual risks
 - **[deployment.md](./deployment.md)** — Traefik + Docker + HTTPS server setup
 - **[docs/systemd-single-node.md](./docs/systemd-single-node.md)** — systemd + nginx server setup
 - **[PRIVACY.md](./PRIVACY.md)** — data retention and privacy details
@@ -361,6 +362,10 @@ User message → Token Guardian → Memory Guardian → LLM
 
 | Version | Date | Highlights |
 |---------|------|-----------|
+| v1.3.0 | Apr 2026 | Security hardening: SSRF fixes in fetch_url + knowledge base; per-user KB isolation; Sentry data scrubbing; npm dep fixes; message queue (send while Sparkbot is responding) |
+| v1.2.9 | Apr 2026 | Skill sandboxing (timeout + memory); 121 CI smoke tests; skill author guide + Guardian job examples |
+| v1.2.8 | Apr 2026 | Process watcher (auto-throttle Ollama CPU); model latency tracking; latency API |
+| v1.2.7 | Apr 2026 | system_diagnostics skill; repair-playwright scripts; Troubleshooting.md |
 | v1.2.6 | Apr 2026 | Stable Playwright browser dir; LLM tool-loop guards |
 | v1.2.2 | Apr 2026 | `shell_run`; Windows live terminal; browser auto-install; Invite Wing API keys |
 | v1.1.x | Apr 2026 | Workstation operations dashboard; Round Table autonomous meetings; Guardian Tasks |

@@ -26,7 +26,29 @@ def custom_generate_unique_id(route: APIRoute) -> str:
 
 
 if settings.SENTRY_DSN and settings.ENVIRONMENT != "local":
-    sentry_sdk.init(dsn=str(settings.SENTRY_DSN), enable_tracing=True)
+    import re as _re
+    _SECRET_PATTERN = _re.compile(
+        r"(api[_-]?key|secret|password|token|passphrase|authorization)[^\s]*",
+        _re.IGNORECASE,
+    )
+
+    def _sentry_before_send(event, hint):
+        def _scrub(obj):
+            if isinstance(obj, dict):
+                return {k: ("[REDACTED]" if _SECRET_PATTERN.search(k) else _scrub(v)) for k, v in obj.items()}
+            if isinstance(obj, list):
+                return [_scrub(i) for i in obj]
+            if isinstance(obj, str) and len(obj) > 20 and _SECRET_PATTERN.search(obj[:60]):
+                return "[REDACTED]"
+            return obj
+        event = _scrub(event)
+        return event
+
+    sentry_sdk.init(
+        dsn=str(settings.SENTRY_DSN),
+        enable_tracing=True,
+        before_send=_sentry_before_send,
+    )
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
