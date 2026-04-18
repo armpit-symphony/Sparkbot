@@ -2380,7 +2380,7 @@ function SparkbotDmPage() {
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const sendingRef = useRef(false)   // sync mirror of sending — safe to read in callbacks without stale closure
-  const [queueCount, setQueueCount] = useState(0)
+  const abortRef = useRef<AbortController | null>(null)
   const pendingQueueRef = useRef<string[]>([])
   const doSendRef = useRef<((content: string, replyId: string | null) => Promise<void>) | null>(null)
   const [inputValue, setInputValue] = useState("")
@@ -3892,6 +3892,8 @@ function SparkbotDmPage() {
   const doSend = useCallback(async (content: string, replyId: string | null) => {
     sendingRef.current = true
     setSending(true)
+    const controller = new AbortController()
+    abortRef.current = controller
     const isBackendSlashCommand = /^\/breakglass(?:\s+close)?$/i.test(content)
     const tempHumanId = `temp-human-${Date.now()}`
     const tempBotId = `temp-bot-${Date.now()}`
@@ -3910,6 +3912,7 @@ function SparkbotDmPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
+        signal: controller.signal,
         body: JSON.stringify({ content, ...(replyId ? { reply_to_id: replyId } : {}) }),
       })
 
@@ -3970,14 +3973,19 @@ function SparkbotDmPage() {
           } catch { /* ignore */ }
         }
       }
-    } catch {
-      setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, content: "⚠️ Connection error.", isStreaming: false } : m))
+    } catch (err) {
+      const isAbort = err instanceof Error && err.name === "AbortError"
+      // On abort just mark the bot bubble as done (keep whatever streamed so far)
+      // On real error show the warning
+      setMessages(prev => prev.map(m => m.id === tempBotId
+        ? { ...m, content: isAbort ? m.content : "⚠️ Connection error.", isStreaming: false, toolActivity: undefined }
+        : m))
     } finally {
+      abortRef.current = null
       sendingRef.current = false
       setSending(false)
       if (drainQueue) {
         const next = pendingQueueRef.current.shift()
-        setQueueCount(pendingQueueRef.current.length)
         if (next != null) setTimeout(() => doSendRef.current?.(next, null), 0)
       }
     }
@@ -4005,8 +4013,9 @@ function SparkbotDmPage() {
     setReplyingTo(null)
 
     if (sendingRef.current) {
-      pendingQueueRef.current.push(content)
-      setQueueCount(pendingQueueRef.current.length)
+      // Interrupt current response and send the new message immediately after
+      pendingQueueRef.current.unshift(content)
+      abortRef.current?.abort()
       return
     }
 
@@ -4445,33 +4454,38 @@ function SparkbotDmPage() {
             value={inputValue}
             onChange={e => setInputValue(e.target.value)}
             onKeyDown={e => {
-              if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend() }
+              if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sending ? handleSend() : handleSend() }
               if (e.key === "Escape") setShowCommands(false)
             }}
-            placeholder={sending ? (queueCount > 0 ? `Sparkbot is responding… (${queueCount} queued)` : "Sparkbot is responding… type to queue next") : meeting.active ? "note: / decided: / action: or ask a question…" : "Message Sparkbot… or / for commands"}
+            placeholder={sending ? "Responding… type to interrupt and send" : meeting.active ? "note: / decided: / action: or ask a question…" : "Message Sparkbot… or / for commands"}
             className="flex-1 rounded-full border bg-muted/40 px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-ring/30"
             disabled={uploading}
           />
-          <div className="relative">
+          {/* Stop button — shown when responding with no typed text */}
+          {sending && !inputValue.trim() && (
+            <button
+              onClick={() => abortRef.current?.abort()}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-destructive/90 text-white hover:bg-destructive"
+              title="Stop response"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+          {/* Send button — shown when there is text, or when not responding */}
+          {(!sending || inputValue.trim()) && (
             <button
               onClick={handleSend}
               disabled={uploading || !inputValue.trim()}
               className="flex h-9 w-9 items-center justify-center rounded-full text-slate-50 disabled:opacity-40"
-              title={sending && inputValue.trim() ? "Queue this message — sends after current response" : undefined}
+              title={sending ? "Interrupt and send this instead" : undefined}
               style={{
-                background:
-                  "linear-gradient(135deg, rgba(79,70,229,0.96), rgba(99,102,241,0.9), rgba(56,189,248,0.48))",
+                background: "linear-gradient(135deg, rgba(79,70,229,0.96), rgba(99,102,241,0.9), rgba(56,189,248,0.48))",
                 boxShadow: "0 10px 24px rgba(49,46,129,0.24)",
               }}
             >
-              {sending && !inputValue.trim() ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              <Send className="h-4 w-4" />
             </button>
-            {queueCount > 0 && (
-              <span className="pointer-events-none absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
-                {queueCount}
-              </span>
-            )}
-          </div>
+          )}
 
           {/* Voice mode toggle */}
           <button
