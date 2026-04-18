@@ -112,10 +112,15 @@ async def _start_background_guardians() -> None:
         from app.services.terminal_service import terminal_manager as _tm
         await _tm.start()
 
+    # Start process watcher (lowers priority of heavy local model processes)
+    if not getattr(app.state, "process_watcher_task", None):
+        from app.services.process_watcher import process_watcher_loop
+        app.state.process_watcher_task = asyncio.create_task(process_watcher_loop())
+
 
 @app.on_event("shutdown")
 async def _stop_background_guardians() -> None:
-    cancel_attrs = ["reminder_scheduler_task", "task_guardian_scheduler_task"]
+    cancel_attrs = ["reminder_scheduler_task", "task_guardian_scheduler_task", "process_watcher_task"]
     if not settings.V1_LOCAL_MODE:
         cancel_attrs += ["telegram_poller_task", "discord_bot_task"]
     for attr in cancel_attrs:

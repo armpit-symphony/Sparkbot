@@ -231,6 +231,34 @@ def discard_pending(confirm_id: str) -> None:
         pass
 
 
+# ── Per-model latency tracking ────────────────────────────────────────────────
+# Stores the last 10 successful response times (seconds) per model string.
+# Written by _acompletion_with_fallback; read by the /models endpoint.
+from collections import deque
+
+_MODEL_LATENCIES: dict[str, deque[float]] = {}
+_LATENCY_WINDOW = 10  # keep last N samples per model
+
+
+def record_latency(model: str, elapsed: float) -> None:
+    if model not in _MODEL_LATENCIES:
+        _MODEL_LATENCIES[model] = deque(maxlen=_LATENCY_WINDOW)
+    _MODEL_LATENCIES[model].append(round(elapsed, 2))
+
+
+def get_latency_stats(model: str) -> dict:
+    samples = list(_MODEL_LATENCIES.get(model, []))
+    if not samples:
+        return {"samples": 0, "avg_s": None, "min_s": None, "max_s": None, "last_s": None}
+    return {
+        "samples": len(samples),
+        "avg_s": round(sum(samples) / len(samples), 2),
+        "min_s": round(min(samples), 2),
+        "max_s": round(max(samples), 2),
+        "last_s": samples[-1],
+    }
+
+
 # ── Audit log redaction ───────────────────────────────────────────────────────
 
 _SECRET_KEY_RE = re.compile(
@@ -993,15 +1021,18 @@ async def _acompletion_with_fallback(
         try:
             chosen_candidate = candidate
             call_kwargs = {**kwargs, **({"api_key": invite_api_key} if invite_api_key else {})}
+            _t0 = time.perf_counter()
             response = await litellm.acompletion(model=candidate, **call_kwargs)
+            record_latency(candidate, time.perf_counter() - _t0)
             log.info(
-                "LLM route applied: route=%s requested_provider=%s requested_model=%s cross_provider_fallback=%s applied_provider=%s applied_model=%s",
+                "LLM route applied: route=%s requested_provider=%s requested_model=%s cross_provider_fallback=%s applied_provider=%s applied_model=%s latency_s=%.2f",
                 route_mode,
                 requested_provider,
                 model,
                 bool((route_context or {}).get("cross_provider_fallback")),
                 model_provider(candidate),
                 candidate,
+                time.perf_counter() - _t0,
             )
             if candidate != model:
                 log.warning(
@@ -1024,7 +1055,9 @@ async def _acompletion_with_fallback(
                 try:
                     no_tool_kwargs = {k: v for k, v in call_kwargs.items()
                                       if k not in ("tools", "tool_choice")}
+                    _t0 = time.perf_counter()
                     response = await litellm.acompletion(model=candidate, **no_tool_kwargs)
+                    record_latency(candidate, time.perf_counter() - _t0)
                     log.warning(
                         "tool-enabled request rejected by %s — retried without tools successfully",
                         candidate,

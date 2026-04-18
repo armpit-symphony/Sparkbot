@@ -37,6 +37,7 @@ from app.api.routes.chat.llm import (
     default_cross_provider_fallback_enabled,
     get_agent_model_overrides,
     get_default_provider,
+    get_latency_stats,
     get_local_default_model,
     get_model,
     get_model_stack,
@@ -453,11 +454,18 @@ class ControlsConfigUpdate(BaseModel):
 
 @router.get("/models")
 def list_models(current_user: CurrentChatUser) -> dict:
-    """Return all available models with descriptions."""
+    """Return all available models with descriptions and latency stats."""
     active = get_model(str(current_user.id))
     return {
         "models": [
-            {"id": k, "description": model_label(k), "active": k == active, "configured": model_is_configured(k), "provider": model_provider(k)}
+            {
+                "id": k,
+                "description": model_label(k),
+                "active": k == active,
+                "configured": model_is_configured(k),
+                "provider": model_provider(k),
+                "latency": get_latency_stats(k),
+            }
             for k in AVAILABLE_MODELS
         ],
         "active": active,
@@ -586,6 +594,25 @@ async def get_models_config(current_user: CurrentChatUser) -> dict[str, Any]:
 async def ollama_status(current_user: CurrentChatUser) -> dict:
     """Check Ollama server connectivity and list available local models."""
     return await get_ollama_status()
+
+
+@router.get("/models/latency")
+def models_latency(current_user: CurrentChatUser) -> dict:
+    """Return latency stats (avg, min, max, last, sample count) for all models seen this session."""
+    from app.api.routes.chat.llm import _MODEL_LATENCIES
+    return {
+        "latency": {
+            model: get_latency_stats(model)
+            for model in _MODEL_LATENCIES
+        }
+    }
+
+
+@router.get("/system/watcher")
+def system_watcher_status(current_user: CurrentChatUser) -> dict:
+    """Return process watcher state: enabled, thresholds, currently throttled processes."""
+    from app.services.process_watcher import get_watcher_status
+    return get_watcher_status()
 
 
 @router.get("/openrouter/models")
