@@ -1,6 +1,74 @@
-# Sparkbot v2
+# Sparkbot
 
-**Sparkbot** is a self-hosted AI chat assistant you deploy on your own server, laptop, or desktop. It is designed to be a full office worker agent — handling chat, file analysis, meeting capture, web search, calendar access, and memory across sessions.
+**Sparkbot** is a self-hosted AI assistant that runs entirely on your own machine — no cloud subscription, no data sharing, no monthly fee. Download the installer, add a provider key, and you have a personal AI that knows your files, controls your desktop, fills out web forms, reads your inbox, manages your calendar, runs your code, and remembers everything you tell it — across every conversation.
+
+> **Desktop app (Windows · macOS · Linux)** — [Download at sparkpitlabs.com](https://armpit-symphony.github.io/Sparkbot/)
+> **Self-host on a server** — one Docker command, full HTTPS, works on any VPS
+
+---
+
+## What Sparkbot Can Do
+
+### Local Computer Control
+- **Shell access** — run any PowerShell / bash command from chat; working directory persists so `cd` carries forward between messages
+- **Live terminal** — xterm.js terminal panel in the Workstation; Sparkbot can inject commands into it while you watch
+- **Code execution** — run Python, Node.js, or Bash scripts directly in chat; get the output back immediately
+- **Browser automation** — Sparkbot opens a real Chromium browser, navigates to sites, fills forms, clicks buttons, logs in, and reads page content — all from a single chat message
+- **Web scraping** — fetch and read any public URL; use it for research, docs, price checks, anything
+
+### Productivity & Work
+- **Email (Gmail + IMAP/SMTP)** — read inbox, search, compose and send, summarize threads
+- **Google Calendar** — list events, create meetings, check availability in natural language
+- **CalDAV** — works with iCloud, Nextcloud, Fastmail, Baikal, Radicale
+- **Google Drive** — search files, read documents, create folders
+- **GitHub** — list PRs, read PR diffs, create issues, check CI status
+- **Slack** — post messages, list channels, read channel history
+- **Notion** — search pages, read content, create new pages
+- **Confluence** — search and read spaces, create pages
+- **Task management** — create, track, and complete tasks inside any chat room
+- **Reminders** — schedule one-time or recurring reminders that post to the room (and fan out to Telegram / Discord / WhatsApp)
+- **Morning briefing** — one-shot digest of Gmail unread, calendar for today, and pending reminders
+
+### AI & Intelligence
+- **Multi-model** — switch between OpenAI (GPT-4o, o1, o3), Anthropic (Claude Sonnet, Haiku, Opus), Google (Gemini), Groq (Llama), MiniMax, Ollama (local), OpenRouter — all from chat
+- **Multi-model stack** — configure a Primary, two Backups, and a Heavy Hitter; Sparkbot auto-routes and falls back across providers when one fails
+- **Multi-agent rooms** — mention `@researcher`, `@coder`, `@writer`, `@analyst`, or any custom agent to get a specialist response
+- **Spawn agents** — create custom named agents with a full system prompt from 11 specialty templates (DevOps, Legal, Finance, HR, PM, Security, and more)
+- **Persistent memory** — Sparkbot proactively stores facts about you (name, role, timezone, preferences, projects) and injects them into every conversation
+- **Knowledge base (RAG)** — ingest any document or URL; Sparkbot searches it with BM25 full-text ranking when relevant
+- **Skill plugins** — drop a `.py` file into `backend/skills/` and Sparkbot gains a new tool with no restart; all existing skills are auto-discovered
+
+### Workstation (Desktop HQ)
+- **Office floor view** — a visual grid of all your AI desks: main Sparkbot, model stack companions, specialty agents, invite desks, and live terminals
+- **Invite Wing** — seat a Claude, GPT, or Ollama model into a desk with its own API key and model ID; routes directly to that provider at meeting launch
+- **Round Table** — launch a multi-agent autonomous meeting room; all seated agents contribute in turn without you typing between every reply
+- **Company Operations dashboard** — view all Guardian Tasks across every room, active meeting rooms, and launch project meetings in one click
+- **Task-linked meetings** — hit "Meet" on any Guardian Task and a room opens pre-seeded with task context and stack bots
+- **Live terminal panel** — full interactive xterm.js terminal backed by ConPTY (Windows) or PTY (Linux/macOS)
+
+### Scheduled Autonomy (Task Guardian)
+- **Scheduled jobs** — tell Sparkbot to run any tool on a schedule (hourly, daily, custom interval)
+- **Autonomous execution** — jobs run in the background and post results back into the room
+- **Write-action scheduling** — opt-in to scheduled send-email, post-to-Slack, create-calendar-event
+- **Verifier guardian** — each scheduled run is evaluated before commit; bounded retries with escalation instead of silent loops
+- **Suggested jobs**: daily morning briefing, hourly inbox check, daily calendar preview, open-task digest, pending reminders, news headlines, PR review
+
+### Communication Channels
+- **Telegram** — long-poll bridge; private Telegram chats map to Sparkbot rooms; `/approve` / `/deny` resolve pending confirmations
+- **Discord** — gateway bot; DMs and @mentions map to rooms; same approval flow
+- **WhatsApp** — Meta Cloud API webhook (pywa); free-form replies in the 24-hour session window
+- **GitHub** — signed webhook for issue and PR comments; `approve` / `deny` resolves confirmations in-thread
+- **Notification fan-out** — reminders and Task Guardian results push to all connected channels simultaneously
+
+### Security (Built-In, Not Bolted On)
+- **Policy layer** — every tool call classified read / write / execute / admin; unknown tools denied by default
+- **Write-tool confirmation** — the LLM cannot email, post to Slack, or commit to GitHub autonomously; a confirmation modal is required for every external write
+- **Execution gate** — server commands and shell access require the room owner to explicitly enable; defaults off per room
+- **Guardian Vault** — encrypted secret storage; break-glass PIN required before writing secrets
+- **Break-glass** — PIN-gated privileged mode; works from chat (`/breakglass`); all sessions logged
+- **Audit trail** — every tool call logged with allow/confirm/deny, redacted args, and timestamps
+- **HttpOnly cookies** — session tokens never exposed to JavaScript
+- **Dep scanning** — `pip-audit` + `npm audit` + `gitleaks` on every push via GitHub Actions
 
 ---
 
