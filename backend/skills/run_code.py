@@ -53,10 +53,12 @@ DEFINITION = {
 }
 
 POLICY = {
-    "category": "write",
+    "scope": "execute",
+    "resource": "local_machine",
     "default_action": "allow",
-    "high_risk": False,
-    "description": "Execute code in a subprocess",
+    "action_type": "code_exec",
+    "high_risk": True,
+    "requires_execution_gate": False,
 }
 
 _MAX_STDOUT = 8192

@@ -354,28 +354,36 @@ DEFINITIONS = [
 
 POLICIES = {
     "ingest_document": {
-        "category": "write",
+        "scope": "write",
+        "resource": "local_machine",
         "default_action": "allow",
+        "action_type": "data_write",
         "high_risk": False,
-        "description": "Add document to knowledge base",
+        "requires_execution_gate": False,
     },
     "search_knowledge": {
-        "category": "read",
+        "scope": "read",
+        "resource": "local_machine",
         "default_action": "allow",
+        "action_type": "data_read",
         "high_risk": False,
-        "description": "Search knowledge base",
+        "requires_execution_gate": False,
     },
     "list_knowledge": {
-        "category": "read",
+        "scope": "read",
+        "resource": "local_machine",
         "default_action": "allow",
+        "action_type": "data_read",
         "high_risk": False,
-        "description": "List knowledge base documents",
+        "requires_execution_gate": False,
     },
     "delete_knowledge": {
-        "category": "write",
+        "scope": "write",
+        "resource": "local_machine",
         "default_action": "allow",
+        "action_type": "data_write",
         "high_risk": False,
-        "description": "Delete from knowledge base",
+        "requires_execution_gate": False,
     },
 }
 
