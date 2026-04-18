@@ -2745,8 +2745,45 @@ function TerminalDetailPanel({ station, onClose }: TerminalDetailPanelProps) {
       ) : (
         /* ── Idle state ─────────────────────────────────────────────────── */
         <div style={{ display: "flex", flexDirection: "column", flex: 1, overflowY: "auto" }}>
-          {/* Terminal screen preview (static, idle) */}
+          {/* Connect button — pinned at top so it's always visible */}
           <div style={{ padding: "16px 16px 8px" }}>
+            <button
+              onClick={handleConnect}
+              disabled={isConnecting}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                width: "100%",
+                padding: "12px 0",
+                fontSize: 13,
+                fontWeight: 700,
+                color: isConnecting ? "#6b7280" : accentHex,
+                border: `1px solid ${isConnecting ? "#1f2937" : accentHex}`,
+                borderRadius: 8,
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                background: isConnecting ? "none" : `${accentHex}18`,
+                cursor: isConnecting ? "default" : "pointer",
+              }}
+              aria-label="Connect terminal session"
+            >
+              {isConnecting ? (
+                <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} />
+              ) : (
+                <Power size={13} />
+              )}
+              {isConnecting ? "Connecting…" : activeSessions.some((s) => s.stationId === id) ? "Resume Session" : "Connect"}
+            </button>
+            {error && (
+              <div style={{ marginTop: 8, padding: "8px 10px", backgroundColor: "#2d0a0a", border: "1px solid #7f1d1d", borderRadius: 6, fontSize: 10, color: "#fca5a5", lineHeight: 1.5 }}>
+                {error}
+              </div>
+            )}
+          </div>
+          {/* Terminal screen preview (static, idle) */}
+          <div style={{ padding: "0 16px 8px" }}>
             <div
               style={{
                 marginBottom: 12,
@@ -2840,56 +2877,6 @@ function TerminalDetailPanel({ station, onClose }: TerminalDetailPanelProps) {
             </div>
           </div>
 
-          {/* Error notice */}
-          {error && (
-            <div
-              style={{
-                margin: "0 16px 12px",
-                padding: "10px 12px",
-                backgroundColor: "#2d0a0a",
-                border: "1px solid #7f1d1d",
-                borderRadius: 6,
-                fontSize: 10,
-                color: "#fca5a5",
-                lineHeight: 1.5,
-              }}
-            >
-              {error}
-            </div>
-          )}
-
-          {/* Connect button — live in Phase 3 */}
-          <div style={{ padding: "0 16px 16px", marginTop: "auto" }}>
-            <button
-              onClick={handleConnect}
-              disabled={isConnecting}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 8,
-                width: "100%",
-                padding: "10px 0",
-                fontSize: 12,
-                color: isConnecting ? "#6b7280" : accentHex,
-                border: `1px solid ${isConnecting ? "#1f2937" : accentHex}44`,
-                borderRadius: 6,
-                letterSpacing: "0.06em",
-                textTransform: "uppercase",
-                background: isConnecting ? "none" : `${accentHex}0d`,
-                cursor: isConnecting ? "default" : "pointer",
-                transition: "background 0.15s ease, color 0.15s ease",
-              }}
-              aria-label="Connect terminal session"
-            >
-              {isConnecting ? (
-                <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} />
-              ) : (
-                <Power size={13} />
-              )}
-              {isConnecting ? "Connecting…" : activeSessions.some((s) => s.stationId === id) ? "Resume Session" : "Connect"}
-            </button>
-          </div>
         </div>
       )}
     </div>

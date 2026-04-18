@@ -13,6 +13,7 @@ os.environ.setdefault("DATABASE_TYPE", "sqlite")
 os.environ.setdefault("ENVIRONMENT", "local")
 os.environ.setdefault("WORKSTATION_LIVE_TERMINAL_ENABLED", "true")
 os.environ.setdefault("SPARKBOT_BROWSER_HEADLESS", "false")  # show browser window on desktop
+os.environ.setdefault("SPARKBOT_DM_EXECUTION_DEFAULT", "true")  # enable shell/terminal/browser in DM
 os.environ.setdefault("V1_LOCAL_MODE", "true")
 os.environ.setdefault("SPARKBOT_PASSPHRASE", "sparkbot-local")
 os.environ.setdefault("FIRST_SUPERUSER", "admin@example.com")
@@ -91,20 +92,54 @@ if getattr(sys, "frozen", False):
     if not os.path.exists(_playwright_marker):
         try:
             import subprocess as _pw_subprocess
-            from playwright._impl._driver import compute_driver_executable as _pw_driver
-            _driver_exe, _ = _pw_driver()
-            if _driver_exe.exists():
+            _pw_log = _root_logging.getLogger("sparkbot.playwright_install")
+
+            # Locate the Playwright Node driver.  In a frozen PyInstaller binary
+            # the playwright package lives inside sys._MEIPASS, so we search
+            # there first, then fall back to compute_driver_executable().
+            _driver_exe = None
+            _meipass = getattr(sys, "_MEIPASS", None)
+            if _meipass:
+                import pathlib as _pathlib
+                for _candidate in (
+                    _pathlib.Path(_meipass) / "playwright" / "driver" / "playwright.cmd",
+                    _pathlib.Path(_meipass) / "playwright" / "driver" / "playwright",
+                ):
+                    if _candidate.exists():
+                        _driver_exe = str(_candidate)
+                        break
+
+            if _driver_exe is None:
+                try:
+                    from playwright._impl._driver import compute_driver_executable as _cde
+                    _p, _ = _cde()
+                    if _p.exists():
+                        _driver_exe = str(_p)
+                except Exception as _e:
+                    _pw_log.warning("compute_driver_executable failed: %s", _e)
+
+            if _driver_exe:
+                _pw_log.info("Installing Playwright Chromium via driver: %s", _driver_exe)
                 _result = _pw_subprocess.run(
-                    [str(_driver_exe), "install", "chromium"],
+                    [_driver_exe, "install", "chromium"],
                     capture_output=True, timeout=600,
+                )
+                _pw_log.info(
+                    "playwright install chromium exit=%s stdout=%s stderr=%s",
+                    _result.returncode,
+                    (_result.stdout or b"")[:500],
+                    (_result.stderr or b"")[:500],
                 )
                 if _result.returncode == 0:
                     with open(_playwright_marker, "w") as _pmf:
                         _pmf.write("ok")
+            else:
+                _pw_log.warning("Playwright driver not found — browser tools will not work")
         except Exception as _pw_err:
-            # Non-fatal — browser tools will show a helpful error message on use
             try:
-                _root_logging.getLogger(__name__).warning("Playwright install skipped: %s", _pw_err)
+                _root_logging.getLogger("sparkbot.playwright_install").warning(
+                    "Playwright install failed: %s", _pw_err
+                )
             except Exception:
                 pass
 

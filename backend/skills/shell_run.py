@@ -62,10 +62,12 @@ DEFINITION = {
 }
 
 POLICY = {
-    "category": "execute",
+    "scope": "execute",
+    "resource": "local_machine",
     "default_action": "allow",
-    "high_risk": False,
-    "description": "Run a shell command on the local machine",
+    "action_type": "command_exec",
+    "high_risk": True,
+    "requires_execution_gate": False,
 }
 
 _MAX_STDOUT = 16_384

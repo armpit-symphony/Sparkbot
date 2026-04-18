@@ -83,8 +83,11 @@ _SYSTEM_PROMPT_DEFAULT = (
     "## Tool Philosophy\n"
     "Tools are your first instinct for live data, external systems, and actions — not a fallback. "
     "For anything requiring current information, use web_search. "
+    "For running shell commands, scripts, file operations, git, npm, pip, or any terminal task, use shell_run — "
+    "it runs PowerShell on Windows and bash on Linux/macOS directly on the user's local machine. "
     "For interactive website tasks (register, login, navigate, fill forms, click, post, reply), use the browser tools — "
     "this is fully operator-authorized. "
+    "For typing into a live terminal session, use terminal_list_sessions then terminal_send. "
     "For Gmail, GitHub, Notion, Confluence, Slack, calendar, and other integrations, use the matching tool. "
     "For server status, diagnostics, logs, and local-machine checks, use read-only server tools when the room execution gate allows. "
     "Never claim you cannot use a tool if it exists and is relevant — use it.\n\n"
@@ -1107,6 +1110,15 @@ _SERVER_READ_HINT_RE = re.compile(
     re.IGNORECASE,
 )
 
+_SHELL_RUN_HINT_RE = re.compile(
+    r"\b("
+    r"run|execute|shell|terminal|command|cmd|powershell|bash|script|"
+    r"dir|ls|cd|mkdir|rm|del|copy|move|pip|npm|git|python|node|"
+    r"install|uninstall|start|stop|restart|kill|open|launch|type into"
+    r")\b",
+    re.IGNORECASE,
+)
+
 
 def _should_nudge_web_search(message: str) -> bool:
     return bool(_WEB_SEARCH_HINT_RE.search((message or "").strip()))
@@ -1287,6 +1299,19 @@ async def stream_chat_with_tools(
                     "content": (
                         "This request likely needs live external information. "
                         "Use the web_search tool unless the user explicitly asked for reasoning only."
+                    ),
+                },
+            )
+        if _SHELL_RUN_HINT_RE.search(latest_user_message):
+            msgs.insert(
+                1,
+                {
+                    "role": "system",
+                    "content": (
+                        "You have a shell_run tool that runs PowerShell (Windows) or bash commands "
+                        "directly on the user's local machine. Use it immediately for any task involving "
+                        "running commands, scripts, file operations, git, npm, pip, or anything terminal-related. "
+                        "Do NOT say you cannot run commands — use shell_run and report the output."
                     ),
                 },
             )

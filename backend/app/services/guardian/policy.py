@@ -159,6 +159,18 @@ def _build_policy_registry() -> dict[str, ToolPolicy]:
             high_risk=True,
         )
 
+    # Terminal panel control (Workstation live terminal)
+    for tool_name in ("terminal_list_sessions", "terminal_send"):
+        add(
+            tool_name,
+            scope="execute",
+            resource="local_machine",
+            default_action="allow",
+            action_type="command_exec",
+            high_risk=True,
+            requires_execution_gate=False,
+        )
+
     add(
         "server_read_command",
         scope="execute",
