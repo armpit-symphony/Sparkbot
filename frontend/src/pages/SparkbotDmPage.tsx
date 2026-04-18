@@ -2379,6 +2379,7 @@ function SparkbotDmPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
+  const sendingRef = useRef(false)   // sync mirror of sending — safe to read in callbacks without stale closure
   const [queueCount, setQueueCount] = useState(0)
   const pendingQueueRef = useRef<string[]>([])
   const doSendRef = useRef<((content: string, replyId: string | null) => Promise<void>) | null>(null)
@@ -3889,6 +3890,7 @@ function SparkbotDmPage() {
 
   // Core SSE send — called directly and from queue processor
   const doSend = useCallback(async (content: string, replyId: string | null) => {
+    sendingRef.current = true
     setSending(true)
     const isBackendSlashCommand = /^\/breakglass(?:\s+close)?$/i.test(content)
     const tempHumanId = `temp-human-${Date.now()}`
@@ -3971,6 +3973,7 @@ function SparkbotDmPage() {
     } catch {
       setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, content: "⚠️ Connection error.", isStreaming: false } : m))
     } finally {
+      sendingRef.current = false
       setSending(false)
       if (drainQueue) {
         const next = pendingQueueRef.current.shift()
@@ -4001,14 +4004,14 @@ function SparkbotDmPage() {
     const replyId = replyingTo?.id ?? null
     setReplyingTo(null)
 
-    if (sending) {
+    if (sendingRef.current) {
       pendingQueueRef.current.push(content)
       setQueueCount(pendingQueueRef.current.length)
       return
     }
 
     await doSend(content, replyId)
-  }, [inputValue, roomId, sending, handleCommand, captureMeetingItem, replyingTo, doSend])
+  }, [inputValue, roomId, handleCommand, captureMeetingItem, replyingTo, doSend])
 
   // ── Confirmation handlers ────────────────────────────────────────────────────
 
