@@ -462,6 +462,47 @@ TOOL_DEFINITIONS = [
     {
         "type": "function",
         "function": {
+            "name": "terminal_list_sessions",
+            "description": (
+                "List active terminal sessions open in the Workstation panel. "
+                "Returns session IDs, shell, and status. Use before terminal_send to find a session."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "terminal_send",
+            "description": (
+                "Send a command or text to a running terminal session in the Workstation. "
+                "The output appears in the visual terminal panel the user is watching. "
+                "Use terminal_list_sessions first to get the session_id."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "session_id": {
+                        "type": "string",
+                        "description": "Terminal session ID from terminal_list_sessions.",
+                    },
+                    "text": {
+                        "type": "string",
+                        "description": "Text or command to send. A newline (Enter) is appended unless press_enter is false.",
+                    },
+                    "press_enter": {
+                        "type": "boolean",
+                        "description": "Append a newline to submit the command (default true).",
+                        "default": True,
+                    },
+                },
+                "required": ["session_id", "text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_datetime",
             "description": "Get the current date and time (UTC). Use when the user asks what time or date it is.",
             "parameters": {"type": "object", "properties": {}, "required": []},
@@ -1891,6 +1932,62 @@ async def _fetch_url(url: str, instruction: str = "") -> str:
     if instruction:
         prefix += f"**Task:** {instruction}\n"
     return prefix + "\n" + text
+
+
+async def _terminal_list_sessions(user_id: Optional[str]) -> str:
+    """List active PTY terminal sessions for this user."""
+    try:
+        from app.services.terminal_service import terminal_manager as _tm
+    except Exception:
+        return "Terminal service is not available on this instance."
+    if user_id is None:
+        return "No user context — cannot list terminal sessions."
+    sessions = _tm.list_user_sessions(str(user_id))
+    if not sessions:
+        return (
+            "No active terminal sessions found. "
+            "Open the Workstation and connect a terminal panel first."
+        )
+    lines = ["Active terminal sessions:"]
+    for s in sessions:
+        lines.append(f"  • {s.session_id[:8]}…  shell={s.shell}  status={s.status}")
+    lines.append("\nUse the full session_id with terminal_send.")
+    # Provide full IDs as well
+    for s in sessions:
+        lines.append(f"  full id: {s.session_id}")
+    return "\n".join(lines)
+
+
+async def _terminal_send(session_id: str, text: str, press_enter: bool = True) -> str:
+    """Write text/command to a running PTY terminal session."""
+    try:
+        from app.services.terminal_service import terminal_manager as _tm
+    except Exception:
+        return "Terminal service is not available on this instance."
+    sid = (session_id or "").strip()
+    if not sid:
+        return "Error: session_id is required. Use terminal_list_sessions first."
+    # Accept short prefix match
+    if len(sid) < 36:
+        matches = [s for s in _tm._sessions if s.startswith(sid)]
+        if len(matches) == 1:
+            sid = matches[0]
+        elif len(matches) > 1:
+            return f"Ambiguous session prefix '{sid}' — provide more characters."
+        else:
+            return f"No session found matching '{sid}'. Use terminal_list_sessions to get the ID."
+    session = _tm.get_session(sid)
+    if not session:
+        return f"Session '{sid[:8]}…' not found. Use terminal_list_sessions."
+    if session.status in ("closed", "error"):
+        return f"Session '{sid[:8]}…' is {session.status}. Open a new terminal in the Workstation."
+    payload = text
+    if press_enter and not payload.endswith("\n"):
+        payload += "\n"
+    ok = await _tm.write_input(sid, payload.encode("utf-8"))
+    if ok:
+        return f"Sent to terminal session {sid[:8]}…: {repr(text)}"
+    return f"Write to session {sid[:8]}… failed — the shell may have exited."
 
 
 def _normalize_browser_url(
@@ -4469,6 +4566,14 @@ async def execute_tool(
         return await _web_search(args.get("query", ""))
     if name == "fetch_url":
         return await _fetch_url(args.get("url", ""), args.get("instruction", ""))
+    if name == "terminal_list_sessions":
+        return await _terminal_list_sessions(user_id)
+    if name == "terminal_send":
+        return await _terminal_send(
+            args.get("session_id", ""),
+            args.get("text", ""),
+            bool(args.get("press_enter", True)),
+        )
     if name == "browser_open":
         return await _browser_open(args.get("url", ""), args.get("session_id", ""))
     if name == "browser_navigate":

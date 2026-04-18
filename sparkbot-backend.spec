@@ -21,6 +21,20 @@ _tiktoken_datas, _tiktoken_binaries, _tiktoken_hiddenimports = collect_all("tikt
 # tiktoken_ext is a namespace inside the tiktoken distribution, not a separate
 # PyPI package — collect_all("tiktoken") already picks it up.
 
+# playwright: collect the Python bindings + the bundled Node.js driver binary.
+# The Chromium browser itself is NOT bundled (it's ~150 MB and is downloaded
+# on first launch via desktop_launcher.py's playwright auto-install block).
+_playwright_datas, _playwright_binaries, _playwright_hiddenimports = collect_all("playwright")
+
+# pywinpty: Windows ConPTY support for the live terminal panel.
+# On non-Windows builds this collect_all is a no-op (package won't be installed).
+_winpty_datas, _winpty_binaries, _winpty_hiddenimports = ([], [], [])
+if sys.platform == "win32":
+    try:
+        _winpty_datas, _winpty_binaries, _winpty_hiddenimports = collect_all("winpty")
+    except Exception:
+        pass
+
 block_cipher = None
 
 REPO_ROOT = Path(SPECPATH)          # spec lives at repo root
@@ -30,7 +44,7 @@ HOOKS_DIR = str(REPO_ROOT / "pyinstaller-hooks")
 a = Analysis(
     [str(BACKEND_DIR / "desktop_launcher.py")],
     pathex=[str(BACKEND_DIR)],
-    binaries=[] + _litellm_binaries + _certifi_binaries + _tiktoken_binaries,
+    binaries=[] + _litellm_binaries + _certifi_binaries + _tiktoken_binaries + _playwright_binaries + _winpty_binaries,
     datas=[
         # Email templates shipped with the bundle
         (str(BACKEND_DIR / "app" / "email-templates"), "app/email-templates"),
@@ -39,7 +53,7 @@ a = Analysis(
         # Token Guardian config files (routing.yaml, guardian.yaml, models.yaml)
         (str(BACKEND_DIR / "app" / "services" / "guardian" / "tokenguardian" / "config"),
          "app/services/guardian/tokenguardian/config"),
-    ] + _litellm_datas + _certifi_datas + _tiktoken_datas,
+    ] + _litellm_datas + _certifi_datas + _tiktoken_datas + _playwright_datas + _winpty_datas,
     hiddenimports=[
         # uvicorn internals not auto-discovered
         "uvicorn",
@@ -90,7 +104,15 @@ a = Analysis(
         "alembic",
         "alembic.runtime.migration",
         "alembic.operations",
-    ] + _litellm_hiddenimports + _certifi_hiddenimports + _tiktoken_hiddenimports,
+        # playwright Python bindings (driver binary collected via collect_all above)
+        "playwright",
+        "playwright.async_api",
+        "playwright.sync_api",
+        "playwright._impl._driver",
+        # pywinpty — Windows ConPTY terminal backend
+        "winpty",
+    ] + _litellm_hiddenimports + _certifi_hiddenimports + _tiktoken_hiddenimports
+      + _playwright_hiddenimports + _winpty_hiddenimports,
     hookspath=[HOOKS_DIR],
     hooksconfig={},
     runtime_hooks=[str(REPO_ROOT / "pyinstaller-hooks" / "rthook_tiktoken.py")],

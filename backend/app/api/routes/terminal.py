@@ -69,7 +69,7 @@ def _gate() -> None:
 
 class SessionCreateRequest(BaseModel):
     host: str = "localhost"
-    shell: str = "/bin/bash"
+    shell: Optional[str] = None   # None → platform default (powershell on Windows, bash on Unix)
     station_id: Optional[str] = None
 
 

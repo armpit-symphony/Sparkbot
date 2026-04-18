@@ -112,10 +112,14 @@ The manual workflow [build-installer.yml](./.github/workflows/build-installer.ym
 
 ## Recent Milestones
 
-### April 17, 2026
+### April 17, 2026 — v1.2.2
 
 - **Workstation opens to a clean floor view.** The Corner Office (Sparkbot DM panel) no longer auto-opens when you enter the Workstation page — it opens only when you click Sparkbot's desk, so the full office floor is always visible on load.
 - **Invite Wing now routes to real external APIs.** The invite seat modal has two new fields — Model ID and API Key — with provider-specific hints (e.g. `claude-sonnet-4-6`, `gpt-4o`, `ollama/phi4-mini`). Entering a key for an Anthropic, OpenAI, or Ollama seat wires that seat to the real provider at meeting launch using your own key, not Sparkbot's configured stack.
+- **`shell_run` — Sparkbot now has full local shell access.** New tool that runs any command on the host machine: PowerShell on Windows, bash on Linux/macOS. Working directory persists across calls in the same conversation (`cd` carries forward). Sparkbot can run `git`, `npm`, `pip`, move files, open apps — anything you'd type in a terminal.
+- **Live terminal panel now works on Windows.** The Workstation xterm.js terminal panel previously failed silently on Windows (POSIX-only PTY). Replaced with a cross-platform backend: ConPTY via `pywinpty` on Windows, existing pty/fcntl on Unix. `WORKSTATION_LIVE_TERMINAL_ENABLED` is now `true` by default in the desktop build.
+- **`terminal_send` / `terminal_list_sessions` tools.** Sparkbot can now inject commands into a running terminal session visible in the Workstation panel — type in the visual terminal from chat.
+- **Browser automation works on fresh installs.** Playwright's Chromium driver is now auto-downloaded on first desktop launch (one-time, ~150 MB). Browser tools (`browser_open`, `browser_fill_field`, `browser_click`, etc.) are ready without any manual setup. Playwright Python bindings are bundled in the installer.
 
 ### April 9, 2026
 

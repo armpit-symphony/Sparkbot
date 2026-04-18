@@ -11,7 +11,7 @@ import sys
 os.environ.setdefault("PROJECT_NAME", "Sparkbot")
 os.environ.setdefault("DATABASE_TYPE", "sqlite")
 os.environ.setdefault("ENVIRONMENT", "local")
-os.environ.setdefault("WORKSTATION_LIVE_TERMINAL_ENABLED", "false")
+os.environ.setdefault("WORKSTATION_LIVE_TERMINAL_ENABLED", "true")
 os.environ.setdefault("V1_LOCAL_MODE", "true")
 os.environ.setdefault("SPARKBOT_PASSPHRASE", "sparkbot-local")
 os.environ.setdefault("FIRST_SUPERUSER", "admin@example.com")
@@ -81,6 +81,32 @@ if getattr(sys, "frozen", False):
             if _line and not _line.startswith("#") and "=" in _line:
                 _k, _, _v = _line.partition("=")
                 os.environ.setdefault(_k.strip(), _v.strip())
+    # ── Playwright browser auto-install ───────────────────────────────────────
+    # The Playwright Python package is bundled in the frozen binary, but the
+    # Chromium browser binary lives outside the bundle (~150 MB; downloaded once
+    # to %LOCALAPPDATA%\ms-playwright on Windows).  We download it on first
+    # launch so browser_open / browser_fill_field work without manual setup.
+    _playwright_marker = os.path.join(exe_dir, ".playwright_ready")
+    if not os.path.exists(_playwright_marker):
+        try:
+            import subprocess as _pw_subprocess
+            from playwright._impl._driver import compute_driver_executable as _pw_driver
+            _driver_exe, _ = _pw_driver()
+            if _driver_exe.exists():
+                _result = _pw_subprocess.run(
+                    [str(_driver_exe), "install", "chromium"],
+                    capture_output=True, timeout=600,
+                )
+                if _result.returncode == 0:
+                    with open(_playwright_marker, "w") as _pmf:
+                        _pmf.write("ok")
+        except Exception as _pw_err:
+            # Non-fatal — browser tools will show a helpful error message on use
+            try:
+                _root_logging.getLogger(__name__).warning("Playwright install skipped: %s", _pw_err)
+            except Exception:
+                pass
+
     # Also load from SPARKBOT_DATA_DIR/.env (where model.py writes user keys).
     # Tauri sets SPARKBOT_DATA_DIR to %APPDATA%\Sparkbot, which differs from exe_dir.
     _data_dir = os.environ.get("SPARKBOT_DATA_DIR", "")

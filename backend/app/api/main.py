@@ -28,13 +28,15 @@ api_router.include_router(projects_router, prefix="/chat")  # Project management
 api_router.include_router(workstation_router, prefix="/chat") # Workstation overview
 api_router.include_router(ws_router, prefix="/chat")  # WebSocket under /chat
 
-# terminal_service.py imports fcntl and termios which are POSIX-only.
-# Only register the terminal router when live terminal is explicitly enabled.
-# With WORKSTATION_LIVE_TERMINAL_ENABLED=false (the default for V1_LOCAL_MODE),
-# this import is skipped entirely so the backend starts safely on Windows.
+# Terminal router: now cross-platform (Windows uses pywinpty ConPTY, Unix uses pty/fcntl).
+# Gated by WORKSTATION_LIVE_TERMINAL_ENABLED; defaults to true in desktop_launcher.py.
 if settings.WORKSTATION_LIVE_TERMINAL_ENABLED:
-    from app.api.routes.terminal import terminal_router as _terminal_router
-    api_router.include_router(_terminal_router, prefix="/terminal")  # Live terminal
+    try:
+        from app.api.routes.terminal import terminal_router as _terminal_router
+        api_router.include_router(_terminal_router, prefix="/terminal")
+    except Exception as _term_err:
+        import logging as _logging
+        _logging.getLogger(__name__).warning("Terminal router unavailable: %s", _term_err)
 
 api_router.include_router(utils.router)
 api_router.include_router(items.router)
