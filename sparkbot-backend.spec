@@ -35,6 +35,9 @@ if sys.platform == "win32":
     except Exception:
         pass
 
+# psutil: system diagnostics skill (CPU, RAM, disk, process list)
+_psutil_datas, _psutil_binaries, _psutil_hiddenimports = collect_all("psutil")
+
 block_cipher = None
 
 REPO_ROOT = Path(SPECPATH)          # spec lives at repo root
@@ -44,7 +47,7 @@ HOOKS_DIR = str(REPO_ROOT / "pyinstaller-hooks")
 a = Analysis(
     [str(BACKEND_DIR / "desktop_launcher.py")],
     pathex=[str(BACKEND_DIR)],
-    binaries=[] + _litellm_binaries + _certifi_binaries + _tiktoken_binaries + _playwright_binaries + _winpty_binaries,
+    binaries=[] + _litellm_binaries + _certifi_binaries + _tiktoken_binaries + _playwright_binaries + _winpty_binaries + _psutil_binaries,
     datas=[
         # Email templates shipped with the bundle
         (str(BACKEND_DIR / "app" / "email-templates"), "app/email-templates"),
@@ -53,7 +56,7 @@ a = Analysis(
         # Token Guardian config files (routing.yaml, guardian.yaml, models.yaml)
         (str(BACKEND_DIR / "app" / "services" / "guardian" / "tokenguardian" / "config"),
          "app/services/guardian/tokenguardian/config"),
-    ] + _litellm_datas + _certifi_datas + _tiktoken_datas + _playwright_datas + _winpty_datas,
+    ] + _litellm_datas + _certifi_datas + _tiktoken_datas + _playwright_datas + _winpty_datas + _psutil_datas,
     hiddenimports=[
         # uvicorn internals not auto-discovered
         "uvicorn",
@@ -111,8 +114,10 @@ a = Analysis(
         "playwright._impl._driver",
         # pywinpty — Windows ConPTY terminal backend
         "winpty",
+        # psutil — system diagnostics skill
+        "psutil",
     ] + _litellm_hiddenimports + _certifi_hiddenimports + _tiktoken_hiddenimports
-      + _playwright_hiddenimports + _winpty_hiddenimports,
+      + _playwright_hiddenimports + _winpty_hiddenimports + _psutil_hiddenimports,
     hookspath=[HOOKS_DIR],
     hooksconfig={},
     runtime_hooks=[str(REPO_ROOT / "pyinstaller-hooks" / "rthook_tiktoken.py")],
