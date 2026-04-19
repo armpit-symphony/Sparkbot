@@ -33,6 +33,7 @@ def _require_guardian_operator(current_user: CurrentChatUser) -> None:
 
 class BreakGlassRequest(BaseModel):
     pin: str = Field(..., min_length=1, max_length=128)
+    justification: str = Field("", max_length=500)
 
 
 @router.get("/guardian/breakglass/status")
@@ -78,12 +79,21 @@ def breakglass_open(
             pass
         raise HTTPException(status_code=401, detail="Incorrect PIN.")
 
-    priv_session = guardian_suite.auth.open_privileged_session(user_id, operator=str(current_user.username))
+    justification = (body.justification or "").strip()
+    priv_session = guardian_suite.auth.open_privileged_session(
+        user_id, operator=str(current_user.username), justification=justification
+    )
     try:
         create_audit_log(
             session=session,
             tool_name="breakglass_session_open",
-            tool_input=json.dumps({"operator": str(current_user.username), "session_id": priv_session.session_id}),
+            tool_input=json.dumps({
+                "operator": str(current_user.username),
+                "session_id": priv_session.session_id,
+                "justification": priv_session.justification,
+                "ttl_seconds": priv_session.ttl_remaining(),
+                "expires_at": priv_session.expires_at_local(),
+            }),
             tool_result="ok",
             user_id=current_user.id,
         )

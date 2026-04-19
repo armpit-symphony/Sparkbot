@@ -209,11 +209,13 @@ def _set_breakglass_pin_state(
     user_id: str,
     room_id: UUID,
     confirm_id: str | None,
+    justification: str = "",
 ) -> None:
     _prune_breakglass_pin_state()
     _AWAITING_BREAKGLASS_PIN[_breakglass_state_key(user_id=user_id, room_id=room_id)] = {
         "confirm_id": confirm_id,
         "created_at": time.time(),
+        "justification": justification.strip(),
     }
 
 
@@ -1068,10 +1070,12 @@ async def stream_room_message(
                 _pop_breakglass_pin_state(user_id=user_id_str, room_id=room_id)
                 msg = "Too many failed PIN attempts. Wait 5 minutes, then type `/breakglass` to try again."
             elif verify_pin(user_id_str, stripped_content):
+                stored_justification = str(pending_pin_state.get("justification") or "").strip()
                 _pop_breakglass_pin_state(user_id=user_id_str, room_id=room_id)
                 priv_session = get_active_session(user_id_str) or open_privileged_session(
                     user_id_str,
                     operator=str(current_user.username or user_id_str),
+                    justification=stored_justification,
                 )
                 try:
                     create_audit_log(
@@ -1081,6 +1085,9 @@ async def stream_room_message(
                             {
                                 "operator": str(current_user.username or user_id_str),
                                 "session_id": priv_session.session_id,
+                                "justification": priv_session.justification,
+                                "expires_at": priv_session.expires_at_local(),
+                                "ttl_seconds": priv_session.ttl_remaining(),
                                 "room_id": str(room_id),
                             }
                         ),
@@ -1104,9 +1111,11 @@ async def stream_room_message(
                     ):
                         yield event
                     return
-                ttl_min = max(1, priv_session.ttl_remaining() // 60)
+                expires_at_str = priv_session.expires_at_local()
+                justification_line = f"\nReason: *{priv_session.justification}*\n" if priv_session.justification else "\n"
                 msg = (
-                    f"Breakglass approved. Privileged mode is active for {ttl_min} minute(s).\n\n"
+                    f"Breakglass approved. Privileged mode active until **{expires_at_str}**.\n"
+                    f"{justification_line}\n"
                     "Scope: `vault`, `service_control`.\n"
                     "Send your privileged request as a new message, or use `/breakglass close` to exit."
                 )
@@ -1269,7 +1278,13 @@ async def stream_room_message(
 
     # Check for /breakglass slash command before routing to LLM
     _breakglass_content = (message_in.content or "").strip()
-    if _breakglass_content.lower() in {"/breakglass", "/breakglass close"}:
+    _breakglass_lower = _breakglass_content.lower()
+    _breakglass_inline_justification = (
+        _breakglass_content[len("/breakglass"):].strip()
+        if _breakglass_lower.startswith("/breakglass") and _breakglass_lower not in {"/breakglass", "/breakglass close"}
+        else ""
+    )
+    if _breakglass_lower in {"/breakglass", "/breakglass close"} or _breakglass_inline_justification:
         from app.crud import create_audit_log
 
         async def breakglass_stream():
@@ -1318,9 +1333,8 @@ async def stream_room_message(
                     yield event
                 return
             elif priv_session:
-                ttl_min = max(1, priv_session.ttl_remaining() // 60)
                 msg = (
-                    f"Breakglass mode is already active. Session expires in {ttl_min} minute(s). "
+                    f"Breakglass mode is already active. Session expires at **{priv_session.expires_at_local()}**. "
                     "Use `/breakglass close` to end it."
                 )
             else:
@@ -1328,6 +1342,7 @@ async def stream_room_message(
                     user_id=user_id_str,
                     room_id=room_id,
                     confirm_id=pending_confirm_id,
+                    justification=_breakglass_inline_justification,
                 )
                 emit_breakglass_event(
                     room_id=str(room_id),
@@ -1335,10 +1350,17 @@ async def stream_room_message(
                     event_type="breakglass.requested",
                     confirm_id=pending_confirm_id,
                 )
-                msg = (
-                    "Breakglass requested. Please enter your PIN.\n\n"
-                    "Reply `NO` to cancel."
-                )
+                if _breakglass_inline_justification:
+                    msg = (
+                        f"Breakglass requested — reason: *{_breakglass_inline_justification}*\n\n"
+                        "Please enter your operator PIN. Reply `NO` to cancel."
+                    )
+                else:
+                    msg = (
+                        "Breakglass requested. Please enter your operator PIN "
+                        "(or include a reason next time: `/breakglass <reason>`).\n\n"
+                        "Reply `NO` to cancel."
+                    )
             bot_u = _get_or_create_agent_bot_user(session, "sparkbot")
             bot_msg = create_chat_message(
                 session=session,

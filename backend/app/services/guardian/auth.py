@@ -36,6 +36,7 @@ class PrivilegedSession:
     operator: str
     started_at: float
     expires_at: float
+    justification: str = ""
     scopes: list = field(default_factory=lambda: ["vault", "service_control"])
 
     def is_expired(self) -> bool:
@@ -43,6 +44,11 @@ class PrivilegedSession:
 
     def ttl_remaining(self) -> int:
         return max(0, int(self.expires_at - time.time()))
+
+    def expires_at_local(self) -> str:
+        """Human-readable local expiry time."""
+        import datetime
+        return datetime.datetime.fromtimestamp(self.expires_at).strftime("%H:%M:%S")
 
 
 # In-memory state — intentionally not persisted (sessions die with the process)
@@ -179,7 +185,7 @@ def verify_pin(user_id: str, submitted_pin: str) -> bool:
     return ok
 
 
-def open_privileged_session(user_id: str, operator: str) -> PrivilegedSession:
+def open_privileged_session(user_id: str, operator: str, justification: str = "") -> PrivilegedSession:
     """Open (or refresh) a privileged session for this user."""
     now = time.time()
     ttl = _session_ttl()
@@ -189,12 +195,13 @@ def open_privileged_session(user_id: str, operator: str) -> PrivilegedSession:
         operator=operator,
         started_at=now,
         expires_at=now + ttl,
+        justification=justification.strip(),
     )
     _PRIVILEGED_SESSIONS[user_id] = session
     _FAILED_ATTEMPTS.pop(user_id, None)
     log.info(
-        "[guardian-auth] Privileged session opened user_id=%s session_id=%s ttl=%ds",
-        user_id, session.session_id, ttl,
+        "[guardian-auth] Privileged session opened user_id=%s session_id=%s ttl=%ds justification=%r",
+        user_id, session.session_id, ttl, session.justification,
     )
     return session
 
