@@ -382,6 +382,7 @@ User message → Token Guardian → Memory Guardian → LLM
 
 | Version | Date | Highlights |
 |---------|------|-----------|
+| v1.6.25 | Apr 2026 | Telegram Chat ID field in settings UI — enables proactive alerts via send_alert skill |
 | v1.6.24 | Apr 2026 | Breakglass: inline justification on activation (`/breakglass <reason>`), exact expiry timestamp in confirmation, justification logged to audit trail |
 | v1.6.22 | Apr 2026 | Relationship memory (personal CRM); proactive push alerts to Telegram/Discord; time tracking; Linear + Jira; NL→SQL; audio/podcast transcription; contacts manager; Microsoft 365 (Outlook, OneDrive); Apple integrations (Contacts, Reminders, Notes); stocks + portfolio; Spotify control; YouTube summarization; configurable daily digest with weather + stocks + news |
 | v1.3.0 | Apr 2026 | Security hardening: SSRF fixes in fetch_url + knowledge base; per-user KB isolation; Sentry data scrubbing; npm dep fixes; message queue (send while Sparkbot is responding) |
