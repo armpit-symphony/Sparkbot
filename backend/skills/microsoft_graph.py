@@ -27,27 +27,26 @@ import time
 
 import httpx
 
-_CLIENT_ID     = os.getenv("MICROSOFT_CLIENT_ID", "").strip()
-_CLIENT_SECRET = os.getenv("MICROSOFT_CLIENT_SECRET", "").strip()
-_TENANT_ID     = os.getenv("MICROSOFT_TENANT_ID", "common").strip() or "common"
-_REFRESH_TOKEN = os.getenv("MICROSOFT_REFRESH_TOKEN", "").strip()
-
 _GRAPH = "https://graph.microsoft.com/v1.0"
 _TOKEN_CACHE: dict = {}
 
 
 async def _get_token() -> tuple[str | None, str | None]:
-    if not (_CLIENT_ID and _CLIENT_SECRET and _REFRESH_TOKEN):
+    client_id = os.getenv("MICROSOFT_CLIENT_ID", "").strip()
+    client_secret = os.getenv("MICROSOFT_CLIENT_SECRET", "").strip()
+    tenant_id = os.getenv("MICROSOFT_TENANT_ID", "common").strip() or "common"
+    refresh_token = os.getenv("MICROSOFT_REFRESH_TOKEN", "").strip()
+    if not (client_id and client_secret and refresh_token):
         return None, "Microsoft Graph not configured. Set MICROSOFT_CLIENT_ID, MICROSOFT_CLIENT_SECRET, MICROSOFT_TENANT_ID, MICROSOFT_REFRESH_TOKEN."
     if _TOKEN_CACHE.get("token") and time.time() < _TOKEN_CACHE.get("expires", 0) - 60:
         return _TOKEN_CACHE["token"], None
     async with httpx.AsyncClient(timeout=15.0) as client:
         r = await client.post(
-            f"https://login.microsoftonline.com/{_TENANT_ID}/oauth2/v2.0/token",
+            f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token",
             data={
-                "client_id": _CLIENT_ID,
-                "client_secret": _CLIENT_SECRET,
-                "refresh_token": _REFRESH_TOKEN,
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "refresh_token": refresh_token,
                 "grant_type": "refresh_token",
                 "scope": "https://graph.microsoft.com/.default",
             },

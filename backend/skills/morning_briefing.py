@@ -33,10 +33,7 @@ import httpx
 
 # ── Google OAuth (shared pattern) ────────────────────────────────────────────
 
-_GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "").strip()
-_GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
-_GOOGLE_REFRESH_TOKEN = os.getenv("GOOGLE_REFRESH_TOKEN", "").strip()
-_CALENDAR_ID = os.getenv("GOOGLE_CALENDAR_ID", "primary").strip() or "primary"
+_CALENDAR_ID_DEFAULT = "primary"
 _GMAIL_API = "https://gmail.googleapis.com/gmail/v1"
 _CALENDAR_API = "https://www.googleapis.com/calendar/v3"
 _TOKEN_CACHE: dict = {"access_token": "", "expires_at": 0.0}
@@ -110,7 +107,10 @@ POLICY = {
 # ── Auth helper ───────────────────────────────────────────────────────────────
 
 async def _get_google_token() -> tuple[str | None, str | None]:
-    if not (_GOOGLE_CLIENT_ID and _GOOGLE_CLIENT_SECRET and _GOOGLE_REFRESH_TOKEN):
+    client_id = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+    client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
+    refresh_token = os.getenv("GOOGLE_REFRESH_TOKEN", "").strip()
+    if not (client_id and client_secret and refresh_token):
         return None, None  # Google not configured — skip those sections silently
     cached = str(_TOKEN_CACHE.get("access_token") or "")
     expires = float(_TOKEN_CACHE.get("expires_at") or 0.0)
@@ -121,9 +121,9 @@ async def _get_google_token() -> tuple[str | None, str | None]:
             resp = await client.post(
                 "https://oauth2.googleapis.com/token",
                 data={
-                    "client_id": _GOOGLE_CLIENT_ID,
-                    "client_secret": _GOOGLE_CLIENT_SECRET,
-                    "refresh_token": _GOOGLE_REFRESH_TOKEN,
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                    "refresh_token": refresh_token,
                     "grant_type": "refresh_token",
                 },
             )
@@ -149,7 +149,7 @@ async def _fetch_calendar(token: str, days_ahead: int, tz_name: str) -> str:
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.get(
-                f"{_CALENDAR_API}/calendars/{_CALENDAR_ID}/events",
+                f"{_CALENDAR_API}/calendars/{os.getenv('GOOGLE_CALENDAR_ID', 'primary').strip() or 'primary'}/events",
                 headers={"Authorization": f"Bearer {token}"},
                 params={
                     "timeMin": time_min,

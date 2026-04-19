@@ -20,10 +20,13 @@ import os
 
 import httpx
 
-_TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-_TELEGRAM_CHAT  = os.getenv("TELEGRAM_CHAT_ID", "").strip()
-_DISCORD_HOOK   = os.getenv("DISCORD_WEBHOOK_URL", "").strip()
-_DEFAULT_CHAN   = os.getenv("SPARKBOT_ALERT_CHANNEL", "auto").strip().lower()
+def _cfg() -> tuple[str, str, str, str]:
+    return (
+        os.getenv("TELEGRAM_BOT_TOKEN", "").strip(),
+        os.getenv("TELEGRAM_CHAT_ID", "").strip(),
+        os.getenv("DISCORD_WEBHOOK_URL", "").strip(),
+        os.getenv("SPARKBOT_ALERT_CHANNEL", "auto").strip().lower(),
+    )
 
 DEFINITION = {
     "type": "function",
@@ -67,12 +70,12 @@ POLICY = {
 }
 
 
-async def _send_telegram(text: str, silent: bool) -> str:
-    if not _TELEGRAM_TOKEN or not _TELEGRAM_CHAT:
+async def _send_telegram(text: str, silent: bool, token: str, chat_id: str) -> str:
+    if not token or not chat_id:
         return "Telegram not configured (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID missing)."
-    url = f"https://api.telegram.org/bot{_TELEGRAM_TOKEN}/sendMessage"
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = {
-        "chat_id": _TELEGRAM_CHAT,
+        "chat_id": chat_id,
         "text": text,
         "parse_mode": "Markdown",
         "disable_notification": silent,
@@ -84,11 +87,11 @@ async def _send_telegram(text: str, silent: bool) -> str:
     return f"Telegram error {r.status_code}: {r.text[:200]}"
 
 
-async def _send_discord(text: str) -> str:
-    if not _DISCORD_HOOK:
+async def _send_discord(text: str, hook: str) -> str:
+    if not hook:
         return "Discord not configured (DISCORD_WEBHOOK_URL missing)."
     async with httpx.AsyncClient(timeout=10.0) as client:
-        r = await client.post(_DISCORD_HOOK, json={"content": text})
+        r = await client.post(hook, json={"content": text})
     if r.status_code in (200, 204):
         return "Discord: sent ✓"
     return f"Discord error {r.status_code}: {r.text[:200]}"
@@ -99,20 +102,22 @@ async def execute(args: dict, *, user_id=None, room_id=None, session=None) -> st
     if not message:
         return "Error: message is required."
 
-    channel = (args.get("channel") or _DEFAULT_CHAN or "auto").strip().lower()
+    tg_token, tg_chat, discord_hook, default_chan = _cfg()
+
+    channel = (args.get("channel") or default_chan or "auto").strip().lower()
     priority = (args.get("priority") or "normal").strip().lower()
     high = priority == "high"
     text = f"🚨 {message}" if high else message
     silent = not high
 
     if channel == "auto":
-        channel = "both" if (_TELEGRAM_TOKEN and _DISCORD_HOOK) else ("telegram" if _TELEGRAM_TOKEN else "discord")
+        channel = "both" if (tg_token and discord_hook) else ("telegram" if tg_token else "discord")
 
     results: list[str] = []
     if channel in ("telegram", "both"):
-        results.append(await _send_telegram(text, silent))
+        results.append(await _send_telegram(text, silent, tg_token, tg_chat))
     if channel in ("discord", "both"):
-        results.append(await _send_discord(text))
+        results.append(await _send_discord(text, discord_hook))
     if not results:
         return "No alert channel configured. Set TELEGRAM_BOT_TOKEN+TELEGRAM_CHAT_ID or DISCORD_WEBHOOK_URL."
     return "\n".join(results)

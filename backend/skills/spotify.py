@@ -28,25 +28,24 @@ import time
 
 import httpx
 
-_CLIENT_ID     = os.getenv("SPOTIFY_CLIENT_ID", "").strip()
-_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET", "").strip()
-_REFRESH_TOKEN = os.getenv("SPOTIFY_REFRESH_TOKEN", "").strip()
-
 _API = "https://api.spotify.com/v1"
 _TOKEN_CACHE: dict = {}
 
 
 async def _get_token() -> tuple[str | None, str | None]:
-    if not (_CLIENT_ID and _CLIENT_SECRET and _REFRESH_TOKEN):
+    client_id = os.getenv("SPOTIFY_CLIENT_ID", "").strip()
+    client_secret = os.getenv("SPOTIFY_CLIENT_SECRET", "").strip()
+    refresh_token = os.getenv("SPOTIFY_REFRESH_TOKEN", "").strip()
+    if not (client_id and client_secret and refresh_token):
         return None, "Spotify not configured. Set SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, SPOTIFY_REFRESH_TOKEN."
     if _TOKEN_CACHE.get("token") and time.time() < _TOKEN_CACHE.get("expires", 0) - 60:
         return _TOKEN_CACHE["token"], None
-    creds = base64.b64encode(f"{_CLIENT_ID}:{_CLIENT_SECRET}".encode()).decode()
+    creds = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
     async with httpx.AsyncClient(timeout=10.0) as client:
         r = await client.post(
             "https://accounts.spotify.com/api/token",
             headers={"Authorization": f"Basic {creds}", "Content-Type": "application/x-www-form-urlencoded"},
-            data={"grant_type": "refresh_token", "refresh_token": _REFRESH_TOKEN},
+            data={"grant_type": "refresh_token", "refresh_token": refresh_token},
         )
     if r.status_code != 200:
         return None, f"Spotify auth error {r.status_code}: {r.text[:200]}"
