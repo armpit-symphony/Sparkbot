@@ -299,17 +299,29 @@ A single `.py` file can register multiple tools via `_register_extra(registry)`.
 
 ### Built-in skills (pre-installed)
 
-| Skill file | Tool name | Description |
+| Skill file | Tool name(s) | Description |
 |-----------|-----------|-------------|
 | `example_weather.py` | `get_weather` | Current weather via wttr.in (no API key) |
 | `calendar_list_events.py` | `calendar_list_events` | List Google Calendar events |
 | `calendar_create_event.py` | `calendar_create_event` | Create Google Calendar event (confirmation required) |
-| `morning_briefing.py` | `morning_briefing` | Gmail + Calendar + reminders digest |
+| `morning_briefing.py` | `morning_briefing` | Configurable daily digest: weather, stocks, Gmail/Outlook, calendar, news, reminders |
 | `news_headlines.py` | `news_headlines` | HN top stories or BBC RSS (no API key) |
 | `currency_convert.py` | `currency_convert` | Live FX rates via open.er-api.com (no API key) |
 | `crypto_price.py` | `crypto_price` | BTC/ETH/SOL/… prices via CoinGecko (no API key) |
 | `shell_run.py` | `shell_run` | Shell command execution (PowerShell/bash) |
 | `knowledge_base.py` | `ingest_document`, `search_knowledge`, `list_knowledge`, `delete_knowledge` | BM25 full-text RAG |
+| `relationship_memory.py` | `remember_person`, `recall_person`, `list_people`, `log_interaction`, `forget_person_fact`, `forget_person` | Personal CRM — store facts, notes, and interaction history per person |
+| `proactive_alerts.py` | `send_alert` | Push notifications to Telegram/Discord from scheduled jobs |
+| `time_tracking.py` | `time_start`, `time_stop`, `time_log`, `time_report`, `time_status` | Project time tracking with reports |
+| `linear_jira.py` | `linear_list_issues`, `linear_create_issue`, `linear_update_issue`, `jira_list_issues`, `jira_create_issue`, `jira_add_comment` | Linear and Jira issue tracker integration |
+| `nl_sql.py` | `execute_sql`, `list_databases`, `describe_table` | Natural language → SQL against local SQLite databases |
+| `audio_transcribe.py` | `transcribe_audio` | Transcribe audio files and podcasts via OpenAI Whisper |
+| `contacts.py` | `contacts_search`, `contacts_add`, `contacts_update`, `contacts_delete`, `contacts_sync_google` | Personal contacts manager with Google Contacts sync |
+| `microsoft_graph.py` | `outlook_read_mail`, `outlook_send_mail`, `outlook_calendar_list`, `outlook_calendar_create`, `onedrive_list`, `onedrive_read` | Microsoft 365 — Outlook, Calendar, OneDrive |
+| `apple_integrations.py` | `apple_contacts_search`, `apple_reminders_list`, `apple_reminders_create`, `apple_notes_search`, `apple_notes_create` | macOS Contacts, Reminders, and Notes via AppleScript |
+| `stocks.py` | `stock_quote`, `stock_history`, `portfolio_add`, `portfolio_view`, `portfolio_remove` | Real-time stock quotes and personal portfolio tracker |
+| `spotify.py` | `spotify_play`, `spotify_pause`, `spotify_next`, `spotify_previous`, `spotify_now_playing`, `spotify_search`, `spotify_volume` | Spotify music control and search |
+| `youtube_summarize.py` | `youtube_transcript`, `youtube_summarize` | Fetch YouTube captions and prepare for summarization (no API key) |
 
 Set `SPARKBOT_SKILLS_DIR` env var to change the directory (relative to `backend/` or absolute).
 
@@ -537,13 +549,15 @@ Or from the **Controls → Task Guardian** panel.
 
 ### Scheduled tools (suggested)
 
-- `morning_briefing` — daily Gmail + Calendar + reminders digest
-- `gmail_fetch_inbox` — hourly inbox check
+- `morning_briefing` — daily digest: weather, stocks, Gmail, calendar, news, reminders
+- `send_alert` — push a notification to Telegram/Discord from any scheduled job
+- `gmail_fetch_inbox` — hourly inbox check; pair with `send_alert` to push urgent emails to phone
 - `calendar_list_events` — daily calendar preview
+- `stock_quote` — daily market prices for your watchlist
 - `list_tasks` — open-task digest
-- `list_reminders` — pending reminders
 - `news_headlines` — news headlines
 - `github_get_ci_status` — PR/CI review
+- `time_report` — weekly time tracking summary
 
 ### Write-action scheduling (opt-in)
 

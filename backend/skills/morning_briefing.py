@@ -46,21 +46,18 @@ DEFINITION = {
     "function": {
         "name": "morning_briefing",
         "description": (
-            "Generate a personalized morning briefing: today's date, calendar events, "
-            "unread Gmail summary, and pending reminders. "
+            "Generate a fully personalized morning digest: date/time, weather, calendar events, "
+            "unread Gmail or Outlook summary, news headlines, stock prices, and pending reminders. "
             "Use when the user asks for a morning brief, daily summary, 'what do I have today', "
             "or schedules a daily morning digest job. "
-            "Returns a formatted markdown summary ready to read."
+            "All sections are individually toggleable. Returns a formatted markdown summary."
         ),
         "parameters": {
             "type": "object",
             "properties": {
                 "timezone": {
                     "type": "string",
-                    "description": (
-                        "IANA timezone for displaying times, e.g. 'America/New_York', "
-                        "'Europe/London', 'Asia/Tokyo'. Default: UTC."
-                    ),
+                    "description": "IANA timezone e.g. 'America/New_York'. Default: UTC.",
                 },
                 "days_ahead": {
                     "type": "integer",
@@ -72,11 +69,27 @@ DEFINITION = {
                 },
                 "include_weather": {
                     "type": "boolean",
-                    "description": "Include current weather at the given location (default false)",
+                    "description": "Include current weather (default false)",
                 },
                 "location": {
                     "type": "string",
-                    "description": "City/location for weather, e.g. 'New York' (only used when include_weather=true)",
+                    "description": "City for weather, e.g. 'New York'",
+                },
+                "include_news": {
+                    "type": "boolean",
+                    "description": "Include top news headlines (default false)",
+                },
+                "news_topic": {
+                    "type": "string",
+                    "description": "News topic: technology, world, business, science, sports, health (default: technology)",
+                },
+                "include_stocks": {
+                    "type": "boolean",
+                    "description": "Include stock prices (default false)",
+                },
+                "stock_symbols": {
+                    "type": "string",
+                    "description": "Comma/space-separated ticker symbols e.g. 'AAPL MSFT TSLA'",
                 },
             },
             "required": [],
@@ -257,15 +270,76 @@ async def _fetch_weather(location: str) -> str:
 
 # ── Main entry point ──────────────────────────────────────────────────────────
 
+async def _fetch_news(topic: str, count: int = 5) -> str:
+    try:
+        import xml.etree.ElementTree as ET
+        _BBC = {
+            "world": "https://feeds.bbci.co.uk/news/world/rss.xml",
+            "business": "https://feeds.bbci.co.uk/news/business/rss.xml",
+            "science": "https://feeds.bbci.co.uk/news/science_and_environment/rss.xml",
+            "sports": "https://feeds.bbci.co.uk/sport/rss.xml",
+            "health": "https://feeds.bbci.co.uk/news/health/rss.xml",
+        }
+        if topic in ("technology", "tech"):
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                r = await client.get("https://hacker-news.firebaseio.com/v1/topstories.json")
+                ids = r.json()[:count]
+                items = []
+                for sid in ids:
+                    sr = await client.get(f"https://hacker-news.firebaseio.com/v1/item/{sid}.json")
+                    d = sr.json()
+                    items.append(f"  • [{d.get('title','')}]({d.get('url', f'https://news.ycombinator.com/item?id={sid}')})")
+            return "\n".join(items)
+        feed_url = _BBC.get(topic, _BBC["world"])
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+            r = await client.get(feed_url, headers={"User-Agent": "Sparkbot/1.0"})
+        root = ET.fromstring(r.text)
+        items_xml = root.findall(".//item")[:count]
+        lines = []
+        for item in items_xml:
+            title = (item.findtext("title") or "").strip()
+            link  = (item.findtext("link") or "").strip()
+            lines.append(f"  • [{title}]({link})" if link else f"  • {title}")
+        return "\n".join(lines)
+    except Exception as exc:
+        return f"  _(News unavailable: {exc})_"
+
+
+async def _fetch_stocks(symbols_str: str) -> str:
+    symbols = [s.strip().upper() for s in symbols_str.replace(",", " ").split() if s.strip()]
+    if not symbols:
+        return "  _(No symbols configured)_"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.get(
+                "https://query1.finance.yahoo.com/v7/finance/quote",
+                params={"symbols": ",".join(symbols), "fields": "regularMarketPrice,regularMarketChangePercent,shortName"},
+                headers={"User-Agent": "Mozilla/5.0"},
+            )
+        quotes = r.json().get("quoteResponse", {}).get("result", [])
+        lines = []
+        for q in quotes:
+            price = q.get("regularMarketPrice", 0)
+            pct   = q.get("regularMarketChangePercent", 0)
+            arrow = "▲" if pct >= 0 else "▼"
+            lines.append(f"  • **{q['symbol']}** {price:.2f}  {arrow} {pct:+.2f}%")
+        return "\n".join(lines) if lines else "  _(No quote data)_"
+    except Exception as exc:
+        return f"  _(Stocks unavailable: {exc})_"
+
+
 async def execute(args: dict, *, user_id=None, room_id=None, session=None) -> str:
-    days_ahead = max(1, min(int(args.get("days_ahead") or 2), 7))
-    max_emails = max(1, min(int(args.get("max_emails") or 5), 10))
+    days_ahead     = max(1, min(int(args.get("days_ahead") or 2), 7))
+    max_emails     = max(1, min(int(args.get("max_emails") or 5), 10))
     include_weather = bool(args.get("include_weather"))
-    location = (args.get("location") or "").strip()
-    tz_name = (args.get("timezone") or "UTC").strip()
+    include_news   = bool(args.get("include_news"))
+    include_stocks = bool(args.get("include_stocks"))
+    location       = (args.get("location") or "").strip()
+    tz_name        = (args.get("timezone") or "UTC").strip()
+    news_topic     = (args.get("news_topic") or "technology").strip().lower()
+    stock_symbols  = (args.get("stock_symbols") or "").strip()
 
     now_utc = datetime.now(timezone.utc)
-    # Try to localise the display time
     try:
         import zoneinfo
         tz = zoneinfo.ZoneInfo(tz_name)
@@ -278,10 +352,16 @@ async def execute(args: dict, *, user_id=None, room_id=None, session=None) -> st
 
     sections: list[str] = [f"# ☀️ Good morning! — {date_str}", f"*{time_str}*", ""]
 
-    # Weather (optional)
+    # Weather
     if include_weather and location:
         sections.append("## 🌤 Weather")
         sections.append(await _fetch_weather(location))
+        sections.append("")
+
+    # Stocks
+    if include_stocks and stock_symbols:
+        sections.append("## 📈 Markets")
+        sections.append(await _fetch_stocks(stock_symbols))
         sections.append("")
 
     # Google sections
@@ -307,6 +387,12 @@ async def execute(args: dict, *, user_id=None, room_id=None, session=None) -> st
     sections.append("## ⏰ Reminders")
     sections.append(await _fetch_reminders(room_id, session))
     sections.append("")
+
+    # News
+    if include_news:
+        sections.append(f"## 📰 News — {news_topic.title()}")
+        sections.append(await _fetch_news(news_topic))
+        sections.append("")
 
     sections.append("---")
     sections.append("_Have a productive day!_")

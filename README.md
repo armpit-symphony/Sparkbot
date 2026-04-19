@@ -17,17 +17,23 @@
 - **Web scraping** — fetch and read any public URL for research, docs, price checks
 
 ### Productivity & Work
-- **Email** — Gmail + IMAP/SMTP: read inbox, search, compose, send, summarize threads
-- **Calendar** — Google Calendar + CalDAV (iCloud, Nextcloud, Fastmail, Baikal, Radicale): list events, create meetings, check availability in natural language
+- **Email** — Gmail + Outlook (Microsoft 365) + IMAP/SMTP: read inbox, search, compose, send, summarize threads
+- **Calendar** — Google Calendar + Outlook Calendar + CalDAV (iCloud, Nextcloud, Fastmail): list events, create meetings, check availability
 - **Google Drive** — search files, read documents, create folders
+- **OneDrive** — list and read files via Microsoft Graph
 - **GitHub** — list PRs, read diffs, create issues, check CI status
 - **Slack** — post messages, list channels, read channel history
 - **Notion** — search pages, read content, create pages
 - **Confluence** — search spaces, read pages, create pages
+- **Linear** — list, create, and update issues; filter by team/state/assignee
+- **Jira** — list, create issues, add comments; full JQL filter support
 - **Tasks & reminders** — create and track tasks in any room; schedule recurring reminders that fan out to Telegram, Discord, and WhatsApp
-- **Morning briefing** — one-shot digest of Gmail, calendar, and pending reminders
+- **Contacts** — personal contact manager with Google Contacts sync; search by name, email, or phone
+- **Time tracking** — start/stop project timers, manually log sessions, view weekly reports
+- **Morning digest** — fully configurable: weather, stocks, Gmail/Outlook, calendar, news headlines, reminders in one message
 
-### AI & Intelligence
+### Intelligence & Memory
+- **Relationship memory** — personal CRM built from conversation; remember facts, notes, and interaction history for any person
 - **Multi-model** — OpenAI, Anthropic, Google, Groq, MiniMax, OpenRouter, Ollama — switch live with `/model`
 - **Model stack** — configure Primary, two Backups, and a Heavy Hitter; Sparkbot auto-routes and falls back across providers
 - **Multi-agent rooms** — mention `@researcher`, `@coder`, `@writer`, `@analyst`, or any custom agent for a specialist response
@@ -36,6 +42,13 @@
 - **Knowledge base** — ingest any document or URL; Sparkbot searches it with BM25 full-text ranking when relevant
 - **Skill plugins** — drop a `.py` file into `backend/skills/` to add a new tool; auto-discovered on restart
 
+### Media & Content
+- **YouTube summarization** — paste a YouTube URL and get a transcript + summary; no API key required
+- **Podcast/audio transcription** — upload or link an audio file; transcribed via OpenAI Whisper
+- **News headlines** — Hacker News top stories or BBC RSS (world, tech, business, science, sports, health)
+- **Spotify** — play, pause, skip, search, and control volume; works on any active Spotify device
+- **Stocks & portfolio** — real-time quotes for any ticker; track a personal portfolio with P&L
+
 ### Workstation
 - **Office floor** — visual grid of all your AI desks: Sparkbot, model stack companions, agents, invite seats, terminal
 - **Invite Wing** — seat any model with its own API key and model ID; routes directly to that provider
@@ -43,17 +56,24 @@
 - **Company Operations** — view all Guardian Tasks across every room, active meetings, and launch project rooms in one click
 - **Task-linked meetings** — hit **Meet** on any task and a pre-seeded project room opens
 
-### Scheduled Autonomy (Task Guardian)
+### Proactive Mode & Scheduled Autonomy (Task Guardian)
 - **Scheduled jobs** — tell Sparkbot to run any tool on a schedule (hourly, daily, custom interval)
+- **Push alerts** — scheduled jobs can push results to your phone via Telegram or Discord — works even when you're away from the desktop
 - **Autonomous execution** — jobs run in the background and post results to the room
 - **Write-action scheduling** — opt-in to scheduled email, Slack, and calendar writes
 - **Verifier guardian** — each scheduled run is evaluated before commit; bounded retries with escalation
 
 ### Communication Channels
-- **Telegram** — private chats map to Sparkbot rooms; `/approve` / `/deny` resolve confirmations
-- **Discord** — DMs and @mentions map to rooms; same approval flow
+- **Telegram** — private chats map to Sparkbot rooms; `/approve` / `/deny` resolve confirmations; receives proactive push alerts
+- **Discord** — DMs and @mentions map to rooms; same approval flow; receives push alerts
 - **WhatsApp** — Meta Cloud API webhook; free-form replies in the 24-hour session window
 - **GitHub** — signed webhook for issue and PR comments; `approve` / `deny` resolves in-thread
+
+### Platform Integrations
+- **Microsoft 365** — Outlook mail + calendar, OneDrive (requires Azure app registration)
+- **Apple (macOS)** — Contacts, Reminders, and Notes via native AppleScript; no API key required
+- **Google Workspace** — Gmail, Google Calendar, Google Drive, Google Contacts
+- **Natural language → SQL** — query any local SQLite database using plain English
 
 ### Security
 - **Policy layer** — every tool classified read / write / execute / admin; unknown tools denied by default
@@ -362,6 +382,7 @@ User message → Token Guardian → Memory Guardian → LLM
 
 | Version | Date | Highlights |
 |---------|------|-----------|
+| v1.6.22 | Apr 2026 | Relationship memory (personal CRM); proactive push alerts to Telegram/Discord; time tracking; Linear + Jira; NL→SQL; audio/podcast transcription; contacts manager; Microsoft 365 (Outlook, OneDrive); Apple integrations (Contacts, Reminders, Notes); stocks + portfolio; Spotify control; YouTube summarization; configurable daily digest with weather + stocks + news |
 | v1.3.0 | Apr 2026 | Security hardening: SSRF fixes in fetch_url + knowledge base; per-user KB isolation; Sentry data scrubbing; npm dep fixes; message queue (send while Sparkbot is responding) |
 | v1.2.9 | Apr 2026 | Skill sandboxing (timeout + memory); 121 CI smoke tests; skill author guide + Guardian job examples |
 | v1.2.8 | Apr 2026 | Process watcher (auto-throttle Ollama CPU); model latency tracking; latency API |
