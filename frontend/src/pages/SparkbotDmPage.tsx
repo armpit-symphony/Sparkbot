@@ -307,6 +307,7 @@ interface OpenRouterModelRecord {
 interface CommsForm {
   telegram: {
     bot_token: string
+    chat_id: string
     enabled: boolean
     private_only: boolean
   }
@@ -1772,6 +1773,14 @@ function SparkbotSettingsDialog({
                       placeholder="Paste Telegram bot token"
                       className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
                     />
+                    <input
+                      type="text"
+                      value={commsForm.telegram.chat_id}
+                      onChange={(e) => onCommsTextChange("telegram", "chat_id", e.target.value)}
+                      placeholder="Telegram chat ID for proactive alerts (e.g. 123456789)"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                    />
+                    <p className="text-[10px] text-muted-foreground/60">Get your chat ID: message @userinfobot on Telegram</p>
                     <label className="flex items-center justify-between gap-2 text-xs">
                       <span>Enable polling</span>
                       <input type="checkbox" checked={commsForm.telegram.enabled} onChange={(e) => onCommsToggleChange("telegram", "enabled", e.target.checked)} />
@@ -2434,7 +2443,7 @@ function SparkbotDmPage() {
     xai_api_key: "",
   })
   const [commsForm, setCommsForm] = useState<CommsForm>({
-    telegram: { bot_token: "", enabled: true, private_only: true },
+    telegram: { bot_token: "", chat_id: "", enabled: true, private_only: true },
     discord: { bot_token: "", enabled: false, dm_only: false },
     whatsapp: { token: "", phone_id: "", verify_token: "sparkbot-wa-verify", enabled: false },
     github: {
@@ -2563,6 +2572,7 @@ function SparkbotDmPage() {
     setCommsForm({
       telegram: {
         bot_token: "",
+        chat_id: "",
         enabled: Boolean(config.comms?.telegram?.poll_enabled),
         private_only: Boolean(config.comms?.telegram?.private_only ?? true),
       },

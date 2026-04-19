@@ -400,6 +400,7 @@ class RoutingPolicyInput(BaseModel):
 
 class TelegramConfigInput(BaseModel):
     bot_token: str | None = None
+    chat_id: str | None = None
     enabled: bool | None = None
     private_only: bool | None = None
 
@@ -761,6 +762,8 @@ async def update_models_config(body: ControlsConfigUpdate, current_user: Current
         if body.comms.telegram is not None:
             if body.comms.telegram.bot_token:
                 env_updates["TELEGRAM_BOT_TOKEN"] = body.comms.telegram.bot_token
+            if body.comms.telegram.chat_id:
+                env_updates["TELEGRAM_CHAT_ID"] = body.comms.telegram.chat_id.strip()
             if body.comms.telegram.enabled is not None:
                 env_updates["TELEGRAM_POLL_ENABLED"] = "true" if body.comms.telegram.enabled else "false"
             if body.comms.telegram.private_only is not None:
