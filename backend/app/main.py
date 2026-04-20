@@ -106,12 +106,10 @@ async def _start_background_guardians() -> None:
         app.state.task_guardian_scheduler_task = asyncio.create_task(
             guardian_suite.task_guardian.task_guardian_scheduler(get_db)
         )
-    # Bridge tasks only start when not in V1_LOCAL_MODE.
-    if not settings.V1_LOCAL_MODE:
-        if not getattr(app.state, "telegram_poller_task", None):
-            app.state.telegram_poller_task = asyncio.create_task(telegram_polling_loop(get_db))
-        if not getattr(app.state, "discord_bot_task", None):
-            app.state.discord_bot_task = asyncio.create_task(discord_bot_task(get_db))
+    if not getattr(app.state, "telegram_poller_task", None):
+        app.state.telegram_poller_task = asyncio.create_task(telegram_polling_loop(get_db))
+    if not getattr(app.state, "discord_bot_task", None):
+        app.state.discord_bot_task = asyncio.create_task(discord_bot_task(get_db))
 
     # Load custom agents persisted in DB into the runtime registry
     try:
@@ -142,9 +140,7 @@ async def _start_background_guardians() -> None:
 
 @app.on_event("shutdown")
 async def _stop_background_guardians() -> None:
-    cancel_attrs = ["reminder_scheduler_task", "task_guardian_scheduler_task", "process_watcher_task"]
-    if not settings.V1_LOCAL_MODE:
-        cancel_attrs += ["telegram_poller_task", "discord_bot_task"]
+    cancel_attrs = ["reminder_scheduler_task", "task_guardian_scheduler_task", "process_watcher_task", "telegram_poller_task", "discord_bot_task"]
     for attr in cancel_attrs:
         task = getattr(app.state, attr, None)
         if task:
