@@ -70,16 +70,29 @@ logger = logging.getLogger(__name__)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-_WA_PHONE_ID = os.getenv("WHATSAPP_PHONE_ID", "").strip()
-_WA_TOKEN = os.getenv("WHATSAPP_TOKEN", "").strip()
-_WA_VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN", "sparkbot-wa-verify").strip()
-_WA_APP_ID = os.getenv("WHATSAPP_APP_ID", "").strip()
-_WA_APP_SECRET = os.getenv("WHATSAPP_APP_SECRET", "").strip()
-_WA_ENABLED = os.getenv("WHATSAPP_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
-_WA_PUBLIC_URL = os.getenv("PUBLIC_URL", "").strip().rstrip("/")
-_WA_ALLOWED_PHONES: set[str] = {
-    p.strip() for p in os.getenv("WHATSAPP_ALLOWED_PHONES", "").split(",") if p.strip()
-}
+def _wa_phone_id() -> str:
+    return os.getenv("WHATSAPP_PHONE_ID", "").strip()
+
+def _wa_token() -> str:
+    return os.getenv("WHATSAPP_TOKEN", "").strip()
+
+def _wa_verify_token() -> str:
+    return os.getenv("WHATSAPP_VERIFY_TOKEN", "sparkbot-wa-verify").strip()
+
+def _wa_app_id() -> str:
+    return os.getenv("WHATSAPP_APP_ID", "").strip()
+
+def _wa_app_secret() -> str:
+    return os.getenv("WHATSAPP_APP_SECRET", "").strip()
+
+def _wa_enabled() -> bool:
+    return os.getenv("WHATSAPP_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+
+def _wa_public_url() -> str:
+    return os.getenv("PUBLIC_URL", "").strip().rstrip("/")
+
+def _wa_allowed_phones() -> set[str]:
+    return {p.strip() for p in os.getenv("WHATSAPP_ALLOWED_PHONES", "").split(",") if p.strip()}
 
 # ── SQLite sidecar ────────────────────────────────────────────────────────────
 
@@ -597,7 +610,7 @@ def register_whatsapp_bridge(app: Any, get_db: Callable[[], Any]) -> None:
     Must be called AFTER app = FastAPI(...) and BEFORE uvicorn starts.
     Idempotent — safe to call even if WHATSAPP_ENABLED is false or creds are missing.
     """
-    if not (_WA_ENABLED and _WA_PHONE_ID and _WA_TOKEN):
+    if not (_wa_enabled() and _wa_phone_id() and _wa_token()):
         logger.info("[whatsapp] Bridge disabled or not configured")
         return
 
@@ -610,16 +623,16 @@ def register_whatsapp_bridge(app: Any, get_db: Callable[[], Any]) -> None:
     global _wa_client
 
     kwargs: dict[str, Any] = {
-        "phone_id": _WA_PHONE_ID,
-        "token": _WA_TOKEN,
+        "phone_id": _wa_phone_id(),
+        "token": _wa_token(),
         "server": app,
-        "verify_token": _WA_VERIFY_TOKEN,
+        "verify_token": _wa_verify_token(),
         "filter_updates": True,
     }
-    if _WA_APP_ID and _WA_APP_SECRET and _WA_PUBLIC_URL:
-        kwargs["app_id"] = int(_WA_APP_ID)
-        kwargs["app_secret"] = _WA_APP_SECRET
-        kwargs["callback_url"] = _WA_PUBLIC_URL + "/"
+    if _wa_app_id() and _wa_app_secret() and _wa_public_url():
+        kwargs["app_id"] = int(_wa_app_id())
+        kwargs["app_secret"] = _wa_app_secret()
+        kwargs["callback_url"] = _wa_public_url() + "/"
 
     wa = WhatsApp(**kwargs)
     _wa_client = wa
@@ -633,7 +646,7 @@ def register_whatsapp_bridge(app: Any, get_db: Callable[[], Any]) -> None:
         text = (msg.text or "").strip()
 
         # Allowlist check
-        if _WA_ALLOWED_PHONES and wa_phone not in _WA_ALLOWED_PHONES:
+        if _wa_allowed_phones() and wa_phone not in _wa_allowed_phones():
             await client.send_message(
                 to=wa_phone,
                 text="This WhatsApp number is not authorised to use Sparkbot.",
@@ -693,4 +706,4 @@ def register_whatsapp_bridge(app: Any, get_db: Callable[[], Any]) -> None:
             db.close()
 
     _init_store()
-    logger.info("[whatsapp] Bridge registered on /whatsapp (verify_token=%s...)", _WA_VERIFY_TOKEN[:6])
+    logger.info("[whatsapp] Bridge registered on /whatsapp (verify_token=%s...)", _wa_verify_token()[:6])

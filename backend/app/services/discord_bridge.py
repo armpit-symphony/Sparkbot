@@ -56,13 +56,26 @@ logger = logging.getLogger(__name__)
 
 # ── Config ───────────────────────────────────────────────────────────────────
 
-_DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN", "").strip()
-_DISCORD_ENABLED = os.getenv("DISCORD_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
-_DISCORD_DM_ONLY = os.getenv("DISCORD_DM_ONLY", "false").strip().lower() in {"1", "true", "yes", "on"}
-_DISCORD_GUILD_IDS: set[int] = {
-    int(g.strip()) for g in os.getenv("DISCORD_GUILD_IDS", "").split(",")
-    if g.strip().isdigit()
-}
+_DISCORD_UNCONFIGURED_RETRY_SECONDS = 30
+
+
+def _discord_token() -> str:
+    return os.getenv("DISCORD_BOT_TOKEN", "").strip()
+
+
+def _discord_enabled() -> bool:
+    return os.getenv("DISCORD_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _discord_dm_only() -> bool:
+    return os.getenv("DISCORD_DM_ONLY", "false").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _discord_guild_ids() -> set[int]:
+    return {
+        int(g.strip()) for g in os.getenv("DISCORD_GUILD_IDS", "").split(",")
+        if g.strip().isdigit()
+    }
 
 # Module-level get_db holder — set when the bot task starts
 _get_db_fn: Optional[Callable[[], Any]] = None
@@ -612,12 +625,13 @@ async def on_message(message: discord.Message) -> None:
 
     if not is_dm and not is_mention:
         return
-    if _DISCORD_DM_ONLY and not is_dm:
+    if _discord_dm_only() and not is_dm:
         return
 
     # Restrict to configured guilds if set
-    if _DISCORD_GUILD_IDS and not is_dm:
-        if not hasattr(message.guild, "id") or message.guild.id not in _DISCORD_GUILD_IDS:  # type: ignore[union-attr]
+    guild_ids = _discord_guild_ids()
+    if guild_ids and not is_dm:
+        if not hasattr(message.guild, "id") or message.guild.id not in guild_ids:  # type: ignore[union-attr]
             return
 
     # Strip @mention from text
@@ -683,7 +697,7 @@ async def on_message(message: discord.Message) -> None:
 
 async def send_room_notification(room_id: str, text: str) -> None:
     """Send a text notification to all Discord channels linked to a Sparkbot room."""
-    if not (bot.is_ready() and _DISCORD_BOT_TOKEN):
+    if not (bot.is_ready() and _discord_token()):
         return
     for channel_id in _linked_channel_ids_for_room(room_id):
         try:
@@ -700,11 +714,10 @@ async def send_room_notification(room_id: str, text: str) -> None:
 async def discord_bot_task(get_db_session: Callable[[], Any]) -> None:
     """
     Started by FastAPI via asyncio.create_task() in _start_background_guardians().
-    Mirrors telegram_polling_loop() signature.
+    Waits for token to be configured rather than exiting immediately.
     """
-    if not (_DISCORD_ENABLED and _DISCORD_BOT_TOKEN):
-        logger.info("[discord] Bridge disabled or DISCORD_BOT_TOKEN not set")
-        return
+    while not (_discord_enabled() and _discord_token()):
+        await asyncio.sleep(_DISCORD_UNCONFIGURED_RETRY_SECONDS)
 
     global _get_db_fn
     _get_db_fn = lambda: next(get_db_session())  # noqa: E731
@@ -712,7 +725,7 @@ async def discord_bot_task(get_db_session: Callable[[], Any]) -> None:
     _init_store()
     logger.info("[discord] Bot starting")
     try:
-        await bot.start(_DISCORD_BOT_TOKEN)
+        await bot.start(_discord_token())
     except asyncio.CancelledError:
         logger.info("[discord] Bot stopped")
         await bot.close()
