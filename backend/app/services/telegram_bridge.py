@@ -36,14 +36,9 @@ logger = logging.getLogger(__name__)
 _AWAITING_PIN: dict[str, dict] = {}
 _AWAITING_PIN_TTL_SECONDS = max(60, min(int(os.getenv("SPARKBOT_PIN_PROMPT_TTL_SECONDS", "300")), 1800))
 
-_TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-_TELEGRAM_POLL_ENABLED = os.getenv("TELEGRAM_POLL_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
-_TELEGRAM_ALLOWED_CHAT_IDS = {
-    part.strip() for part in os.getenv("TELEGRAM_ALLOWED_CHAT_IDS", "").split(",") if part.strip()
-}
-_TELEGRAM_REQUIRE_PRIVATE_CHAT = os.getenv("TELEGRAM_REQUIRE_PRIVATE_CHAT", "true").strip().lower() in {"1", "true", "yes", "on"}
 _TELEGRAM_POLL_TIMEOUT_SECONDS = max(10, min(int(os.getenv("TELEGRAM_POLL_TIMEOUT_SECONDS", "45")), 55))
 _TELEGRAM_POLL_RETRY_SECONDS = max(3, min(int(os.getenv("TELEGRAM_POLL_RETRY_SECONDS", "5")), 60))
+_TELEGRAM_UNCONFIGURED_RETRY_SECONDS = 30
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS telegram_links (
@@ -87,12 +82,28 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _bot_token() -> str:
+    return os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+
+
 def _configured() -> bool:
-    return bool(_TELEGRAM_BOT_TOKEN)
+    return bool(_bot_token())
 
 
 def _api_base() -> str:
-    return f"https://api.telegram.org/bot{_TELEGRAM_BOT_TOKEN}"
+    return f"https://api.telegram.org/bot{_bot_token()}"
+
+
+def _poll_enabled() -> bool:
+    return os.getenv("TELEGRAM_POLL_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _allowed_chat_ids() -> set[str]:
+    return {part.strip() for part in os.getenv("TELEGRAM_ALLOWED_CHAT_IDS", "").split(",") if part.strip()}
+
+
+def _require_private_chat() -> bool:
+    return os.getenv("TELEGRAM_REQUIRE_PRIVATE_CHAT", "true").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _data_root() -> Path:
@@ -289,9 +300,10 @@ def _safe_room_name(display_name: str) -> str:
 
 
 def _chat_allowed(chat_id: str) -> bool:
-    if not _TELEGRAM_ALLOWED_CHAT_IDS:
+    ids = _allowed_chat_ids()
+    if not ids:
         return True
-    return chat_id in _TELEGRAM_ALLOWED_CHAT_IDS
+    return chat_id in ids
 
 
 def _chunk_text(text: str, limit: int = 3500) -> list[str]:
@@ -739,7 +751,7 @@ async def _handle_private_message(message: dict[str, Any], get_db_session: Calla
     if not _chat_allowed(chat_id):
         await _send_text(chat_id, "This Telegram chat is not allowed to use Sparkbot.")
         return
-    if _TELEGRAM_REQUIRE_PRIVATE_CHAT and str(chat.get("type", "")) != "private":
+    if _require_private_chat() and str(chat.get("type", "")) != "private":
         await _send_text(chat_id, "Sparkbot Telegram currently supports private chats only.")
         return
 
@@ -852,13 +864,17 @@ async def _handle_private_message(message: dict[str, Any], get_db_session: Calla
 
 
 async def telegram_polling_loop(get_db_session: Callable[[], Any]) -> None:
-    if not (_configured() and _TELEGRAM_POLL_ENABLED):
-        logger.info("[telegram] Poller disabled")
-        return
+    # Wait for token to be configured — stays alive so it picks up tokens saved after startup.
+    while not (_configured() and _poll_enabled()):
+        await asyncio.sleep(_TELEGRAM_UNCONFIGURED_RETRY_SECONDS)
     logger.info("[telegram] Poller started")
     _init_store()
     offset = int(_get_state("telegram_update_offset", "0") or "0")
     while True:
+        if not (_configured() and _poll_enabled()):
+            logger.info("[telegram] Token removed; poller paused")
+            await asyncio.sleep(_TELEGRAM_UNCONFIGURED_RETRY_SECONDS)
+            continue
         try:
             updates = await _telegram_api(
                 "getUpdates",
