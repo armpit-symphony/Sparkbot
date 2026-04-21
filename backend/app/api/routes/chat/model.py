@@ -52,9 +52,9 @@ from app.api.routes.chat.llm import (
     set_model,
     set_model_stack,
 )
-# Bridge status imports are deferred to avoid loading bridge libraries
-# (discord.py, pywa, etc.) when V1_LOCAL_MODE is active.
-# In V1_LOCAL_MODE the comms status section returns None for all bridges.
+# Bridge status imports are deferred to avoid loading heavy libraries
+# (discord.py, pywa, etc.) that are not bundled in the desktop (V1_LOCAL_MODE) build.
+# Telegram uses only httpx and is always safe to import.
 
 router = APIRouter(tags=["chat-model"])
 
@@ -245,12 +245,16 @@ def _build_google_comms_status() -> dict[str, Any]:
 
 
 def _build_comms_status() -> dict[str, Any]:
-    """Return bridge comms status. Imports bridge modules lazily so that
-    discord.py / pywa / telegram are not loaded in V1_LOCAL_MODE."""
+    """Return bridge comms status. Discord/WhatsApp/GitHub use heavy third-party
+    libraries not bundled in V1_LOCAL_MODE; Telegram uses only httpx so it is
+    always safe to import."""
     google_status = _build_google_comms_status()
+    # Telegram bridge uses plain httpx — always report real status so the UI
+    # correctly shows configured/linked state in the desktop (V1_LOCAL_MODE) build.
+    from app.services.telegram_bridge import get_status as get_telegram_status
     if settings.V1_LOCAL_MODE:
         return {
-            "telegram": {"poll_enabled": False, "private_only": True},
+            "telegram": get_telegram_status(),
             "discord": {"enabled": False, "dm_only": False},
             "whatsapp": {"enabled": False},
             "github": {"enabled": False, "bot_login": "sparkbot", "default_repo": "", "allowed_repos": []},
@@ -258,7 +262,6 @@ def _build_comms_status() -> dict[str, Any]:
         }
     from app.services.discord_bridge import get_status as get_discord_status
     from app.services.github_bridge import get_status as get_github_status
-    from app.services.telegram_bridge import get_status as get_telegram_status
     from app.services.whatsapp_bridge import get_status as get_whatsapp_status
     return {
         "telegram": get_telegram_status(),
@@ -768,7 +771,8 @@ async def update_models_config(body: ControlsConfigUpdate, current_user: Current
                 env_updates["TELEGRAM_POLL_ENABLED"] = "true" if body.comms.telegram.enabled else "false"
             if body.comms.telegram.private_only is not None:
                 env_updates["TELEGRAM_REQUIRE_PRIVATE_CHAT"] = "true" if body.comms.telegram.private_only else "false"
-            restart_required = True
+            # Telegram poller auto-detects the new token within 30 seconds — no restart needed.
+            notices.append("Telegram credentials saved. The bridge will activate within 30 seconds.")
         if body.comms.discord is not None:
             if body.comms.discord.bot_token:
                 env_updates["DISCORD_BOT_TOKEN"] = body.comms.discord.bot_token

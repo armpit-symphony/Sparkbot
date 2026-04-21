@@ -283,6 +283,41 @@ def get_status() -> dict[str, Any]:
     }
 
 
+async def test_connection() -> dict[str, Any]:
+    """Test the Telegram bot token by calling getMe. Returns bot info or an error with a hint."""
+    if not _configured():
+        return {
+            "ok": False,
+            "configured": False,
+            "error": "TELEGRAM_BOT_TOKEN is not set. Add your bot token in the Comms panel (paste from @BotFather).",
+        }
+    try:
+        bot_info = await _telegram_api("getMe", {})
+        status = get_status()
+        return {
+            "ok": True,
+            "configured": True,
+            "bot_username": bot_info.get("username", ""),
+            "bot_name": bot_info.get("first_name", ""),
+            "bot_id": bot_info.get("id"),
+            "poll_enabled": status.get("poll_enabled", False),
+            "linked_chats": status.get("linked_chats", 0),
+        }
+    except Exception as exc:
+        err = str(exc)
+        hint = ""
+        if "404" in err or "Not Found" in err:
+            hint = " The token is invalid or the bot was deleted — get a new token from @BotFather."
+        elif "401" in err or "Unauthorized" in err:
+            hint = " The token is malformed or unauthorised — verify it from @BotFather."
+        elif "409" in err or "webhook" in err.lower():
+            hint = (
+                " A webhook is active on this bot, which blocks long-polling. "
+                "Delete it via: POST https://api.telegram.org/bot{TOKEN}/deleteWebhook"
+            )
+        return {"ok": False, "configured": True, "error": err + hint}
+
+
 def _display_name(user: dict[str, Any] | None) -> str:
     user = user or {}
     parts = [str(user.get("first_name", "")).strip(), str(user.get("last_name", "")).strip()]
@@ -896,5 +931,18 @@ async def telegram_polling_loop(get_db_session: Callable[[], Any]) -> None:
             logger.info("[telegram] Poller stopped")
             return
         except Exception as exc:
-            logger.warning("[telegram] Poller error: %s", exc)
+            err = str(exc)
+            if "404" in err or "Not Found" in err:
+                logger.error(
+                    "[telegram] Bot token rejected by Telegram (404 Not Found). "
+                    "The token is invalid or the bot was deleted. "
+                    "Go to the Comms panel, paste a valid token from @BotFather, and save."
+                )
+            elif "409" in err or "webhook" in err.lower():
+                logger.error(
+                    "[telegram] Webhook conflict (409). A webhook is set on this bot which "
+                    "blocks long-polling. Delete it: POST https://api.telegram.org/bot{TOKEN}/deleteWebhook"
+                )
+            else:
+                logger.warning("[telegram] Poller error: %s", exc)
             await asyncio.sleep(_TELEGRAM_POLL_RETRY_SECONDS)

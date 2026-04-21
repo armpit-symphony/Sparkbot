@@ -1512,6 +1512,23 @@ TOOL_DEFINITIONS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "telegram_test_connection",
+            "description": (
+                "Test the Telegram bot connection by calling the Telegram API directly. "
+                "Returns the bot name and username on success, or a specific error with "
+                "troubleshooting guidance on failure. Use when the user asks whether Telegram "
+                "is working, why they are not receiving messages, or to diagnose bot token issues."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        },
+    },
 ]
 
 # ─── Vault tool definitions ───────────────────────────────────────────────────
@@ -4914,6 +4931,22 @@ async def execute_tool(
             return f"Secret '{alias}' deleted." if ok else f"Secret '{alias}' not found."
         except Exception as exc:
             return f"Vault error: {exc}"
+
+    if name == "telegram_test_connection":
+        from app.services.telegram_bridge import test_connection as _tg_test
+        try:
+            result = await _tg_test()
+            if result.get("ok"):
+                lines = [
+                    "Telegram bot connected successfully.",
+                    f"Bot: @{result.get('bot_username', '')} ({result.get('bot_name', '')})",
+                    f"Polling active: {result.get('poll_enabled', False)}",
+                    f"Linked chats: {result.get('linked_chats', 0)}",
+                ]
+                return "\n".join(lines)
+            return f"Telegram connection test FAILED: {result.get('error', 'Unknown error')}"
+        except Exception as exc:
+            return f"Telegram test error: {exc}"
 
     # Fall through to skill plugins
     if name in _skill_registry.executors:
