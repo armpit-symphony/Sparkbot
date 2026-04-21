@@ -3320,13 +3320,21 @@ function SparkbotDmPage() {
   }, [])
 
   const handleCommsTextChange = useCallback((section: keyof CommsForm, field: string, value: string) => {
-    setCommsForm(prev => ({
-      ...prev,
-      [section]: {
-        ...prev[section],
+    setCommsForm(prev => {
+      const current = prev[section] as Record<string, unknown>
+      const nextSection: Record<string, unknown> = {
+        ...current,
         [field]: value,
-      },
-    }))
+      }
+      // Typing a bot token is a strong signal the user wants the bridge on.
+      // Auto-tick the "Enable polling" flag so a save actually activates the
+      // poller — forgetting this checkbox was the #1 reason Telegram messages
+      // weren't arriving.
+      if (field === "bot_token" && value.trim().length > 0 && "enabled" in current) {
+        nextSection.enabled = true
+      }
+      return { ...prev, [section]: nextSection } as CommsForm
+    })
   }, [])
 
   const handleCommsToggleChange = useCallback((section: keyof CommsForm, field: string, value: boolean) => {

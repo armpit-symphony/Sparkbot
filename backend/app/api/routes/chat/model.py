@@ -763,12 +763,26 @@ async def update_models_config(body: ControlsConfigUpdate, current_user: Current
 
     if body.comms is not None:
         if body.comms.telegram is not None:
-            if body.comms.telegram.bot_token:
+            token_saved = bool(body.comms.telegram.bot_token)
+            if token_saved:
                 env_updates["TELEGRAM_BOT_TOKEN"] = body.comms.telegram.bot_token
+            chat_id_clean = ""
             if body.comms.telegram.chat_id:
-                env_updates["TELEGRAM_CHAT_ID"] = body.comms.telegram.chat_id.strip()
+                chat_id_clean = body.comms.telegram.chat_id.strip()
+                env_updates["TELEGRAM_CHAT_ID"] = chat_id_clean
+                # The bridge reads SPARKBOT_OPERATOR_TELEGRAM_CHAT_IDS to map the
+                # incoming chat to the operator identity, and TELEGRAM_ALLOWED_CHAT_IDS
+                # to restrict who can talk to the bot. Mirror the single UI field
+                # into both so saving works without requiring env-file edits.
+                env_updates["SPARKBOT_OPERATOR_TELEGRAM_CHAT_IDS"] = chat_id_clean
+                env_updates["TELEGRAM_ALLOWED_CHAT_IDS"] = chat_id_clean
             if body.comms.telegram.enabled is not None:
                 env_updates["TELEGRAM_POLL_ENABLED"] = "true" if body.comms.telegram.enabled else "false"
+            elif token_saved:
+                # Auto-enable polling when a token is saved and the user didn't
+                # explicitly toggle the checkbox. Without this, the poller stays
+                # parked and incoming messages never arrive.
+                env_updates["TELEGRAM_POLL_ENABLED"] = "true"
             if body.comms.telegram.private_only is not None:
                 env_updates["TELEGRAM_REQUIRE_PRIVATE_CHAT"] = "true" if body.comms.telegram.private_only else "false"
             # Telegram poller auto-detects the new token within 30 seconds — no restart needed.
