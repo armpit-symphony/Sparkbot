@@ -446,6 +446,17 @@ Switch live from chat: `/model <id>` — changes take effect immediately for you
 
 Seat any model into a Workstation desk with its own Model ID and API Key. At meeting launch, requests route directly to that provider using your key — bypassing the default stack. Supports Claude, GPT, Gemini, and Ollama.
 
+**Claude Subscription (OAuth).** When the provider is **Anthropic**, the invite modal shows an `API Key / Claude Subscription` segmented toggle. Picking **Claude Subscription** lets you paste an OAuth access token (`sk-ant-oat01-…`) instead of an `sk-ant-api03-…` API key — the same credential format used by [openclaw](https://github.com/instavm/openclaw) and [Hermes](https://github.com/HumanLayer/hermes). Anthropic allows Claude Pro/Max plans to drive API calls via OAuth with no per-token billing.
+
+How to get the token:
+
+1. Install Claude Code: `npm i -g @anthropic-ai/claude-code` (or use an existing install).
+2. Run `claude setup-token` and finish the browser sign-in — it prints an OAuth access token.
+   - Or copy the `access_token` value out of `~/.claude/credentials.json` (macOS/Linux) / `%USERPROFILE%\.claude\credentials.json` (Windows).
+3. In Sparkbot: **Workstation → Invite Wing → Claude** (or any Anthropic seat) → **Claude Subscription** → paste the token → **Invite**.
+
+Sparkbot sends the token via `Authorization: Bearer` with the `anthropic-beta: oauth-2025-04-20` header, so meetings launched through that seat spend against your subscription quota rather than API credits. Tokens expire — paste a fresh one if Anthropic starts rejecting requests.
+
 ### Token Guardian Shadow Mode
 
 Logs a routing recommendation per prompt (classification, confidence, recommended model, estimated cost) without changing live dispatch.
