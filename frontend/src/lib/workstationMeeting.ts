@@ -40,6 +40,7 @@ export interface WorkstationMeetingSeatMeta {
   modelId?: string
   route?: "default" | "openrouter" | "local"
   inviteApiKey?: string
+  inviteAuthMode?: "api_key" | "oauth"
 }
 
 export interface WorkstationMeetingRoomMeta {
@@ -582,6 +583,7 @@ async function ensureInviteAgentRoutes(seats: WorkstationMeetingSeatMeta[]): Pro
       body: JSON.stringify({
         model: seat.modelId || null,
         api_key: seat.inviteApiKey || null,
+        auth_mode: seat.inviteAuthMode || null,
       }),
     }).catch(() => {})
   }

@@ -24,6 +24,7 @@ export interface Station {
   invitePrompt?: string
   isInviteSlot?: boolean
   inviteApiKey?: string
+  inviteAuthMode?: "api_key" | "oauth"
   shellType?: "bash" | "zsh" | "ssh" | "powershell"
   host?: string
 }

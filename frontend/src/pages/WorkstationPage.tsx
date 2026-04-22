@@ -85,12 +85,15 @@ interface ProjectRoom {
   seats: Array<string | null>
 }
 
+type InviteAuthMode = "api_key" | "oauth"
+
 interface InviteConfig {
   label: string
   provider: string
   description: string
   modelId?: string
   apiKey?: string
+  authMode?: InviteAuthMode
 }
 
 interface SeatPickerState {
@@ -136,6 +139,7 @@ function resolveInviteStation(
     status: "idle" as StationStatus,
     invitePrompt: undefined,
     ...(config.apiKey ? { inviteApiKey: config.apiKey } : {}),
+    ...(config.authMode ? { inviteAuthMode: config.authMode } : {}),
   }
 }
 
@@ -192,6 +196,7 @@ function buildMeetingSeatMeta(
       ? { agentProvisioning: "builtin" as const }
       : {}),
     ...(station.inviteApiKey ? { inviteApiKey: station.inviteApiKey } : {}),
+    ...(station.inviteAuthMode ? { inviteAuthMode: station.inviteAuthMode } : {}),
   }
 }
 
@@ -622,9 +627,12 @@ function InviteConfigModal({ station, onSave, onCancel }: InviteConfigModalProps
   const [description, setDescription] = useState("")
   const [modelId, setModelId] = useState("")
   const [apiKey, setApiKey] = useState("")
+  const [authMode, setAuthMode] = useState<InviteAuthMode>("api_key")
 
   const { accentHex } = station
   const canSave = label.trim().length > 0
+  const supportsOAuth = provider === "Anthropic"
+  const effectiveAuthMode: InviteAuthMode = supportsOAuth ? authMode : "api_key"
 
   const handleSave = useCallback(() => {
     if (!canSave) return
@@ -634,8 +642,9 @@ function InviteConfigModal({ station, onSave, onCancel }: InviteConfigModalProps
       description: description.trim(),
       modelId: modelId.trim() || undefined,
       apiKey: apiKey.trim() || undefined,
+      authMode: effectiveAuthMode,
     })
-  }, [canSave, label, provider, description, modelId, apiKey, station.id, onSave])
+  }, [canSave, label, provider, description, modelId, apiKey, effectiveAuthMode, station.id, onSave])
 
   const inputStyle: React.CSSProperties = {
     width: "100%",
@@ -784,19 +793,65 @@ function InviteConfigModal({ station, onSave, onCancel }: InviteConfigModalProps
           </div>
           {provider !== "Ollama" && (
             <div>
-              <label style={labelStyle}>API Key</label>
+              {supportsOAuth && (
+                <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+                  {(["api_key", "oauth"] as InviteAuthMode[]).map((mode) => {
+                    const active = authMode === mode
+                    return (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => setAuthMode(mode)}
+                        style={{
+                          flex: 1,
+                          padding: "6px 8px",
+                          fontSize: 10,
+                          fontWeight: 700,
+                          fontFamily: "monospace",
+                          letterSpacing: "0.06em",
+                          textTransform: "uppercase",
+                          color: active ? "#060a13" : "#9ca3af",
+                          backgroundColor: active ? accentHex : "#0b1424",
+                          border: `1px solid ${active ? accentHex : "#1f2937"}`,
+                          borderRadius: 4,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {mode === "api_key" ? "API Key" : "Claude Subscription"}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+              <label style={labelStyle}>
+                {effectiveAuthMode === "oauth" ? "Claude Subscription Token" : "API Key"}
+              </label>
               <input
                 style={inputStyle}
                 type="password"
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
-                placeholder="sk-… or your provider key"
-                maxLength={200}
+                placeholder={
+                  effectiveAuthMode === "oauth"
+                    ? "sk-ant-oat01-…"
+                    : "sk-… or your provider key"
+                }
+                maxLength={400}
                 spellCheck={false}
                 autoComplete="off"
               />
-              <div style={{ fontSize: 10, color: "#4b5563", marginTop: 4 }}>
-                Stored locally — used only when this seat joins a meeting.
+              <div style={{ fontSize: 10, color: "#4b5563", marginTop: 4, lineHeight: 1.5 }}>
+                {effectiveAuthMode === "oauth" ? (
+                  <>
+                    Paste your Claude Pro/Max OAuth token — same credential openclaw and Hermes use.
+                    Generate with <code style={{ color: "#9ca3af" }}>claude setup-token</code> or copy the{" "}
+                    <code style={{ color: "#9ca3af" }}>access_token</code> from{" "}
+                    <code style={{ color: "#9ca3af" }}>~/.claude/credentials.json</code>.
+                    Stored locally — used only when this seat joins a meeting.
+                  </>
+                ) : (
+                  <>Stored locally — used only when this seat joins a meeting.</>
+                )}
               </div>
             </div>
           )}

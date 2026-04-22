@@ -563,6 +563,11 @@ def delete_agent(name: str, current_user: CurrentChatUser, session: SessionDep) 
 class InviteRouteConfig(BaseModel):
     model: str | None = Field(default=None)
     api_key: str | None = Field(default=None)
+    # "api_key" (default) or "oauth" — "oauth" means the api_key is a Claude
+    # subscription OAuth access token (sk-ant-oat01-…) and should be sent as
+    # Authorization: Bearer with the anthropic-beta oauth header, matching how
+    # openclaw / Hermes let Claude Pro/Max subscriptions drive the API.
+    auth_mode: str | None = Field(default=None)
 
 
 @router.post("/agents/{name}/invite-route", status_code=200)
@@ -570,10 +575,14 @@ def set_agent_invite_route(name: str, body: InviteRouteConfig, current_user: Cur
     """Register a custom model and API key for an invite-seat agent (runtime only, cleared on restart)."""
     if not current_user:
         raise HTTPException(status_code=401, detail="Authentication required")
+    auth_mode = (body.auth_mode or "").strip().lower() or None
+    if auth_mode not in (None, "api_key", "oauth"):
+        auth_mode = None
     set_invite_agent_config(
         name.lower().strip(),
         model=(body.model or "").strip() or None,
         api_key=(body.api_key or "").strip() or None,
+        auth_mode=auth_mode,
     )
     return {"name": name.lower().strip(), "configured": True}
 

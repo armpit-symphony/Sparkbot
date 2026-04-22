@@ -468,14 +468,27 @@ def default_cross_provider_fallback_enabled() -> bool:
 _invite_agent_configs: dict[str, dict[str, str]] = {}
 
 
-def set_invite_agent_config(agent_name: str, *, model: str | None, api_key: str | None) -> None:
+def set_invite_agent_config(
+    agent_name: str,
+    *,
+    model: str | None,
+    api_key: str | None,
+    auth_mode: str | None = None,
+) -> None:
     key = agent_name.strip().lower()
     if not model and not api_key:
         _invite_agent_configs.pop(key, None)
         return
-    _invite_agent_configs[key] = {
-        k: v for k, v in {"model": (model or "").strip(), "api_key": (api_key or "").strip()}.items() if v
-    }
+    normalized_auth = (auth_mode or "").strip().lower()
+    if normalized_auth not in {"api_key", "oauth"}:
+        normalized_auth = "api_key"
+    entry: dict[str, str] = {}
+    if model:
+        entry["model"] = model.strip()
+    if api_key:
+        entry["api_key"] = api_key.strip()
+        entry["auth_mode"] = normalized_auth
+    _invite_agent_configs[key] = entry
 
 
 def get_invite_agent_config(agent_name: str) -> dict[str, str]:
@@ -532,6 +545,7 @@ def get_agent_route_context(
     invite_conf = get_invite_agent_config(effective_agent)
     invite_model = invite_conf.get("model", "").strip()
     invite_api_key = invite_conf.get("api_key", "").strip()
+    invite_auth_mode = invite_conf.get("auth_mode", "api_key").strip().lower() or "api_key"
 
     route = str((override or {}).get("route") or "default").strip().lower()
     if route not in {"default", "openrouter", "local"}:
@@ -562,6 +576,7 @@ def get_agent_route_context(
     }
     if invite_api_key:
         ctx["invite_api_key"] = invite_api_key
+        ctx["invite_auth_mode"] = invite_auth_mode
     return ctx
 
 
@@ -1017,10 +1032,23 @@ async def _acompletion_with_fallback(
         candidates,
     )
     invite_api_key = str((route_context or {}).get("invite_api_key") or "").strip() or None
+    invite_auth_mode = str((route_context or {}).get("invite_auth_mode") or "api_key").strip().lower()
     for candidate in candidates:
         try:
             chosen_candidate = candidate
-            call_kwargs = {**kwargs, **({"api_key": invite_api_key} if invite_api_key else {})}
+            call_kwargs = dict(kwargs)
+            if invite_api_key:
+                call_kwargs["api_key"] = invite_api_key
+                # Claude Pro/Max subscription tokens (sk-ant-oat01-…) authenticate
+                # via Authorization: Bearer plus the oauth beta header — the same
+                # mechanism openclaw and Hermes use to drive subscription quota
+                # from the Messages API. Litellm forwards extra_headers verbatim;
+                # Anthropic accepts Bearer auth when the oauth beta is opted into.
+                if invite_auth_mode == "oauth" and model_provider(candidate) == "anthropic":
+                    prior_headers = dict(call_kwargs.get("extra_headers") or {})
+                    prior_headers.setdefault("Authorization", f"Bearer {invite_api_key}")
+                    prior_headers.setdefault("anthropic-beta", "oauth-2025-04-20")
+                    call_kwargs["extra_headers"] = prior_headers
             _t0 = time.perf_counter()
             response = await litellm.acompletion(model=candidate, **call_kwargs)
             record_latency(candidate, time.perf_counter() - _t0)
