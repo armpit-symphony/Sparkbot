@@ -197,6 +197,8 @@ interface ModelsControlsConfig {
     models_available?: boolean | null
     available_models?: string[]
     models: string[]
+    auth_modes?: string[]
+    saved_auth_mode?: string
   }>
   default_selection: {
     provider: string
@@ -274,7 +276,9 @@ interface ModelStackForm {
 interface ProviderTokenDrafts {
   openrouter_api_key: string
   openai_api_key: string
+  openai_auth_mode: "api_key" | "codex_sub"
   anthropic_api_key: string
+  anthropic_auth_mode: "api_key" | "oauth"
   google_api_key: string
   groq_api_key: string
   minimax_api_key: string
@@ -897,7 +901,7 @@ function SparkbotSettingsDialog({
   // Grouped stack options for <optgroup> rendering
   const _providerOrder: Array<[string, string, (id: string) => boolean]> = [
     ["openrouter", "OpenRouter (OPENROUTER_API_KEY)", (id) => id.startsWith("openrouter/")],
-    ["openai", "OpenAI direct (OPENAI_API_KEY)", (id) => id.startsWith("gpt-")],
+    ["openai", "OpenAI direct (OPENAI_API_KEY)", (id) => id.startsWith("gpt-") || id.startsWith("codex-")],
     ["anthropic", "Anthropic direct (ANTHROPIC_API_KEY)", (id) => id.startsWith("claude")],
     ["google", "Google direct (GOOGLE_API_KEY)", (id) => id.startsWith("gemini/")],
     ["xai", "xAI direct (XAI_API_KEY)", (id) => id.startsWith("xai/")],
@@ -919,6 +923,8 @@ function SparkbotSettingsDialog({
     openai: "openai_api_key", anthropic: "anthropic_api_key",
     google: "google_api_key", groq: "groq_api_key", minimax: "minimax_api_key", xai: "xai_api_key",
   }
+  const directProviderAuthModes = (id: string): string[] =>
+    modelsConfig?.providers?.find((p) => p.id === id)?.auth_modes ?? ["api_key"]
   const directProviderIsConfigured = (id: string) =>
     Boolean(modelsConfig?.providers?.find((p) => p.id === id)?.configured)
   const directProviderModels = (id: string): string[] =>
@@ -1291,7 +1297,9 @@ function SparkbotSettingsDialog({
               <div>
                 <h2 className="text-sm font-semibold">AI setup</h2>
                 <p className="text-xs text-muted-foreground">
-                  Choose your default AI provider. OpenRouter is the easiest all-in-one cloud path. Use direct keys for OpenAI, Anthropic, Google, Groq, MiniMax, or xAI. Ollama runs models privately on this machine.
+                  Choose your default AI provider. OpenRouter is the easiest all-in-one cloud path. OpenAI and
+                  Anthropic also support subscription-guided setup here, while xAI currently still uses direct API
+                  keys. Ollama runs models privately on this machine.
                 </p>
               </div>
               <div className="flex flex-col items-end gap-1">
@@ -1404,21 +1412,85 @@ function SparkbotSettingsDialog({
                     </div>
                   ) : directProviderKeyField[defaultSelection.provider] !== undefined ? (
                     <div className="space-y-3">
+                      {directProviderAuthModes(defaultSelection.provider).length > 1 && (
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                            Credential mode
+                          </label>
+                          <div className="flex gap-2">
+                            {directProviderAuthModes(defaultSelection.provider).map((mode) => {
+                              const authField =
+                                defaultSelection.provider === "openai"
+                                  ? "openai_auth_mode"
+                                  : "anthropic_auth_mode"
+                              const active = providerDrafts[authField] === mode
+                              return (
+                                <button
+                                  key={mode}
+                                  type="button"
+                                  onClick={() => onProviderDraftChange(authField, mode)}
+                                  className={`flex-1 rounded-md border px-3 py-2 text-xs font-semibold transition-colors ${
+                                    active
+                                      ? "border-primary bg-primary text-primary-foreground"
+                                      : "border-border bg-background hover:bg-muted"
+                                  }`}
+                                >
+                                  {mode === "api_key" ? "API Key" : "Subscription"}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
                       <div>
                         <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                          {directProviderLabel[defaultSelection.provider]} API key
+                          {defaultSelection.provider === "anthropic" && providerDrafts.anthropic_auth_mode === "oauth"
+                            ? "Claude subscription token"
+                            : defaultSelection.provider === "openai" && providerDrafts.openai_auth_mode === "codex_sub"
+                              ? "OpenAI subscription key"
+                              : `${directProviderLabel[defaultSelection.provider]} API key`}
                         </label>
                         <input
                           type="password"
                           value={providerDrafts[directProviderKeyField[defaultSelection.provider]]}
                           onChange={(e) => onProviderDraftChange(directProviderKeyField[defaultSelection.provider], e.target.value)}
-                          placeholder={directProviderIsConfigured(defaultSelection.provider)
-                            ? "Saved. Paste a new key only if replacing."
-                            : `Paste ${directProviderLabel[defaultSelection.provider]} API key`}
+                          placeholder={
+                            directProviderIsConfigured(defaultSelection.provider)
+                              ? "Saved. Paste a new key only if replacing."
+                              : defaultSelection.provider === "anthropic" && providerDrafts.anthropic_auth_mode === "oauth"
+                                ? "Paste sk-ant-oat01-… token"
+                                : defaultSelection.provider === "openai" && providerDrafts.openai_auth_mode === "codex_sub"
+                                  ? "Paste sk-proj-… or other OpenAI key"
+                                  : `Paste ${directProviderLabel[defaultSelection.provider]} API key`
+                          }
                           className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
                         />
                         {directProviderIsConfigured(defaultSelection.provider) && (
                           <p className="mt-1 text-[11px] text-emerald-600">Key saved and active.</p>
+                        )}
+                        {defaultSelection.provider === "anthropic" && providerDrafts.anthropic_auth_mode === "oauth" && (
+                          <p className="mt-1 text-[11px] text-muted-foreground">
+                            Claude subscription mode uses the same OAuth token flow as openclaw/Hermes:
+                            run <code className="rounded bg-muted px-1 py-0.5">claude setup-token</code> or copy{" "}
+                            <code className="rounded bg-muted px-1 py-0.5">access_token</code> from{" "}
+                            <code className="rounded bg-muted px-1 py-0.5">~/.claude/credentials.json</code>.
+                          </p>
+                        )}
+                        {defaultSelection.provider === "openai" && providerDrafts.openai_auth_mode === "codex_sub" && (
+                          <p className="mt-1 text-[11px] text-muted-foreground">
+                            ChatGPT/Codex subscription mode uses the OpenAI key created by{" "}
+                            <code className="rounded bg-muted px-1 py-0.5">codex --login</code> or{" "}
+                            <code className="rounded bg-muted px-1 py-0.5">codex --free</code>. Keep{" "}
+                            <code className="rounded bg-muted px-1 py-0.5">codex-mini-latest</code> or another
+                            OpenAI model selected below.
+                          </p>
+                        )}
+                        {defaultSelection.provider === "xai" && (
+                          <p className="mt-1 text-[11px] text-muted-foreground">
+                            xAI’s official developer path is still xAI account + API key. Grok app or X subscription
+                            status does not replace <code className="rounded bg-muted px-1 py-0.5">XAI_API_KEY</code>
+                            for Sparkbot.
+                          </p>
                         )}
                       </div>
                       <div>
@@ -1479,7 +1551,7 @@ function SparkbotSettingsDialog({
                       >
                         {savingProviderTokens
                           ? "Saving key..."
-                          : `Save ${directProviderLabel[defaultSelection.provider] ?? "OpenRouter"} key`}
+                          : `Save ${directProviderLabel[defaultSelection.provider] ?? "OpenRouter"} credential`}
                       </button>
                     ) : null}
                     <button
@@ -2447,7 +2519,9 @@ function SparkbotDmPage() {
   const [providerDrafts, setProviderDrafts] = useState<ProviderTokenDrafts>({
     openrouter_api_key: "",
     openai_api_key: "",
+    openai_auth_mode: "api_key",
     anthropic_api_key: "",
+    anthropic_auth_mode: "api_key",
     google_api_key: "",
     groq_api_key: "",
     minimax_api_key: "",
@@ -2568,6 +2642,15 @@ function SparkbotDmPage() {
     setRoutingPolicy({
       crossProviderFallback: Boolean(config.routing_policy?.cross_provider_fallback),
     })
+    setProviderDrafts((prev) => ({
+      ...prev,
+      openai_auth_mode:
+        (config.providers?.find((provider) => provider.id === "openai")?.saved_auth_mode as "api_key" | "codex_sub")
+        || "api_key",
+      anthropic_auth_mode:
+        (config.providers?.find((provider) => provider.id === "anthropic")?.saved_auth_mode as "api_key" | "oauth")
+        || "api_key",
+    }))
     setLocalDefaultModel(config.local_runtime?.default_local_model || "")
     setAgentOverrides(
       Object.fromEntries(
@@ -3019,7 +3102,7 @@ function SparkbotDmPage() {
       Object.entries(providerDrafts).filter(([, value]) => value.trim())
     )
     if (!Object.keys(payload).length) {
-      setSettingsError("Paste at least one provider token before saving.")
+      setSettingsError("Paste at least one provider credential before saving.")
       return
     }
     setSavingProviderTokens(true)
@@ -3040,7 +3123,9 @@ function SparkbotDmPage() {
         setProviderDrafts({
           openrouter_api_key: "",
           openai_api_key: "",
+          openai_auth_mode: providerDrafts.openai_auth_mode,
           anthropic_api_key: "",
+          anthropic_auth_mode: providerDrafts.anthropic_auth_mode,
           google_api_key: "",
           groq_api_key: "",
           minimax_api_key: "",
@@ -3049,10 +3134,10 @@ function SparkbotDmPage() {
         if (payload.openrouter_api_key) {
           await loadOpenRouterModels()
         }
-        setMessages(prev => [...prev, systemMsg("Provider tokens saved.")])
+        setMessages(prev => [...prev, systemMsg("Provider credentials saved.")])
       }
     } catch {
-      setSettingsError("Could not save provider tokens.")
+      setSettingsError("Could not save provider credentials.")
     } finally {
       setSavingProviderTokens(false)
     }

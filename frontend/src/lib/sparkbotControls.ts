@@ -46,6 +46,8 @@ export interface SparkbotControlsConfig {
     models_available?: boolean | null
     available_models?: string[]
     models: string[]
+    auth_modes?: string[]
+    saved_auth_mode?: string
   }>
   ollama_status?: {
     reachable: boolean

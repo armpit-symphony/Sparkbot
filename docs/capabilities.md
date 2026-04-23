@@ -444,7 +444,7 @@ Switch live from chat: `/model <id>` — changes take effect immediately for you
 
 ### Invite Wing (Per-Seat API Keys)
 
-Seat any model into a Workstation desk with its own Model ID and API Key. At meeting launch, requests route directly to that provider using your key — bypassing the default stack. Supports Claude, Codex/GPT, Gemini, and Ollama.
+Seat any model into a Workstation desk with its own Model ID and API Key. At meeting launch, requests route directly to that provider using your key — bypassing the default stack. Supports Claude, Codex/GPT, Grok, Gemini, and Ollama.
 
 **Claude Subscription (OAuth).** When the provider is **Anthropic**, the invite modal shows an `API Key / Claude Subscription` segmented toggle. Picking **Claude Subscription** lets you paste an OAuth access token (`sk-ant-oat01-…`) instead of an `sk-ant-api03-…` API key — the same credential format used by [openclaw](https://github.com/instavm/openclaw) and [Hermes](https://github.com/HumanLayer/hermes). Anthropic allows Claude Pro/Max plans to drive API calls via OAuth with no per-token billing.
 
@@ -457,7 +457,9 @@ How to get the token:
 
 Sparkbot sends the token via `Authorization: Bearer` with the `anthropic-beta: oauth-2025-04-20` header, so meetings launched through that seat spend against your subscription quota rather than API credits. Tokens expire — paste a fresh one if Anthropic starts rejecting requests.
 
-**Codex with your ChatGPT plan.** The **ChatGPT** Invite Wing desk is also the **Codex** gateway. Pick `API Key / Codex Sub`, keep the model set to `codex-mini-latest` (or switch to another OpenAI model), and paste the OpenAI API key created when you sign in to Codex with ChatGPT. OpenAI’s current official flow is `codex --login` (or `codex --free` for the promo path), which links the ChatGPT plan and creates an API key automatically. Sparkbot stores that key locally and uses it only when the invited seat joins a meeting.
+**Codex with your ChatGPT plan.** The **ChatGPT** Invite Wing desk is also the **Codex** gateway. Pick `API Key / Subscription`, keep the model set to `codex-mini-latest` (or switch to another OpenAI model), and paste the OpenAI API key created when you sign in to Codex with ChatGPT. OpenAI’s current official flow is `codex --login` (or `codex --free` for the promo path), which links the ChatGPT plan and creates an API key automatically. Sparkbot stores that key locally and uses it only when the invited seat joins a meeting.
+
+**xAI (Grok).** The third Invite Wing desk is preset for **xAI Grok**. Per xAI’s official developer docs, Sparkbot uses the xAI API path: create an xAI account and API key, then paste `XAI_API_KEY`. Grok app / X subscription linking applies to consumer access on xAI properties and does not replace the API key in Sparkbot.
 
 ### Token Guardian Shadow Mode
 

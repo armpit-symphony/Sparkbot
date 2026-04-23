@@ -1,0 +1,6 @@
+Sparkbot v1.6.32
+
+- Invite Wing now uses a uniform `API Key / Subscription` selector style for Claude and ChatGPT/Codex seats.
+- The former OpenClaw invite desk is now preset as xAI Grok with Grok model defaults and xAI API-key guidance.
+- Controls → AI setup now surfaces Anthropic subscription token setup, OpenAI Codex subscription-key setup, and xAI API-key guidance.
+- Anthropic subscription mode is now persisted through Controls and applied to direct Anthropic routing, not only invite-seat meetings.

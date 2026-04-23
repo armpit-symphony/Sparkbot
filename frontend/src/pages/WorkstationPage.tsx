@@ -602,6 +602,7 @@ interface InviteConfigModalProps {
 const PROVIDER_OPTIONS = [
   { value: "OpenAI", label: "OpenAI (ChatGPT)" },
   { value: "Anthropic", label: "Anthropic (Claude)" },
+  { value: "xAI", label: "xAI (Grok)" },
   { value: "Google", label: "Google (Gemini)" },
   { value: "Ollama", label: "Ollama (Local)" },
   { value: "Custom", label: "Custom Provider" },
@@ -610,6 +611,7 @@ const PROVIDER_OPTIONS = [
 const MODEL_ID_PLACEHOLDER: Record<string, string> = {
   Anthropic: "e.g. claude-sonnet-4-6",
   OpenAI: "e.g. codex-mini-latest or gpt-5",
+  xAI: "e.g. xai/grok-4.20-multi-agent-0309",
   Ollama: "e.g. ollama/phi4-mini",
   Google: "e.g. gemini/gemini-1.5-pro",
   Custom: "e.g. openrouter/openai/gpt-4o",
@@ -622,10 +624,17 @@ function InviteConfigModal({ station, onSave, onCancel }: InviteConfigModalProps
   const defaultProvider =
     station.id === "invite-claude" ? "Anthropic" :
     station.id === "invite-gpt" ? "OpenAI" :
+    station.id === "invite-custom" ? "xAI" :
     "Custom"
   const [provider, setProvider] = useState(defaultProvider)
   const [description, setDescription] = useState("")
-  const [modelId, setModelId] = useState(station.id === "invite-gpt" ? "codex-mini-latest" : "")
+  const [modelId, setModelId] = useState(
+    station.id === "invite-gpt"
+      ? "codex-mini-latest"
+      : station.id === "invite-custom"
+        ? "xai/grok-4.20-multi-agent-0309"
+        : "",
+  )
   const [apiKey, setApiKey] = useState("")
   const [authMode, setAuthMode] = useState<InviteAuthMode>(
     station.id === "invite-gpt" ? "codex_sub" : "api_key",
@@ -827,11 +836,7 @@ function InviteConfigModal({ station, onSave, onCancel }: InviteConfigModalProps
                           cursor: "pointer",
                         }}
                       >
-                        {mode === "api_key"
-                          ? "API Key"
-                          : mode === "oauth"
-                            ? "Claude Subscription"
-                            : "Codex Sub"}
+                        {mode === "api_key" ? "API Key" : "Subscription"}
                       </button>
                     )
                   })}
@@ -841,7 +846,7 @@ function InviteConfigModal({ station, onSave, onCancel }: InviteConfigModalProps
                 {effectiveAuthMode === "oauth"
                   ? "Claude Subscription Token"
                   : effectiveAuthMode === "codex_sub"
-                    ? "OpenAI API Key"
+                    ? "OpenAI Subscription Key"
                     : "API Key"}
               </label>
               <input
@@ -877,6 +882,12 @@ function InviteConfigModal({ station, onSave, onCancel }: InviteConfigModalProps
                     an API key automatically. Paste that generated OpenAI key here and keep{" "}
                     <code style={{ color: "#9ca3af" }}>codex-mini-latest</code> as the model for a Codex desk.
                     Stored locally — used only when this seat joins a meeting.
+                  </>
+                ) : provider === "xAI" ? (
+                  <>
+                    Use an xAI API key for Grok seats. xAI’s official docs currently require an xAI account plus{" "}
+                    API key for developer access; Grok app or X subscription status does not replace{" "}
+                    <code style={{ color: "#9ca3af" }}>XAI_API_KEY</code> here.
                   </>
                 ) : (
                   <>Stored locally — used only when this seat joins a meeting.</>
@@ -3955,7 +3966,7 @@ export default function WorkstationPage() {
                   </div>
                   <p style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.65, margin: "8px 0 0" }}>
                     These desks are reserved for invited assistants or operators such as ChatGPT,
-                    Claude, OpenClaw, or another future collaborator.
+                    Claude, xAI Grok, or another future collaborator.
                   </p>
                 </div>
                 <DeskCard

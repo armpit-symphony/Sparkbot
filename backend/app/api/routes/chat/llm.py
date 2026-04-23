@@ -624,6 +624,23 @@ def model_is_configured(model: str) -> bool:
     return bool((model or "").strip())
 
 
+def _global_provider_auth_config(provider: str) -> tuple[str | None, str]:
+    normalized = (provider or "").strip().lower()
+    if normalized == "anthropic":
+        api_key = os.getenv("ANTHROPIC_API_KEY", "").strip() or None
+        auth_mode = os.getenv("ANTHROPIC_AUTH_MODE", "").strip().lower()
+        if auth_mode not in {"api_key", "oauth"}:
+            auth_mode = "api_key"
+        return api_key, auth_mode
+    if normalized == "openai":
+        api_key = os.getenv("OPENAI_API_KEY", "").strip() or None
+        auth_mode = os.getenv("OPENAI_AUTH_MODE", "").strip().lower()
+        if auth_mode not in {"api_key", "codex_sub"}:
+            auth_mode = "api_key"
+        return api_key, auth_mode
+    return None, "api_key"
+
+
 def get_model_stack() -> dict[str, str]:
     primary = _default_model()
     backup_1 = os.getenv(BACKUP_MODEL_1_ENV, "").strip()
@@ -1038,16 +1055,24 @@ async def _acompletion_with_fallback(
         try:
             chosen_candidate = candidate
             call_kwargs = dict(kwargs)
+            candidate_provider = model_provider(candidate)
+            provider_api_key: str | None = None
+            provider_auth_mode = "api_key"
             if invite_api_key:
-                call_kwargs["api_key"] = invite_api_key
+                provider_api_key = invite_api_key
+                provider_auth_mode = invite_auth_mode
+            else:
+                provider_api_key, provider_auth_mode = _global_provider_auth_config(candidate_provider)
+            if provider_api_key:
+                call_kwargs["api_key"] = provider_api_key
                 # Claude Pro/Max subscription tokens (sk-ant-oat01-…) authenticate
                 # via Authorization: Bearer plus the oauth beta header — the same
                 # mechanism openclaw and Hermes use to drive subscription quota
                 # from the Messages API. Litellm forwards extra_headers verbatim;
                 # Anthropic accepts Bearer auth when the oauth beta is opted into.
-                if invite_auth_mode == "oauth" and model_provider(candidate) == "anthropic":
+                if provider_auth_mode == "oauth" and candidate_provider == "anthropic":
                     prior_headers = dict(call_kwargs.get("extra_headers") or {})
-                    prior_headers.setdefault("Authorization", f"Bearer {invite_api_key}")
+                    prior_headers.setdefault("Authorization", f"Bearer {provider_api_key}")
                     prior_headers.setdefault("anthropic-beta", "oauth-2025-04-20")
                     call_kwargs["extra_headers"] = prior_headers
             _t0 = time.perf_counter()

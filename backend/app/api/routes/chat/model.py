@@ -68,6 +68,20 @@ _PROVIDER_ENV_KEYS = {
     "minimax_api_key": "MINIMAX_API_KEY",
     "xai_api_key": "XAI_API_KEY",
 }
+_PROVIDER_AUTH_MODE_ENV_KEYS = {
+    "openai_auth_mode": "OPENAI_AUTH_MODE",
+    "anthropic_auth_mode": "ANTHROPIC_AUTH_MODE",
+}
+
+
+def _provider_saved_auth_mode(provider_id: str) -> str:
+    if provider_id == "openai":
+        raw = os.getenv("OPENAI_AUTH_MODE", "").strip().lower()
+        return raw if raw in {"api_key", "codex_sub"} else "api_key"
+    if provider_id == "anthropic":
+        raw = os.getenv("ANTHROPIC_AUTH_MODE", "").strip().lower()
+        return raw if raw in {"api_key", "oauth"} else "api_key"
+    return "api_key"
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[5]
 
@@ -192,6 +206,7 @@ def _provider_catalog(ollama_status: dict[str, Any] | None = None) -> list[dict[
     ]
     items: list[dict[str, Any]] = []
     for provider_id, label, env_key in ordered:
+        saved_auth_mode = _provider_saved_auth_mode(provider_id)
         items.append(
             {
                 "id": provider_id,
@@ -201,6 +216,14 @@ def _provider_catalog(ollama_status: dict[str, Any] | None = None) -> list[dict[
                 "models_available": None,
                 "available_models": [],
                 "models": sorted(models_by_provider.get(provider_id, [])),
+                "auth_modes": (
+                    ["api_key", "codex_sub"]
+                    if provider_id == "openai"
+                    else ["api_key", "oauth"]
+                    if provider_id == "anthropic"
+                    else ["api_key"]
+                ),
+                "saved_auth_mode": saved_auth_mode,
             }
         )
     ollama_status = ollama_status or {
@@ -385,7 +408,9 @@ class ModelStackInput(BaseModel):
 class ProviderSecretsInput(BaseModel):
     openrouter_api_key: str | None = None
     openai_api_key: str | None = None
+    openai_auth_mode: str | None = None
     anthropic_api_key: str | None = None
+    anthropic_auth_mode: str | None = None
     google_api_key: str | None = None
     groq_api_key: str | None = None
     minimax_api_key: str | None = None
@@ -767,6 +792,14 @@ async def update_models_config(body: ControlsConfigUpdate, current_user: Current
         for field_name, env_key in _PROVIDER_ENV_KEYS.items():
             value = getattr(body.providers, field_name)
             if value:
+                env_updates[env_key] = value
+                notices.append(f"{env_key} stored for runtime use.")
+        for field_name, env_key in _PROVIDER_AUTH_MODE_ENV_KEYS.items():
+            value = str(getattr(body.providers, field_name) or "").strip().lower()
+            if field_name == "openai_auth_mode" and value in {"api_key", "codex_sub"}:
+                env_updates[env_key] = value
+                notices.append(f"{env_key} stored for runtime use.")
+            if field_name == "anthropic_auth_mode" and value in {"api_key", "oauth"}:
                 env_updates[env_key] = value
                 notices.append(f"{env_key} stored for runtime use.")
         if body.providers.ollama_base_url:

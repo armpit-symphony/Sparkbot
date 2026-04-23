@@ -63,7 +63,7 @@ export const INVITE_DESKS: Station[] = [
   },
   {
     id: "invite-gpt",
-    label: "Codex",
+    label: "ChatGPT",
     subtitle: "Invite Desk",
     type: "invite",
     status: "empty",
@@ -78,17 +78,17 @@ export const INVITE_DESKS: Station[] = [
   },
   {
     id: "invite-custom",
-    label: "OpenClaw",
+    label: "xAI Grok",
     subtitle: "Invite Desk",
     type: "invite",
     status: "empty",
     icon: Plus,
     accentHex: "#f472b6",
     description:
-      "Stage an external assistant or operator desk, including OpenClaw or another custom collaborator.",
-    capabilities: ["External operator", "Custom provider", "Dedicated history"],
+      "Stage a dedicated Grok collaborator desk with its own model, history, and provider key.",
+    capabilities: ["xAI direct", "Reasoning", "Dedicated history"],
     invitePrompt:
-      "Configure this slot later for OpenClaw or another invited collaborator.",
+      "Configure an xAI API key to activate this desk.",
     isInviteSlot: true,
   },
 ]
