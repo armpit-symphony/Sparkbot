@@ -1,0 +1,6 @@
+Sparkbot v1.6.31
+
+- Workstation Invite Wing: the ChatGPT desk now acts as the Codex gateway for ChatGPT-linked OpenAI keys.
+- Added a dedicated `Codex Sub` setup mode in the invite modal with guidance for `codex --login` / `codex --free`.
+- Added `codex-mini-latest` as a first-class OpenAI invite model so Codex seats route correctly at meeting time.
+- Aligned frontend/backend package version markers to the `1.6.31` release line.

@@ -85,7 +85,7 @@ interface ProjectRoom {
   seats: Array<string | null>
 }
 
-type InviteAuthMode = "api_key" | "oauth"
+type InviteAuthMode = "api_key" | "oauth" | "codex_sub"
 
 interface InviteConfig {
   label: string
@@ -609,7 +609,7 @@ const PROVIDER_OPTIONS = [
 
 const MODEL_ID_PLACEHOLDER: Record<string, string> = {
   Anthropic: "e.g. claude-sonnet-4-6",
-  OpenAI: "e.g. gpt-4o",
+  OpenAI: "e.g. codex-mini-latest or gpt-5",
   Ollama: "e.g. ollama/phi4-mini",
   Google: "e.g. gemini/gemini-1.5-pro",
   Custom: "e.g. openrouter/openai/gpt-4o",
@@ -625,14 +625,24 @@ function InviteConfigModal({ station, onSave, onCancel }: InviteConfigModalProps
     "Custom"
   const [provider, setProvider] = useState(defaultProvider)
   const [description, setDescription] = useState("")
-  const [modelId, setModelId] = useState("")
+  const [modelId, setModelId] = useState(station.id === "invite-gpt" ? "codex-mini-latest" : "")
   const [apiKey, setApiKey] = useState("")
-  const [authMode, setAuthMode] = useState<InviteAuthMode>("api_key")
+  const [authMode, setAuthMode] = useState<InviteAuthMode>(
+    station.id === "invite-gpt" ? "codex_sub" : "api_key",
+  )
 
   const { accentHex } = station
   const canSave = label.trim().length > 0
-  const supportsOAuth = provider === "Anthropic"
-  const effectiveAuthMode: InviteAuthMode = supportsOAuth ? authMode : "api_key"
+  const supportsClaudeOAuth = provider === "Anthropic"
+  const supportsCodexSub = provider === "OpenAI"
+  const showsAuthModeToggle = supportsClaudeOAuth || supportsCodexSub
+  const authModeOptions: InviteAuthMode[] = supportsClaudeOAuth
+    ? ["api_key", "oauth"]
+    : supportsCodexSub
+      ? ["api_key", "codex_sub"]
+      : ["api_key"]
+  const effectiveAuthMode: InviteAuthMode =
+    supportsClaudeOAuth || supportsCodexSub ? authMode : "api_key"
 
   const handleSave = useCallback(() => {
     if (!canSave) return
@@ -793,9 +803,9 @@ function InviteConfigModal({ station, onSave, onCancel }: InviteConfigModalProps
           </div>
           {provider !== "Ollama" && (
             <div>
-              {supportsOAuth && (
+              {showsAuthModeToggle && (
                 <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-                  {(["api_key", "oauth"] as InviteAuthMode[]).map((mode) => {
+                  {authModeOptions.map((mode) => {
                     const active = authMode === mode
                     return (
                       <button
@@ -817,14 +827,22 @@ function InviteConfigModal({ station, onSave, onCancel }: InviteConfigModalProps
                           cursor: "pointer",
                         }}
                       >
-                        {mode === "api_key" ? "API Key" : "Claude Subscription"}
+                        {mode === "api_key"
+                          ? "API Key"
+                          : mode === "oauth"
+                            ? "Claude Subscription"
+                            : "Codex Sub"}
                       </button>
                     )
                   })}
                 </div>
               )}
               <label style={labelStyle}>
-                {effectiveAuthMode === "oauth" ? "Claude Subscription Token" : "API Key"}
+                {effectiveAuthMode === "oauth"
+                  ? "Claude Subscription Token"
+                  : effectiveAuthMode === "codex_sub"
+                    ? "OpenAI API Key"
+                    : "API Key"}
               </label>
               <input
                 style={inputStyle}
@@ -834,6 +852,8 @@ function InviteConfigModal({ station, onSave, onCancel }: InviteConfigModalProps
                 placeholder={
                   effectiveAuthMode === "oauth"
                     ? "sk-ant-oat01-…"
+                    : effectiveAuthMode === "codex_sub"
+                      ? "sk-proj-… or other OpenAI key"
                     : "sk-… or your provider key"
                 }
                 maxLength={400}
@@ -847,6 +867,15 @@ function InviteConfigModal({ station, onSave, onCancel }: InviteConfigModalProps
                     Generate with <code style={{ color: "#9ca3af" }}>claude setup-token</code> or copy the{" "}
                     <code style={{ color: "#9ca3af" }}>access_token</code> from{" "}
                     <code style={{ color: "#9ca3af" }}>~/.claude/credentials.json</code>.
+                    Stored locally — used only when this seat joins a meeting.
+                  </>
+                ) : effectiveAuthMode === "codex_sub" ? (
+                  <>
+                    Use your ChatGPT/Codex-linked OpenAI key here. OpenAI’s current Codex setup uses{" "}
+                    <code style={{ color: "#9ca3af" }}>codex --login</code> or{" "}
+                    <code style={{ color: "#9ca3af" }}>codex --free</code> to connect a ChatGPT plan and create
+                    an API key automatically. Paste that generated OpenAI key here and keep{" "}
+                    <code style={{ color: "#9ca3af" }}>codex-mini-latest</code> as the model for a Codex desk.
                     Stored locally — used only when this seat joins a meeting.
                   </>
                 ) : (

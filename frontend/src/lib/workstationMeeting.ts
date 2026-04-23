@@ -40,7 +40,7 @@ export interface WorkstationMeetingSeatMeta {
   modelId?: string
   route?: "default" | "openrouter" | "local"
   inviteApiKey?: string
-  inviteAuthMode?: "api_key" | "oauth"
+  inviteAuthMode?: "api_key" | "oauth" | "codex_sub"
 }
 
 export interface WorkstationMeetingRoomMeta {

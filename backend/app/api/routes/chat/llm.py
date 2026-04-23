@@ -142,6 +142,7 @@ AVAILABLE_MODELS: dict[str, str] = {
     "gpt-5.4":          "GPT-5.4 — latest OpenAI flagship",
     "gpt-5.4-mini":     "GPT-5.4 Mini — fast 5.4 series",
     "gpt-5.4-nano":     "GPT-5.4 Nano — lightest 5.4 series",
+    "codex-mini-latest": "Codex Mini Latest — OpenAI coding agent model",
     # ── Anthropic ──────────────────────────────────────────────────────────────
     "claude-haiku-4-5":          "Claude Haiku 4.5 — fastest Anthropic model",
     "claude-sonnet-4-5":         "Claude Sonnet 4.5 — balanced Anthropic model",
@@ -480,7 +481,7 @@ def set_invite_agent_config(
         _invite_agent_configs.pop(key, None)
         return
     normalized_auth = (auth_mode or "").strip().lower()
-    if normalized_auth not in {"api_key", "oauth"}:
+    if normalized_auth not in {"api_key", "oauth", "codex_sub"}:
         normalized_auth = "api_key"
     entry: dict[str, str] = {}
     if model:
@@ -584,7 +585,7 @@ def model_provider(model: str) -> str:
     normalized = (model or "").strip()
     if normalized.startswith("openrouter/"):
         return "openrouter"
-    if normalized.startswith("gpt-"):
+    if normalized.startswith("gpt-") or normalized.startswith("codex-"):
         return "openai"
     if normalized.startswith("claude"):
         return "anthropic"

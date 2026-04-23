@@ -51,7 +51,7 @@
 
 ### Workstation
 - **Office floor** — visual grid of all your AI desks: Sparkbot, model stack companions, agents, invite seats, terminal
-- **Invite Wing** — seat any model with its own API key and model ID; routes directly to that provider. The **Claude** seat also accepts a **Claude Subscription** OAuth token (`sk-ant-oat01-…`) — same credential openclaw and Hermes use, so a Claude Pro/Max plan can drive the seat with no API-key billing
+- **Invite Wing** — seat any model with its own API key and model ID; routes directly to that provider. The **Claude** seat accepts a **Claude Subscription** OAuth token (`sk-ant-oat01-…`) like openclaw / Hermes, and the **ChatGPT** desk now acts as a **Codex gateway** for ChatGPT-linked OpenAI keys and `codex-mini-latest`
 - **Round Table** — autonomous multi-agent meeting room; all agents contribute without you typing between turns
 - **Company Operations** — view all Guardian Tasks across every room, active meetings, and launch project rooms in one click
 - **Task-linked meetings** — hit **Meet** on any task and a pre-seeded project room opens
@@ -391,7 +391,7 @@ User message → Token Guardian → Memory Guardian → LLM
 | v1.2.8 | Apr 2026 | Process watcher (auto-throttle Ollama CPU); model latency tracking; latency API |
 | v1.2.7 | Apr 2026 | system_diagnostics skill; repair-playwright scripts; Troubleshooting.md |
 | v1.2.6 | Apr 2026 | Stable Playwright browser dir; LLM tool-loop guards |
-| v1.6.31 | Apr 2026 | Invite Wing Claude seats accept Claude Pro/Max OAuth tokens (sk-ant-oat01-…), like openclaw / Hermes |
+| v1.6.31 | Apr 2026 | Invite Wing ChatGPT desk becomes the Codex gateway for ChatGPT-linked OpenAI keys and `codex-mini-latest`; OpenAI Codex models route as first-class invite seats |
 | v1.6.30 | Apr 2026 | Telegram polling auto-enables on token save; Chat ID mirrored into operator/allowed lists |
 | v1.2.2 | Apr 2026 | `shell_run`; Windows live terminal; browser auto-install; Invite Wing API keys |
 | v1.1.x | Apr 2026 | Workstation operations dashboard; Round Table autonomous meetings; Guardian Tasks |

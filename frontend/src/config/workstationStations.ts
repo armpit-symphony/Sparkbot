@@ -24,7 +24,7 @@ export interface Station {
   invitePrompt?: string
   isInviteSlot?: boolean
   inviteApiKey?: string
-  inviteAuthMode?: "api_key" | "oauth"
+  inviteAuthMode?: "api_key" | "oauth" | "codex_sub"
   shellType?: "bash" | "zsh" | "ssh" | "powershell"
   host?: string
 }
@@ -63,17 +63,17 @@ export const INVITE_DESKS: Station[] = [
   },
   {
     id: "invite-gpt",
-    label: "ChatGPT",
+    label: "Codex",
     subtitle: "Invite Desk",
     type: "invite",
     status: "empty",
     icon: Plus,
     accentHex: "#7dd3fc",
     description:
-      "Connect an OpenAI GPT model as a dedicated agent desk with function calling support.",
-    capabilities: ["Function calling", "Vision", "Code interpreter"],
+      "Use the ChatGPT workstation button as the Codex gateway desk for an OpenAI coding seat with its own sub-account key and history.",
+    capabilities: ["Codex workflows", "Function calling", "Vision"],
     invitePrompt:
-      "Configure an OpenAI API key in Controls to activate this desk.",
+      "Configure an OpenAI API key or Codex sub-account key to activate this desk.",
     isInviteSlot: true,
   },
   {

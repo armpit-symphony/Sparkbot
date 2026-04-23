@@ -114,7 +114,7 @@ def _model_is_configured(model: str) -> bool:
     normalized = (model or "").strip()
     if not normalized:
         return False
-    if normalized.startswith("gpt-"):
+    if normalized.startswith("gpt-") or normalized.startswith("codex-"):
         return _env_or_vault_has("OPENAI_API_KEY", "api_key_openai")
     if normalized.startswith("claude"):
         return _env_or_vault_has("ANTHROPIC_API_KEY", "api_key_anthropic")

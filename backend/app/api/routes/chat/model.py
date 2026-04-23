@@ -567,6 +567,9 @@ class InviteRouteConfig(BaseModel):
     # subscription OAuth access token (sk-ant-oat01-…) and should be sent as
     # Authorization: Bearer with the anthropic-beta oauth header, matching how
     # openclaw / Hermes let Claude Pro/Max subscriptions drive the API.
+    # "codex_sub" means the api_key is an OpenAI key generated after signing
+    # into Codex with a ChatGPT plan; routing is identical to a normal OpenAI key
+    # but the UI can preserve the setup mode explicitly.
     auth_mode: str | None = Field(default=None)
 
 
@@ -576,7 +579,7 @@ def set_agent_invite_route(name: str, body: InviteRouteConfig, current_user: Cur
     if not current_user:
         raise HTTPException(status_code=401, detail="Authentication required")
     auth_mode = (body.auth_mode or "").strip().lower() or None
-    if auth_mode not in (None, "api_key", "oauth"):
+    if auth_mode not in (None, "api_key", "oauth", "codex_sub"):
         auth_mode = None
     set_invite_agent_config(
         name.lower().strip(),
