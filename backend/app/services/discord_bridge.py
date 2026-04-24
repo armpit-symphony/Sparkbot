@@ -60,7 +60,20 @@ _DISCORD_UNCONFIGURED_RETRY_SECONDS = 30
 
 
 def _discord_token() -> str:
-    return os.getenv("DISCORD_BOT_TOKEN", "").strip()
+    env_token = os.getenv("DISCORD_BOT_TOKEN", "").strip()
+    if env_token:
+        return env_token
+    try:
+        return str(
+            get_guardian_suite().vault.vault_use(
+                alias="discord_bot_token",
+                user_id="discord_bridge",
+                operator="system",
+            )
+            or ""
+        ).strip()
+    except Exception:
+        return ""
 
 
 def _discord_enabled() -> bool:
@@ -241,8 +254,9 @@ def get_status() -> dict[str, Any]:
         for g in os.getenv("DISCORD_GUILD_IDS", "").split(",")
         if g.strip().isdigit()
     ]
+    token = _discord_token()
     return {
-        "configured": bool(os.getenv("DISCORD_BOT_TOKEN", "").strip()),
+        "configured": bool(token),
         "enabled": enabled,
         "dm_only": dm_only,
         "restricted_guilds": restricted_guilds,

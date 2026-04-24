@@ -189,6 +189,46 @@ def _apply_env_updates(updates: dict[str, str]) -> None:
         os.environ[key] = _sanitize_env_value(value)
 
 
+def _upsert_vault_secret(
+    *,
+    alias: str,
+    value: str,
+    category: str,
+    notes: str,
+    current_user: CurrentChatUser,
+) -> bool:
+    """Persist a secret into Vault when a privileged session is active."""
+    if not value:
+        return False
+    guardian_suite = get_guardian_suite()
+    priv_session = guardian_suite.auth.get_active_session(str(current_user.id))
+    if not priv_session:
+        return False
+    from app.services.guardian.vault import vault_get_metadata
+
+    operator = str(current_user.username or "system")
+    if vault_get_metadata(alias):
+        guardian_suite.vault.vault_update(
+            alias=alias,
+            value=value,
+            operator=operator,
+            session_id=priv_session.session_id,
+            notes=notes,
+            policy="use_only",
+        )
+    else:
+        guardian_suite.vault.vault_add(
+            alias=alias,
+            value=value,
+            category=category,
+            notes=notes,
+            policy="use_only",
+            operator=operator,
+            session_id=priv_session.session_id,
+        )
+    return True
+
+
 def _provider_catalog(ollama_status: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     models_by_provider: dict[str, list[str]] = {}
     for model in AVAILABLE_MODELS:
@@ -703,6 +743,7 @@ async def update_models_config(body: ControlsConfigUpdate, current_user: Current
     _require_operator(current_user)
 
     env_updates: dict[str, str] = {}
+    runtime_only_env_updates: dict[str, str] = {}
     notices: list[str] = []
     restart_required = False
 
@@ -834,7 +875,18 @@ async def update_models_config(body: ControlsConfigUpdate, current_user: Current
             notices.append("Telegram credentials saved. The bridge will activate within 30 seconds.")
         if body.comms.discord is not None:
             if body.comms.discord.bot_token:
-                env_updates["DISCORD_BOT_TOKEN"] = body.comms.discord.bot_token
+                if _upsert_vault_secret(
+                    alias="discord_bot_token",
+                    value=body.comms.discord.bot_token,
+                    category="communications",
+                    notes="Discord bridge bot token",
+                    current_user=current_user,
+                ):
+                    runtime_only_env_updates["DISCORD_BOT_TOKEN"] = body.comms.discord.bot_token
+                    notices.append("Discord bot token saved to Vault.")
+                else:
+                    env_updates["DISCORD_BOT_TOKEN"] = body.comms.discord.bot_token
+                    notices.append("Discord bot token saved to env storage. Use break-glass access to persist it in Vault.")
             if body.comms.discord.enabled is not None:
                 env_updates["DISCORD_ENABLED"] = "true" if body.comms.discord.enabled else "false"
             if body.comms.discord.dm_only is not None:
@@ -882,11 +934,13 @@ async def update_models_config(body: ControlsConfigUpdate, current_user: Current
         env_updates["SPARKBOT_TOKEN_GUARDIAN_MODE"] = body.token_guardian_mode
         notices.append(f"Token Guardian set to {body.token_guardian_mode}.")
 
-    if not env_updates:
+    if not env_updates and not runtime_only_env_updates:
         raise HTTPException(status_code=400, detail="No model, provider, or comms updates were supplied.")
 
     _apply_env_updates(env_updates)
-    _write_env_updates(env_updates)
+    _apply_env_updates(runtime_only_env_updates)
+    if env_updates:
+        _write_env_updates(env_updates)
 
     if restart_required:
         notices.append("Communications changes were saved. Restart sparkbot-v2 to apply bridge startup changes.")
