@@ -1,0 +1,6 @@
+Sparkbot v1.6.33
+
+- Persist WhatsApp, GitHub, and Google comms secrets in Guardian Vault when a privileged session is active, with env fallback when it is not.
+- Make WhatsApp and GitHub bridges read Vault-backed secrets at runtime so configured status and bridge startup match saved controls.
+- Rewire calendar tools from legacy CALDAV settings to Google Calendar API using the same Google OAuth credentials and Calendar ID collected in Controls.
+- Make Gmail and GitHub tool execution use live credential lookups so changes apply without stale import-time config.

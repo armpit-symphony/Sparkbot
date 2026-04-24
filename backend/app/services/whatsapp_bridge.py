@@ -68,16 +68,33 @@ from app.services.guardian import get_guardian_suite
 
 logger = logging.getLogger(__name__)
 
+
+def _env_or_vault_secret(env_var: str, vault_alias: str, default: str = "") -> str:
+    value = os.getenv(env_var, "").strip()
+    if value:
+        return value
+    try:
+        return str(
+            get_guardian_suite().vault.vault_use(
+                alias=vault_alias,
+                user_id="whatsapp_bridge",
+                operator="system",
+            )
+            or default
+        ).strip()
+    except Exception:
+        return default.strip()
+
 # ── Config ────────────────────────────────────────────────────────────────────
 
 def _wa_phone_id() -> str:
     return os.getenv("WHATSAPP_PHONE_ID", "").strip()
 
 def _wa_token() -> str:
-    return os.getenv("WHATSAPP_TOKEN", "").strip()
+    return _env_or_vault_secret("WHATSAPP_TOKEN", "whatsapp_token")
 
 def _wa_verify_token() -> str:
-    return os.getenv("WHATSAPP_VERIFY_TOKEN", "sparkbot-wa-verify").strip()
+    return _env_or_vault_secret("WHATSAPP_VERIFY_TOKEN", "whatsapp_verify_token", "sparkbot-wa-verify")
 
 def _wa_app_id() -> str:
     return os.getenv("WHATSAPP_APP_ID", "").strip()
@@ -238,7 +255,7 @@ def get_status() -> dict[str, Any]:
         p.strip() for p in os.getenv("WHATSAPP_ALLOWED_PHONES", "").split(",") if p.strip()
     }
     return {
-        "configured": bool(os.getenv("WHATSAPP_PHONE_ID", "").strip() and os.getenv("WHATSAPP_TOKEN", "").strip()),
+        "configured": bool(_wa_phone_id() and _wa_token()),
         "enabled": os.getenv("WHATSAPP_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"},
         "allowed_phones_count": len(allowed_phones),
         "linked_numbers": int(count_row[0]) if count_row else 0,

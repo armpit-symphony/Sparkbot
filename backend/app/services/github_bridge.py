@@ -36,6 +36,23 @@ from app.services.guardian import get_guardian_suite
 
 logger = logging.getLogger(__name__)
 
+def _env_or_vault_secret(env_var: str, vault_alias: str) -> str:
+    value = os.getenv(env_var, "").strip()
+    if value:
+        return value
+    try:
+        return str(
+            get_guardian_suite().vault.vault_use(
+                alias=vault_alias,
+                user_id="github_bridge",
+                operator="system",
+            )
+            or ""
+        ).strip()
+    except Exception:
+        return ""
+
+
 _GITHUB_API = "https://api.github.com"
 _DELIVERY_TTL_SECONDS = 300.0
 _seen_deliveries: dict[str, float] = {}
@@ -84,11 +101,11 @@ def _enabled() -> bool:
 
 
 def _github_token() -> str:
-    return os.getenv("GITHUB_TOKEN", "").strip()
+    return _env_or_vault_secret("GITHUB_TOKEN", "github_token")
 
 
 def _webhook_secret() -> str:
-    return os.getenv("GITHUB_WEBHOOK_SECRET", "").strip()
+    return _env_or_vault_secret("GITHUB_WEBHOOK_SECRET", "github_webhook_secret")
 
 
 def _bot_login() -> str:

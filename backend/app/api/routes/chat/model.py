@@ -229,6 +229,20 @@ def _upsert_vault_secret(
     return True
 
 
+def _env_or_vault_has_secret(env_var: str, vault_alias: str) -> bool:
+    if os.getenv(env_var, "").strip():
+        return True
+    try:
+        from app.services.guardian.vault import vault_get_metadata
+
+        meta = vault_get_metadata(vault_alias)
+        if not meta:
+            return False
+        return str(meta.get("access_policy") or "") != "disabled"
+    except Exception:
+        return False
+
+
 def _provider_catalog(ollama_status: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     models_by_provider: dict[str, list[str]] = {}
     for model in AVAILABLE_MODELS:
@@ -297,9 +311,9 @@ def _provider_catalog(ollama_status: dict[str, Any] | None = None) -> list[dict[
 def _build_google_comms_status() -> dict[str, Any]:
     """Return configured status for Google (Gmail + Calendar) credentials."""
     has_oauth = bool(
-        os.getenv("GOOGLE_CLIENT_ID", "").strip()
-        and os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
-        and os.getenv("GOOGLE_REFRESH_TOKEN", "").strip()
+        _env_or_vault_has_secret("GOOGLE_CLIENT_ID", "google_client_id")
+        and _env_or_vault_has_secret("GOOGLE_CLIENT_SECRET", "google_client_secret")
+        and _env_or_vault_has_secret("GOOGLE_REFRESH_TOKEN", "google_refresh_token")
     )
     return {
         "gmail_configured": has_oauth,
@@ -894,19 +908,63 @@ async def update_models_config(body: ControlsConfigUpdate, current_user: Current
             restart_required = True
         if body.comms.whatsapp is not None:
             if body.comms.whatsapp.token:
-                env_updates["WHATSAPP_TOKEN"] = body.comms.whatsapp.token
+                if _upsert_vault_secret(
+                    alias="whatsapp_token",
+                    value=body.comms.whatsapp.token,
+                    category="communications",
+                    notes="WhatsApp bridge access token",
+                    current_user=current_user,
+                ):
+                    runtime_only_env_updates["WHATSAPP_TOKEN"] = body.comms.whatsapp.token
+                    notices.append("WhatsApp token saved to Vault.")
+                else:
+                    env_updates["WHATSAPP_TOKEN"] = body.comms.whatsapp.token
+                    notices.append("WhatsApp token saved to env storage. Use break-glass access to persist it in Vault.")
             if body.comms.whatsapp.phone_id:
                 env_updates["WHATSAPP_PHONE_ID"] = body.comms.whatsapp.phone_id
             if body.comms.whatsapp.verify_token:
-                env_updates["WHATSAPP_VERIFY_TOKEN"] = body.comms.whatsapp.verify_token
+                if _upsert_vault_secret(
+                    alias="whatsapp_verify_token",
+                    value=body.comms.whatsapp.verify_token,
+                    category="communications",
+                    notes="WhatsApp bridge webhook verify token",
+                    current_user=current_user,
+                ):
+                    runtime_only_env_updates["WHATSAPP_VERIFY_TOKEN"] = body.comms.whatsapp.verify_token
+                    notices.append("WhatsApp verify token saved to Vault.")
+                else:
+                    env_updates["WHATSAPP_VERIFY_TOKEN"] = body.comms.whatsapp.verify_token
+                    notices.append("WhatsApp verify token saved to env storage. Use break-glass access to persist it in Vault.")
             if body.comms.whatsapp.enabled is not None:
                 env_updates["WHATSAPP_ENABLED"] = "true" if body.comms.whatsapp.enabled else "false"
             restart_required = True
         if body.comms.github is not None:
             if body.comms.github.token:
-                env_updates["GITHUB_TOKEN"] = body.comms.github.token
+                if _upsert_vault_secret(
+                    alias="github_token",
+                    value=body.comms.github.token,
+                    category="communications",
+                    notes="GitHub bridge access token",
+                    current_user=current_user,
+                ):
+                    runtime_only_env_updates["GITHUB_TOKEN"] = body.comms.github.token
+                    notices.append("GitHub token saved to Vault.")
+                else:
+                    env_updates["GITHUB_TOKEN"] = body.comms.github.token
+                    notices.append("GitHub token saved to env storage. Use break-glass access to persist it in Vault.")
             if body.comms.github.webhook_secret:
-                env_updates["GITHUB_WEBHOOK_SECRET"] = body.comms.github.webhook_secret
+                if _upsert_vault_secret(
+                    alias="github_webhook_secret",
+                    value=body.comms.github.webhook_secret,
+                    category="communications",
+                    notes="GitHub bridge webhook secret",
+                    current_user=current_user,
+                ):
+                    runtime_only_env_updates["GITHUB_WEBHOOK_SECRET"] = body.comms.github.webhook_secret
+                    notices.append("GitHub webhook secret saved to Vault.")
+                else:
+                    env_updates["GITHUB_WEBHOOK_SECRET"] = body.comms.github.webhook_secret
+                    notices.append("GitHub webhook secret saved to env storage. Use break-glass access to persist it in Vault.")
             if body.comms.github.bot_login:
                 env_updates["GITHUB_BOT_LOGIN"] = body.comms.github.bot_login
             if body.comms.github.default_repo is not None:
@@ -921,11 +979,44 @@ async def update_models_config(body: ControlsConfigUpdate, current_user: Current
             restart_required = True
         if body.comms.google is not None:
             if body.comms.google.client_id:
-                env_updates["GOOGLE_CLIENT_ID"] = body.comms.google.client_id
+                if _upsert_vault_secret(
+                    alias="google_client_id",
+                    value=body.comms.google.client_id,
+                    category="communications",
+                    notes="Google OAuth client id",
+                    current_user=current_user,
+                ):
+                    runtime_only_env_updates["GOOGLE_CLIENT_ID"] = body.comms.google.client_id
+                    notices.append("Google client ID saved to Vault.")
+                else:
+                    env_updates["GOOGLE_CLIENT_ID"] = body.comms.google.client_id
+                    notices.append("Google client ID saved to env storage. Use break-glass access to persist it in Vault.")
             if body.comms.google.client_secret:
-                env_updates["GOOGLE_CLIENT_SECRET"] = body.comms.google.client_secret
+                if _upsert_vault_secret(
+                    alias="google_client_secret",
+                    value=body.comms.google.client_secret,
+                    category="communications",
+                    notes="Google OAuth client secret",
+                    current_user=current_user,
+                ):
+                    runtime_only_env_updates["GOOGLE_CLIENT_SECRET"] = body.comms.google.client_secret
+                    notices.append("Google client secret saved to Vault.")
+                else:
+                    env_updates["GOOGLE_CLIENT_SECRET"] = body.comms.google.client_secret
+                    notices.append("Google client secret saved to env storage. Use break-glass access to persist it in Vault.")
             if body.comms.google.refresh_token:
-                env_updates["GOOGLE_REFRESH_TOKEN"] = body.comms.google.refresh_token
+                if _upsert_vault_secret(
+                    alias="google_refresh_token",
+                    value=body.comms.google.refresh_token,
+                    category="communications",
+                    notes="Google OAuth refresh token",
+                    current_user=current_user,
+                ):
+                    runtime_only_env_updates["GOOGLE_REFRESH_TOKEN"] = body.comms.google.refresh_token
+                    notices.append("Google refresh token saved to Vault.")
+                else:
+                    env_updates["GOOGLE_REFRESH_TOKEN"] = body.comms.google.refresh_token
+                    notices.append("Google refresh token saved to env storage. Use break-glass access to persist it in Vault.")
             if body.comms.google.calendar_id is not None:
                 env_updates["GOOGLE_CALENDAR_ID"] = body.comms.google.calendar_id
             notices.append("Google credentials saved — Gmail and Calendar skills are live immediately.")

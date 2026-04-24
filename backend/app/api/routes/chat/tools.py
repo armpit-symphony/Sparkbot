@@ -20,7 +20,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import quote, urlparse, urlunparse
 
 import httpx
 
@@ -62,6 +62,55 @@ _GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token"
 _GMAIL_API = "https://gmail.googleapis.com/gmail/v1"
 _DRIVE_API = "https://www.googleapis.com/drive/v3"
 _GOOGLE_TOKEN_CACHE: dict[str, float | str] = {"access_token": "", "expires_at": 0.0}
+
+
+def _env_or_vault_value(env_var: str, vault_alias: str, default: str = "") -> str:
+    value = os.getenv(env_var, "").strip()
+    if value:
+        return value
+    try:
+        return str(
+            get_guardian_suite().vault.vault_use(
+                alias=vault_alias,
+                user_id="tools_runtime",
+                operator="system",
+            )
+            or default
+        ).strip()
+    except Exception:
+        return default.strip()
+
+
+def _github_token() -> str:
+    return _env_or_vault_value("GITHUB_TOKEN", "github_token")
+
+
+def _github_default_repo() -> str:
+    return os.getenv("GITHUB_DEFAULT_REPO", "").strip() or _GITHUB_DEFAULT_REPO
+
+
+def _google_client_id() -> str:
+    return _env_or_vault_value("GOOGLE_CLIENT_ID", "google_client_id")
+
+
+def _google_client_secret() -> str:
+    return _env_or_vault_value("GOOGLE_CLIENT_SECRET", "google_client_secret")
+
+
+def _google_refresh_token() -> str:
+    return _env_or_vault_value("GOOGLE_REFRESH_TOKEN", "google_refresh_token")
+
+
+def _google_gmail_user() -> str:
+    return os.getenv("GOOGLE_GMAIL_USER", "me").strip() or _GOOGLE_GMAIL_USER
+
+
+def _google_drive_shared_drive_id() -> str:
+    return os.getenv("GOOGLE_DRIVE_SHARED_DRIVE_ID", "").strip() or _GOOGLE_DRIVE_SHARED_DRIVE_ID
+
+
+def _google_calendar_id() -> str:
+    return os.getenv("GOOGLE_CALENDAR_ID", "").strip()
 
 # ─── Email config ─────────────────────────────────────────────────────────────
 
@@ -2722,13 +2771,14 @@ async def _complete_task(
 
 def _gh_headers() -> dict:
     h = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
-    if _GITHUB_TOKEN:
-        h["Authorization"] = f"Bearer {_GITHUB_TOKEN}"
+    token = _github_token()
+    if token:
+        h["Authorization"] = f"Bearer {token}"
     return h
 
 
 def _resolve_repo(repo: str) -> str | None:
-    r = (repo or "").strip() or _GITHUB_DEFAULT_REPO
+    r = (repo or "").strip() or _github_default_repo()
     return r if r else None
 
 
@@ -2742,7 +2792,7 @@ def _gh_not_configured() -> str:
 async def _github_list_prs(repo: str, state: str) -> str:
     r = _resolve_repo(repo)
     if not r:
-        return _gh_not_configured() if not _GITHUB_TOKEN else "No repo specified. Set GITHUB_DEFAULT_REPO or pass a repo name."
+        return _gh_not_configured() if not _github_token() else "No repo specified. Set GITHUB_DEFAULT_REPO or pass a repo name."
     state = state if state in ("open", "closed", "all") else "open"
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -2775,7 +2825,7 @@ async def _github_list_prs(repo: str, state: str) -> str:
 async def _github_get_pr(repo: str, pr_number: int) -> str:
     r = _resolve_repo(repo)
     if not r:
-        return _gh_not_configured() if not _GITHUB_TOKEN else "No repo specified."
+        return _gh_not_configured() if not _github_token() else "No repo specified."
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             # PR details + files + checks in parallel
@@ -2834,8 +2884,8 @@ async def _github_get_pr(repo: str, pr_number: int) -> str:
 async def _github_create_issue(repo: str, title: str, body: str, labels: str) -> str:
     r = _resolve_repo(repo)
     if not r:
-        return _gh_not_configured() if not _GITHUB_TOKEN else "No repo specified."
-    if not _GITHUB_TOKEN:
+        return _gh_not_configured() if not _github_token() else "No repo specified."
+    if not _github_token():
         return _gh_not_configured()
     payload: dict = {"title": title, "body": body}
     if labels:
@@ -2860,7 +2910,7 @@ async def _github_create_issue(repo: str, title: str, body: str, labels: str) ->
 async def _github_get_ci_status(repo: str, branch: str) -> str:
     r = _resolve_repo(repo)
     if not r:
-        return _gh_not_configured() if not _GITHUB_TOKEN else "No repo specified."
+        return _gh_not_configured() if not _github_token() else "No repo specified."
     branch = branch or "main"
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -3338,7 +3388,7 @@ async def _confluence_create_page(
 # ─── Google Workspace executors ───────────────────────────────────────────────
 
 def _google_configured() -> bool:
-    return bool(_GOOGLE_CLIENT_ID and _GOOGLE_CLIENT_SECRET and _GOOGLE_REFRESH_TOKEN)
+    return bool(_google_client_id() and _google_client_secret() and _google_refresh_token())
 
 
 def _google_not_configured() -> str:
@@ -3370,9 +3420,17 @@ async def _google_access_token() -> tuple[Optional[str], Optional[str]]:
     if not _google_configured():
         return None, _google_not_configured()
 
+    credential_fingerprint = "|".join(
+        [
+            _google_client_id(),
+            _google_client_secret(),
+            _google_refresh_token(),
+        ]
+    )
     cached_token = str(_GOOGLE_TOKEN_CACHE.get("access_token") or "")
     expires_at = float(_GOOGLE_TOKEN_CACHE.get("expires_at") or 0.0)
-    if cached_token and time.time() < expires_at - 60:
+    cached_fingerprint = str(_GOOGLE_TOKEN_CACHE.get("credential_fingerprint") or "")
+    if cached_token and cached_fingerprint == credential_fingerprint and time.time() < expires_at - 60:
         return cached_token, None
 
     try:
@@ -3380,9 +3438,9 @@ async def _google_access_token() -> tuple[Optional[str], Optional[str]]:
             resp = await client.post(
                 _GOOGLE_OAUTH_TOKEN_URL,
                 data={
-                    "client_id": _GOOGLE_CLIENT_ID,
-                    "client_secret": _GOOGLE_CLIENT_SECRET,
-                    "refresh_token": _GOOGLE_REFRESH_TOKEN,
+                    "client_id": _google_client_id(),
+                    "client_secret": _google_client_secret(),
+                    "refresh_token": _google_refresh_token(),
                     "grant_type": "refresh_token",
                 },
             )
@@ -3399,6 +3457,7 @@ async def _google_access_token() -> tuple[Optional[str], Optional[str]]:
 
     _GOOGLE_TOKEN_CACHE["access_token"] = token
     _GOOGLE_TOKEN_CACHE["expires_at"] = time.time() + int(data.get("expires_in", 3600))
+    _GOOGLE_TOKEN_CACHE["credential_fingerprint"] = credential_fingerprint
     return str(token), None
 
 
@@ -3483,7 +3542,7 @@ async def _gmail_get_message_by_id(message_id: str) -> tuple[Optional[dict], Opt
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.get(
-                f"{_GMAIL_API}/users/{_GOOGLE_GMAIL_USER}/messages/{message_id}",
+                f"{_GMAIL_API}/users/{_google_gmail_user()}/messages/{message_id}",
                 headers=_google_headers(token),
                 params={"format": "full"},
             )
@@ -3512,7 +3571,7 @@ async def _gmail_fetch_inbox(max_emails: int = 5, unread_only: bool = False) -> 
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.get(
-                f"{_GMAIL_API}/users/{_GOOGLE_GMAIL_USER}/messages",
+                f"{_GMAIL_API}/users/{_google_gmail_user()}/messages",
                 headers=_google_headers(token),
                 params=params,
             )
@@ -3550,7 +3609,7 @@ async def _gmail_search(query: str, max_results: int = 5) -> str:
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.get(
-                f"{_GMAIL_API}/users/{_GOOGLE_GMAIL_USER}/messages",
+                f"{_GMAIL_API}/users/{_google_gmail_user()}/messages",
                 headers=_google_headers(token),
                 params={"q": q, "maxResults": max_results, "includeSpamTrash": "false"},
             )
@@ -3603,7 +3662,7 @@ async def _gmail_send(to: str, subject: str, body: str, cc: str = "") -> str:
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(
-                f"{_GMAIL_API}/users/{_GOOGLE_GMAIL_USER}/messages/send",
+                f"{_GMAIL_API}/users/{_google_gmail_user()}/messages/send",
                 headers=_google_headers(token),
                 json={"raw": raw_message},
             )
@@ -3626,9 +3685,10 @@ def _drive_list_params(max_results: int) -> dict[str, object]:
         "supportsAllDrives": "true",
         "includeItemsFromAllDrives": "true",
     }
-    if _GOOGLE_DRIVE_SHARED_DRIVE_ID:
+    shared_drive_id = _google_drive_shared_drive_id()
+    if shared_drive_id:
         params["corpora"] = "drive"
-        params["driveId"] = _GOOGLE_DRIVE_SHARED_DRIVE_ID
+        params["driveId"] = shared_drive_id
     else:
         params["corpora"] = "user"
     return params
@@ -4449,118 +4509,122 @@ async def _guardian_pause_task(task_id: str, enabled: bool, room_id: Optional[st
 # ─── Calendar tool executors ──────────────────────────────────────────────────
 
 def _calendar_configured() -> bool:
-    return bool(_CALDAV_URL and _CALDAV_USERNAME and _CALDAV_PASSWORD)
+    return bool(_google_configured() and _google_calendar_id())
 
 
-def _caldav_list_events_sync(days_ahead: int) -> str:
-    import caldav
-
-    client = caldav.DAVClient(
-        url=_CALDAV_URL, username=_CALDAV_USERNAME, password=_CALDAV_PASSWORD
+def _calendar_not_configured() -> str:
+    return (
+        "Google Calendar not configured. "
+        "Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN, and GOOGLE_CALENDAR_ID."
     )
-    principal = client.principal()
-    calendars = principal.calendars()
-    if not calendars:
-        return "No calendars found on the server."
 
-    now = datetime.now(timezone.utc)
-    end = now + timedelta(days=days_ahead)
 
-    lines: list[str] = []
-    for cal in calendars:
+def _calendar_endpoint() -> str:
+    calendar_id = quote(_google_calendar_id(), safe="")
+    return f"https://www.googleapis.com/calendar/v3/calendars/{calendar_id}/events"
+
+
+def _calendar_format_start(value: dict[str, str]) -> str:
+    date_time = str(value.get("dateTime") or "").strip()
+    if date_time:
         try:
-            for event in cal.date_search(start=now, end=end, expand=True):
-                vevent = event.vobject_instance.vevent
-                summary = str(vevent.summary.value) if hasattr(vevent, "summary") else "(No title)"
-                dtstart = vevent.dtstart.value
-                # All-day events have date, timed events have datetime
-                if hasattr(dtstart, "hour"):
-                    # Make timezone-aware if naive
-                    if dtstart.tzinfo is None:
-                        dtstart = dtstart.replace(tzinfo=timezone.utc)
-                    start_str = dtstart.strftime("%Y-%m-%d %H:%M UTC")
-                else:
-                    start_str = dtstart.strftime("%Y-%m-%d (all day)")
-                lines.append(f"- {start_str}: {summary}")
+            dt = datetime.fromisoformat(date_time.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
         except Exception:
-            continue
-
-    if not lines:
-        return f"No events in the next {days_ahead} day(s)."
-
-    lines.sort()
-    header = f"Upcoming events (next {days_ahead} day(s)):"
-    return header + "\n" + "\n".join(lines[:25])
+            return date_time
+    all_day = str(value.get("date") or "").strip()
+    return f"{all_day} (all day)" if all_day else "Unknown start"
 
 
 async def _calendar_list_events(days_ahead: int = 7) -> str:
     if not _calendar_configured():
-        return (
-            "Calendar not configured. "
-            "Set CALDAV_URL, CALDAV_USERNAME, and CALDAV_PASSWORD environment variables."
-        )
+        return _calendar_not_configured()
     days_ahead = max(1, min(days_ahead, 30))
+    token, err = await _google_access_token()
+    if err:
+        return err
+
+    now = datetime.now(timezone.utc)
+    end = now + timedelta(days=days_ahead)
     try:
-        return await asyncio.to_thread(_caldav_list_events_sync, days_ahead)
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                _calendar_endpoint(),
+                headers=_google_headers(token),
+                params={
+                    "singleEvents": "true",
+                    "orderBy": "startTime",
+                    "timeMin": now.isoformat().replace("+00:00", "Z"),
+                    "timeMax": end.isoformat().replace("+00:00", "Z"),
+                    "maxResults": 25,
+                },
+            )
     except Exception as exc:
-        return f"Calendar error: {exc}"
+        return f"Google Calendar error: {exc}"
 
+    if resp.status_code != 200:
+        return _google_error_text(resp, "Google Calendar")
 
-def _caldav_create_event_sync(
-    title: str, start: str, end: str, description: str, location: str
-) -> str:
-    import caldav
-    from icalendar import Calendar, Event
+    items = resp.json().get("items", [])
+    if not items:
+        return f"No events in the next {days_ahead} day(s)."
 
-    client = caldav.DAVClient(
-        url=_CALDAV_URL, username=_CALDAV_USERNAME, password=_CALDAV_PASSWORD
-    )
-    principal = client.principal()
-    calendars = principal.calendars()
-    if not calendars:
-        return "No calendars found on the server."
+    lines: list[str] = []
+    for item in items:
+        start_value = item.get("start") or {}
+        label = _calendar_format_start(start_value if isinstance(start_value, dict) else {})
+        summary = str(item.get("summary") or "(No title)")
+        lines.append(f"- {label}: {summary}")
 
-    dtstart = datetime.fromisoformat(start)
-    dtend = datetime.fromisoformat(end)
-    if dtstart.tzinfo is None:
-        dtstart = dtstart.replace(tzinfo=timezone.utc)
-    if dtend.tzinfo is None:
-        dtend = dtend.replace(tzinfo=timezone.utc)
-
-    cal = Calendar()
-    cal.add("prodid", "-//Sparkbot//Sparkpit Labs//EN")
-    cal.add("version", "2.0")
-
-    event = Event()
-    event.add("summary", title)
-    event.add("dtstart", dtstart)
-    event.add("dtend", dtend)
-    event.add("uid", str(uuid.uuid4()))
-    if description:
-        event.add("description", description)
-    if location:
-        event.add("location", location)
-    cal.add_component(event)
-
-    calendars[0].save_event(cal.to_ical().decode())
-    start_label = dtstart.strftime("%Y-%m-%d %H:%M UTC")
-    return f"Event created: '{title}' on {start_label}"
+    return f"Upcoming events (next {days_ahead} day(s)):\n" + "\n".join(lines)
 
 
 async def _calendar_create_event(
     title: str, start: str, end: str, description: str = "", location: str = ""
 ) -> str:
     if not _calendar_configured():
-        return (
-            "Calendar not configured. "
-            "Set CALDAV_URL, CALDAV_USERNAME, and CALDAV_PASSWORD environment variables."
-        )
+        return _calendar_not_configured()
+    if not title or not start or not end:
+        return "Missing required fields: title, start, end."
+    token, err = await _google_access_token()
+    if err:
+        return err
     try:
-        return await asyncio.to_thread(
-            _caldav_create_event_sync, title, start, end, description, location
-        )
+        dtstart = datetime.fromisoformat(start)
+        dtend = datetime.fromisoformat(end)
+        if dtstart.tzinfo is None:
+            dtstart = dtstart.replace(tzinfo=timezone.utc)
+        if dtend.tzinfo is None:
+            dtend = dtend.replace(tzinfo=timezone.utc)
+        payload: dict[str, object] = {
+            "summary": title,
+            "start": {
+                "dateTime": dtstart.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+                "timeZone": "UTC",
+            },
+            "end": {
+                "dateTime": dtend.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+                "timeZone": "UTC",
+            },
+        }
+        if description:
+            payload["description"] = description
+        if location:
+            payload["location"] = location
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                _calendar_endpoint(),
+                headers=_google_headers(token),
+                json=payload,
+            )
     except Exception as exc:
-        return f"Calendar error: {exc}"
+        return f"Google Calendar error: {exc}"
+    if resp.status_code not in (200, 201):
+        return _google_error_text(resp, "Google Calendar")
+    start_label = dtstart.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    return f"Event created: '{title}' on {start_label}"
 
 
 # ─── Memory tool executors ────────────────────────────────────────────────────
