@@ -28,6 +28,7 @@ import os
 import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
+from urllib.parse import quote
 
 import httpx
 
@@ -37,6 +38,29 @@ _CALENDAR_ID_DEFAULT = "primary"
 _GMAIL_API = "https://gmail.googleapis.com/gmail/v1"
 _CALENDAR_API = "https://www.googleapis.com/calendar/v3"
 _TOKEN_CACHE: dict = {"access_token": "", "expires_at": 0.0}
+
+
+def _env_or_vault_value(env_var: str, vault_alias: str, default: str = "") -> str:
+    value = os.getenv(env_var, "").strip()
+    if value:
+        return value
+    try:
+        from app.services.guardian import get_guardian_suite
+
+        return str(
+            get_guardian_suite().vault.vault_use(
+                alias=vault_alias,
+                user_id="morning_briefing",
+                operator="system",
+            )
+            or default
+        ).strip()
+    except Exception:
+        return default.strip()
+
+
+def _portable_strftime(dt: datetime, fmt: str) -> str:
+    return dt.strftime(fmt).replace(" 0", " ").lstrip("0")
 
 DEFINITION = {
     "type": "function",
@@ -107,9 +131,9 @@ POLICY = {
 # ── Auth helper ───────────────────────────────────────────────────────────────
 
 async def _get_google_token() -> tuple[str | None, str | None]:
-    client_id = os.getenv("GOOGLE_CLIENT_ID", "").strip()
-    client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
-    refresh_token = os.getenv("GOOGLE_REFRESH_TOKEN", "").strip()
+    client_id = _env_or_vault_value("GOOGLE_CLIENT_ID", "google_client_id")
+    client_secret = _env_or_vault_value("GOOGLE_CLIENT_SECRET", "google_client_secret")
+    refresh_token = _env_or_vault_value("GOOGLE_REFRESH_TOKEN", "google_refresh_token")
     if not (client_id and client_secret and refresh_token):
         return None, None  # Google not configured — skip those sections silently
     cached = str(_TOKEN_CACHE.get("access_token") or "")
@@ -146,10 +170,15 @@ async def _fetch_calendar(token: str, days_ahead: int, tz_name: str) -> str:
     now = datetime.now(timezone.utc)
     time_min = now.isoformat()
     time_max = (now + timedelta(days=days_ahead)).isoformat()
+    calendar_id = quote(
+        _env_or_vault_value("GOOGLE_CALENDAR_ID", "google_calendar_id", _CALENDAR_ID_DEFAULT)
+        or _CALENDAR_ID_DEFAULT,
+        safe="",
+    )
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.get(
-                f"{_CALENDAR_API}/calendars/{os.getenv('GOOGLE_CALENDAR_ID', 'primary').strip() or 'primary'}/events",
+                f"{_CALENDAR_API}/calendars/{calendar_id}/events",
                 headers={"Authorization": f"Bearer {token}"},
                 params={
                     "timeMin": time_min,
@@ -173,7 +202,7 @@ async def _fetch_calendar(token: str, days_ahead: int, tz_name: str) -> str:
             try:
                 if "T" in start_str:
                     dt = datetime.fromisoformat(start_str.replace("Z", "+00:00"))
-                    start_str = dt.strftime("%-I:%M %p")
+                    start_str = _portable_strftime(dt, "%I:%M %p")
             except Exception:
                 pass
             loc = ev.get("location", "")
@@ -241,7 +270,7 @@ async def _fetch_reminders(room_id: str | None, session) -> str:
         for r in reminders[:8]:
             fire_at = r.fire_at
             if hasattr(fire_at, "strftime"):
-                ts = fire_at.strftime("%a %b %-d %-I:%M %p")
+                ts = _portable_strftime(fire_at, "%a %b %d %I:%M %p")
             else:
                 ts = str(fire_at)
             rec = r.recurrence.value if hasattr(r.recurrence, "value") else str(r.recurrence)
@@ -344,11 +373,11 @@ async def execute(args: dict, *, user_id=None, room_id=None, session=None) -> st
         import zoneinfo
         tz = zoneinfo.ZoneInfo(tz_name)
         now_local = now_utc.astimezone(tz)
-        date_str = now_local.strftime("%A, %B %-d %Y")
-        time_str = now_local.strftime("%-I:%M %p %Z")
+        date_str = _portable_strftime(now_local, "%A, %B %d %Y")
+        time_str = _portable_strftime(now_local, "%I:%M %p %Z")
     except Exception:
-        date_str = now_utc.strftime("%A, %B %-d %Y")
-        time_str = now_utc.strftime("%-I:%M %p UTC")
+        date_str = _portable_strftime(now_utc, "%A, %B %d %Y")
+        time_str = _portable_strftime(now_utc, "%I:%M %p UTC")
 
     sections: list[str] = [f"# ☀️ Good morning! — {date_str}", f"*{time_str}*", ""]
 

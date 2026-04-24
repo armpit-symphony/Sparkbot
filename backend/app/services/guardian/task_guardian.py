@@ -235,25 +235,53 @@ def _ensure_column(conn: sqlite3.Connection, table: str, column: str, column_def
 
 def _parse_schedule(schedule: str) -> tuple[str, str]:
     if ":" not in schedule:
-        raise ValueError("schedule must be every:<seconds> or at:<ISO-8601 datetime>")
+        raise ValueError("schedule must be every:<seconds>, daily:<HH:MM>, or at:<ISO-8601 datetime>")
     kind, raw_value = schedule.split(":", 1)
     kind = kind.strip().lower()
     value = raw_value.strip()
-    if kind not in {"every", "at"}:
-        raise ValueError("schedule must start with every: or at:")
+    if kind not in {"every", "daily", "at"}:
+        raise ValueError("schedule must start with every:, daily:, or at:")
     return kind, value
+
+
+def _parse_daily_time(value: str) -> tuple[int, int]:
+    parts = value.split(":")
+    if len(parts) != 2:
+        raise ValueError("daily schedule must be daily:<HH:MM> using 24-hour UTC time")
+    try:
+        hour = int(parts[0])
+        minute = int(parts[1])
+    except ValueError as exc:
+        raise ValueError("daily schedule must be daily:<HH:MM> using 24-hour UTC time") from exc
+    if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+        raise ValueError("daily schedule time must be between 00:00 and 23:59 UTC")
+    return hour, minute
+
+
+def _parse_at_datetime(value: str) -> datetime:
+    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+    dt = datetime.fromisoformat(normalized)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 def _next_run_at(schedule: str, *, base: Optional[datetime] = None) -> str:
     base = base or _now()
+    if base.tzinfo is None:
+        base = base.replace(tzinfo=timezone.utc)
+    base = base.astimezone(timezone.utc)
     kind, value = _parse_schedule(schedule)
     if kind == "every":
         seconds = max(60, int(value))
         return (base + timedelta(seconds=seconds)).isoformat()
-    dt = datetime.fromisoformat(value)
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc).isoformat()
+    if kind == "daily":
+        hour, minute = _parse_daily_time(value)
+        candidate = base.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if candidate <= base:
+            candidate = candidate + timedelta(days=1)
+        return candidate.isoformat()
+    return _parse_at_datetime(value).isoformat()
 
 
 def _safe_excerpt(text: str) -> str:

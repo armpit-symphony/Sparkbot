@@ -2301,7 +2301,7 @@ function SparkbotSettingsDialog({
               <input
                 value={taskSchedule}
                 onChange={(e) => onTaskScheduleChange(e.target.value)}
-                placeholder="every:3600 or at:2026-03-07T14:00:00Z"
+                placeholder="daily:13:00, every:3600, or at:2026-04-24T14:00:00Z"
                 className="rounded-md border bg-background px-3 py-2 text-sm outline-none md:col-span-2"
               />
               <textarea

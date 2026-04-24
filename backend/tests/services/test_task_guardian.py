@@ -1,6 +1,7 @@
 import importlib
 import asyncio
 import uuid
+from datetime import datetime, timezone
 
 
 def _reload_task_guardian(monkeypatch, tmp_path):
@@ -44,6 +45,21 @@ def test_task_guardian_allows_meeting_heartbeat(monkeypatch, tmp_path) -> None:
     task = task_guardian.get_task(scheduled["id"])
     assert task is not None
     assert task.tool_name == "meeting_heartbeat"
+
+
+def test_task_guardian_daily_schedule_calculates_next_utc_run(monkeypatch, tmp_path) -> None:
+    task_guardian = _reload_task_guardian(monkeypatch, tmp_path)
+
+    base = datetime(2026, 4, 24, 12, 30, tzinfo=timezone.utc)
+
+    assert task_guardian._next_run_at("daily:13:00", base=base) == "2026-04-24T13:00:00+00:00"
+    assert task_guardian._next_run_at("daily:09:00", base=base) == "2026-04-25T09:00:00+00:00"
+
+
+def test_task_guardian_at_schedule_accepts_zulu_timestamp(monkeypatch, tmp_path) -> None:
+    task_guardian = _reload_task_guardian(monkeypatch, tmp_path)
+
+    assert task_guardian._next_run_at("at:2026-04-24T14:00:00Z") == "2026-04-24T14:00:00+00:00"
 
 
 def test_task_guardian_rejects_non_allowlisted_tool(monkeypatch, tmp_path) -> None:

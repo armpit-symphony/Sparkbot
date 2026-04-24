@@ -244,6 +244,8 @@ Tell Sparkbot to run anything on a schedule:
 
 Manage scheduled jobs from **Controls → Task Guardian** or from the **Company Operations** section of the Workstation.
 
+For a copy-ready 9am demo flow, slide outline, security notes, and Task Guardian JSON payloads, see [docs/jarvis-demo-kit.md](./docs/jarvis-demo-kit.md).
+
 ### Knowledge Base
 
 Feed Sparkbot documents or URLs that it can search when relevant:

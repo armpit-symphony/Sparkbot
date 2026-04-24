@@ -1419,7 +1419,8 @@ TOOL_DEFINITIONS = [
                     "schedule": {
                         "type": "string",
                         "description": (
-                            "Run cadence: every:<seconds> for recurring (e.g. every:86400 = daily) "
+                            "Run cadence: every:<seconds> for intervals, daily:<HH:MM> for a UTC daily run "
+                            "(e.g. daily:13:00 = 9am America/New_York during daylight time), "
                             "or at:<ISO-8601 UTC datetime> for a one-shot future run."
                         ),
                     },

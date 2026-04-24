@@ -323,10 +323,11 @@ Every weekday at 9am, post a standup summary to the #team channel in Slack
 | `"every:1800"` | Every 30 minutes |
 | `"every:3600"` | Every hour |
 | `"every:86400"` | Every 24 hours |
-| `"daily:08:00"` | Every day at 8:00am (UTC) |
-| `"daily:07:30"` | Every day at 7:30am (UTC) |
+| `"daily:08:00"` | Every day at 8:00am UTC |
+| `"daily:13:00"` | Every day at 9:00am America/New_York during daylight time |
+| `"at:2026-04-24T14:00:00Z"` | One-shot run at an exact UTC time |
 
-> Timezone note: schedule times are in UTC. If your local timezone is UTC-5, set `daily:13:00` for 8am local.
+> Timezone note: schedule times are in UTC. For 9am America/New_York, use `daily:13:00` during daylight time and `daily:14:00` during standard time.
 
 ---
 
