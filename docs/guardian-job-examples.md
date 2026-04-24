@@ -129,6 +129,30 @@ Every hour, check if my AI providers are reachable and post the results
 
 ## Productivity jobs
 
+### 9am Jarvis demo briefing
+
+Use this for a live demo of scheduled assistance. `daily:13:00` maps to 9am America/New_York during daylight time. For the full talk track, approval demo, security notes, and roadmap, see [Sparkbot Jarvis Demo Kit](./jarvis-demo-kit.md).
+
+**JSON schema:**
+```json
+{
+  "name": "9am Morning Brief",
+  "tool_name": "morning_briefing",
+  "schedule": "daily:13:00",
+  "tool_args": {
+    "timezone": "America/New_York",
+    "days_ahead": 2,
+    "max_emails": 5,
+    "include_weather": true,
+    "location": "New York",
+    "include_news": true,
+    "news_topic": "technology"
+  }
+}
+```
+
+---
+
 ### Morning briefing — daily at 8am
 
 **Chat prompt:**

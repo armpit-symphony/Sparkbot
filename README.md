@@ -58,6 +58,7 @@
 
 ### Proactive Mode & Scheduled Autonomy (Task Guardian)
 - **Scheduled jobs** — tell Sparkbot to run any tool on a schedule (hourly, daily, custom interval)
+- **Daily schedules** — use `daily:HH:MM` UTC schedules for predictable morning briefings and calendar previews
 - **Push alerts** — scheduled jobs can push results to your phone via Telegram or Discord — works even when you're away from the desktop
 - **Autonomous execution** — jobs run in the background and post results to the room
 - **Write-action scheduling** — opt-in to scheduled email, Slack, and calendar writes
@@ -244,7 +245,21 @@ Tell Sparkbot to run anything on a schedule:
 
 Manage scheduled jobs from **Controls → Task Guardian** or from the **Company Operations** section of the Workstation.
 
+Supported schedule strings:
+
+| Schedule | Meaning |
+|----------|---------|
+| `every:3600` | Run every hour |
+| `daily:13:00` | Run every day at 13:00 UTC, which is 9am America/New_York during daylight time |
+| `at:2026-04-24T20:00:00Z` | Run once at an exact UTC timestamp |
+
 For a copy-ready 9am demo flow, slide outline, security notes, and Task Guardian JSON payloads, see [docs/jarvis-demo-kit.md](./docs/jarvis-demo-kit.md).
+
+### 9am Jarvis Demo
+
+Sparkbot now includes a demo kit for presenting the governed-assistant vision: scheduled morning briefing, policy-gated write action, approval/breakglass walkthrough, audit evidence, security notes, marketing one-pager, and roadmap.
+
+Start here: **[Sparkbot Jarvis Demo Kit](./docs/jarvis-demo-kit.md)**.
 
 ### Knowledge Base
 
@@ -370,6 +385,7 @@ User message → Token Guardian → Memory Guardian → LLM
 - **[docs/capabilities.md](./docs/capabilities.md)** — every tool, command, integration, env var, API endpoint, and Guardian Spine route
 - **[docs/skill-author-guide.md](./docs/skill-author-guide.md)** — how to write, test, and ship a skill plugin
 - **[docs/guardian-job-examples.md](./docs/guardian-job-examples.md)** — copy-paste Task Guardian job templates
+- **[docs/jarvis-demo-kit.md](./docs/jarvis-demo-kit.md)** — 9am presentation, demo script, security notes, roadmap, and pasteable Task Guardian payloads
 - **[Troubleshooting.md](./Troubleshooting.md)** — Playwright, Ollama CPU, terminal, SmartScreen, first-run checklist
 - **[SECURITY.md](./SECURITY.md)** — security architecture
 - **[SECURITY-AUDIT.md](./SECURITY-AUDIT.md)** — full security audit (v1.3.0): findings, fixes, residual risks
@@ -393,7 +409,7 @@ User message → Token Guardian → Memory Guardian → LLM
 | v1.2.8 | Apr 2026 | Process watcher (auto-throttle Ollama CPU); model latency tracking; latency API |
 | v1.2.7 | Apr 2026 | system_diagnostics skill; repair-playwright scripts; Troubleshooting.md |
 | v1.2.6 | Apr 2026 | Stable Playwright browser dir; LLM tool-loop guards |
-| v1.6.33 | Apr 2026 | Vault-backed runtime wiring for Discord, WhatsApp, GitHub, Gmail, and Google Calendar; Google Calendar controls now power the actual calendar tools |
+| v1.6.33 | Apr 2026 | Vault-backed runtime wiring for Discord, WhatsApp, GitHub, Gmail, and Google Calendar; Task Guardian supports `daily:HH:MM` schedules and Zulu one-shots; Windows-safe morning briefing; Jarvis demo kit |
 | v1.6.32 | Apr 2026 | Uniform Invite Wing subscription selectors for Claude + ChatGPT/Codex; OpenClaw desk replaced by xAI Grok; Controls AI setup now surfaces Anthropic/OpenAI subscription flows and xAI API-key guidance |
 | v1.6.31 | Apr 2026 | Invite Wing ChatGPT desk becomes the Codex gateway for ChatGPT-linked OpenAI keys and `codex-mini-latest`; OpenAI Codex models route as first-class invite seats |
 | v1.6.30 | Apr 2026 | Telegram polling auto-enables on token save; Chat ID mirrored into operator/allowed lists |
