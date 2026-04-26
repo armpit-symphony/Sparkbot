@@ -1,6 +1,17 @@
 # Public Download Packaging
 
-Use the tracked packaging script to reproduce the website download bundle from committed source.
+The public download page points users at the latest desktop release artifacts on GitHub. The packaging script in this repo is for reproducible source bundles and CLI/public download mirrors built from committed source.
+
+For a release, keep these pieces aligned:
+
+- `backend/pyproject.toml`
+- `frontend/package.json`
+- `src-tauri/tauri.conf.json`
+- `docs/index.html`
+- `README.md`
+- `docs/release-notes/vX.Y.Z.txt`
+
+The current documentation refresh release is `v1.6.35`.
 
 ## Build `latest`
 
@@ -23,15 +34,15 @@ bash scripts/package-public-download.sh \
   --publish-dir /var/www/sparkpitlabs.com/downloads/sparkbot/latest
 ```
 
-If the target directory needs elevated permissions, run the script from a shell with the necessary access.
+If the target directory needs elevated permissions, run the script from a shell with the necessary access. The GitHub Pages download page itself is committed at `docs/index.html` and published by the Pages workflow.
 
 ## Build a versioned release
 
 ```bash
 bash scripts/package-public-download.sh \
-  --ref sparkbot-v1.2.10 \
-  --artifact-prefix sparkbot-1.2.10 \
-  --output-dir dist/public-download/1.2.10
+  --ref desktop-v1.6.35 \
+  --artifact-prefix sparkbot-1.6.35 \
+  --output-dir dist/public-download/1.6.35
 ```
 
 This ties the package to a specific tag or commit instead of the current `HEAD`.
@@ -40,7 +51,7 @@ This ties the package to a specific tag or commit instead of the current `HEAD`.
 
 ```bash
 bash scripts/package-public-download.sh \
-  --notes-file docs/release-notes/v1.2.10.txt
+  --notes-file docs/release-notes/v1.6.35.txt
 ```
 
 The script always stamps `RELEASE-NOTES.txt` with:

@@ -1,0 +1,9 @@
+Sparkbot v1.6.35
+================
+
+Documentation and downloader refresh.
+
+- Rewrote the README opening flow so it explains Sparkbot as a local assistant, computer-control surface, connected work hub, and Guardian-governed automation system.
+- Updated the public download page copy and fallback desktop artifact links for the v1.6.35 release line.
+- Updated public download packaging notes so release files, website links, and version markers are easier to keep aligned.
+- Advanced backend, frontend, and Tauri desktop shell version markers to 1.6.35.

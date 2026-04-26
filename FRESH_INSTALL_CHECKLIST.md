@@ -11,7 +11,7 @@
 Before starting any path:
 
 - [ ] Use a clean machine or VM with no SparkBot, no live .env, no running services
-- [ ] Only the publicly published downloads from `sparkpitlabs.com/sparkbot`
+- [ ] Only the publicly published downloads from `https://armpit-symphony.github.io/Sparkbot/`
 - [ ] No access to the private operator instance at `remote.sparkpitlabs.com`
 - [ ] Have the public SHA256SUMS file open for checksum verification
 
@@ -166,7 +166,7 @@ Before starting any path:
 
 ### 1. Download and extract
 
-- [ ] `curl -O https://sparkpitlabs.com/downloads/sparkbot/latest/sparkbot-latest.tar.gz`
+- [ ] Download the latest package from `https://armpit-symphony.github.io/Sparkbot/` or from the matching GitHub release artifacts
 - [ ] Checksum verified (same as Path A step 2)
 - [ ] `tar -xzf sparkbot-latest.tar.gz && cd sparkbot-v2`
 

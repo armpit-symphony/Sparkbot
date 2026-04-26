@@ -1465,9 +1465,11 @@ curl -b cookies.txt http://localhost:8000/api/v1/chat/system/watcher | python -m
 
 Desktop release tags and app versions are aligned on the `1.6.x` release line.
 
+For `v1.6.35`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story.
+
 ### How to upgrade safely
 
-1. **Read the release notes** in `release-notes.md` for breaking changes
+1. **Read the release notes** under `docs/release-notes/` for breaking changes
 2. **Back up your `.env`** (contains API keys) before upgrading the desktop app
 3. **Check skill POLICY dicts** after upgrading — see the known breaking change below
 4. **Restart the backend** after any env var change

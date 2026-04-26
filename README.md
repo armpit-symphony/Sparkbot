@@ -1,13 +1,38 @@
 # Sparkbot
 
-**Sparkbot** is a self-hosted AI assistant that runs entirely on your own machine. No cloud subscription, no data sharing, no monthly fee. Download the installer, add a provider key, and you have a personal AI that controls your desktop, reads your email, manages your calendar, runs code, fills out web forms, and remembers everything you tell it — across every conversation.
+**Sparkbot** is a self-hosted AI workspace assistant for people who want the power of a connected AI system without handing their whole workflow to a hosted SaaS account. It can run as a desktop app on Windows, macOS, and Linux, or as a Docker/server install for a team or private network.
 
-> **Desktop app (Windows · macOS · Linux)** — [Download at sparkpitlabs.com](https://armpit-symphony.github.io/Sparkbot/)
-> **Self-host on a server** — one Docker command, full HTTPS, any VPS
+Use it to chat, search, summarize documents, control a browser, run shell commands, manage tasks, schedule briefings, work with email and calendars, coordinate agents, and keep an audit trail around sensitive actions.
+
+**Download:** [armpit-symphony.github.io/Sparkbot](https://armpit-symphony.github.io/Sparkbot/)
+
+**Current release line:** v1.6.35
+
+> Sparkbot stores its app data locally. If you connect a cloud LLM provider or an external service, the text and actions needed for that provider or service are sent to that provider. Local models can run without an LLM cloud account.
 
 ---
 
-## What Sparkbot Can Do
+## What Sparkbot Is
+
+Sparkbot combines four pieces into one local assistant:
+
+1. **Chat workspace** - rooms, files, memory, slash commands, meetings, and searchable history.
+2. **Computer control** - browser automation, shell commands, live terminal sessions, and code execution.
+3. **Connected work tools** - email, calendars, files, GitHub, Slack, Notion, Confluence, Jira, Linear, contacts, stocks, Spotify, YouTube, and more.
+4. **Guardian controls** - policy checks, confirmations, vault-backed secrets, break-glass access, scheduled-job verification, and audit logs.
+
+The desktop app is the easiest path for one person. Docker and systemd deployments are available when you want Sparkbot on a server.
+
+---
+
+## Main Capabilities
+
+### Chat, Files, And Knowledge
+- Streaming chat with Markdown, code blocks, search, replies, message editing, and exports
+- File uploads for PDFs, DOCX files, text, Markdown, CSVs, images, and other documents
+- Knowledge base ingestion for documents and URLs, with BM25 full-text retrieval when related questions come up
+- Persistent memory for user facts, preferences, relationships, and recurring work context
+- Meeting mode that captures notes, decisions, and action items into a dated Markdown export
 
 ### Computer Control
 - **Shell** — run any PowerShell or bash command from chat; working directory persists so `cd` carries forward
@@ -87,7 +112,7 @@
 
 ---
 
-## Getting Started
+## Install
 
 ### Desktop App (Windows · macOS · Linux)
 
@@ -95,7 +120,7 @@ The desktop app is a standalone installer — no Docker, no terminal, no WSL req
 
 **Step 1 — Download and install**
 
-Go to [sparkpitlabs.com](https://armpit-symphony.github.io/Sparkbot/) and download the installer for your platform.
+Go to [armpit-symphony.github.io/Sparkbot](https://armpit-symphony.github.io/Sparkbot/) and download the installer for your platform.
 
 - **Windows:** run `Sparkbot.Local_x.x.x_x64-setup.exe`. If Windows SmartScreen appears, click **More info → Run anyway** (the app is unsigned; see [Code Signing](#code-signing) below).
 - **macOS:** open the `.dmg` and drag Sparkbot to Applications.
@@ -103,7 +128,7 @@ Go to [sparkpitlabs.com](https://armpit-symphony.github.io/Sparkbot/) and downlo
 
 **Step 2 — Add a provider key**
 
-On first launch, Sparkbot opens **Sparkbot Controls**. Paste at least one LLM API key:
+On first launch, Sparkbot opens **Sparkbot Controls**. Paste at least one LLM API key, or configure a local Ollama model if you want local-only model execution.
 
 | Provider | Where to get a key |
 |----------|--------------------|
@@ -119,7 +144,7 @@ Click **Sparkbot** on the office floor to open the main chat. Everything else ca
 
 ---
 
-### Self-Hosted (Docker)
+### Docker Local
 
 ```bash
 # Clone and configure
@@ -133,7 +158,7 @@ docker compose -f compose.local.yml up --build
 
 Open `http://localhost:3000`. Default passphrase: `sparkbot-local`.
 
-For a public server with HTTPS, see [deployment.md](./deployment.md) (Traefik + Let's Encrypt) or [docs/systemd-single-node.md](./docs/systemd-single-node.md) (systemd + nginx).
+For a public or private server install, use [deployment.md](./deployment.md) for Docker, Traefik, and Let's Encrypt, or [docs/systemd-single-node.md](./docs/systemd-single-node.md) for systemd and nginx.
 
 ---
 
@@ -293,8 +318,7 @@ FRONTEND_HOST=https://chat.example.com
 BACKEND_CORS_ORIGINS=https://chat.example.com
 ```
 
-Plus one of: `DATABASE_TYPE=sqlite` + `SPARKBOT_DATA_DIR=...`
-or `DATABASE_TYPE=postgresql` + `POSTGRES_*` variables.
+Choose SQLite with `DATABASE_TYPE=sqlite` and `SPARKBOT_DATA_DIR`, or PostgreSQL with the `POSTGRES_*` settings.
 
 And at least one provider key: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `GROQ_API_KEY`, `MINIMAX_API_KEY`, or `OPENROUTER_API_KEY`.
 
@@ -369,14 +393,15 @@ User message → Token Guardian → Memory Guardian → LLM
                                            Tool executes → audit log
 ```
 
-| What competitors do | What Sparkbot does |
-|--------------------|-------------------|
-| LLM calls tools freely | Policy layer classifies every tool: read / write / execute / admin |
-| External writes happen silently | Confirmation modal required before any external mutation |
-| No audit trail | Every tool call logged + redacted args stored |
-| Secrets may leak into logs | Audit redaction strips key-name and token-pattern values at write time |
-| Session token in localStorage | HttpOnly `Secure SameSite=Strict` cookie — never reachable from JavaScript |
-| No dependency scanning | `pip-audit` + `npm audit` on every push via GitHub Actions |
+| Area | Behavior |
+|------|----------|
+| Tool policy | Every tool is classified as read, write, execute, or admin; unknown tools are denied by default |
+| Write actions | Email, calendar writes, Slack posts, issue creation, and similar actions require confirmation |
+| Shell and server access | Execution tools are behind explicit room/operator gates and can be disabled |
+| Secrets | Guardian Vault stores sensitive values; break-glass mode requires an operator PIN |
+| Audit trail | Tool calls are logged with timestamps, decisions, and redacted arguments |
+| Browser/session auth | App sessions use HttpOnly cookies rather than exposing tokens to JavaScript |
+| CI scanning | `pip-audit`, `npm audit`, and `gitleaks` run in GitHub Actions |
 
 ---
 
@@ -400,6 +425,11 @@ User message → Token Guardian → Memory Guardian → LLM
 
 | Version | Date | Highlights |
 |---------|------|-----------|
+| v1.6.35 | Apr 2026 | Documentation and downloader refresh: coherent README flow, public site copy cleanup, packaging docs updated, and desktop/download version markers advanced |
+| v1.6.33 | Apr 2026 | Vault-backed runtime wiring for Discord, WhatsApp, GitHub, Gmail, and Google Calendar; Task Guardian supports `daily:HH:MM` schedules and Zulu one-shots; Windows-safe morning briefing; Jarvis demo kit |
+| v1.6.32 | Apr 2026 | Uniform Invite Wing subscription selectors for Claude + ChatGPT/Codex; OpenClaw desk replaced by xAI Grok; Controls AI setup now surfaces Anthropic/OpenAI subscription flows and xAI API-key guidance |
+| v1.6.31 | Apr 2026 | Invite Wing ChatGPT desk becomes the Codex gateway for ChatGPT-linked OpenAI keys and `codex-mini-latest`; OpenAI Codex models route as first-class invite seats |
+| v1.6.30 | Apr 2026 | Telegram polling auto-enables on token save; Chat ID mirrored into operator/allowed lists |
 | v1.6.26 | Apr 2026 | Fix: skills (Telegram, Spotify, Google, Microsoft) now read env vars at call time not startup — credentials saved via UI now take effect without restart |
 | v1.6.25 | Apr 2026 | Telegram Chat ID field in settings UI — enables proactive alerts via send_alert skill |
 | v1.6.24 | Apr 2026 | Breakglass: inline justification on activation (`/breakglass <reason>`), exact expiry timestamp in confirmation, justification logged to audit trail |
@@ -409,10 +439,6 @@ User message → Token Guardian → Memory Guardian → LLM
 | v1.2.8 | Apr 2026 | Process watcher (auto-throttle Ollama CPU); model latency tracking; latency API |
 | v1.2.7 | Apr 2026 | system_diagnostics skill; repair-playwright scripts; Troubleshooting.md |
 | v1.2.6 | Apr 2026 | Stable Playwright browser dir; LLM tool-loop guards |
-| v1.6.33 | Apr 2026 | Vault-backed runtime wiring for Discord, WhatsApp, GitHub, Gmail, and Google Calendar; Task Guardian supports `daily:HH:MM` schedules and Zulu one-shots; Windows-safe morning briefing; Jarvis demo kit |
-| v1.6.32 | Apr 2026 | Uniform Invite Wing subscription selectors for Claude + ChatGPT/Codex; OpenClaw desk replaced by xAI Grok; Controls AI setup now surfaces Anthropic/OpenAI subscription flows and xAI API-key guidance |
-| v1.6.31 | Apr 2026 | Invite Wing ChatGPT desk becomes the Codex gateway for ChatGPT-linked OpenAI keys and `codex-mini-latest`; OpenAI Codex models route as first-class invite seats |
-| v1.6.30 | Apr 2026 | Telegram polling auto-enables on token save; Chat ID mirrored into operator/allowed lists |
 | v1.2.2 | Apr 2026 | `shell_run`; Windows live terminal; browser auto-install; Invite Wing API keys |
 | v1.1.x | Apr 2026 | Workstation operations dashboard; Round Table autonomous meetings; Guardian Tasks |
 | v1.0.x | Mar 2026 | Code interpreter; named browser sessions; knowledge base (RAG); voice quick-capture; Spawn Agent |
