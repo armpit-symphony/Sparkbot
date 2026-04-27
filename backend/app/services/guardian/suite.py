@@ -10,7 +10,19 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from . import auth, executive, meeting_recorder, memory, pending_approvals, policy, task_guardian, token_guardian, vault, verifier
+from . import (
+    auth,
+    executive,
+    improvement,
+    meeting_recorder,
+    memory,
+    pending_approvals,
+    policy,
+    task_guardian,
+    token_guardian,
+    vault,
+    verifier,
+)
 
 
 @dataclass(frozen=True)
@@ -24,6 +36,7 @@ class GuardianComponent:
 class GuardianSuite:
     auth: Any
     executive: Any
+    improvement: Any
     meeting_recorder: Any
     memory: Any
     pending_approvals: Any
@@ -37,6 +50,7 @@ class GuardianSuite:
         return (
             GuardianComponent("auth", self.auth, "Guardian authority, operator identity, break-glass, and session gating."),
             GuardianComponent("executive", self.executive, "Executive journaling and guarded execution wrappers."),
+            GuardianComponent("improvement", self.improvement, "Self-improvement proposals, outcome learning, and route adaptation."),
             GuardianComponent("meeting_recorder", self.meeting_recorder, "Meeting and decision artifact generation."),
             GuardianComponent("memory", self.memory, "Memory Guardian adapter and recall utilities."),
             GuardianComponent("pending_approvals", self.pending_approvals, "Pending approval storage for confirmation-gated actions."),
@@ -61,6 +75,7 @@ class GuardianSuite:
 guardian_suite = GuardianSuite(
     auth=auth,
     executive=executive,
+    improvement=improvement,
     meeting_recorder=meeting_recorder,
     memory=memory,
     pending_approvals=pending_approvals,

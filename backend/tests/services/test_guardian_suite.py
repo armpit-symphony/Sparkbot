@@ -8,6 +8,7 @@ def test_guardian_suite_inventory_lists_expected_components() -> None:
     assert names == {
         "auth",
         "executive",
+        "improvement",
         "meeting_recorder",
         "memory",
         "pending_approvals",
@@ -24,6 +25,7 @@ def test_get_guardian_suite_exposes_modules() -> None:
 
     assert suite.auth.create_pin_hash
     assert suite.policy.decide_tool_use
+    assert suite.improvement.propose_improvement
     assert suite.memory.memory_guardian_enabled
     assert suite.task_guardian.list_tasks
     assert suite.token_guardian.route_model

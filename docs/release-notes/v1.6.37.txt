@@ -1,27 +1,20 @@
 Sparkbot v1.6.37
+Released: April 2026
 
-Self-learning memory upgrade for Guardian Memory.
+Highlights
 
-- Hybrid recall on by default: FTS5 (BM25) lexical search combined with a
-  hashing-trick cosine embedding rerank. The embedding index runs in-process
-  with zero external dependencies, so it ships inside the desktop binary
-  without pulling in sentence-transformers or any model download.
-- Provenance + confidence are now attached to every memory event:
-  `source` (e.g. `fact.user_authored`, `tool.gmail_search`, `chat.user`) and a
-  numeric confidence score. Recall surfaces both so the model can explain why
-  a memory was used.
+- Hybrid Guardian Memory recall is on by default: FTS5 (BM25) lexical search combined with a hashing-trick cosine embedding rerank. The embedding index runs in-process with zero external dependencies, so it ships inside the desktop binary without pulling in sentence-transformers or any model download.
+- Provenance + confidence are now attached to every memory event: `source` (e.g. `fact.user_authored`, `tool.gmail_search`, `chat.user`) and a numeric confidence score. Recall surfaces both so Sparkbot can explain why a memory was used.
 - Three new built-in tools, also whitelisted for Task Guardian scheduling:
-  - `memory_recall` — hybrid recall against Guardian memory with ranked,
-    structured output (score, source, confidence, timestamp).
-  - `memory_retrieval_stats` — live in-process telemetry: writes, recalls,
-    hit rate, average and last latency, retriever mode, embed index size.
-  - `memory_reindex` — rebuild the FTS + embedding indexes from the ledger.
-    Idempotent and safe to schedule as a nightly job.
-- New env knobs:
-  - `SPARKBOT_MEMORY_GUARDIAN_RETRIEVER` (`fts` | `embed` | `hybrid`,
-    default `hybrid`)
-  - `SPARKBOT_MEMORY_GUARDIAN_ENABLE_EMBEDDINGS` (default `true`)
-- Forget paths now also clear the embedding index, keeping FTS, embeddings,
-  and ledger consistent on `forget_fact` and `clear_user_memory_events`.
-- README, capabilities guide, and downloader page refreshed for the new
-  pipeline and version.
+  - `memory_recall` — hybrid recall against Guardian memory with ranked, structured output (score, source, confidence, timestamp).
+  - `memory_retrieval_stats` — live in-process telemetry: writes, recalls, hit rate, average and last latency, retriever mode, embed index size.
+  - `memory_reindex` — rebuild the FTS + embedding indexes from the ledger. Idempotent and safe to schedule as a nightly job.
+- Added Guardian-backed self-improvement proposals so Sparkbot can capture repeated misses, missing capabilities, stale docs, uncertain behavior, and safer workflow ideas without applying changes until an operator approves.
+- Added truth and confidence guardrails: factual statements, diagnoses, statuses, and recommendations below 90% confidence must state what could be wrong and what verification is missing.
+- Added `guardian_propose_improvement` and `guardian_list_improvements` chat tools, with proposals surfaced through the Guardian suite and Spine approval queue.
+- In Guardian policy mode, write-like `shell_run` commands now require confirmation before local file, package, git, build, or destructive commands run.
+
+Operator impact
+
+- Sparkbot can act more like a governed Jarvis: it remembers with better evidence, keeps looking for ways to improve, and still applies code/config/docs/workflow changes only after approval.
+- Existing personal-mode installs still run freely unless `SPARKBOT_GUARDIAN_POLICY_ENABLED=true` is enabled.

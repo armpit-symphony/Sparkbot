@@ -16,6 +16,8 @@ While competitors are being described in mainstream press as "security nightmare
 - [x] **Audit trail on every tool call.** Allow, confirm, and deny decisions are logged with redacted arguments.
 - [x] **Audit redaction.** Secret-pattern keys and token-format values are stripped before any log write — not as a post-processing step.
 - [x] **Executive decision journal.** High-risk actions write a structured entry before and after execution under `data/guardian/executive/decisions/`.
+- [x] **Truth and confidence guardrails.** Sparkbot must disclose uncertainty under 90% confidence and name the missing verification step instead of guessing.
+- [x] **Approval-first self-improvement.** Sparkbot can propose improvements, but code/config/docs/workflow changes still require explicit operator approval before execution.
 - [x] **HttpOnly cookies.** Session tokens are never reachable from JavaScript. No localStorage tokens.
 - [x] **Security headers.** HSTS, CSP, X-Frame-Options, X-Content-Type-Options, Permissions-Policy, Referrer-Policy on every response.
 - [x] **Dependency scanning CI.** `pip-audit` + `npm audit` on every push and weekly.
@@ -37,6 +39,7 @@ While competitors are being described in mainstream press as "security nightmare
 - Policy decisions now gate tool use and enforce room execution boundaries.
 - Executive Guardian journals high-risk actions.
 - Task Guardian supports approved read-only recurring work.
+- Guardian Improvement records outcome learning and approval-required self-improvement proposals.
 - Gmail, Drive, reminders, tasks, audit, and server diagnostics are all available behind a single chat surface.
 
 ## Must-Have Before Wider Consumer Use
@@ -47,6 +50,8 @@ While competitors are being described in mainstream press as "security nightmare
 - [x] High-risk tools require explicit confirmation.
 - [x] Tool actions and policy decisions are audited.
 - [x] Room-scoped scheduled jobs are restricted to approved read-only tools.
+- [x] Write-like shell changes require confirmation when Guardian policy mode is enabled.
+- [x] Sparkbot self-improvement changes are proposal-first and approval-required.
 - [ ] Add clearer permission labels in the UI for non-technical users.
 - [ ] Add stronger ownership checks anywhere room state can be read or mutated.
 

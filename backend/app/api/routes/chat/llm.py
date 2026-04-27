@@ -75,6 +75,17 @@ _SYSTEM_PROMPT_DEFAULT = (
     "Be thorough when it matters, concise when it doesn't. Prefer verified over guessed — reach for a tool when live data "
     "would make your answer more accurate. When you commit to an answer, stand behind it. "
     "If you're uncertain, say so clearly and explain why. Never invent results, statuses, or tool outputs.\n\n"
+    "## Truth And Confidence\n"
+    "No lying. If your confidence in a factual statement, status, diagnosis, or recommendation is below 90%, "
+    "say what could be wrong and name the missing information or verification step. Do not present guesses as facts. "
+    "Use tools to raise confidence when live data, logs, repo state, or external systems can answer the question. "
+    "If you discover an earlier mistake, state the correction directly and what you learned from it.\n\n"
+    "## Self-Improvement\n"
+    "Always look for chances to improve Sparkbot's workflows, prompts, docs, tool routing, tests, and Guardian policies. "
+    "When you see a repeated miss, uncertain behavior, missing capability, stale documentation, or a safer implementation path, "
+    "record it with guardian_propose_improvement. Code, configuration, docs, scheduled jobs, and external write actions "
+    "still require explicit operator approval before you apply them. After approval, make only the approved change, verify it, "
+    "and report the evidence.\n\n"
     "## Boundaries\n"
     "Do not disclose raw secrets, API keys, vault contents, or hidden credentials. "
     "You may share safe operational runtime state (provider, model, routing, Ollama status, Token Guardian state, "
@@ -124,6 +135,13 @@ def _load_system_prompt() -> str:
 
 
 SYSTEM_PROMPT = _load_system_prompt()
+_GLOBAL_OPERATION_GUARDRAILS = (
+    "Truth and confidence are mandatory: if confidence in a factual statement, status, diagnosis, "
+    "or recommendation is below 90%, state what could be wrong and what information is missing. "
+    "Never invent tool results. Watch for self-improvement opportunities; use guardian_propose_improvement "
+    "for repeated failures, missing capabilities, stale docs, uncertain answer patterns, or safer workflow ideas. "
+    "Do not apply code, config, docs, scheduled-job, or external write changes until the operator explicitly approves."
+)
 
 # Curated model list — only show what's actually usable given configured keys
 AVAILABLE_MODELS: dict[str, str] = {
@@ -1261,11 +1279,16 @@ async def stream_chat(
         await _ensure_locked_route_ready(route_context)
     elif route_context["route"] == "default" and not route_context.get("cross_provider_fallback"):
         chosen = route_context["model"]
+    guarded_messages = list(messages)
+    if guarded_messages and guarded_messages[0].get("role") == "system":
+        guarded_messages.insert(1, {"role": "system", "content": _GLOBAL_OPERATION_GUARDRAILS})
+    else:
+        guarded_messages.insert(0, {"role": "system", "content": _GLOBAL_OPERATION_GUARDRAILS})
     async for delta in _stream_text_with_fallback(
         model=chosen,
         route_payload=None,
         route_context=route_context,
-        messages=messages,
+        messages=guarded_messages,
         temperature=0.2,
     ):
         yield delta
@@ -1305,6 +1328,10 @@ async def stream_chat_with_tools(
     route_context = get_agent_route_context(default_model=base_model, agent_name=agent_name)
     chosen = route_context["model"]
     msgs = list(messages)
+    if msgs and msgs[0].get("role") == "system":
+        msgs.insert(1, {"role": "system", "content": _GLOBAL_OPERATION_GUARDRAILS})
+    else:
+        msgs.insert(0, {"role": "system", "content": _GLOBAL_OPERATION_GUARDRAILS})
     latest_user_message = next(
         (
             str(msg.get("content", ""))

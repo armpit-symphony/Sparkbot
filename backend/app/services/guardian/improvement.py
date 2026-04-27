@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,7 @@ _DEFAULT_DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "improvement_
 _STORE_FILENAME = "outcomes.json"
 _MAX_ROOM_PATTERNS = 12
 _MAX_CONTEXT_PATTERNS = 3
+_MAX_IMPROVEMENT_PROPOSALS = 50
 
 
 def improvement_loop_enabled() -> bool:
@@ -52,6 +54,7 @@ def _load_store() -> dict[str, Any]:
         return {"model_outcomes": {}, "workflow_patterns": {}}
     payload.setdefault("model_outcomes", {})
     payload.setdefault("workflow_patterns", {})
+    payload.setdefault("improvement_proposals", [])
     return payload
 
 
@@ -357,6 +360,7 @@ def reorder_candidate_models(
 
 
 def build_promoted_workflow_context(*, user_id: str, room_id: str, query: str = "") -> str:
+    _ = query
     if not improvement_loop_enabled():
         return ""
 
@@ -384,3 +388,118 @@ def build_promoted_workflow_context(*, user_id: str, room_id: str, query: str = 
     if not lines:
         return ""
     return "## Promoted Workflow Patterns\n" + "\n".join(lines)
+
+
+def _safe_summary(value: str, *, limit: int) -> str:
+    return " ".join(str(value or "").strip().split())[:limit]
+
+
+def propose_improvement(
+    *,
+    user_id: str | None,
+    room_id: str | None,
+    summary: str,
+    evidence: str = "",
+    suggested_change: str = "",
+    risk: str = "medium",
+    source: str = "assistant",
+) -> dict[str, Any] | None:
+    """Record a governed self-improvement proposal for operator approval.
+
+    This records intent only. Code, config, or workflow changes still need an
+    explicit user approval before Sparkbot applies them with execution tools.
+    """
+    if not improvement_loop_enabled():
+        return None
+
+    cleaned_summary = _safe_summary(summary, limit=240)
+    if not cleaned_summary:
+        return None
+
+    risk_value = str(risk or "medium").strip().lower()
+    if risk_value not in {"low", "medium", "high"}:
+        risk_value = "medium"
+
+    proposal = {
+        "id": f"improve-{uuid.uuid4().hex[:12]}",
+        "status": "proposed",
+        "approval_required": True,
+        "summary": cleaned_summary,
+        "evidence": _safe_summary(evidence, limit=800),
+        "suggested_change": _safe_summary(suggested_change, limit=1200),
+        "risk": risk_value,
+        "source": _safe_summary(source, limit=80) or "assistant",
+        "user_id": str(user_id or ""),
+        "room_id": str(room_id or ""),
+        "created_at": _utc_now_iso(),
+        "updated_at": _utc_now_iso(),
+    }
+
+    store = _load_store()
+    proposals = store.setdefault("improvement_proposals", [])
+    if not isinstance(proposals, list):
+        proposals = []
+        store["improvement_proposals"] = proposals
+    proposals.insert(0, proposal)
+    del proposals[_MAX_IMPROVEMENT_PROPOSALS:]
+    _save_store(store)
+
+    try:
+        from app.services.guardian.spine import (
+            SpineSourceReference,
+            ingest_subsystem_event,
+        )
+
+        ingest_subsystem_event(
+            event_type="improvement.proposed",
+            subsystem="improvement",
+            source=SpineSourceReference(source_kind="improvement", source_ref=proposal["id"], room_id=proposal["room_id"] or None),
+            content=f"Improvement proposal needs approval: {cleaned_summary}",
+            metadata={
+                "title": cleaned_summary,
+                "summary": suggested_change or cleaned_summary,
+                "status": "awaiting_approval",
+                "approval_required": True,
+                "approval_state": "required",
+                "confidence": 0.95,
+                "tags": ["improvement", "approval"],
+            },
+        )
+    except Exception:
+        pass
+
+    return proposal
+
+
+def list_improvement_proposals(
+    *,
+    user_id: str | None = None,
+    room_id: str | None = None,
+    status: str | None = "proposed",
+    limit: int = 10,
+) -> list[dict[str, Any]]:
+    if not improvement_loop_enabled():
+        return []
+
+    store = _load_store()
+    proposals = store.get("improvement_proposals", [])
+    if not isinstance(proposals, list):
+        return []
+
+    status_filter = str(status or "").strip().lower()
+    room_filter = str(room_id or "").strip()
+    user_filter = str(user_id or "").strip()
+    rows: list[dict[str, Any]] = []
+    for item in proposals:
+        if not isinstance(item, dict):
+            continue
+        if status_filter and str(item.get("status") or "").strip().lower() != status_filter:
+            continue
+        if room_filter and str(item.get("room_id") or "") != room_filter:
+            continue
+        if user_filter and str(item.get("user_id") or "") != user_filter:
+            continue
+        rows.append(dict(item))
+        if len(rows) >= max(1, min(int(limit or 10), 50)):
+            break
+    return rows

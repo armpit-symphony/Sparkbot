@@ -104,6 +104,7 @@ Sparkbot can control the local machine it is running on. These capabilities are 
 - Output capped: 16 KB stdout + 4 KB stderr
 - Default timeout: 30 seconds (max 300 seconds)
 - Disable with `SPARKBOT_SHELL_DISABLE=true`
+- In Guardian policy mode, write-like shell commands such as file changes, package installs, builds, destructive commands, and git mutations require confirmation before execution
 
 **Example prompts:**
 - *"Run `git status` in my project folder"*
@@ -598,6 +599,17 @@ SPARKBOT_GUARDIAN_DATA_DIR=./data/guardian
 
 Each scheduled run is evaluated before commit. Bounded retries with escalation instead of silent loops.
 
+### Self-Improvement Proposals
+
+Sparkbot can record governed improvement proposals when it notices repeated misses, uncertain behavior, stale docs, missing tools, or safer workflow ideas.
+
+| Tool | Description |
+|------|-------------|
+| `guardian_propose_improvement` | Records a proposal with evidence, suggested change, risk, and approval-required status |
+| `guardian_list_improvements` | Lists pending self-improvement proposals for the room |
+
+Proposals are durable and mirrored into Guardian Spine as awaiting approval. Sparkbot must wait for explicit operator approval before applying code, config, docs, scheduled-job, or external write changes.
+
 ---
 
 ## Guardian Stack (Security)
@@ -622,6 +634,8 @@ User message → Token Guardian → Memory Guardian → LLM
 | **Policy layer** | Every tool classified read / write / execute / admin; unknown tools denied by default |
 | **Write-tool gate** | LLM cannot email/Slack/GitHub/Notion/Confluence/Calendar/Drive autonomously unless Computer Control is on or the operator PIN has opened break-glass |
 | **Computer Control** | Room-level always-on control for shell, terminal, browser writes, service actions, and comms sends; when off, these actions require the 6-digit operator PIN |
+| **Self-improvement gate** | Sparkbot can propose its own improvements, but applying code/config/docs/workflow changes requires explicit approval |
+| **Truth/confidence rule** | Statements under 90% confidence must say what could be wrong and what information or verification is missing |
 | **Executive journal** | High-risk actions written to a decision log before and after execution |
 | **Audit trail** | Every tool call logged (allow/confirm/deny) with redacted args and timestamps |
 | **Audit redaction** | Secret-pattern keys and token-format values stripped at write time |
@@ -686,6 +700,8 @@ Built-in memory tools (read-only by default; whitelisted for Task Guardian sched
 ```env
 SPARKBOT_EXECUTIVE_GUARDIAN_ENABLED=true
 SPARKBOT_TASK_GUARDIAN_ENABLED=true
+SPARKBOT_IMPROVEMENT_LOOP_ENABLED=true
+SPARKBOT_IMPROVEMENT_DATA_DIR=./data/improvement_loop
 ```
 
 ---
@@ -1484,7 +1500,7 @@ curl -b cookies.txt http://localhost:8000/api/v1/chat/system/watcher | python -m
 
 Desktop release tags and app versions are aligned on the `1.6.x` release line.
 
-For `v1.6.35`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story.
+For `v1.6.37`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together for the hybrid Guardian memory and Jarvis self-improvement release: memory provenance/confidence, retrieval introspection, confidence guardrails, Guardian improvement proposals, approval-first local changes, and aligned downloader versioning.
 
 ### How to upgrade safely
 

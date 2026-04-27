@@ -1119,9 +1119,9 @@
     =========================== -->
     <section class="section" aria-labelledby="new-heading">
       <div class="container">
-        <h2 class="section-title" id="new-heading">New in v1.6.37: Self-learning memory upgrade</h2>
+        <h2 class="section-title" id="new-heading">New in v1.6.37: memory and governed self-improvement</h2>
         <p class="section-subtitle">
-          Guardian Memory now ships a real hybrid recall pipeline. Sparkbot mixes lexical (BM25) search with an in-process embedding rerank, tags every fact with provenance and confidence, and exposes live retrieval telemetry the assistant can read back to you.
+          Guardian Memory now ships hybrid recall with provenance and confidence, while Sparkbot gains approval-first self-improvement proposals and stronger truth rules for uncertain work.
         </p>
 
         <div class="features-grid">
@@ -1141,6 +1141,24 @@
             <span class="feature-icon" role="img" aria-hidden="true">📊</span>
             <h3 class="feature-title">Self-introspection tools</h3>
             <p class="feature-desc">Three new built-in tools &mdash; <code>memory_recall</code>, <code>memory_retrieval_stats</code>, <code>memory_reindex</code> &mdash; let Sparkbot search its own memory, report hit rate and latency, and rebuild indexes. Schedulable as a nightly Task Guardian job.</p>
+          </div>
+
+          <div class="feature-card">
+            <span class="feature-icon" role="img" aria-hidden="true">🧭</span>
+            <h3 class="feature-title">Self-improvement proposals</h3>
+            <p class="feature-desc">Sparkbot can record improvement ideas when it spots repeated misses, missing capabilities, uncertain answers, or stale docs, then wait for operator approval before changing anything.</p>
+          </div>
+
+          <div class="feature-card">
+            <span class="feature-icon" role="img" aria-hidden="true">🎯</span>
+            <h3 class="feature-title">Truth and confidence</h3>
+            <p class="feature-desc">When Sparkbot is under 90% confident, it must say what could be wrong, name the missing information, and use tools or logs when verification is possible.</p>
+          </div>
+
+          <div class="feature-card">
+            <span class="feature-icon" role="img" aria-hidden="true">🛡️</span>
+            <h3 class="feature-title">Approval before changes</h3>
+            <p class="feature-desc">Guardian policy mode now confirmation-gates write-like shell commands, keeping code, config, docs, git, and package changes behind an explicit approval step.</p>
           </div>
         </div>
 

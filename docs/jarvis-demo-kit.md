@@ -93,6 +93,22 @@ Requires `SPARKBOT_TASK_GUARDIAN_WRITE_ENABLED=true`. Sparkbot still prompts for
 - Vault: comms and Google credentials can be stored as use-only secrets, with environment fallback.
 - Audit: Task Guardian records run status, verifier confidence, evidence, recommended next action, and output excerpts.
 - Recovery: failed or unverified jobs retry within a bounded budget, then pause and escalate instead of looping forever.
+- Truth rule: Sparkbot must not present guesses as facts. Any statement, status, diagnosis, or recommendation under 90% confidence has to say what could be wrong and what verification is missing.
+- Self-improvement rule: Sparkbot can propose workflow, prompt, docs, policy, or code improvements through Guardian, but must wait for explicit operator approval before applying changes.
+
+## Jarvis Self-Improvement Flow
+
+Sparkbot now treats mistakes and uncertainty as improvement signals:
+
+1. Notice a weak spot: repeated failure, uncertain answer, missing tool, stale docs, unsafe workflow, or incomplete verification.
+2. Record it with `guardian_propose_improvement`, including evidence, suggested change, and risk level.
+3. Surface the proposal in Guardian/Spine as awaiting approval.
+4. Wait for the operator to approve the exact change.
+5. Apply only the approved change with the appropriate tool, then verify and report evidence.
+
+Useful demo prompt:
+
+> "List pending Sparkbot improvement proposals, then propose one improvement for anything you think would make this room safer or more useful. Do not apply it yet."
 
 ## Marketing One-Pager
 
@@ -129,3 +145,5 @@ Phase 2, production: Postgres-backed state, HA scheduler, backups, metrics, audi
 Phase 3, scale: SDKs, mobile approvals, policy templates, SSO, SIEM, incident-response integrations.
 
 Phase 4, autonomous augmentation: bounded multi-step agents that chain allowed actions and request approvals proactively.
+
+Phase 5, governed self-improvement: Sparkbot continuously proposes concrete improvements from mistakes, low-confidence answers, and missing capabilities, then applies only approved changes with tests, docs, and audit evidence.

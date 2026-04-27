@@ -19,7 +19,8 @@ Turn `sparkbot-v2` into the unified operator and office-worker surface while int
 3. `agent-shield` policy model
 4. `Executive_Guardian` execution membrane
 5. `Task_Guardian` background and recurring work
-6. richer operator tooling
+6. Guardian Improvement loop
+7. richer operator tooling
 
 ## Phase 1: Memory Guardian
 
@@ -100,9 +101,24 @@ Current Task Guardian tool surface:
 - `guardian_run_task`
 - `guardian_pause_task`
 
+## Phase 6: Guardian Improvement Loop
+
+Implemented:
+- Outcome learning records successful and failed model/tool routes, then promotes reliable workflow patterns back into room memory.
+- Sparkbot can call `guardian_propose_improvement` when it detects repeated misses, uncertain answers, missing capabilities, stale docs, or safer workflow ideas.
+- Operators can inspect room proposals with `guardian_list_improvements`.
+- Improvement proposals are durable, marked `approval_required`, and mirrored into Guardian Spine as awaiting approval.
+- Sparkbot's global guardrails now require it to disclose uncertainty under 90% confidence and name the missing verification step.
+- In Guardian policy mode, write-like `shell_run` commands require confirmation before local file, package, git, build, or destructive commands run.
+
+Current Improvement tool surface:
+- `guardian_propose_improvement`
+- `guardian_list_improvements`
+
 ## Constraints
 
 - No blanket shell execution
 - No broad OS privilege grants
 - No repo-wide blind merges from Guardian projects
 - All risky actions must remain auditable and policy-gated
+- Self-improvement may propose changes autonomously, but applying code, config, docs, scheduled jobs, or external writes still requires explicit operator approval

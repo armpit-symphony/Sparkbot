@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -104,6 +105,7 @@ def _build_policy_registry() -> dict[str, ToolPolicy]:
         "calendar_list_events",
         "guardian_list_tasks",
         "guardian_list_runs",
+        "guardian_list_improvements",
     ):
         add(
             tool_name,
@@ -122,6 +124,7 @@ def _build_policy_registry() -> dict[str, ToolPolicy]:
         ("cancel_reminder", "reminder"),
         ("guardian_run_task", "guardian_task"),
         ("guardian_pause_task", "guardian_task"),
+        ("guardian_propose_improvement", "guardian_improvement"),
     ):
         add(
             tool_name,
@@ -266,10 +269,45 @@ def _build_policy_registry() -> dict[str, ToolPolicy]:
 
 TOOL_POLICIES = _build_policy_registry()
 READ_ONLY_SERVICE_ACTIONS = {"status", "service_status", "show_status", "logs", "log", "service_logs", "show_logs"}
+_SHELL_WRITE_RE = re.compile(
+    r"(^|[;&|]\s*)("
+    r"git\s+(add|commit|push|pull|merge|rebase|checkout|switch|reset|restore|tag)|"
+    r"(rm|del|erase|rmdir|Remove-Item|mv|move|ren|rename|cp|copy|chmod|chown|Set-Content|Add-Content|New-Item)\b|"
+    r"(npm|pnpm|yarn|pip|uv|poetry|cargo|go|docker)\s+(install|add|remove|update|upgrade|build|compose|run)|"
+    r"(python|python3|node|bash|sh|pwsh|powershell)\b.*\b(apply|write|migrate|seed|build)\b|"
+    r">\s*[^&|;]+|>>\s*[^&|;]+"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def _shell_command_is_write_like(args: dict[str, Any] | None) -> bool:
+    command = str((args or {}).get("command") or "").strip()
+    if not command:
+        return False
+    return bool(_SHELL_WRITE_RE.search(command))
 
 
 def get_tool_policy(tool_name: str, args: dict[str, Any] | None = None) -> ToolPolicy:
     args = args or {}
+    if tool_name == "shell_run":
+        if _shell_command_is_write_like(args):
+            return ToolPolicy(
+                tool_name=tool_name,
+                scope="execute",
+                resource="local_machine",
+                default_action="confirm",
+                action_type="command_exec",
+                high_risk=True,
+            )
+        return ToolPolicy(
+            tool_name=tool_name,
+            scope="read",
+            resource="local_machine",
+            default_action="allow",
+            action_type="read",
+            high_risk=False,
+        )
     if tool_name == "server_manage_service":
         action = str(args.get("action", "")).strip().lower()
         if action in READ_ONLY_SERVICE_ACTIONS:
@@ -282,7 +320,9 @@ def get_tool_policy(tool_name: str, args: dict[str, Any] | None = None) -> ToolP
                 high_risk=False,
             )
     # Check skill-provided policies before unknown→deny fallback
-    from app.services.skills import _registry as _skill_registry  # lazy import avoids circular
+    from app.services.skills import (
+        _registry as _skill_registry,  # lazy import avoids circular
+    )
     skill_pol = _skill_registry.policies.get(tool_name)
     if skill_pol:
         return ToolPolicy(tool_name=tool_name, **skill_pol)
@@ -331,6 +371,17 @@ def decide_tool_use(
             action_type=policy.action_type,
             high_risk=policy.high_risk,
             reason="Guardian policy restrictions disabled by environment.",
+        )
+
+    if tool_name == "shell_run" and policy.default_action == "confirm":
+        return PolicyDecision(
+            tool_name=tool_name,
+            scope=policy.scope,
+            resource=policy.resource,
+            action="confirm",
+            action_type=policy.action_type,
+            high_risk=policy.high_risk,
+            reason="Write-like shell command requires explicit confirmation before execution.",
         )
 
     if room_execution_allowed and not tool_name.startswith("vault_"):

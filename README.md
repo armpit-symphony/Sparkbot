@@ -427,7 +427,7 @@ User message → Token Guardian → Memory Guardian → LLM
 
 | Version | Date | Highlights |
 |---------|------|-----------|
-| v1.6.37 | Apr 2026 | Self-learning memory upgrade: hybrid recall (BM25 + in-process embedding rerank) on by default; provenance + confidence on every memory event; new `memory_recall`, `memory_retrieval_stats`, and `memory_reindex` tools (Task Guardian schedulable) |
+| v1.6.37 | Apr 2026 | Self-learning memory + governed self-improvement: hybrid Guardian recall with provenance/confidence, memory self-introspection tools, truth/confidence guardrails, approval-first improvement proposals, and write-like shell confirmation in policy mode |
 | v1.6.36 | Apr 2026 | Computer Control replaces the room execution gate; Workstation status now reflects the Controls checkbox; first-run 6-digit PIN setup/change flow for Break-glass, Vault, commands, browser writes, and comms sends |
 | v1.6.35 | Apr 2026 | Documentation and downloader refresh: coherent README flow, public site copy cleanup, packaging docs updated, and desktop/download version markers advanced |
 | v1.6.33 | Apr 2026 | Vault-backed runtime wiring for Discord, WhatsApp, GitHub, Gmail, and Google Calendar; Task Guardian supports `daily:HH:MM` schedules and Zulu one-shots; Windows-safe morning briefing; Jarvis demo kit |

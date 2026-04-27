@@ -84,3 +84,26 @@ def test_improvement_prefers_higher_scoring_model(monkeypatch, tmp_path: Path) -
     assert chosen == "claude-sonnet-4-5"
     assert reason is not None
     assert ranking[0]["model"] == "claude-sonnet-4-5"
+
+
+def test_improvement_proposals_are_recorded_for_approval(monkeypatch, tmp_path: Path) -> None:
+    _reset_improvement(monkeypatch, tmp_path)
+
+    proposal = improvement.propose_improvement(
+        user_id="user-1",
+        room_id="room-1",
+        summary="Add a verifier for deployment diagnostics.",
+        evidence="Task Guardian reported low-confidence deployment output.",
+        suggested_change="Add a deployment verifier profile and tests before trusting the workflow.",
+        risk="high",
+        source="test",
+    )
+
+    assert proposal is not None
+    assert proposal["approval_required"] is True
+    assert proposal["status"] == "proposed"
+    assert proposal["risk"] == "high"
+
+    proposals = improvement.list_improvement_proposals(user_id="user-1", room_id="room-1")
+    assert proposals[0]["id"] == proposal["id"]
+    assert "deployment verifier" in proposals[0]["suggested_change"]

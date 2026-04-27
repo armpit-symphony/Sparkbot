@@ -1525,6 +1525,63 @@ TOOL_DEFINITIONS = [
     {
         "type": "function",
         "function": {
+            "name": "guardian_propose_improvement",
+            "description": (
+                "Record a governed Sparkbot self-improvement proposal for operator approval. "
+                "Use when you notice a repeated failure, missing capability, weak workflow, "
+                "uncertain answer pattern, missing documentation, or a code/config change that "
+                "would make Sparkbot better. This does not apply the change; it creates an "
+                "approval-ready proposal first."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "summary": {
+                        "type": "string",
+                        "description": "One-sentence improvement summary.",
+                    },
+                    "evidence": {
+                        "type": "string",
+                        "description": "Observed failure, user feedback, missing info, or telemetry that supports the proposal.",
+                    },
+                    "suggested_change": {
+                        "type": "string",
+                        "description": "Concrete change Sparkbot should make after explicit operator approval.",
+                    },
+                    "risk": {
+                        "type": "string",
+                        "enum": ["low", "medium", "high"],
+                        "description": "Risk level if the proposed change is later applied.",
+                    },
+                },
+                "required": ["summary", "suggested_change"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "guardian_list_improvements",
+            "description": "List pending Sparkbot self-improvement proposals for this room.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "description": "Proposal status to list. Default: proposed.",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of proposals to return.",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "guardian_run_task",
             "description": "Run an existing Task Guardian job immediately by ID.",
             "parameters": {
@@ -4522,6 +4579,58 @@ async def _guardian_list_runs(room_id: Optional[str], limit: int = 10) -> str:
     return "Recent Task Guardian runs:\n" + "\n".join(lines)
 
 
+async def _guardian_propose_improvement(
+    *,
+    summary: str,
+    evidence: str,
+    suggested_change: str,
+    risk: str,
+    room_id: str | None,
+    user_id: str | None,
+) -> str:
+    proposal = get_guardian_suite().improvement.propose_improvement(
+        user_id=user_id,
+        room_id=room_id,
+        summary=summary,
+        evidence=evidence,
+        suggested_change=suggested_change,
+        risk=risk,
+        source="chat_tool",
+    )
+    if proposal is None:
+        return "Improvement loop is disabled or the proposal was empty."
+    return (
+        f"Improvement proposal `{proposal['id']}` recorded and awaiting operator approval.\n"
+        f"- Summary: {proposal['summary']}\n"
+        f"- Risk: {proposal['risk']}\n"
+        "- No code, config, or workflow change has been applied yet."
+    )
+
+
+async def _guardian_list_improvements(
+    *,
+    room_id: str | None,
+    user_id: str | None,
+    status: str = "proposed",
+    limit: int = 10,
+) -> str:
+    proposals = get_guardian_suite().improvement.list_improvement_proposals(
+        user_id=user_id,
+        room_id=room_id,
+        status=status or "proposed",
+        limit=limit,
+    )
+    if not proposals:
+        return "No matching Sparkbot improvement proposals."
+
+    lines = []
+    for proposal in proposals:
+        lines.append(
+            f"- [{proposal['id']}] {proposal['summary']} — {proposal['risk']} risk — {proposal['status']}"
+        )
+    return "Sparkbot improvement proposals:\n" + "\n".join(lines)
+
+
 async def _guardian_run_task(task_id: str, room_id: Optional[str], session) -> str:
     if not room_id or session is None:
         return "Task Guardian unavailable (no room/session context)."
@@ -5043,6 +5152,22 @@ async def execute_tool(
     if name == "guardian_list_runs":
         return await _guardian_list_runs(
             room_id=room_id,
+            limit=int(args.get("limit", 10)),
+        )
+    if name == "guardian_propose_improvement":
+        return await _guardian_propose_improvement(
+            summary=args.get("summary", ""),
+            evidence=args.get("evidence", ""),
+            suggested_change=args.get("suggested_change", ""),
+            risk=args.get("risk", "medium"),
+            room_id=room_id,
+            user_id=user_id,
+        )
+    if name == "guardian_list_improvements":
+        return await _guardian_list_improvements(
+            room_id=room_id,
+            user_id=user_id,
+            status=args.get("status", "proposed"),
             limit=int(args.get("limit", 10)),
         )
     if name == "guardian_run_task":
