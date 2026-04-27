@@ -59,6 +59,10 @@ The policy decision is recorded as a `policy_decision` audit entry on every tool
 
 Operators can also ask Sparkbot to run `guardian_simulate_policy` before enabling an automation. The simulator returns the tool classification, current or requested Computer Control/operator context, and the resulting policy action without executing the target tool.
 
+### Tool Guardrails
+
+Per-tool input guardrails run immediately before execution. They reject malformed payloads, empty high-risk messages, missing recipients/titles/start times, and secret-looking arguments that should be stored in Guardian Vault instead. Output guardrails run after LLM/dashboard execution and can reject unexpectedly large output or high-risk output that appears to contain secret-like material.
+
 ### Write-Tool Confirmation Gate
 
 Any action that touches an external system (email, Slack, GitHub, Notion, Confluence, Google Calendar, Google Drive) triggers a **confirmation modal in the UI before execution**. The LLM cannot bypass this. It is not optional. There is no config flag to disable it per-tool — the entire `write_external` class requires user confirmation.
@@ -82,6 +86,8 @@ Every tool call — its name, arguments, policy decision, and result — is writ
 The audit log is room-scoped and accessible to room members via the `/audit` slash command.
 
 Communication bridges also redact credentials before logging transport failures. Telegram Bot API errors are normalized so the token-bearing `/bot<TOKEN>/...` URL is never returned in logs, status responses, or Telegram-visible error text.
+
+The dashboard run timeline endpoint returns room-scoped policy/tool events with agent/model attribution and a SHA-256 audit hash so operators can export evidence without exposing raw secrets.
 
 ### Memory Guardian
 
@@ -148,6 +154,7 @@ Sparkbot v2 has completed a full internal security audit across five phases:
 6. **Least privilege.** Read-only access is always preferred. The Task Guardian only schedules read-only tools.
 7. **Secrets never in logs.** Audit redaction runs before every log write, not as a post-processing step.
 8. **Simulate before enabling.** Risky automations should be previewed with `guardian_simulate_policy` before users schedule or approve them.
+9. **Validate tool payloads.** Per-tool input and output guardrails reject unsafe payloads around the risky part of agent systems: tool execution.
 
 ---
 
@@ -155,6 +162,7 @@ Sparkbot v2 has completed a full internal security audit across five phases:
 
 | Date | Version | Scope | Report |
 |------|---------|-------|--------|
+| 2026-04-27 | v1.6.38 | Agent identity, run timeline, connector health, workflow templates, eval harness, and tool guardrails | [docs/release-notes/v1.6.38.txt](./docs/release-notes/v1.6.38.txt) |
 | 2026-04-27 | v1.6.37 | Telegram token redaction + security once-over | [SECURITY-AUDIT.md](./SECURITY-AUDIT.md) |
 | 2026-04-18 | v1.3.0 | Full codebase — auth, SSRF, tools, WebSocket, deps | [SECURITY-AUDIT.md](./SECURITY-AUDIT.md) |
 

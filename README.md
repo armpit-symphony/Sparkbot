@@ -6,7 +6,7 @@ Use it to chat, search, summarize documents, control a browser, run shell comman
 
 **Download:** [armpit-symphony.github.io/Sparkbot](https://armpit-symphony.github.io/Sparkbot/)
 
-**Current release line:** v1.6.37
+**Current release line:** v1.6.38
 
 > Sparkbot stores its app data locally. If you connect a cloud LLM provider or an external service, the text and actions needed for that provider or service are sent to that provider. Local models can run without an LLM cloud account.
 
@@ -63,7 +63,8 @@ The desktop app is the easiest path for one person. Docker and systemd deploymen
 - **Multi-model** — OpenAI, Anthropic, Google, Groq, MiniMax, OpenRouter, Ollama — switch live with `/model`
 - **Model stack** — configure Primary, two Backups, and a Heavy Hitter; Sparkbot auto-routes and falls back across providers
 - **Multi-agent rooms** — mention `@researcher`, `@coder`, `@writer`, `@analyst`, or any custom agent for a specialist response
-- **Spawn agents** — create named agents with custom system prompts from 11 specialty templates
+- **Spawn agents** — create named agents with custom system prompts and first-class identity metadata from 11 specialty templates
+- **Agent identity + kill switches** — each agent exposes owner, purpose, scopes, allowed tools, expiration, risk tier, and kill-switch state; disabled agents do not route from `@mention`
 - **Persistent memory** — Sparkbot stores facts about you and injects them into every conversation
 - **Hybrid recall** — Guardian Memory blends BM25 full-text search with an in-process embedding rerank, so Sparkbot finds relevant prior context even when you paraphrase. Provenance + confidence are tagged on every memory and surfaced to the model
 - **Self-introspection** — built-in `memory_recall`, `memory_retrieval_stats`, and `memory_reindex` tools let Sparkbot search its own ledger, report hit rate / latency, and rebuild indexes (schedulable as a nightly Task Guardian job)
@@ -109,6 +110,9 @@ The desktop app is the easiest path for one person. Docker and systemd deploymen
 - **Policy layer** — every tool classified read / write / execute / admin; unknown tools denied by default
 - **Computer Control** — room-level always-on device control; when off, commands, edits, browser writes, comms sends, Vault, and break-glass actions require the 6-digit operator PIN
 - **Write-tool confirmation** — confirmation and break-glass flows stop risky writes unless Computer Control is explicitly on
+- **Run timeline** — dashboard trace endpoint shows policy/tool events with model, agent, decision, summary, and audit hash
+- **Connector health** — dashboard endpoint reports setup state, read/write scopes, setup tests, and audit metadata
+- **Workflow templates + evals** — governed workflow templates and deterministic agent-behavior evals ship with the Guardian dashboard
 - **Guardian Vault** — encrypted secret storage; break-glass PIN required before writing secrets
 - **Audit trail** — every tool call logged with allow/confirm/deny, redacted args, and timestamps
 - **HttpOnly cookies** — session tokens never exposed to JavaScript
@@ -417,6 +421,7 @@ User message → Token Guardian → Memory Guardian → LLM
 - **[docs/skill-author-guide.md](./docs/skill-author-guide.md)** — how to write, test, and ship a skill plugin
 - **[docs/guardian-job-examples.md](./docs/guardian-job-examples.md)** — copy-paste Task Guardian job templates
 - **[docs/jarvis-demo-kit.md](./docs/jarvis-demo-kit.md)** — 9am presentation, demo script, security notes, roadmap, and pasteable Task Guardian payloads
+- **[docs/privacy-data-retention.md](./docs/privacy-data-retention.md)** — plain-language privacy and local data retention note
 - **[Troubleshooting.md](./Troubleshooting.md)** — Playwright, Ollama CPU, terminal, SmartScreen, first-run checklist
 - **[SECURITY.md](./SECURITY.md)** — security architecture
 - **[SECURITY-AUDIT.md](./SECURITY-AUDIT.md)** — full security audit (v1.3.0): findings, fixes, residual risks
@@ -431,6 +436,7 @@ User message → Token Guardian → Memory Guardian → LLM
 
 | Version | Date | Highlights |
 |---------|------|-----------|
+| v1.6.38 | Apr 2026 | Governance roadmap baseline: first-class agent identity/kill switches, run timeline API with audit hashes, connector health/scopes, workflow templates, PWA manifest, per-tool input/output guardrails, deterministic eval harness, privacy/data-retention docs, and aligned downloader versioning |
 | v1.6.37 | Apr 2026 | Self-learning memory + governed orchestration: hybrid Guardian recall with provenance/confidence, memory self-introspection tools, truth/confidence guardrails, approval-first improvement proposals, policy simulator, orchestrator docs, Telegram token-safe error handling, and write-like shell confirmation in policy mode |
 | v1.6.36 | Apr 2026 | Computer Control replaces the room execution gate; Workstation status now reflects the Controls checkbox; first-run 6-digit PIN setup/change flow for Break-glass, Vault, commands, browser writes, and comms sends |
 | v1.6.35 | Apr 2026 | Documentation and downloader refresh: coherent README flow, public site copy cleanup, packaging docs updated, and desktop/download version markers advanced |

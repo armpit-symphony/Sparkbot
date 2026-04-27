@@ -84,6 +84,7 @@ chainlit.md
 agenthub/agents/youtube/db
 backend/sparkbot_chat.db
 sparkbot.db
+sparkbot_v2.db
 backend/*.db
 backend/data/
 data/

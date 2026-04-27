@@ -21,16 +21,16 @@ Sparkbot is a local-first agent OS with enterprise-grade governance. In practica
 
 | Addition | Current state |
 |----------|---------------|
-| Agent identity + permissions | Partial: agents have names, roles, prompts, policy-routed tools, room gates, and operator controls; first-class owner/scope/expiration/risk-tier records remain roadmap. |
-| Trace viewer / run timeline | Partial: audit logs, Executive Guardian journal, Guardian Spine events, task runs, and meeting artifacts exist; a visual per-run trace UI remains roadmap. |
+| Agent identity + permissions | Shipped baseline: every agent exposes owner, purpose, scopes, allowed tools, expiration, risk tier, and kill-switch metadata; disabled agents no longer route from `@mention`. |
+| Trace viewer / run timeline | Shipped baseline: `/api/v1/chat/dashboard/runs/timeline` returns room-scoped policy/tool events with model, agent, decision, summary, and audit hash. |
 | Policy simulator | Shipped as the `guardian_simulate_policy` chat tool. |
 | Persistent approval inbox | Shipped through durable pending approvals, dashboard approval actions, and Telegram/GitHub/bridge approval flows. |
-| Agent run resume | Partial: approval-gated tool calls can resume after approval; full serialized multi-hour agent run resume remains roadmap. |
-| Tool guardrails before/after execution | Shipped baseline: policy preflight plus Executive/Verifier post-run checks for risky actions; per-tool custom validators remain roadmap. |
-| Workflow builder | Roadmap: trigger -> condition -> tool/agent -> approval -> notify -> audit templates. |
-| Mobile companion / PWA | Roadmap: mobile approvals, briefs, notifications, voice capture, and run-now controls. |
-| Connector quality | Active direction: deep scopes, health checks, setup tests, and audit metadata take priority over connector count. |
-| Evaluation harness | Partial: backend/security tests exist; broader agent-behavior regression evals remain roadmap. |
+| Agent run resume | Shipped baseline: approval-gated tool calls persist exact payloads and resume on approval; full multi-hour graph serialization remains future expansion. |
+| Tool guardrails before/after execution | Shipped baseline: per-tool input guardrails run before execution and output guardrails run after LLM/dashboard execution. |
+| Workflow builder | Shipped baseline: `/api/v1/chat/dashboard/workflows/templates` exposes trigger -> condition -> tool/agent -> approval -> notify -> audit templates. |
+| Mobile companion / PWA | Shipped baseline: public site includes PWA manifest and service worker; dashboard/bridge approval surfaces remain mobile-readable. |
+| Connector quality | Shipped baseline: `/api/v1/chat/dashboard/connectors/health` reports connector setup state, read/write scopes, setup-test flag, and audit metadata. |
+| Evaluation harness | Shipped baseline: `/api/v1/chat/dashboard/evals/agent-behavior` runs deterministic governance eval cases for tool choice, approval requirements, guardrails, and agent routing. |
 
 References used for this roadmap framing: [Okta's 2026 agent governance framing](https://www.okta.com/newsroom/press-releases/showcase-2026/), [OpenAI Agents SDK tracing guidance](https://openai.github.io/openai-agents-js/guides/tracing/), [OpenAI human-in-the-loop guidance](https://openai.github.io/openai-agents-js/guides/human-in-the-loop/), and [OpenAI guardrails guidance](https://openai.github.io/openai-agents-js/guides/guardrails/).
 
@@ -539,9 +539,26 @@ Each agent gets a full system prompt, emoji, name, and description. Spawned agen
 - Persisted in the database across restarts
 - Removable from the Controls interface (built-in agents are protected)
 
+### Agent identity and permissions
+
+Every agent now exposes first-class identity metadata:
+
+| Field | Meaning |
+|-------|---------|
+| `owner` | Accountable owner or source of the agent |
+| `purpose` | Why the agent exists and what it should do |
+| `scopes` | Work categories the agent is intended to perform |
+| `allowed_tools` | Tool families the agent is expected to use, still enforced through Guardian policy |
+| `expires_at` | Optional expiry timestamp for temporary agents |
+| `risk_tier` | Low / standard / medium / high operating risk |
+| `kill_switch` | If true, the agent is listed as disabled and `@mention` routing will not invoke it |
+
+Operators can set `SPARKBOT_DISABLED_AGENTS=researcher,coder` as a coarse kill switch, or use `SPARKBOT_AGENT_IDENTITY_JSON` for structured identity overrides.
+
 Custom agents via env var:
 ```env
 SPARKBOT_AGENTS_JSON=[{"name":"devops","emoji":"🛠","description":"DevOps specialist","system_prompt":"You are..."}]
+SPARKBOT_AGENT_IDENTITY_JSON={"devops":{"owner":"platform","scopes":["ci","diagnostics"],"allowed_tools":["read_tools"],"risk_tier":"medium","kill_switch":false}}
 ```
 
 ---
@@ -1201,10 +1218,25 @@ PUBLIC_URL=
 | `GET` | `/api/v1/chat/audit` | Recent tool audit log (room-scoped) |
 | `GET` | `/api/v1/utils/health-check/` | Health check → `true` |
 
+### Governance Dashboard
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/chat/dashboard/summary` | Dashboard summary: rooms, tasks, approvals, jobs, meetings, inbox, token routing |
+| `GET` | `/api/v1/chat/dashboard/runs/timeline` | Room-scoped run timeline with policy/tool events and audit hashes |
+| `GET` | `/api/v1/chat/dashboard/connectors/health` | Connector setup state, read/write scopes, setup-test status, audit metadata |
+| `GET` | `/api/v1/chat/dashboard/workflows/templates` | Workflow-builder templates: trigger, condition, tool/agent, approval, notification, audit |
+| `GET` | `/api/v1/chat/dashboard/evals/agent-behavior` | Deterministic governance eval harness cases |
+| `POST` | `/api/v1/chat/dashboard/approvals/{confirm_id}/approve` | Approve and resume a pending tool action |
+| `POST` | `/api/v1/chat/dashboard/approvals/{confirm_id}/deny` | Deny and discard a pending tool action |
+
 ### Agents
 
 | Method | Path | Description |
 |--------|------|-------------|
+| `GET` | `/api/v1/chat/agents` | List agents with identity, risk, scopes, allowed tools, and kill-switch state |
+| `POST` | `/api/v1/chat/agents` | Create a custom agent with identity metadata |
+| `DELETE` | `/api/v1/chat/agents/{name}` | Delete a custom agent |
 | `POST` | `/agents/{name}/invite-route` | Seat an external model with its own API key |
 
 Interactive API docs: `http://localhost:8000/docs`
@@ -1559,7 +1591,7 @@ curl -b cookies.txt http://localhost:8000/api/v1/chat/system/watcher | python -m
 
 Desktop release tags and app versions are aligned on the `1.6.x` release line.
 
-For `v1.6.37`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together for the hybrid Guardian memory, Jarvis self-improvement, Telegram redaction, and governed orchestrator release: memory provenance/confidence, retrieval introspection, confidence guardrails, Guardian improvement proposals, policy simulation, orchestrator documentation, token-safe Telegram API failures, approval-first local changes, and aligned downloader versioning.
+For `v1.6.38`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together for the governed agent-operations release: agent identity and kill switches, room-scoped run timeline evidence, connector health metadata, workflow templates, deterministic governance evals, per-tool input/output guardrails, a PWA shell for the public site, privacy/retention docs, and aligned downloader versioning.
 
 ### How to upgrade safely
 

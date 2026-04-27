@@ -134,16 +134,19 @@ Implemented:
 - Dashboard approval actions for stored confirmations.
 - Telegram/GitHub/bridge approval and denial flows.
 - Policy simulation via `guardian_simulate_policy`.
-
-Partial / roadmap:
 - First-class agent identity records: owner, purpose, scopes, allowed tools, expiration, risk tier, and kill switch.
-- Visual trace viewer for prompt, model, tool calls, approvals, handoffs, guardrails, outputs, cost, and audit hash.
-- Serializable long-running agent state that can pause for hours and resume after approval.
-- Per-tool preflight validators and post-execution output validators beyond the current policy/executive/verifier baseline.
-- No-code workflow builder templates for morning brief, PR monitor, deploy checklist, inbox triage, calendar prep, and incident response.
-- Mobile/PWA approval companion for briefs, notifications, voice capture, and run-now controls.
+- Run timeline endpoint for prompt-adjacent tool calls, policy decisions, model/agent attribution, summaries, and audit hashes.
+- Approval-gated tool resume through durable pending approvals.
+- Per-tool preflight validators and post-execution output validators.
+- Workflow-builder templates for morning brief, PR monitor, deploy checklist, inbox triage, calendar prep, and incident response.
+- Mobile/PWA companion shell for the public docs/download surface.
 - Connector quality gates: setup tests, health status, read/write scopes, and audit metadata.
-- Agent behavior evaluation harness for tool choice, approval requirements, and brief completeness.
+- Agent behavior evaluation harness for tool choice, approval requirements, guardrails, and agent routing.
+
+Future expansion:
+- Full serialized multi-hour agent graph resume beyond single pending tool calls.
+- Dedicated visual UI for the run timeline endpoint.
+- Editable workflow builder UI backed by the shipped template schema.
 
 ## Constraints
 

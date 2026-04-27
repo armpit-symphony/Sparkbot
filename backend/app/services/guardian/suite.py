@@ -20,6 +20,7 @@ from . import (
     policy,
     task_guardian,
     token_guardian,
+    tool_guardrails,
     vault,
     verifier,
 )
@@ -43,6 +44,7 @@ class GuardianSuite:
     policy: Any
     task_guardian: Any
     token_guardian: Any
+    tool_guardrails: Any
     vault: Any
     verifier: Any
 
@@ -57,6 +59,7 @@ class GuardianSuite:
             GuardianComponent("policy", self.policy, "Policy registry and tool-use decision engine."),
             GuardianComponent("task_guardian", self.task_guardian, "Scheduled Guardian tasks and run history."),
             GuardianComponent("token_guardian", self.token_guardian, "Routing telemetry and model-selection guardrails."),
+            GuardianComponent("tool_guardrails", self.tool_guardrails, "Per-tool input and output validation guardrails."),
             GuardianComponent("vault", self.vault, "Guardian Authority Vault secret storage and reveal controls."),
             GuardianComponent("verifier", self.verifier, "Output verification and post-action review utilities."),
         )
@@ -82,6 +85,7 @@ guardian_suite = GuardianSuite(
     policy=policy,
     task_guardian=task_guardian,
     token_guardian=token_guardian,
+    tool_guardrails=tool_guardrails,
     vault=vault,
     verifier=verifier,
 )

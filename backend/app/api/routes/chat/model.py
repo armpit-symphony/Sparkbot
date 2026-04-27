@@ -380,6 +380,15 @@ async def _build_controls_config(current_user: CurrentChatUser, notices: list[st
                 "emoji": "S",
                 "description": "Main everyday Sparkbot chat",
                 "is_builtin": True,
+                "identity": {
+                    "owner": "sparkbot-core",
+                    "purpose": "Main everyday Sparkbot chat",
+                    "scopes": ["chat", "tools_via_policy", "orchestration"],
+                    "allowed_tools": ["policy_registry"],
+                    "expires_at": None,
+                    "risk_tier": "standard",
+                    "kill_switch": False,
+                },
             },
             *[
                 {
@@ -387,6 +396,7 @@ async def _build_controls_config(current_user: CurrentChatUser, notices: list[st
                     "emoji": info["emoji"],
                     "description": info["description"],
                     "is_builtin": name in BUILT_IN_AGENTS,
+                    "identity": info.get("identity") or {},
                 }
                 for name, info in get_all_agents().items()
             ],
@@ -572,6 +582,7 @@ def list_agents(current_user: CurrentChatUser) -> dict:
                 "emoji": info["emoji"],
                 "description": info["description"],
                 "is_builtin": name in BUILT_IN_AGENTS,
+                "identity": info.get("identity") or {},
             }
             for name, info in get_all_agents().items()
         ]
@@ -583,6 +594,13 @@ class AgentCreate(BaseModel):
     emoji: str = Field(default="🤖", max_length=10)
     description: str = Field(default="", max_length=300)
     system_prompt: str = Field(..., min_length=10)
+    owner: str | None = Field(default=None, max_length=100)
+    purpose: str | None = Field(default=None, max_length=300)
+    scopes: list[str] | None = None
+    allowed_tools: list[str] | None = None
+    expires_at: str | None = Field(default=None, max_length=80)
+    risk_tier: str | None = Field(default=None, max_length=40)
+    kill_switch: bool = False
 
 
 @router.post("/agents", status_code=201)
@@ -612,8 +630,23 @@ def create_agent(body: AgentCreate, current_user: CurrentChatUser, session: Sess
     session.add(agent)
     session.commit()
 
-    register_agent(name, body.emoji, body.description, body.system_prompt)
-    return {"name": name, "emoji": body.emoji, "description": body.description, "is_builtin": False}
+    identity = {
+        "owner": body.owner or current_user.username,
+        "purpose": body.purpose or body.description,
+        "scopes": body.scopes or ["chat", "room_context"],
+        "allowed_tools": body.allowed_tools or ["policy_registry"],
+        "expires_at": body.expires_at,
+        "risk_tier": body.risk_tier or "standard",
+        "kill_switch": bool(body.kill_switch),
+    }
+    register_agent(name, body.emoji, body.description, body.system_prompt, identity=identity)
+    return {
+        "name": name,
+        "emoji": body.emoji,
+        "description": body.description,
+        "is_builtin": False,
+        "identity": identity,
+    }
 
 
 @router.delete("/agents/{name}", status_code=200)

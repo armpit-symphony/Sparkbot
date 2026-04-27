@@ -1739,6 +1739,13 @@ async def stream_chat_with_tools(
                             "resource": decision.resource,
                         },
                     )
+                    output_guardrail = guardian_suite.tool_guardrails.validate_tool_output(
+                        tool_name,
+                        str(result),
+                        high_risk=decision.high_risk,
+                    )
+                    if not output_guardrail.allowed:
+                        result = f"TOOL GUARDRAIL REJECTED: {output_guardrail.reason}"
                     verification = None
                     if guardian_suite.verifier.should_verify_interactive_tool_run(
                         action_type=decision.action_type,
@@ -1747,7 +1754,7 @@ async def stream_chat_with_tools(
                         verification = guardian_suite.verifier.verify_interactive_tool_run(
                             tool_name=tool_name,
                             output=str(result),
-                            execution_status="success",
+                            execution_status="success" if output_guardrail.allowed else "rejected",
                         )
 
                     # Vault-internal tools: mask plaintext in all outward-facing paths.

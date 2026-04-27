@@ -1,0 +1,17 @@
+{
+  "name": "Sparkbot",
+  "short_name": "Sparkbot",
+  "description": "Local-first agent OS with governed approvals, briefs, and workflow visibility.",
+  "start_url": "/Sparkbot/",
+  "scope": "/Sparkbot/",
+  "display": "standalone",
+  "background_color": "#0f0f0f",
+  "theme_color": "#6c63ff",
+  "icons": [
+    {
+      "src": "/Sparkbot/icon.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    }
+  ]
+}

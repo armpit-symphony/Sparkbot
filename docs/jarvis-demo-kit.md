@@ -94,6 +94,12 @@ Requires `SPARKBOT_TASK_GUARDIAN_WRITE_ENABLED=true`. Sparkbot still prompts for
 - Breakglass: privileged actions require operator PIN, scoped session TTL, justification, and audit logging.
 - Policy simulator: `guardian_simulate_policy` previews allow, confirm, deny, privileged, or privileged-reveal outcomes without executing the target tool.
 - Approval inbox: pending confirmations are durable and can be approved or denied from the dashboard, Telegram, GitHub, and bridge surfaces.
+- Agent identity: agents expose owner, purpose, scopes, allowed tools, expiration, risk tier, and kill-switch state.
+- Run timeline: the dashboard timeline endpoint provides room-scoped policy/tool events with model, agent, decision, summary, and audit hashes.
+- Connector quality: the dashboard connector-health endpoint reports setup state, read/write scopes, setup tests, and audit metadata without exposing secrets.
+- Workflow templates: the dashboard exposes governed starter templates for morning briefs, PR monitoring, deploy checklists, inbox triage, and incident response.
+- Evaluation harness: deterministic governance checks cover policy decisions, guardrails, and agent routing.
+- Tool guardrails: per-tool input checks run before execution and output checks run after LLM/dashboard execution.
 - Vault: comms and Google credentials can be stored as use-only secrets, with environment fallback.
 - Audit: Task Guardian records run status, verifier confidence, evidence, recommended next action, and output excerpts.
 - Recovery: failed or unverified jobs retry within a bounded budget, then pause and escalate instead of looping forever.
@@ -143,12 +149,12 @@ Target buyers:
 
 Phase 0, baseline: CI, health checks, basic approval queue, use-only vault secrets, demo flow.
 
-Phase 1, core Jarvis: natural-language command routing, richer connector health, run history, notifications, policy editor, risk defaults.
+Phase 1, governed agent OS: natural-language command routing, agent identity and kill switches, policy simulator, persistent approval inbox, run timeline API, connector health, workflow templates, eval harness, PWA shell, and risk defaults.
 
-Phase 2, production: first-class agent identity/permissions, Postgres-backed state, HA scheduler, backups, metrics, audit export, breakglass sessions, credential rotation.
+Phase 2, production: Postgres-backed state, HA scheduler, backups, metrics, audit export, breakglass sessions, credential rotation, and a dedicated visual trace UI.
 
-Phase 3, scale: visual trace viewer, persistent mobile approval center/PWA, policy templates, SSO, SIEM, incident-response integrations.
+Phase 3, scale: editable workflow builder UI, richer mobile approval app, policy templates, SSO, SIEM, and incident-response integrations.
 
-Phase 4, autonomous augmentation: resumable multi-step agents, workflow builder templates, per-tool pre/post validators, and proactive approval requests.
+Phase 4, autonomous augmentation: full serialized multi-hour agent graph resume, deeper connector setup tests, and proactive approval requests.
 
 Phase 5, governed self-improvement: Sparkbot continuously proposes concrete improvements from mistakes, low-confidence answers, and missing capabilities, then applies only approved changes with tests, docs, evals, and audit evidence.

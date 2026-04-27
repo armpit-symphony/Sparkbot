@@ -1,0 +1,22 @@
+Sparkbot v1.6.38
+Released: April 2026
+
+Highlights
+
+- Added first-class agent identity metadata: owner, purpose, scopes, allowed tools, expiration, risk tier, and kill-switch state.
+- Agent kill switches now affect routing: disabled agents remain visible in governance metadata but no longer route from `@mention`.
+- Added a dashboard run timeline API with room-scoped policy/tool events, agent/model attribution, summaries, and SHA-256 audit hashes.
+- Added connector health metadata for Gmail, Google Calendar, Drive, GitHub, Slack, and local filesystem: setup state, read/write scopes, setup-test flag, and audit metadata.
+- Added workflow-builder templates for morning brief, PR monitor, deploy checklist, inbox triage, and incident response.
+- Added deterministic governance evals for write-shell confirmation, unknown-tool denial, tool guardrail rejection, and built-in agent routing.
+- Added per-tool input guardrails before execution and output guardrails after LLM/dashboard tool execution.
+- Added a public PWA manifest and service worker for a mobile-friendly companion shell.
+- Added plain-language privacy and data retention documentation.
+- Advanced backend, frontend, Tauri, downloader links, public site copy, and docs to `v1.6.38`.
+
+Operator impact
+
+- Sparkbot now has concrete shipped baselines for the previously open governance roadmap items.
+- The dashboard can expose agent run evidence and connector scope metadata without revealing secrets.
+- Workflow templates are structured enough to build UI controls around them later without changing the backend shape.
+- The eval endpoint gives operators a quick regression check for core governance behavior.

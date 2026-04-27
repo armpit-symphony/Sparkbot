@@ -15,6 +15,7 @@ def test_guardian_suite_inventory_lists_expected_components() -> None:
         "policy",
         "task_guardian",
         "token_guardian",
+        "tool_guardrails",
         "vault",
         "verifier",
     }
@@ -29,5 +30,6 @@ def test_get_guardian_suite_exposes_modules() -> None:
     assert suite.memory.memory_guardian_enabled
     assert suite.task_guardian.list_tasks
     assert suite.token_guardian.route_model
+    assert suite.tool_guardrails.validate_tool_input
     assert suite.vault.vault_list
     assert suite.verifier.verify_task_run

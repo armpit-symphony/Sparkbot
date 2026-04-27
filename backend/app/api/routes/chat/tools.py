@@ -5006,6 +5006,9 @@ async def execute_tool(
     room_id: Optional[str] = None,
 ) -> str:
     """Execute a tool by name and return its string result."""
+    guardrail = get_guardian_suite().tool_guardrails.validate_tool_input(name, args)
+    if not guardrail.allowed:
+        return f"TOOL GUARDRAIL REJECTED: {guardrail.reason}"
     if name == "remember_fact":
         return await _remember_fact(args.get("fact", ""), user_id, session)
     if name == "forget_fact":

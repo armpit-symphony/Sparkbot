@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import json
 import uuid
+import hashlib
 from datetime import datetime, time, timedelta, timezone
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import func, select
 
@@ -127,6 +128,43 @@ class DashboardSummaryResponse(BaseModel):
     today: DashboardToday
 
 
+class DashboardRunTimelineEvent(BaseModel):
+    id: str
+    timestamp: str
+    room_id: str | None
+    room_name: str
+    kind: str
+    title: str
+    summary: str
+    tool_name: str | None = None
+    decision: str | None = None
+    agent_name: str | None = None
+    model: str | None = None
+    audit_hash: str
+
+
+class DashboardRunTimelineResponse(BaseModel):
+    generated_at: str
+    events: list[DashboardRunTimelineEvent]
+
+
+class DashboardConnectorHealthResponse(BaseModel):
+    generated_at: str
+    connectors: list[dict[str, Any]]
+
+
+class DashboardWorkflowTemplatesResponse(BaseModel):
+    generated_at: str
+    templates: list[dict[str, Any]]
+
+
+class DashboardEvaluationResponse(BaseModel):
+    generated_at: str
+    passed: int
+    failed: int
+    cases: list[dict[str, Any]]
+
+
 class ApprovalActionResponse(BaseModel):
     confirm_id: str
     status: str
@@ -161,9 +199,40 @@ def _approval_preview(tool_args_json: str) -> str:
     except Exception:
         payload = tool_args_json
     if isinstance(payload, dict):
-        parts = [f"{key}={value}" for key, value in payload.items()]
+        sensitive_keys = ("token", "secret", "password", "key")
+        parts = [
+            f"{key}=[REDACTED]"
+            if any(token in str(key).lower() for token in sensitive_keys)
+            else f"{key}={value}"
+            for key, value in payload.items()
+        ]
         return _excerpt(", ".join(parts), 180)
     return _excerpt(str(payload), 180)
+
+
+def _audit_hash(entry: AuditLog) -> str:
+    payload = "|".join(
+        [
+            str(entry.id),
+            entry.created_at.isoformat(),
+            entry.tool_name,
+            entry.tool_input or "",
+            entry.tool_result or "",
+        ]
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _audit_decision(entry: AuditLog) -> str | None:
+    if entry.tool_name != "policy_decision":
+        return None
+    try:
+        payload = json.loads(entry.tool_result or "{}")
+    except Exception:
+        return None
+    if isinstance(payload, dict):
+        return str(payload.get("action") or "") or None
+    return None
 
 
 def _ensure_approval_access(session: SessionDep, confirm_id: str, current_user: CurrentChatUser):
@@ -260,6 +329,13 @@ async def _execute_dashboard_approval(
             ),
             metadata={"room_id": room_id, "user_id": user_id_str, "confirmed": True, "source": "dashboard"},
         )
+        output_guardrail = guardian_suite.tool_guardrails.validate_tool_output(
+            tool_name,
+            str(result),
+            high_risk=decision.high_risk,
+        )
+        if not output_guardrail.allowed:
+            result = f"TOOL GUARDRAIL REJECTED: {output_guardrail.reason}"
         verification = None
         if guardian_suite.verifier.should_verify_interactive_tool_run(
             action_type=decision.action_type,
@@ -268,7 +344,7 @@ async def _execute_dashboard_approval(
             verification = guardian_suite.verifier.verify_interactive_tool_run(
                 tool_name=tool_name,
                 output=str(result),
-                execution_status="success",
+                execution_status="success" if output_guardrail.allowed else "rejected",
             )
 
     outward_result = mask_tool_result_for_external(tool_name, tool_args, result)
@@ -664,6 +740,87 @@ async def get_dashboard_summary(
         summary=summary,
         today=today,
     )
+
+
+@router.get("/dashboard/runs/timeline", response_model=DashboardRunTimelineResponse)
+def get_run_timeline(
+    session: SessionDep,
+    current_user: CurrentChatUser,
+    room_id: str | None = Query(default=None),
+    limit: int = Query(default=80, ge=1, le=200),
+) -> DashboardRunTimelineResponse:
+    now = datetime.now(timezone.utc)
+    rooms = get_user_chat_rooms(session, current_user.id)
+    room_map = {str(room.id): room for room in rooms}
+    allowed_room_ids = list(room_map)
+    if room_id:
+        try:
+            selected_room_id = str(uuid.UUID(room_id))
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid room_id")
+        if selected_room_id not in room_map:
+            raise HTTPException(status_code=403, detail="Not a member of this room")
+        allowed_room_ids = [selected_room_id]
+    if not allowed_room_ids:
+        return DashboardRunTimelineResponse(generated_at=now.isoformat(), events=[])
+
+    audit_entries = session.exec(
+        select(AuditLog)
+        .where(AuditLog.room_id.in_([uuid.UUID(item) for item in allowed_room_ids]))
+        .order_by(AuditLog.created_at.desc())
+        .limit(limit)
+    ).all()
+    events: list[DashboardRunTimelineEvent] = []
+    for entry in reversed(audit_entries):
+        rid = str(entry.room_id) if entry.room_id else None
+        decision = _audit_decision(entry)
+        kind = "policy" if entry.tool_name == "policy_decision" else "tool"
+        title = f"Policy decision: {decision or 'recorded'}" if kind == "policy" else f"Tool call: {entry.tool_name}"
+        events.append(
+            DashboardRunTimelineEvent(
+                id=str(entry.id),
+                timestamp=entry.created_at.isoformat(),
+                room_id=rid,
+                room_name=room_map.get(rid).name if rid in room_map else "Unknown room",
+                kind=kind,
+                title=title,
+                summary=_excerpt(entry.tool_result or entry.tool_input, 300),
+                tool_name=entry.tool_name,
+                decision=decision,
+                agent_name=entry.agent_name,
+                model=entry.model,
+                audit_hash=_audit_hash(entry),
+            )
+        )
+    return DashboardRunTimelineResponse(generated_at=now.isoformat(), events=events)
+
+
+@router.get("/dashboard/connectors/health", response_model=DashboardConnectorHealthResponse)
+def get_connector_health(current_user: CurrentChatUser) -> DashboardConnectorHealthResponse:
+    from app.services.guardian.governance import connector_health
+
+    return DashboardConnectorHealthResponse(
+        generated_at=datetime.now(timezone.utc).isoformat(),
+        connectors=connector_health(),
+    )
+
+
+@router.get("/dashboard/workflows/templates", response_model=DashboardWorkflowTemplatesResponse)
+def get_workflow_templates(current_user: CurrentChatUser) -> DashboardWorkflowTemplatesResponse:
+    from app.services.guardian.governance import workflow_templates
+
+    return DashboardWorkflowTemplatesResponse(
+        generated_at=datetime.now(timezone.utc).isoformat(),
+        templates=workflow_templates(),
+    )
+
+
+@router.get("/dashboard/evals/agent-behavior", response_model=DashboardEvaluationResponse)
+def get_agent_behavior_evals(current_user: CurrentChatUser) -> DashboardEvaluationResponse:
+    from app.services.guardian.governance import evaluation_summary
+
+    payload = evaluation_summary()
+    return DashboardEvaluationResponse(**payload)
 
 
 @router.post("/dashboard/approvals/{confirm_id}/approve", response_model=ApprovalActionResponse)
