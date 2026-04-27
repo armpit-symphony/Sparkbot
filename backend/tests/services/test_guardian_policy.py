@@ -1,6 +1,6 @@
 import pytest
 
-from app.services.guardian.policy import decide_tool_use
+from app.services.guardian.policy import decide_tool_use, simulate_tool_policy
 
 # ── Personal mode (default, SPARKBOT_GUARDIAN_POLICY_ENABLED unset / false) ──
 
@@ -76,3 +76,28 @@ def test_policy_allows_read_only_shell_commands(monkeypatch: pytest.MonkeyPatch)
     )
     assert decision.action == "allow"
     assert decision.scope == "read"
+
+
+def test_policy_simulator_returns_structured_decision(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SPARKBOT_GUARDIAN_POLICY_ENABLED", "true")
+    payload = simulate_tool_policy(
+        "gmail_send",
+        {"to": "person@example.com", "subject": "Update"},
+        room_execution_allowed=False,
+        is_operator=True,
+    )
+    assert payload["simulation_only"] is True
+    assert payload["tool_args_keys"] == ["subject", "to"]
+    assert "tool_args" not in payload
+    assert payload["classification"]["scope"] == "write"
+    assert payload["classification"]["high_risk"] is True
+    assert payload["decision"]["action"] == "privileged"
+    assert "Computer Control is off" in payload["decision"]["reason"]
+
+
+def test_policy_simulator_never_executes_unknown_tools(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SPARKBOT_GUARDIAN_POLICY_ENABLED", "true")
+    payload = simulate_tool_policy("made_up_tool", {}, room_execution_allowed=False)
+    assert payload["simulation_only"] is True
+    assert payload["classification"]["default_action"] == "deny"
+    assert payload["decision"]["action"] == "deny"

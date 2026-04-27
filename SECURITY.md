@@ -57,13 +57,17 @@ Every tool is classified into one of four scopes before it can run:
 
 The policy decision is recorded as a `policy_decision` audit entry on every tool call — allow, confirm, or deny — regardless of outcome.
 
+Operators can also ask Sparkbot to run `guardian_simulate_policy` before enabling an automation. The simulator returns the tool classification, current or requested Computer Control/operator context, and the resulting policy action without executing the target tool.
+
 ### Write-Tool Confirmation Gate
 
 Any action that touches an external system (email, Slack, GitHub, Notion, Confluence, Google Calendar, Google Drive) triggers a **confirmation modal in the UI before execution**. The LLM cannot bypass this. It is not optional. There is no config flag to disable it per-tool — the entire `write_external` class requires user confirmation.
 
-### Execution Gate
+Pending confirmations are persisted in the Guardian approval store and can be approved or denied from the dashboard, Telegram, GitHub, and bridge surfaces. Approval consumes the stored tool payload and resumes that exact action; denial discards it.
 
-Server commands and SSH operations require the room's `execution_allowed` flag to be explicitly enabled by the room owner. The flag defaults to `false` on every room. Even with the flag enabled, individual actions still go through the policy layer and confirmation modal.
+### Computer Control
+
+Local machine, browser-write, service, server, SSH, Vault, and comms-send operations require the room's `execution_allowed` flag to be explicitly enabled by the room owner or a break-glass operator PIN session. The flag defaults to `false` on every room. Even with Computer Control enabled, individual actions still go through the policy layer and confirmation modal when their policy requires it.
 
 ### Executive Guardian
 
@@ -140,9 +144,10 @@ Sparkbot v2 has completed a full internal security audit across five phases:
 2. **Confirm before mutation.** Any action that changes state in an external system requires human confirmation.
 3. **Audit everything.** Every tool call — allowed or denied — is logged with a redacted record.
 4. **Default deny.** Unknown tools are denied, not allowed. Unknown scopes resolve to `admin/deny`.
-5. **Execution gate defaults off.** Server and SSH access must be explicitly enabled per room by the room owner.
+5. **Computer Control defaults off.** Local machine, server, SSH, browser-write, Vault, and comms-send access must be explicitly enabled per room by the room owner or unlocked with operator break-glass.
 6. **Least privilege.** Read-only access is always preferred. The Task Guardian only schedules read-only tools.
 7. **Secrets never in logs.** Audit redaction runs before every log write, not as a post-processing step.
+8. **Simulate before enabling.** Risky automations should be previewed with `guardian_simulate_policy` before users schedule or approve them.
 
 ---
 

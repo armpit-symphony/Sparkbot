@@ -4,6 +4,38 @@ This document is the complete technical reference for every feature, tool, comma
 
 ---
 
+## Positioning Snapshot
+
+Sparkbot is a local-first agent OS with enterprise-grade governance. In practical terms, that means meetings, scheduled jobs, tools, approvals, secrets, memory, and audit evidence all live in one governed loop instead of separate assistant features.
+
+### Orchestrator capabilities shipped today
+
+- **Round Table meeting orchestration:** chair-led multi-agent meetings with participant manifests, owner interrupt, specialist turns, synthesis, and terminal statuses.
+- **Meeting heartbeat:** each autonomous Workstation meeting can create an hourly `meeting_heartbeat` Guardian task that continues the room until it is solved, blocked, recommendation-ready, looping, or waiting on approval/user input.
+- **Task-linked project rooms:** Guardian Tasks can open or re-open a dedicated meeting room with task context, stack bots, and a project notes artifact.
+- **Persistent approvals:** confirmation-gated actions are stored in the Guardian approval database and surfaced through the dashboard, Telegram, GitHub, and bridge flows.
+- **Policy simulation:** `guardian_simulate_policy` previews whether a proposed tool call would allow, confirm, deny, or require break-glass without executing the action.
+- **Audit and evidence:** tool decisions go through policy, Executive Guardian journaling, verifier checks for risky interactive actions, Guardian Spine queues, and redacted audit logs.
+
+### Governance roadmap alignment
+
+| Addition | Current state |
+|----------|---------------|
+| Agent identity + permissions | Partial: agents have names, roles, prompts, policy-routed tools, room gates, and operator controls; first-class owner/scope/expiration/risk-tier records remain roadmap. |
+| Trace viewer / run timeline | Partial: audit logs, Executive Guardian journal, Guardian Spine events, task runs, and meeting artifacts exist; a visual per-run trace UI remains roadmap. |
+| Policy simulator | Shipped as the `guardian_simulate_policy` chat tool. |
+| Persistent approval inbox | Shipped through durable pending approvals, dashboard approval actions, and Telegram/GitHub/bridge approval flows. |
+| Agent run resume | Partial: approval-gated tool calls can resume after approval; full serialized multi-hour agent run resume remains roadmap. |
+| Tool guardrails before/after execution | Shipped baseline: policy preflight plus Executive/Verifier post-run checks for risky actions; per-tool custom validators remain roadmap. |
+| Workflow builder | Roadmap: trigger -> condition -> tool/agent -> approval -> notify -> audit templates. |
+| Mobile companion / PWA | Roadmap: mobile approvals, briefs, notifications, voice capture, and run-now controls. |
+| Connector quality | Active direction: deep scopes, health checks, setup tests, and audit metadata take priority over connector count. |
+| Evaluation harness | Partial: backend/security tests exist; broader agent-behavior regression evals remain roadmap. |
+
+References used for this roadmap framing: [Okta's 2026 agent governance framing](https://www.okta.com/newsroom/press-releases/showcase-2026/), [OpenAI Agents SDK tracing guidance](https://openai.github.io/openai-agents-js/guides/tracing/), [OpenAI human-in-the-loop guidance](https://openai.github.io/openai-agents-js/guides/human-in-the-loop/), and [OpenAI guardrails guidance](https://openai.github.io/openai-agents-js/guides/guardrails/).
+
+---
+
 ## Table of Contents
 
 1. [Chat Features](#chat-features)
@@ -196,6 +228,18 @@ These tools are called automatically mid-conversation. A chip appears briefly in
 | `set_reminder` | ⏰ | Schedule a reminder (once/daily/weekly) to post in this room |
 | `list_reminders` | ⏰ | List pending reminders for this room |
 | `cancel_reminder` | ⏰ | Cancel a reminder by ID |
+
+### Guardian Governance
+
+| Tool | Emoji | Description |
+|------|-------|-------------|
+| `guardian_simulate_policy` | 🛡️ | Preview allow / confirm / deny / break-glass for a proposed tool call without executing it |
+| `guardian_propose_improvement` | 🛡️ | Record a governed Sparkbot self-improvement proposal for operator approval |
+| `guardian_list_improvements` | 🛡️ | List pending self-improvement proposals |
+| `guardian_list_tasks` | 🛡️ | List Task Guardian jobs for the room |
+| `guardian_list_runs` | 🛡️ | List recent Task Guardian runs |
+| `guardian_run_task` | 🛡️ | Run a Task Guardian job immediately |
+| `guardian_pause_task` | 🛡️ | Pause or resume a Task Guardian job |
 
 ### Email
 
@@ -610,6 +654,18 @@ Sparkbot can record governed improvement proposals when it notices repeated miss
 
 Proposals are durable and mirrored into Guardian Spine as awaiting approval. Sparkbot must wait for explicit operator approval before applying code, config, docs, scheduled-job, or external write changes.
 
+### Policy Simulator
+
+Use `guardian_simulate_policy` to test a proposed tool call before enabling an automation. The simulator returns the tool classification, current or requested Computer Control/operator context, and the resulting action: `allow`, `confirm`, `deny`, `privileged`, or `privileged_reveal`.
+
+Example:
+
+```text
+Use guardian_simulate_policy for gmail_send with to=alex@example.com and subject=Status update.
+```
+
+The simulator is read-only. It does not grant access, create an approval, send data, mutate files, or execute the requested tool.
+
 ---
 
 ## Guardian Stack (Security)
@@ -632,8 +688,10 @@ User message → Token Guardian → Memory Guardian → LLM
 | Control | Behavior |
 |---------|---------|
 | **Policy layer** | Every tool classified read / write / execute / admin; unknown tools denied by default |
+| **Policy simulator** | `guardian_simulate_policy` previews policy outcomes without executing the target tool |
 | **Write-tool gate** | LLM cannot email/Slack/GitHub/Notion/Confluence/Calendar/Drive autonomously unless Computer Control is on or the operator PIN has opened break-glass |
 | **Computer Control** | Room-level always-on control for shell, terminal, browser writes, service actions, and comms sends; when off, these actions require the 6-digit operator PIN |
+| **Approval inbox** | Confirmation-gated actions are persisted and can be approved/denied from the dashboard, Telegram, GitHub, and comms bridges |
 | **Self-improvement gate** | Sparkbot can propose its own improvements, but applying code/config/docs/workflow changes requires explicit approval |
 | **Truth/confidence rule** | Statements under 90% confidence must say what could be wrong and what information or verification is missing |
 | **Executive journal** | High-risk actions written to a decision log before and after execution |
@@ -1501,7 +1559,7 @@ curl -b cookies.txt http://localhost:8000/api/v1/chat/system/watcher | python -m
 
 Desktop release tags and app versions are aligned on the `1.6.x` release line.
 
-For `v1.6.37`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together for the hybrid Guardian memory, Jarvis self-improvement, and Telegram redaction release: memory provenance/confidence, retrieval introspection, confidence guardrails, Guardian improvement proposals, token-safe Telegram API failures, approval-first local changes, and aligned downloader versioning.
+For `v1.6.37`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together for the hybrid Guardian memory, Jarvis self-improvement, Telegram redaction, and governed orchestrator release: memory provenance/confidence, retrieval introspection, confidence guardrails, Guardian improvement proposals, policy simulation, orchestrator documentation, token-safe Telegram API failures, approval-first local changes, and aligned downloader versioning.
 
 ### How to upgrade safely
 

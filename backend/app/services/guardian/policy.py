@@ -106,6 +106,7 @@ def _build_policy_registry() -> dict[str, ToolPolicy]:
         "guardian_list_tasks",
         "guardian_list_runs",
         "guardian_list_improvements",
+        "guardian_simulate_policy",
     ):
         add(
             tool_name,
@@ -536,3 +537,49 @@ def decide_tool_use(
         high_risk=policy.high_risk,
         reason=f"{policy.scope.title()} access to {policy.resource} is allowed.",
     )
+
+
+def simulate_tool_policy(
+    tool_name: str,
+    args: dict[str, Any] | None = None,
+    *,
+    room_execution_allowed: bool | None = None,
+    is_operator: bool = False,
+    is_privileged: bool = False,
+) -> dict[str, Any]:
+    """Return a structured what-if policy decision without executing the tool."""
+    policy = get_tool_policy(tool_name, args)
+    decision = decide_tool_use(
+        tool_name,
+        args or {},
+        room_execution_allowed=room_execution_allowed,
+        is_operator=is_operator,
+        is_privileged=is_privileged,
+    )
+    return {
+        "simulation_only": True,
+        "policy_enabled": _policy_enabled(),
+        "tool_name": decision.tool_name,
+        "tool_args_keys": sorted(str(key) for key in (args or {}).keys()),
+        "classification": {
+            "scope": policy.scope,
+            "resource": policy.resource,
+            "default_action": policy.default_action,
+            "action_type": policy.action_type,
+            "high_risk": policy.high_risk,
+            "requires_execution_gate": policy.requires_execution_gate,
+        },
+        "context": {
+            "room_execution_allowed": room_execution_allowed,
+            "is_operator": is_operator,
+            "is_privileged": is_privileged,
+        },
+        "decision": {
+            "action": decision.action,
+            "scope": decision.scope,
+            "resource": decision.resource,
+            "action_type": decision.action_type,
+            "high_risk": decision.high_risk,
+            "reason": decision.reason,
+        },
+    }

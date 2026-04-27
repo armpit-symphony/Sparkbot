@@ -1561,6 +1561,44 @@ TOOL_DEFINITIONS = [
     {
         "type": "function",
         "function": {
+            "name": "guardian_simulate_policy",
+            "description": (
+                "Run a Guardian policy what-if check for a tool call without executing the tool. "
+                "Use before enabling automation or when the user asks whether an action would allow, "
+                "ask for confirmation, require break-glass, or be denied."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "tool_name": {
+                        "type": "string",
+                        "description": "Tool name to test, such as gmail_send, shell_run, browser_click, or github_create_issue.",
+                    },
+                    "tool_args": {
+                        "type": "object",
+                        "description": "Arguments that would be sent to the tool. No action is executed.",
+                        "additionalProperties": True,
+                    },
+                    "room_execution_allowed": {
+                        "type": "boolean",
+                        "description": "Optional override for the room Computer Control setting.",
+                    },
+                    "is_operator": {
+                        "type": "boolean",
+                        "description": "Optional what-if override for whether the requester is a Sparkbot operator.",
+                    },
+                    "is_privileged": {
+                        "type": "boolean",
+                        "description": "Optional what-if override for whether break-glass privileged mode is active.",
+                    },
+                },
+                "required": ["tool_name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "guardian_list_improvements",
             "description": "List pending Sparkbot self-improvement proposals for this room.",
             "parameters": {
@@ -4607,6 +4645,61 @@ async def _guardian_propose_improvement(
     )
 
 
+async def _guardian_simulate_policy(
+    *,
+    tool_name: str,
+    tool_args: dict,
+    room_execution_allowed: bool | None,
+    is_operator: bool | None,
+    is_privileged: bool | None,
+    room_id: str | None,
+    user_id: str | None,
+    session,
+) -> str:
+    if not tool_name:
+        return "Policy simulation unavailable: tool_name is required."
+
+    resolved_room_execution = room_execution_allowed
+    if resolved_room_execution is None and room_id and session is not None:
+        try:
+            import uuid as _uuid
+
+            from sqlmodel import select
+
+            from app.models import ChatRoom
+
+            room = session.exec(
+                select(ChatRoom).where(ChatRoom.id == _uuid.UUID(str(room_id)))
+            ).first()
+            if room is not None:
+                resolved_room_execution = bool(room.execution_allowed)
+        except Exception:
+            resolved_room_execution = None
+
+    resolved_operator = bool(is_operator) if is_operator is not None else False
+    if is_operator is None and user_id and session is not None:
+        try:
+            resolved_operator = bool(get_guardian_suite().auth.is_operator_user_id(session, user_id))
+        except Exception:
+            resolved_operator = False
+
+    resolved_privileged = bool(is_privileged) if is_privileged is not None else False
+    if is_privileged is None and user_id:
+        try:
+            resolved_privileged = bool(get_guardian_suite().auth.is_operator_privileged(str(user_id)))
+        except Exception:
+            resolved_privileged = False
+
+    payload = get_guardian_suite().policy.simulate_tool_policy(
+        tool_name,
+        tool_args if isinstance(tool_args, dict) else {},
+        room_execution_allowed=resolved_room_execution,
+        is_operator=resolved_operator,
+        is_privileged=resolved_privileged,
+    )
+    return "Guardian policy simulation (no action executed):\n" + json.dumps(payload, indent=2, sort_keys=True)
+
+
 async def _guardian_list_improvements(
     *,
     room_id: str | None,
@@ -5162,6 +5255,22 @@ async def execute_tool(
             risk=args.get("risk", "medium"),
             room_id=room_id,
             user_id=user_id,
+        )
+    if name == "guardian_simulate_policy":
+        room_execution_allowed = args.get("room_execution_allowed")
+        is_operator = args.get("is_operator")
+        is_privileged = args.get("is_privileged")
+        return await _guardian_simulate_policy(
+            tool_name=args.get("tool_name", ""),
+            tool_args=args.get("tool_args", {}) or {},
+            room_execution_allowed=(
+                room_execution_allowed if isinstance(room_execution_allowed, bool) else None
+            ),
+            is_operator=is_operator if isinstance(is_operator, bool) else None,
+            is_privileged=is_privileged if isinstance(is_privileged, bool) else None,
+            room_id=room_id,
+            user_id=user_id,
+            session=session,
         )
     if name == "guardian_list_improvements":
         return await _guardian_list_improvements(

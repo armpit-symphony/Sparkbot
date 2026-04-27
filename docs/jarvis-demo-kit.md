@@ -14,9 +14,9 @@ Sparkbot is Jarvis for work: a secure orchestration layer that runs autonomous a
 
 1. Title: Sparkbot, Jarvis for governed work.
 2. Problem: agent automation is useful but risky without policy, approvals, secrets controls, and logs.
-3. Solution: interceptor, policy engine, scheduler, memory, vault, approvals, and audit.
-4. Architecture: user trigger -> interceptor -> policy decision -> execution or approval -> audit and memory.
-5. Live demo: schedule a morning briefing, run it, attempt a risky action, approve, then show audit evidence.
+3. Solution: orchestrator rooms, policy engine, scheduler, memory, vault, approvals, and audit.
+4. Architecture: user trigger -> orchestrator -> policy simulation/decision -> execution or approval -> audit and memory.
+5. Live demo: run a morning briefing, start a Round Table, simulate a risky action, approve a gated action, then show audit evidence.
 6. Roadmap: stabilize baseline, core Jarvis features, production readiness, scale and polish.
 7. Business case: governance-first automation for engineering, SRE, and security teams.
 8. Ask: pick pilot workflows and enable production connectors.
@@ -27,10 +27,12 @@ Sparkbot is Jarvis for work: a secure orchestration layer that runs autonomous a
 2. In Controls -> Task Guardian, create the "9am Morning Brief" job using the JSON below.
 3. Click Run now or ask: "Run my morning briefing now."
 4. Show the concise result: calendar, unread email, reminders, weather if configured.
-5. Attempt a risky write action such as creating a calendar event or sending a Slack message.
-6. Show the confirmation or breakglass flow and explain that scheduled writes require explicit pre-authorization.
-7. Approve the action, then open recent Task Guardian runs and audit entries.
-8. Close with the roadmap and pilot ask.
+5. Open Workstation -> Round Table, Auto-fill Stack, and start a short project meeting to show Sparkbot acting as an orchestrator.
+6. Ask Sparkbot to simulate a risky write action before running it, for example: "Use guardian_simulate_policy for gmail_send to alex@example.com with subject Status update."
+7. Attempt a risky write action such as creating a calendar event or sending a Slack message.
+8. Show the confirmation or breakglass flow and explain that scheduled writes require explicit pre-authorization.
+9. Approve the action, then open recent Task Guardian runs and audit entries.
+10. Close with the roadmap and pilot ask.
 
 ## Pasteable Task Guardian Jobs
 
@@ -90,6 +92,8 @@ Requires `SPARKBOT_TASK_GUARDIAN_WRITE_ENABLED=true`. Sparkbot still prompts for
 
 - Default posture: read-only scheduled jobs are allowed; write jobs require opt-in configuration and confirmation.
 - Breakglass: privileged actions require operator PIN, scoped session TTL, justification, and audit logging.
+- Policy simulator: `guardian_simulate_policy` previews allow, confirm, deny, privileged, or privileged-reveal outcomes without executing the target tool.
+- Approval inbox: pending confirmations are durable and can be approved or denied from the dashboard, Telegram, GitHub, and bridge surfaces.
 - Vault: comms and Google credentials can be stored as use-only secrets, with environment fallback.
 - Audit: Task Guardian records run status, verifier confidence, evidence, recommended next action, and output excerpts.
 - Recovery: failed or unverified jobs retry within a bounded budget, then pause and escalate instead of looping forever.
@@ -117,6 +121,7 @@ Tagline: "Sparkbot - turn agents loose, safely."
 Value props:
 
 - Governance-first automation: policy decisions before actions run.
+- Local-first agent OS: meetings, scheduled jobs, tools, approvals, memory, and audit evidence run through one governed orchestrator.
 - Always-on assistant: scheduled briefings, reminders, diagnostics, and connector workflows.
 - Compliance-friendly operations: evidence, approvals, and audit history for risky actions.
 
@@ -138,12 +143,12 @@ Target buyers:
 
 Phase 0, baseline: CI, health checks, basic approval queue, use-only vault secrets, demo flow.
 
-Phase 1, core Jarvis: natural-language command routing, richer connectors, run history, notifications, policy editor, risk defaults.
+Phase 1, core Jarvis: natural-language command routing, richer connector health, run history, notifications, policy editor, risk defaults.
 
-Phase 2, production: Postgres-backed state, HA scheduler, backups, metrics, audit export, breakglass sessions, credential rotation.
+Phase 2, production: first-class agent identity/permissions, Postgres-backed state, HA scheduler, backups, metrics, audit export, breakglass sessions, credential rotation.
 
-Phase 3, scale: SDKs, mobile approvals, policy templates, SSO, SIEM, incident-response integrations.
+Phase 3, scale: visual trace viewer, persistent mobile approval center/PWA, policy templates, SSO, SIEM, incident-response integrations.
 
-Phase 4, autonomous augmentation: bounded multi-step agents that chain allowed actions and request approvals proactively.
+Phase 4, autonomous augmentation: resumable multi-step agents, workflow builder templates, per-tool pre/post validators, and proactive approval requests.
 
-Phase 5, governed self-improvement: Sparkbot continuously proposes concrete improvements from mistakes, low-confidence answers, and missing capabilities, then applies only approved changes with tests, docs, and audit evidence.
+Phase 5, governed self-improvement: Sparkbot continuously proposes concrete improvements from mistakes, low-confidence answers, and missing capabilities, then applies only approved changes with tests, docs, evals, and audit evidence.

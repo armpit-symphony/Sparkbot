@@ -11,6 +11,18 @@ Turn `sparkbot-v2` into the unified operator and office-worker surface while int
 - Policy comes before autonomy.
 - Read-only access comes before mutation.
 - Memory and routing observability come before arbitrary execution.
+- Meetings, scheduled jobs, approvals, and follow-up tasks should behave like one orchestrator, not separate assistant tricks.
+
+## Orchestrator Baseline
+
+Implemented in Sparkbot today:
+
+- Workstation Round Table creates autonomous multi-agent rooms with a chair, specialist seats, owner interrupt, and structured terminal states.
+- New meetings persist a participant manifest and can schedule an hourly `meeting_heartbeat` Guardian task to continue the room.
+- Task-linked project meetings open or re-open a dedicated room with task context, stack bots, and a project notes artifact.
+- Meeting Recorder extracts notes, decisions, and action items, then seeds Guardian/Spine follow-up tasks.
+- Pending approvals are durable and visible through the dashboard, Telegram, GitHub, and bridge approval flows.
+- `guardian_simulate_policy` gives operators a read-only what-if check before enabling a risky automation.
 
 ## Integration Order
 
@@ -114,6 +126,24 @@ Implemented:
 Current Improvement tool surface:
 - `guardian_propose_improvement`
 - `guardian_list_improvements`
+
+## Phase 7: Governance UX And Enterprise Controls
+
+Implemented:
+- Persistent approval storage and approval-waiting queues.
+- Dashboard approval actions for stored confirmations.
+- Telegram/GitHub/bridge approval and denial flows.
+- Policy simulation via `guardian_simulate_policy`.
+
+Partial / roadmap:
+- First-class agent identity records: owner, purpose, scopes, allowed tools, expiration, risk tier, and kill switch.
+- Visual trace viewer for prompt, model, tool calls, approvals, handoffs, guardrails, outputs, cost, and audit hash.
+- Serializable long-running agent state that can pause for hours and resume after approval.
+- Per-tool preflight validators and post-execution output validators beyond the current policy/executive/verifier baseline.
+- No-code workflow builder templates for morning brief, PR monitor, deploy checklist, inbox triage, calendar prep, and incident response.
+- Mobile/PWA approval companion for briefs, notifications, voice capture, and run-now controls.
+- Connector quality gates: setup tests, health status, read/write scopes, and audit metadata.
+- Agent behavior evaluation harness for tool choice, approval requirements, and brief completeness.
 
 ## Constraints
 

@@ -14,12 +14,13 @@ Use it to chat, search, summarize documents, control a browser, run shell comman
 
 ## What Sparkbot Is
 
-Sparkbot combines four pieces into one local assistant:
+Sparkbot combines five pieces into one local assistant:
 
 1. **Chat workspace** - rooms, files, memory, slash commands, meetings, and searchable history.
 2. **Computer control** - browser automation, shell commands, live terminal sessions, and code execution.
 3. **Connected work tools** - email, calendars, files, GitHub, Slack, Notion, Confluence, Jira, Linear, contacts, stocks, Spotify, YouTube, and more.
-4. **Guardian controls** - policy checks, confirmations, vault-backed secrets, break-glass access, scheduled-job verification, and audit logs.
+4. **Agent orchestrator** - multi-agent Round Table meetings, task-linked project rooms, scheduled Guardian jobs, meeting heartbeats, notes/artifacts, and owner interruptions.
+5. **Guardian controls** - policy checks, confirmations, policy simulation, persistent approvals, vault-backed secrets, break-glass access, scheduled-job verification, and audit logs.
 
 The desktop app is the easiest path for one person. Docker and systemd deployments are available when you want Sparkbot on a server.
 
@@ -82,6 +83,7 @@ The desktop app is the easiest path for one person. Docker and systemd deploymen
 - **Round Table** — autonomous multi-agent meeting room; all agents contribute without you typing between turns
 - **Company Operations** — view all Guardian Tasks across every room, active meetings, and launch project rooms in one click
 - **Task-linked meetings** — hit **Meet** on any task and a pre-seeded project room opens
+- **Orchestrated runs** — meeting rooms keep a participant manifest, run an hourly `meeting_heartbeat` Guardian task, generate structured notes/artifacts, and seed follow-up Guardian tasks from action items
 
 ### Proactive Mode & Scheduled Autonomy (Task Guardian)
 - **Scheduled jobs** — tell Sparkbot to run any tool on a schedule (hourly, daily, custom interval)
@@ -258,7 +260,7 @@ Exports a dated `.md` file with all notes, decisions, and action items.
 
 ### Roundtable
 
-The **Round Table** in the Workstation launches an autonomous multi-agent meeting. Click **Auto-fill Stack** to seat your configured models, then start the meeting. The agents take turns contributing without you needing to type between replies. You can interrupt at any time.
+The **Round Table** in the Workstation launches an autonomous multi-agent meeting. Click **Auto-fill Stack** to seat your configured models, then start the meeting. The chair frames the problem, specialists contribute, Sparkbot synthesizes the result, and the room can keep moving through a Guardian `meeting_heartbeat` task until it reaches a terminal state such as solved, blocked, recommendation ready, or needs approval. Meeting notes, decisions, action items, and project artifacts are captured so the room behaves like an orchestrator instead of a one-off chat. You can interrupt at any time.
 
 ### Scheduling Tasks (Task Guardian)
 
@@ -398,6 +400,8 @@ User message → Token Guardian → Memory Guardian → LLM
 | Area | Behavior |
 |------|----------|
 | Tool policy | Every tool is classified as read, write, execute, or admin; unknown tools are denied by default |
+| Policy simulator | `guardian_simulate_policy` previews allow / confirm / deny / break-glass outcomes without executing the tool |
+| Approval inbox | Confirmation-gated actions are stored durably and can be approved or denied from the dashboard, Telegram, GitHub, and bridge surfaces |
 | Write actions | Email, calendar writes, Slack posts, issue creation, and similar actions require confirmation |
 | Shell and server access | Execution tools are behind explicit room/operator gates and can be disabled |
 | Secrets | Guardian Vault stores sensitive values; break-glass mode requires an operator PIN |
@@ -427,7 +431,7 @@ User message → Token Guardian → Memory Guardian → LLM
 
 | Version | Date | Highlights |
 |---------|------|-----------|
-| v1.6.37 | Apr 2026 | Self-learning memory + governed self-improvement: hybrid Guardian recall with provenance/confidence, memory self-introspection tools, truth/confidence guardrails, approval-first improvement proposals, Telegram token-safe error handling, and write-like shell confirmation in policy mode |
+| v1.6.37 | Apr 2026 | Self-learning memory + governed orchestration: hybrid Guardian recall with provenance/confidence, memory self-introspection tools, truth/confidence guardrails, approval-first improvement proposals, policy simulator, orchestrator docs, Telegram token-safe error handling, and write-like shell confirmation in policy mode |
 | v1.6.36 | Apr 2026 | Computer Control replaces the room execution gate; Workstation status now reflects the Controls checkbox; first-run 6-digit PIN setup/change flow for Break-glass, Vault, commands, browser writes, and comms sends |
 | v1.6.35 | Apr 2026 | Documentation and downloader refresh: coherent README flow, public site copy cleanup, packaging docs updated, and desktop/download version markers advanced |
 | v1.6.33 | Apr 2026 | Vault-backed runtime wiring for Discord, WhatsApp, GitHub, Gmail, and Google Calendar; Task Guardian supports `daily:HH:MM` schedules and Zulu one-shots; Windows-safe morning briefing; Jarvis demo kit |
