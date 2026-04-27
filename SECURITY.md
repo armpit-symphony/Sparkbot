@@ -77,6 +77,8 @@ Every tool call — its name, arguments, policy decision, and result — is writ
 
 The audit log is room-scoped and accessible to room members via the `/audit` slash command.
 
+Communication bridges also redact credentials before logging transport failures. Telegram Bot API errors are normalized so the token-bearing `/bot<TOKEN>/...` URL is never returned in logs, status responses, or Telegram-visible error text.
+
 ### Memory Guardian
 
 Message content and tool events are stored in a packed, retrievable memory ledger per user and room. The ledger is injected selectively into prompts — only the most relevant context is retrieved, not the full history. Memory is always user-scoped and never shared across users without explicit room-sharing configuration.
@@ -148,6 +150,7 @@ Sparkbot v2 has completed a full internal security audit across five phases:
 
 | Date | Version | Scope | Report |
 |------|---------|-------|--------|
+| 2026-04-27 | v1.6.37 | Telegram token redaction + security once-over | [SECURITY-AUDIT.md](./SECURITY-AUDIT.md) |
 | 2026-04-18 | v1.3.0 | Full codebase — auth, SSRF, tools, WebSocket, deps | [SECURITY-AUDIT.md](./SECURITY-AUDIT.md) |
 
 ---

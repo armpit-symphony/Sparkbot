@@ -12,9 +12,11 @@ Highlights
 - Added Guardian-backed self-improvement proposals so Sparkbot can capture repeated misses, missing capabilities, stale docs, uncertain behavior, and safer workflow ideas without applying changes until an operator approves.
 - Added truth and confidence guardrails: factual statements, diagnoses, statuses, and recommendations below 90% confidence must state what could be wrong and what verification is missing.
 - Added `guardian_propose_improvement` and `guardian_list_improvements` chat tools, with proposals surfaced through the Guardian suite and Spine approval queue.
+- Hardened Telegram API error handling so bot tokens embedded in Telegram URLs are redacted before logs, status responses, or Telegram-facing error messages can expose them.
 - In Guardian policy mode, write-like `shell_run` commands now require confirmation before local file, package, git, build, or destructive commands run.
 
 Operator impact
 
 - Sparkbot can act more like a governed Jarvis: it remembers with better evidence, keeps looking for ways to improve, and still applies code/config/docs/workflow changes only after approval.
 - Existing personal-mode installs still run freely unless `SPARKBOT_GUARDIAN_POLICY_ENABLED=true` is enabled.
+- If an old Telegram token has already appeared in local service logs, rotate it in @BotFather and save the replacement in the Comms panel. The runtime now redacts this class of leak going forward.

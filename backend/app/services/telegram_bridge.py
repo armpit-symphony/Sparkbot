@@ -4,13 +4,15 @@ import asyncio
 import json
 import logging
 import os
+import re
 import sqlite3
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 
 import httpx
 from sqlalchemy import select
@@ -39,6 +41,9 @@ _AWAITING_PIN_TTL_SECONDS = max(60, min(int(os.getenv("SPARKBOT_PIN_PROMPT_TTL_S
 _TELEGRAM_POLL_TIMEOUT_SECONDS = max(10, min(int(os.getenv("TELEGRAM_POLL_TIMEOUT_SECONDS", "45")), 55))
 _TELEGRAM_POLL_RETRY_SECONDS = max(3, min(int(os.getenv("TELEGRAM_POLL_RETRY_SECONDS", "5")), 60))
 _TELEGRAM_UNCONFIGURED_RETRY_SECONDS = 30
+_TELEGRAM_BOT_TOKEN_RE = re.compile(r"\b\d{5,12}:[A-Za-z0-9_-]{20,}\b")
+_TELEGRAM_BOT_URL_RE = re.compile(r"(https://api\.telegram\.org/bot)([^/\s]+)")
+_TELEGRAM_TOKEN_PLACEHOLDER = "[REDACTED_TELEGRAM_BOT_TOKEN]"
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS telegram_links (
@@ -69,11 +74,11 @@ class TelegramLink:
     chat_id: str
     room_id: str
     user_id: str
-    tg_user_id: Optional[str]
-    tg_username: Optional[str]
-    tg_display_name: Optional[str]
-    pending_confirm_id: Optional[str]
-    pending_confirm_tool: Optional[str]
+    tg_user_id: str | None
+    tg_username: str | None
+    tg_display_name: str | None
+    pending_confirm_id: str | None
+    pending_confirm_tool: str | None
     created_at: str
     updated_at: str
 
@@ -84,6 +89,19 @@ def _now_iso() -> str:
 
 def _bot_token() -> str:
     return os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+
+
+def _redact_telegram_secret_text(text: object) -> str:
+    safe = str(text)
+    token = _bot_token()
+    if token:
+        safe = safe.replace(token, _TELEGRAM_TOKEN_PLACEHOLDER)
+    safe = _TELEGRAM_BOT_URL_RE.sub(r"\1" + _TELEGRAM_TOKEN_PLACEHOLDER, safe)
+    return _TELEGRAM_BOT_TOKEN_RE.sub(_TELEGRAM_TOKEN_PLACEHOLDER, safe)
+
+
+def _safe_exception_text(exc: BaseException) -> str:
+    return _redact_telegram_secret_text(str(exc))
 
 
 def _configured() -> bool:
@@ -151,7 +169,7 @@ def _set_state(key: str, value: str) -> None:
         )
 
 
-def _get_link(chat_id: str) -> Optional[TelegramLink]:
+def _get_link(chat_id: str) -> TelegramLink | None:
     _init_store()
     with _conn() as conn:
         row = conn.execute("SELECT * FROM telegram_links WHERE chat_id = ?", (chat_id,)).fetchone()
@@ -175,9 +193,9 @@ def _upsert_link(
     chat_id: str,
     room_id: str,
     user_id: str,
-    tg_user_id: Optional[str],
-    tg_username: Optional[str],
-    tg_display_name: Optional[str],
+    tg_user_id: str | None,
+    tg_username: str | None,
+    tg_display_name: str | None,
 ) -> TelegramLink:
     _init_store()
     now = _now_iso()
@@ -304,7 +322,7 @@ async def test_connection() -> dict[str, Any]:
             "linked_chats": status.get("linked_chats", 0),
         }
     except Exception as exc:
-        err = str(exc)
+        err = _safe_exception_text(exc)
         hint = ""
         if "404" in err or "Not Found" in err:
             hint = " The token is invalid or the bot was deleted — get a new token from @BotFather."
@@ -362,13 +380,26 @@ async def _telegram_api(method: str, payload: dict[str, Any]) -> Any:
     if not _configured():
         raise RuntimeError("Telegram bridge is not configured.")
     timeout = max(_TELEGRAM_POLL_TIMEOUT_SECONDS + 10, 20)
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        response = await client.post(f"{_api_base()}/{method}", json=payload)
-        response.raise_for_status()
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(f"{_api_base()}/{method}", json=payload)
+    except httpx.HTTPError as exc:
+        raise RuntimeError(f"Telegram API {method} request failed: {_safe_exception_text(exc)}") from exc
+
+    try:
         data = response.json()
+    except ValueError:
+        data = {}
+
+    if response.is_error:
+        description = data.get("description") if isinstance(data, dict) else ""
+        if not description:
+            description = response.text[:200]
+        safe_description = _redact_telegram_secret_text(description)
+        raise RuntimeError(f"Telegram API {method} failed with HTTP {response.status_code}: {safe_description}")
     if not data.get("ok"):
         description = str(data.get("description", "Unknown Telegram API error"))
-        raise RuntimeError(f"Telegram API {method} failed: {description}")
+        raise RuntimeError(f"Telegram API {method} failed: {_redact_telegram_secret_text(description)}")
     return data.get("result")
 
 
@@ -377,7 +408,7 @@ async def _send_text(chat_id: str, text: str) -> None:
         try:
             await _telegram_api("sendMessage", {"chat_id": chat_id, "text": chunk})
         except Exception as exc:
-            logger.warning("[telegram] sendMessage failed for chat %s: %s", chat_id, exc)
+            logger.warning("[telegram] sendMessage failed for chat %s: %s", chat_id, _safe_exception_text(exc))
             return
 
 
@@ -718,7 +749,7 @@ async def _handle_pin_submission(
     chat_id: str,
     link,
     pin_text: str,
-    pin_state: dict,
+    _pin_state: dict,
 ) -> None:
     """Process a PIN submitted after /breakglass or PIN prompt."""
     from app.crud import create_audit_log
@@ -893,7 +924,7 @@ async def _handle_private_message(message: dict[str, Any], get_db_session: Calla
         await _send_text(chat_id, str(result.get("text", "")))
     except Exception as exc:
         logger.exception("[telegram] Failed to process chat %s", chat_id)
-        await _send_text(chat_id, f"Sparkbot Telegram error: {exc}")
+        await _send_text(chat_id, f"Sparkbot Telegram error: {_safe_exception_text(exc)}")
     finally:
         db.close()
 
@@ -931,7 +962,7 @@ async def telegram_polling_loop(get_db_session: Callable[[], Any]) -> None:
             logger.info("[telegram] Poller stopped")
             return
         except Exception as exc:
-            err = str(exc)
+            err = _safe_exception_text(exc)
             if "404" in err or "Not Found" in err:
                 logger.error(
                     "[telegram] Bot token rejected by Telegram (404 Not Found). "
@@ -944,5 +975,5 @@ async def telegram_polling_loop(get_db_session: Callable[[], Any]) -> None:
                     "blocks long-polling. Delete it: POST https://api.telegram.org/bot{TOKEN}/deleteWebhook"
                 )
             else:
-                logger.warning("[telegram] Poller error: %s", exc)
+                logger.warning("[telegram] Poller error: %s", err)
             await asyncio.sleep(_TELEGRAM_POLL_RETRY_SECONDS)

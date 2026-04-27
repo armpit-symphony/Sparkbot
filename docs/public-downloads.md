@@ -11,7 +11,7 @@ For a release, keep these pieces aligned:
 - `README.md`
 - `docs/release-notes/vX.Y.Z.txt`
 
-The current Jarvis self-improvement release is `v1.6.37`.
+The current Jarvis self-improvement and Telegram redaction release is `v1.6.37`.
 
 ## Build `latest`
 

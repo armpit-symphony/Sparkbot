@@ -1,8 +1,8 @@
 # Sparkbot Security Audit
 
-**Audit date:** 2026-04-18  
-**Version audited:** v1.2.9  
-**Scope:** Full codebase — backend, frontend, skills, WebSocket, auth, deps  
+**Audit date:** 2026-04-27
+**Version audited:** v1.6.37
+**Scope:** Full codebase — backend, frontend, skills, WebSocket, auth, deps, communication bridges
 **Methodology:** Static code analysis + known AI assistant vulnerability class review
 
 ---
@@ -13,11 +13,27 @@
 |----------|-------|-------------------|
 | CRITICAL | 0 | — |
 | HIGH | 2 | 2 (SSRF in fetch_url and knowledge_base) |
-| MEDIUM | 2 | 2 (knowledge base isolation, Sentry data leak) |
+| MEDIUM | 3 | 3 (knowledge base isolation, Sentry data leak, Telegram token-safe errors) |
 | LOW | 1 | 0 (npm dev toolchain vulns, no runtime impact) |
 | INFO | 7 | n/a (good practices documented) |
 
-All HIGH and MEDIUM findings were fixed as part of this audit.
+All HIGH and MEDIUM findings were fixed as part of this audit. The April 27, 2026 pass also fixed Telegram bot token exposure in exception text.
+
+---
+
+## MEDIUM — Telegram Bot Token Exposure In Exception Text (FIXED)
+
+**Location:** `backend/app/services/telegram_bridge.py`
+
+**Description:** Telegram Bot API URLs include the bot token in the path (`/bot<TOKEN>/...`). When `httpx` raised or formatted request failures, the exception text could include the full URL. Poller logs and Telegram-facing error replies could therefore expose the token if a request failed.
+
+**Fix applied:**
+- Added Telegram-specific redaction for current bot tokens, Telegram token-shaped values, and Telegram Bot API URLs.
+- Stopped using `raise_for_status()` for Telegram calls so HTTP failures are converted into controlled, token-safe `RuntimeError`s.
+- Routed Telegram poller logs, send failures, status errors, and chat-visible exception text through the same redaction helper.
+- Added regression tests proving Telegram API HTTP failures do not include the token.
+
+**Operator action:** If a token appeared in old local service logs, rotate it in @BotFather and save the replacement in the Sparkbot Comms panel.
 
 ---
 

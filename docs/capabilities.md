@@ -721,6 +721,7 @@ TELEGRAM_POLL_RETRY_SECONDS=5
 - Each private Telegram chat maps to a dedicated Sparkbot room
 - `/approve` or `/deny` resolves pending tool confirmations
 - Reminders and Task Guardian results fan out to linked Telegram chats
+- Telegram API errors redact bot tokens from logs and user-facing failure text. If a token has already appeared in service logs, rotate it in @BotFather and paste the replacement in the Comms panel.
 
 ### Discord
 ```env
@@ -1500,7 +1501,7 @@ curl -b cookies.txt http://localhost:8000/api/v1/chat/system/watcher | python -m
 
 Desktop release tags and app versions are aligned on the `1.6.x` release line.
 
-For `v1.6.37`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together for the hybrid Guardian memory and Jarvis self-improvement release: memory provenance/confidence, retrieval introspection, confidence guardrails, Guardian improvement proposals, approval-first local changes, and aligned downloader versioning.
+For `v1.6.37`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together for the hybrid Guardian memory, Jarvis self-improvement, and Telegram redaction release: memory provenance/confidence, retrieval introspection, confidence guardrails, Guardian improvement proposals, token-safe Telegram API failures, approval-first local changes, and aligned downloader versioning.
 
 ### How to upgrade safely
 

@@ -1,7 +1,7 @@
 """Tests for Guardian Auth (break-glass) and Guardian Vault."""
 import asyncio
-from datetime import timedelta
 import time
+from datetime import timedelta
 from uuid import UUID
 
 import pytest
@@ -71,7 +71,11 @@ class TestVerifyPin:
     def test_persisted_pin_hash_is_used(self, monkeypatch, tmp_path):
         monkeypatch.delenv("SPARKBOT_OPERATOR_PIN_HASH", raising=False)
         monkeypatch.setenv("SPARKBOT_GUARDIAN_DATA_DIR", str(tmp_path))
-        from app.services.guardian.auth import pin_configured, set_operator_pin, verify_pin
+        from app.services.guardian.auth import (
+            pin_configured,
+            set_operator_pin,
+            verify_pin,
+        )
 
         set_operator_pin(user_id="user1", new_pin="123456", new_pin_confirm="123456")
 
@@ -138,7 +142,11 @@ class TestFailedAttempts:
         auth_module._FAILED_ATTEMPTS.clear()
 
     def test_lockout_after_max_attempts(self, monkeypatch):
-        from app.services.guardian.auth import create_pin_hash, is_locked_out, verify_pin
+        from app.services.guardian.auth import (
+            create_pin_hash,
+            is_locked_out,
+            verify_pin,
+        )
         pin_hash = create_pin_hash("correct")
         monkeypatch.setenv("SPARKBOT_OPERATOR_PIN_HASH", pin_hash)
         monkeypatch.setenv("SPARKBOT_PIN_MAX_ATTEMPTS", "3")
@@ -148,7 +156,11 @@ class TestFailedAttempts:
         assert is_locked_out("lockout_user") is True
 
     def test_no_lockout_before_max_attempts(self, monkeypatch):
-        from app.services.guardian.auth import create_pin_hash, is_locked_out, verify_pin
+        from app.services.guardian.auth import (
+            create_pin_hash,
+            is_locked_out,
+            verify_pin,
+        )
         pin_hash = create_pin_hash("correct")
         monkeypatch.setenv("SPARKBOT_OPERATOR_PIN_HASH", pin_hash)
         monkeypatch.setenv("SPARKBOT_PIN_MAX_ATTEMPTS", "5")
@@ -193,7 +205,10 @@ class TestPrivilegedSession:
 
     def test_expired_session_returns_none(self, monkeypatch):
         monkeypatch.setenv("SPARKBOT_BREAKGLASS_TTL_SECONDS", "1")
-        from app.services.guardian.auth import get_active_session, open_privileged_session
+        from app.services.guardian.auth import (
+            get_active_session,
+            open_privileged_session,
+        )
         open_privileged_session("user_c", "user_c")
         time.sleep(1.1)
         assert get_active_session("user_c") is None
@@ -281,6 +296,63 @@ class TestTelegramAwaitingPin:
         assert "chat-1" not in telegram_bridge._AWAITING_PIN
 
 
+class TestTelegramSecretRedaction:
+    def test_redacts_bot_token_from_telegram_urls(self, monkeypatch):
+        from app.services import telegram_bridge
+
+        token = "123456789:abcdefghijklmnopqrstuvwxyzABCDE"
+        monkeypatch.setenv("TELEGRAM_BOT_TOKEN", token)
+
+        redacted = telegram_bridge._redact_telegram_secret_text(
+            f"GET https://api.telegram.org/bot{token}/getUpdates failed"
+        )
+
+        assert token not in redacted
+        assert "[REDACTED_TELEGRAM_BOT_TOKEN]" in redacted
+
+    def test_telegram_api_http_error_does_not_expose_token(self, monkeypatch):
+        from app.services import telegram_bridge
+
+        token = "123456789:abcdefghijklmnopqrstuvwxyzABCDE"
+        seen_urls: list[str] = []
+        monkeypatch.setenv("TELEGRAM_BOT_TOKEN", token)
+
+        class _Response:
+            status_code = 404
+            is_error = True
+            text = "Not Found"
+
+            def json(self):
+                return {"ok": False, "description": "Not Found"}
+
+        class _Client:
+            def __init__(self, timeout):
+                self.timeout = timeout
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+            async def post(self, url, json):
+                seen_urls.append(url)
+                return _Response()
+
+        monkeypatch.setattr(telegram_bridge.httpx, "AsyncClient", _Client)
+
+        async def _run() -> None:
+            await telegram_bridge._telegram_api("getUpdates", {})
+
+        with pytest.raises(RuntimeError) as excinfo:
+            asyncio.run(_run())
+
+        assert seen_urls and token in seen_urls[0]
+        assert token not in str(excinfo.value)
+        assert "[REDACTED_TELEGRAM_BOT_TOKEN]" not in str(excinfo.value)
+        assert "Telegram API getUpdates failed with HTTP 404" in str(excinfo.value)
+
+
 class TestTelegramOperatorLinking:
     def test_operator_chat_maps_to_operator_user(self, monkeypatch, tmp_path):
         from app.services import telegram_bridge
@@ -334,7 +406,7 @@ class TestTelegramOperatorLinking:
         monkeypatch.setenv("SPARKBOT_OPERATOR_USERNAMES", "sparkbot-user")
         sent_messages: list[str] = []
 
-        async def _fake_send_text(chat_id: str, text: str) -> None:
+        async def _fake_send_text(_chat_id: str, text: str) -> None:
             sent_messages.append(text)
 
         monkeypatch.setattr(telegram_bridge, "_send_text", _fake_send_text)
@@ -460,7 +532,8 @@ class TestVaultEncryptionRoundTrip:
     def test_raw_db_does_not_contain_plaintext(self, vault_env, tmp_path):
         """Verify the raw SQLite DB does not store plaintext values."""
         import sqlite3
-        from app.services.guardian.vault import vault_add, _db_path
+
+        from app.services.guardian.vault import _db_path, vault_add
         vault_add("enc_test", "my_very_secret_value", operator="op1")
         conn = sqlite3.connect(_db_path())
         row = conn.execute(

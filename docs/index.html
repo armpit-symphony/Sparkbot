@@ -1119,9 +1119,9 @@
     =========================== -->
     <section class="section" aria-labelledby="new-heading">
       <div class="container">
-        <h2 class="section-title" id="new-heading">New in v1.6.37: memory and governed self-improvement</h2>
+        <h2 class="section-title" id="new-heading">New in v1.6.37: memory, governed self-improvement, and safer comms</h2>
         <p class="section-subtitle">
-          Guardian Memory now ships hybrid recall with provenance and confidence, while Sparkbot gains approval-first self-improvement proposals and stronger truth rules for uncertain work.
+          Guardian Memory now ships hybrid recall with provenance and confidence, while Sparkbot gains approval-first self-improvement proposals, stronger truth rules for uncertain work, and token-safe Telegram errors.
         </p>
 
         <div class="features-grid">
@@ -1159,6 +1159,12 @@
             <span class="feature-icon" role="img" aria-hidden="true">🛡️</span>
             <h3 class="feature-title">Approval before changes</h3>
             <p class="feature-desc">Guardian policy mode now confirmation-gates write-like shell commands, keeping code, config, docs, git, and package changes behind an explicit approval step.</p>
+          </div>
+
+          <div class="feature-card">
+            <span class="feature-icon" role="img" aria-hidden="true">🔐</span>
+            <h3 class="feature-title">Telegram token redaction</h3>
+            <p class="feature-desc">Telegram API failures now redact bot tokens before logs, status responses, or chat-visible error text can expose credentials. Rotate any token that appeared in old service logs.</p>
           </div>
         </div>
 
