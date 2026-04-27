@@ -23,6 +23,11 @@ node_modules/
 /blob-report/
 /playwright/.cache/
 /coverage
+/tmp/
+backend/.pytest-basetemp/
+backend/.pytest-run-tmp/
+backend/.pytest-tmp/
+backend/testtmp/
 
 # Next.js
 /.next/
@@ -78,6 +83,7 @@ chainlit.md
 # Data and databases
 agenthub/agents/youtube/db
 backend/sparkbot_chat.db
+sparkbot.db
 backend/*.db
 backend/data/
 data/

@@ -14,7 +14,7 @@ const tabsConfig = [
 
 function SparkbotOpsSettings() {
   const readinessItems = [
-    "Execution gate and approval visibility are now room-scoped and exposed in Sparkbot DM controls.",
+    "Computer Control, operator PIN setup, and approval visibility are room-scoped and exposed in Sparkbot DM controls.",
     "Task Guardian can schedule approved read-only recurring work such as inbox digests and diagnostics.",
     "Policy decisions and tool actions are audited for review before broader consumer rollout.",
     "Next launch work: onboarding copy, friendlier first-run defaults, and admin polish for non-technical users.",
@@ -44,7 +44,7 @@ function SparkbotOpsSettings() {
       <div className="rounded-xl border p-4">
         <h3 className="text-sm font-semibold">Where to manage it</h3>
         <p className="mt-2 text-sm text-muted-foreground">
-          Open Sparkbot DM and use the gear icon in the header to manage execution gate, recent approval decisions,
+          Open Sparkbot DM and use the gear icon in the header to manage Computer Control, the operator PIN, recent approval decisions,
           and Task Guardian schedules for the room.
         </p>
         <div className="mt-3">

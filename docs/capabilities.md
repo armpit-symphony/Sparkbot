@@ -95,7 +95,7 @@ Type `/` in the chat input to get autocomplete.
 
 ## Computer Control
 
-Sparkbot can control the local machine it is running on. These capabilities are available in the desktop app and on any self-hosted server where the execution gate is enabled.
+Sparkbot can control the local machine it is running on. These capabilities are available in the desktop app and on any self-hosted server where Computer Control is enabled or a break-glass PIN session is active.
 
 ### Shell (`shell_run`)
 
@@ -522,6 +522,8 @@ Three capability cards visible in the Workstation:
 - **Terminal** — interactive terminal panel (click Connect to start session)
 - **Browser** — open URLs, fill forms, click, save sessions
 
+The Workstation Computer Control card mirrors Sparkbot Controls: **Always on** means the room checkbox is enabled, and **PIN gated** means Sparkbot will ask for break-glass PIN authorization before risky commands, edits, browser writes, vault access, or comms sends.
+
 ### Round Table
 
 Launch a multi-agent autonomous meeting room. Features:
@@ -618,8 +620,8 @@ User message → Token Guardian → Memory Guardian → LLM
 | Control | Behavior |
 |---------|---------|
 | **Policy layer** | Every tool classified read / write / execute / admin; unknown tools denied by default |
-| **Write-tool gate** | LLM cannot email/Slack/GitHub/Notion/Confluence/Calendar/Drive autonomously — confirmation modal required |
-| **Execution gate** | Server commands and shell access require the room owner to explicitly enable; defaults off per room |
+| **Write-tool gate** | LLM cannot email/Slack/GitHub/Notion/Confluence/Calendar/Drive autonomously unless Computer Control is on or the operator PIN has opened break-glass |
+| **Computer Control** | Room-level always-on control for shell, terminal, browser writes, service actions, and comms sends; when off, these actions require the 6-digit operator PIN |
 | **Executive journal** | High-risk actions written to a decision log before and after execution |
 | **Audit trail** | Every tool call logged (allow/confirm/deny) with redacted args and timestamps |
 | **Audit redaction** | Secret-pattern keys and token-format values stripped at write time |
@@ -634,10 +636,11 @@ User message → Token Guardian → Memory Guardian → LLM
 
 PIN-gated privileged mode for operator workflows.
 
-1. Type `/breakglass` in chat
-2. Enter your operator PIN when prompted
-3. Sparkbot resumes the waiting privileged action
-4. Type `/breakglass close` to end the session
+1. Set the 6-digit operator PIN once in Sparkbot Controls
+2. Type `/breakglass` in chat
+3. Enter your operator PIN when prompted
+4. Sparkbot resumes the waiting privileged action
+5. Type `/breakglass close` to end the session
 
 All sessions are logged.
 
@@ -649,7 +652,7 @@ Encrypted secret storage. Break-glass activation required before writing secrets
 
 ```env
 SPARKBOT_OPERATOR_USERNAMES=your-username   # blank = any authenticated user is operator
-SPARKBOT_OPERATOR_PIN_HASH=...              # generate: see .env.example
+SPARKBOT_OPERATOR_PIN_HASH=...              # optional; Controls can create/change the local PIN hash
 SPARKBOT_VAULT_KEY=...                      # generate: see .env.example
 ```
 
@@ -899,9 +902,9 @@ V1_LOCAL_MODE=true                      # desktop app mode
 
 ```env
 SPARKBOT_OPERATOR_USERNAMES=            # blank = open mode (any user is operator)
-SPARKBOT_OPERATOR_PIN_HASH=             # generate: see .env.example
+SPARKBOT_OPERATOR_PIN_HASH=             # optional; Controls can create/change the local PIN hash
 SPARKBOT_VAULT_KEY=                     # generate: see .env.example
-SPARKBOT_GUARDIAN_POLICY_ENABLED=false  # false = personal mode (all tools allowed)
+SPARKBOT_GUARDIAN_POLICY_ENABLED=true   # true = Computer Control/PIN policy enforced
 SPARKBOT_EXECUTIVE_GUARDIAN_ENABLED=true
 SPARKBOT_GUARDIAN_DATA_DIR=./data/guardian
 ```

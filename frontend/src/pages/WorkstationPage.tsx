@@ -122,6 +122,11 @@ interface WorkstationOverview {
   meetings: Array<{ id: string; name: string; description?: string; updated_at: string | null; created_at: string | null }>
 }
 
+interface ComputerControlRoomStatus {
+  enabled: boolean | null
+  pinConfigured: boolean | null
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function resolveInviteStation(
@@ -2416,10 +2421,14 @@ function SeatPickerModal({
 interface ComputerControlPanelProps {
   onClose: () => void
   onOpenTerminal: () => void
+  status: ComputerControlRoomStatus
 }
 
-function ComputerControlPanel({ onClose, onOpenTerminal }: ComputerControlPanelProps) {
+function ComputerControlPanel({ onClose, onOpenTerminal, status }: ComputerControlPanelProps) {
   const ACCENT = "#38bdf8"
+  const enabled = status.enabled === true
+  const badgeText = enabled ? "Always on" : "PIN gated"
+  const badgeColor = enabled ? "#4ade80" : "#fbbf24"
 
   const cap = (
     icon: React.ReactNode,
@@ -2568,14 +2577,39 @@ function ComputerControlPanel({ onClose, onOpenTerminal }: ComputerControlPanelP
       <div style={{ flex: 1, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
         <p style={{ fontSize: 11, color: "#64748b", margin: 0, lineHeight: 1.65 }}>
           Sparkbot can control your local machine. Just ask it in chat — or use the terminal panel
-          to interact live. All three capabilities are active when this app is running.
+          to interact live. This follows the Computer Control checkbox in Sparkbot Controls.
         </p>
+
+        <div
+          style={{
+            border: `1px solid ${badgeColor}44`,
+            borderRadius: 8,
+            padding: "10px 12px",
+            backgroundColor: enabled ? "rgba(74,222,128,0.08)" : "rgba(251,191,36,0.08)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+            <span style={{ fontSize: 10, color: "#94a3b8", letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700 }}>
+              Controls status
+            </span>
+            <span style={{ fontSize: 9, color: badgeColor, border: `1px solid ${badgeColor}44`, borderRadius: 3, padding: "1px 7px", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+              {badgeText}
+            </span>
+          </div>
+          <p style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.6, margin: "8px 0 0" }}>
+            {enabled
+              ? "Computer Control is on. Sparkbot can run shell, terminal, browser, and comms actions without PIN prompts in its DM room."
+              : status.pinConfigured === false
+                ? "Computer Control is off and no PIN is configured yet. Open Controls to set the 6-digit PIN before privileged actions."
+                : "Computer Control is off. Sparkbot will ask for the break-glass PIN before commands, edits, browser writes, vault access, or comms sends."}
+          </p>
+        </div>
 
         {cap(
           <Code2 size={14} />,
           "Shell Commands",
-          "Active",
-          "#4ade80",
+          badgeText,
+          badgeColor,
           "Sparkbot runs PowerShell (Windows) or bash commands directly on this machine. Results stream back into chat. Working directory persists per conversation.",
           "Ask Sparkbot",
           () => {
@@ -2588,8 +2622,8 @@ function ComputerControlPanel({ onClose, onOpenTerminal }: ComputerControlPanelP
         {cap(
           <Terminal size={14} />,
           "Live Terminal",
-          "Active",
-          "#4ade80",
+          badgeText,
+          badgeColor,
           "An interactive xterm.js terminal connected to a live PTY on this machine. Sparkbot can also type into open terminal sessions via terminal_send.",
           "Open Terminal",
           () => {
@@ -2602,8 +2636,8 @@ function ComputerControlPanel({ onClose, onOpenTerminal }: ComputerControlPanelP
         {cap(
           <Globe size={14} />,
           "Browser Control",
-          "Active",
-          "#4ade80",
+          badgeText,
+          badgeColor,
           "Sparkbot can open a Chromium browser, navigate pages, read content, fill forms, and click buttons. On first use, Chromium downloads automatically (~150 MB).",
           "Ask Sparkbot",
           () => { onClose() },
@@ -3388,17 +3422,39 @@ export default function WorkstationPage() {
   const [showNewProject, setShowNewProject] = useState(false)
   const [newProjectName, setNewProjectName] = useState("")
   const [creatingProject, setCreatingProject] = useState(false)
+  const [computerControlStatus, setComputerControlStatus] = useState<ComputerControlRoomStatus>({
+    enabled: null,
+    pinConfigured: null,
+  })
 
   const fetchOverview = useCallback(async () => {
     try {
-      const [configRes, overviewRes] = await Promise.all([
+      const [configRes, overviewRes, guardianStatusRes] = await Promise.all([
         fetchControlsConfig(),
         apiFetch("/api/v1/chat/workstation/overview", { credentials: "include" }).then((r) =>
+          r.ok ? r.json() : null
+        ).catch(() => null),
+        apiFetch("/api/v1/chat/guardian/status", { credentials: "include" }).then((r) =>
           r.ok ? r.json() : null
         ).catch(() => null),
       ])
       setControlsConfig(configRes)
       if (overviewRes) setOverview(overviewRes as WorkstationOverview)
+      const bootRes = await apiFetch("/api/v1/chat/users/bootstrap", { method: "POST", credentials: "include" }).catch(() => null)
+      const boot = bootRes?.ok ? await bootRes.json().catch(() => null) : null
+      const roomId = typeof boot?.room_id === "string" ? boot.room_id : null
+      let roomEnabled: boolean | null = null
+      if (roomId) {
+        const roomRes = await apiFetch(`/api/v1/chat/rooms/${roomId}`, { credentials: "include" }).catch(() => null)
+        if (roomRes?.ok) {
+          const room = await roomRes.json().catch(() => null)
+          roomEnabled = typeof room?.execution_allowed === "boolean" ? room.execution_allowed : null
+        }
+      }
+      setComputerControlStatus({
+        enabled: roomEnabled,
+        pinConfigured: typeof guardianStatusRes?.pin_configured === "boolean" ? guardianStatusRes.pin_configured : null,
+      })
     } catch {
       // ignore
     }
@@ -4000,8 +4056,8 @@ export default function WorkstationPage() {
                       Shell · Terminal · Browser
                     </div>
                   </div>
-                  <span style={{ fontSize: 9, color: "#4ade80", border: "1px solid #4ade8044", borderRadius: 3, padding: "1px 6px", letterSpacing: "0.08em", textTransform: "uppercase" }}>
-                    Active
+                  <span style={{ fontSize: 9, color: computerControlStatus.enabled ? "#4ade80" : "#fbbf24", border: `1px solid ${computerControlStatus.enabled ? "#4ade80" : "#fbbf24"}44`, borderRadius: 3, padding: "1px 6px", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                    {computerControlStatus.enabled ? "Always on" : "PIN gated"}
                   </span>
                 </button>
               </div>
@@ -4469,6 +4525,7 @@ export default function WorkstationPage() {
           <ComputerControlPanel
             onClose={handleClosePanel}
             onOpenTerminal={() => setPanel({ kind: "terminal", station: localTerminalDesk })}
+            status={computerControlStatus}
           />
         )}
 

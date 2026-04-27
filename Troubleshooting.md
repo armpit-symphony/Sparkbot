@@ -108,10 +108,10 @@ Unblock-File -Path "Sparkbot.Local_x.x.x_x64-setup.exe"
 
 **Common causes and fixes:**
 
-**A — Execution gate is off (most common)**
-Shell, terminal, and server tools require the execution gate to be enabled per room.
-- In the chat room, open **Room Settings** → enable **Execution Gate**
-- In the desktop app DM room, this is enabled by default (set via `SPARKBOT_DM_EXECUTION_DEFAULT=true`)
+**A — Computer Control is off or no PIN is configured (most common)**
+Shell, terminal, browser-write, server, Vault, and comms-send tools require **Computer Control** to be on, or a break-glass PIN session to be active.
+- In Sparkbot DM, open **Sparkbot Controls** and either enable **Computer Control** or set the 6-digit operator PIN.
+- With Computer Control off, type `/breakglass`, enter the PIN, then resend or approve the waiting privileged action.
 
 **B — Wrong model in stack**
 Local models (especially Ollama) often produce malformed tool calls, causing them to fail silently or loop. The model tells Sparkbot it can't do anything when it can't format a valid tool call.

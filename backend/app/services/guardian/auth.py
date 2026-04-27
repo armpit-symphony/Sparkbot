@@ -17,6 +17,7 @@ import secrets
 import time
 import uuid
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional
 
 log = logging.getLogger(__name__)
@@ -54,6 +55,78 @@ class PrivilegedSession:
 # In-memory state — intentionally not persisted (sessions die with the process)
 _PRIVILEGED_SESSIONS: dict[str, PrivilegedSession] = {}
 _FAILED_ATTEMPTS: dict[str, list[float]] = {}
+
+
+def _data_root() -> Path:
+    root = os.getenv("SPARKBOT_GUARDIAN_DATA_DIR", "").strip()
+    if root:
+        return Path(root).expanduser()
+    app_root = os.getenv("SPARKBOT_DATA_DIR", "").strip()
+    if app_root:
+        return Path(app_root).expanduser() / "guardian"
+    return Path(__file__).resolve().parents[3] / "data" / "guardian"
+
+
+def _pin_hash_path() -> Path:
+    return _data_root() / "operator_pin.hash"
+
+
+def _stored_pin_hash() -> str:
+    try:
+        file_hash = _pin_hash_path().read_text(encoding="utf-8").strip()
+        if file_hash:
+            return file_hash
+    except FileNotFoundError:
+        pass
+    except Exception:
+        log.exception("[guardian-auth] Failed to read persisted operator PIN hash")
+    return os.getenv("SPARKBOT_OPERATOR_PIN_HASH", "").strip()
+
+
+def pin_configured() -> bool:
+    """Return True when an operator PIN is configured in env or the local guardian data dir."""
+    return bool(_stored_pin_hash())
+
+
+def _validate_six_digit_pin(pin: str) -> str:
+    normalized = (pin or "").strip()
+    if len(normalized) != 6 or not normalized.isdigit():
+        raise ValueError("Operator PIN must be exactly 6 digits.")
+    return normalized
+
+
+def set_operator_pin(
+    *,
+    user_id: str,
+    new_pin: str,
+    new_pin_confirm: str,
+    current_pin: str | None = None,
+) -> str:
+    """Persist a 6-digit operator PIN hash.
+
+    Fresh installs may set the first PIN with double entry only. Existing PINs
+    require the current PIN before replacement.
+    """
+    pin = _validate_six_digit_pin(new_pin)
+    if pin != (new_pin_confirm or "").strip():
+        raise ValueError("PIN confirmation does not match.")
+
+    existing = _stored_pin_hash()
+    if existing:
+        if not current_pin:
+            raise PermissionError("Current PIN is required to change the operator PIN.")
+        if not _verify_pbkdf2(current_pin.strip(), existing):
+            _record_failed_attempt(user_id)
+            raise PermissionError("Incorrect current PIN.")
+
+    next_hash = create_pin_hash(pin)
+    path = _pin_hash_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(next_hash + "\n", encoding="utf-8")
+    os.environ["SPARKBOT_OPERATOR_PIN_HASH"] = next_hash
+    _FAILED_ATTEMPTS.pop(user_id, None)
+    log.info("[guardian-auth] Operator PIN %s", "changed" if existing else "created")
+    return next_hash
 
 
 def operator_usernames() -> set[str]:
@@ -174,7 +247,7 @@ def verify_pin(user_id: str, submitted_pin: str) -> bool:
     Verify submitted PIN against the stored hash. Records failed attempts.
     Returns True on success, False on failure or if not configured.
     """
-    stored = os.getenv("SPARKBOT_OPERATOR_PIN_HASH", "").strip()
+    stored = _stored_pin_hash()
     if not stored:
         log.warning("[guardian-auth] SPARKBOT_OPERATOR_PIN_HASH is not configured — PIN auth disabled")
         return False

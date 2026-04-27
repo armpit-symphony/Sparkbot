@@ -7,12 +7,8 @@ from typing import Any, Literal
 
 
 def _policy_enabled() -> bool:
-    """Return True only when Guardian policy restrictions are explicitly enabled.
-
-    Default is False (personal mode — all tools execute freely with no gates).
-    Set SPARKBOT_GUARDIAN_POLICY_ENABLED=true to switch on office/team mode.
-    """
-    return os.getenv("SPARKBOT_GUARDIAN_POLICY_ENABLED", "false").lower() in ("true", "1", "yes")
+    """Return True when Computer Control / PIN policy restrictions are enabled."""
+    return os.getenv("SPARKBOT_GUARDIAN_POLICY_ENABLED", "true").lower() not in ("false", "0", "no", "off")
 
 
 PolicyAction = Literal["allow", "confirm", "deny", "privileged", "privileged_reveal"]
@@ -159,14 +155,32 @@ def _build_policy_registry() -> dict[str, ToolPolicy]:
             high_risk=True,
         )
 
-    # Terminal panel control (Workstation live terminal)
-    for tool_name in ("terminal_list_sessions", "terminal_send"):
+    add(
+        "terminal_list_sessions",
+        scope="execute",
+        resource="local_machine",
+        default_action="allow",
+        action_type="command_exec",
+        high_risk=False,
+        requires_execution_gate=False,
+    )
+    add(
+        "terminal_send",
+        scope="execute",
+        resource="local_machine",
+        default_action="allow",
+        action_type="command_exec",
+        high_risk=True,
+        requires_execution_gate=True,
+    )
+
+    for tool_name in ("telegram_send_message", "discord_send_message", "whatsapp_send_message"):
         add(
             tool_name,
-            scope="execute",
-            resource="local_machine",
-            default_action="allow",
-            action_type="command_exec",
+            scope="write",
+            resource="comms",
+            default_action="confirm",
+            action_type="write_external",
             high_risk=True,
             requires_execution_gate=False,
         )
@@ -316,7 +330,18 @@ def decide_tool_use(
             action="allow",
             action_type=policy.action_type,
             high_risk=policy.high_risk,
-            reason="Personal mode: policy restrictions disabled.",
+            reason="Guardian policy restrictions disabled by environment.",
+        )
+
+    if room_execution_allowed and not tool_name.startswith("vault_"):
+        return PolicyDecision(
+            tool_name=tool_name,
+            scope=policy.scope,
+            resource=policy.resource,
+            action="allow",
+            action_type=policy.action_type,
+            high_risk=policy.high_risk,
+            reason="Computer Control is on for this room; local machine, browser, and comms actions are allowed.",
         )
 
     if policy.default_action == "deny":
@@ -331,6 +356,19 @@ def decide_tool_use(
         )
 
     if policy.requires_execution_gate and not room_execution_allowed:
+        if is_operator:
+            return PolicyDecision(
+                tool_name=tool_name,
+                scope=policy.scope,
+                resource=policy.resource,
+                action="privileged",
+                action_type=policy.action_type,
+                high_risk=policy.high_risk,
+                reason=(
+                    "Computer Control is off for this room. Enter your operator PIN with /breakglass "
+                    "to authorize this local machine action."
+                ),
+            )
         return PolicyDecision(
             tool_name=tool_name,
             scope=policy.scope,
@@ -339,9 +377,48 @@ def decide_tool_use(
             action_type=policy.action_type,
             high_risk=policy.high_risk,
             reason=(
-                "Execution is disabled for this room. Enable the room execution gate "
-                "before using server or SSH operations."
+                "Computer Control is disabled for this room. Only a configured Sparkbot operator "
+                "can authorize local machine actions with break-glass PIN."
             ),
+        )
+
+    if (
+        not room_execution_allowed
+        and policy.high_risk
+        and policy.scope in {"write", "execute"}
+        and not tool_name.startswith("vault_")
+    ):
+        if is_privileged:
+            return PolicyDecision(
+                tool_name=tool_name,
+                scope=policy.scope,
+                resource=policy.resource,
+                action="allow",
+                action_type=policy.action_type,
+                high_risk=policy.high_risk,
+                reason="Break-glass PIN session is active; high-risk action is allowed while Computer Control is off.",
+            )
+        if is_operator:
+            return PolicyDecision(
+                tool_name=tool_name,
+                scope=policy.scope,
+                resource=policy.resource,
+                action="privileged",
+                action_type=policy.action_type,
+                high_risk=policy.high_risk,
+                reason=(
+                    "Computer Control is off for this room. Enter your operator PIN with /breakglass "
+                    "to authorize this command, edit, browser write, or comms action."
+                ),
+            )
+        return PolicyDecision(
+            tool_name=tool_name,
+            scope=policy.scope,
+            resource=policy.resource,
+            action="deny",
+            action_type=policy.action_type,
+            high_risk=policy.high_risk,
+            reason="High-risk commands, edits, browser writes, and comms sends require a Sparkbot operator PIN.",
         )
 
     if policy.default_action == "confirm":

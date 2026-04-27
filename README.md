@@ -103,8 +103,8 @@ The desktop app is the easiest path for one person. Docker and systemd deploymen
 
 ### Security
 - **Policy layer** — every tool classified read / write / execute / admin; unknown tools denied by default
-- **Write-tool confirmation** — Sparkbot cannot email, post to Slack, or commit autonomously; a confirmation modal is required
-- **Execution gate** — shell and server access require the room owner to explicitly enable; defaults off
+- **Computer Control** — room-level always-on device control; when off, commands, edits, browser writes, comms sends, Vault, and break-glass actions require the 6-digit operator PIN
+- **Write-tool confirmation** — confirmation and break-glass flows stop risky writes unless Computer Control is explicitly on
 - **Guardian Vault** — encrypted secret storage; break-glass PIN required before writing secrets
 - **Audit trail** — every tool call logged with allow/confirm/deny, redacted args, and timestamps
 - **HttpOnly cookies** — session tokens never exposed to JavaScript
@@ -425,6 +425,7 @@ User message → Token Guardian → Memory Guardian → LLM
 
 | Version | Date | Highlights |
 |---------|------|-----------|
+| v1.6.36 | Apr 2026 | Computer Control replaces the room execution gate; Workstation status now reflects the Controls checkbox; first-run 6-digit PIN setup/change flow for Break-glass, Vault, commands, browser writes, and comms sends |
 | v1.6.35 | Apr 2026 | Documentation and downloader refresh: coherent README flow, public site copy cleanup, packaging docs updated, and desktop/download version markers advanced |
 | v1.6.33 | Apr 2026 | Vault-backed runtime wiring for Discord, WhatsApp, GitHub, Gmail, and Google Calendar; Task Guardian supports `daily:HH:MM` schedules and Zulu one-shots; Windows-safe morning briefing; Jarvis demo kit |
 | v1.6.32 | Apr 2026 | Uniform Invite Wing subscription selectors for Claude + ChatGPT/Codex; OpenClaw desk replaced by xAI Grok; Controls AI setup now surfaces Anthropic/OpenAI subscription flows and xAI API-key guidance |

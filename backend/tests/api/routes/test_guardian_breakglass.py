@@ -62,10 +62,34 @@ class TestVerifyPin:
         monkeypatch.setenv("SPARKBOT_OPERATOR_PIN_HASH", pin_hash)
         assert verify_pin("user1", "wrong_pin") is False
 
-    def test_unconfigured_hash_returns_false(self, monkeypatch):
+    def test_unconfigured_hash_returns_false(self, monkeypatch, tmp_path):
         monkeypatch.delenv("SPARKBOT_OPERATOR_PIN_HASH", raising=False)
+        monkeypatch.setenv("SPARKBOT_GUARDIAN_DATA_DIR", str(tmp_path))
         from app.services.guardian.auth import verify_pin
         assert verify_pin("user1", "anything") is False
+
+    def test_persisted_pin_hash_is_used(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("SPARKBOT_OPERATOR_PIN_HASH", raising=False)
+        monkeypatch.setenv("SPARKBOT_GUARDIAN_DATA_DIR", str(tmp_path))
+        from app.services.guardian.auth import pin_configured, set_operator_pin, verify_pin
+
+        set_operator_pin(user_id="user1", new_pin="123456", new_pin_confirm="123456")
+
+        monkeypatch.delenv("SPARKBOT_OPERATOR_PIN_HASH", raising=False)
+        assert pin_configured() is True
+        assert verify_pin("user1", "123456") is True
+
+    def test_existing_pin_requires_current_pin(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("SPARKBOT_OPERATOR_PIN_HASH", raising=False)
+        monkeypatch.setenv("SPARKBOT_GUARDIAN_DATA_DIR", str(tmp_path))
+        from app.services.guardian.auth import set_operator_pin, verify_pin
+
+        set_operator_pin(user_id="user1", new_pin="123456", new_pin_confirm="123456")
+        with pytest.raises(PermissionError):
+            set_operator_pin(user_id="user1", new_pin="654321", new_pin_confirm="654321")
+        set_operator_pin(user_id="user1", current_pin="123456", new_pin="654321", new_pin_confirm="654321")
+
+        assert verify_pin("user1", "654321") is True
 
 
 class TestToolOutputMasking:

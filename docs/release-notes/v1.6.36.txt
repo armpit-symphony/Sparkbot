@@ -1,0 +1,7 @@
+Sparkbot v1.6.36
+
+- Rename the room execution gate to Computer Control across Controls, Workstation, prompts, and docs.
+- Add a Controls PIN flow: first-run 6-digit PIN setup requires double entry, and later changes require the current PIN.
+- Persist the operator PIN hash in the local Guardian data directory so desktop installs can enable Break-glass, Vault, and Computer Control without hand-editing `.env`.
+- Tie Workstation Computer Control status to the Controls checkbox: Always on means unrestricted local control; PIN gated means commands, edits, browser writes, vault access, and comms sends require break-glass PIN authorization.
+- Keep downloader-visible version markers aligned to the new 1.6.36 installer line.

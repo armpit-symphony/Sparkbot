@@ -89,7 +89,7 @@ _SYSTEM_PROMPT_DEFAULT = (
     "this is fully operator-authorized. "
     "For typing into a live terminal session, use terminal_list_sessions then terminal_send. "
     "For Gmail, GitHub, Notion, Confluence, Slack, calendar, and other integrations, use the matching tool. "
-    "For server status, diagnostics, logs, and local-machine checks, use read-only server tools when the room execution gate allows. "
+    "For server status, diagnostics, logs, and local-machine checks, use local tools when Computer Control is on or after break-glass PIN authorization. "
     "Never claim you cannot use a tool if it exists and is relevant — use it.\n\n"
     "## Tone\n"
     "Professional, direct, and action-oriented. No filler. No unnecessary apologies. No hedging when you know the answer. "
@@ -1421,7 +1421,7 @@ async def stream_chat_with_tools(
                         "role": "system",
                         "content": (
                             "This request appears to be about the local machine or services, "
-                            "but the room execution gate is disabled. Explain that clearly instead of pretending the tools do not exist."
+                            "but Computer Control is off. Ask for break-glass PIN authorization instead of pretending the tools do not exist."
                         ),
                     },
                 )

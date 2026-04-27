@@ -36,6 +36,12 @@ class BreakGlassRequest(BaseModel):
     justification: str = Field("", max_length=500)
 
 
+class OperatorPinRequest(BaseModel):
+    pin: str = Field(..., min_length=6, max_length=6)
+    pin_confirm: str = Field(..., min_length=6, max_length=6)
+    current_pin: Optional[str] = Field(default=None, max_length=128)
+
+
 @router.get("/guardian/breakglass/status")
 def breakglass_status(current_user: CurrentChatUser) -> dict[str, Any]:
     """Return current privileged session status for the calling user."""
@@ -49,6 +55,56 @@ def breakglass_status(current_user: CurrentChatUser) -> dict[str, Any]:
             "scopes": session.scopes,
         }
     return {"active": False}
+
+
+@router.post("/guardian/pin")
+def set_operator_pin_endpoint(
+    body: OperatorPinRequest,
+    current_user: CurrentChatUser,
+    session: SessionDep,
+) -> dict[str, Any]:
+    """Create or change the local 6-digit operator PIN used by Computer Control, Break-glass, and Vault."""
+    from app.crud import create_audit_log
+
+    _require_guardian_operator(current_user)
+    user_id = str(current_user.id)
+    guardian_suite = get_guardian_suite()
+    was_configured = guardian_suite.auth.pin_configured()
+    if guardian_suite.auth.is_locked_out(user_id):
+        raise HTTPException(status_code=429, detail="Too many failed PIN attempts. Try again in 5 minutes.")
+    try:
+        guardian_suite.auth.set_operator_pin(
+            user_id=user_id,
+            current_pin=body.current_pin,
+            new_pin=body.pin,
+            new_pin_confirm=body.pin_confirm,
+        )
+    except PermissionError as exc:
+        try:
+            create_audit_log(
+                session=session,
+                tool_name="operator_pin_change_failed",
+                tool_input=json.dumps({"operator": str(current_user.username), "reason": str(exc)}),
+                tool_result="failed",
+                user_id=current_user.id,
+            )
+        except Exception:
+            pass
+        raise HTTPException(status_code=401, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    try:
+        create_audit_log(
+            session=session,
+            tool_name="operator_pin_changed" if was_configured else "operator_pin_created",
+            tool_input=json.dumps({"operator": str(current_user.username)}),
+            tool_result="ok",
+            user_id=current_user.id,
+        )
+    except Exception:
+        pass
+    return {"pin_configured": True, "changed": was_configured}
 
 
 @router.post("/guardian/breakglass")
@@ -449,7 +505,7 @@ def guardian_status(current_user: CurrentChatUser) -> dict[str, Any]:
             "usernames_configured": bool(configured_usernames),
             "open_mode": not bool(configured_usernames),
         },
-        "pin_configured": bool(os.getenv("SPARKBOT_OPERATOR_PIN_HASH", "").strip()),
+        "pin_configured": get_guardian_suite().auth.pin_configured(),
         "vault_configured": bool(os.getenv("SPARKBOT_VAULT_KEY", "").strip()),
         "memory_guardian_enabled": os.getenv("SPARKBOT_MEMORY_GUARDIAN_ENABLED", "true").strip().lower() not in {"0", "false", "no", "off"},
         "task_guardian_enabled": os.getenv("SPARKBOT_TASK_GUARDIAN_ENABLED", "true").strip().lower() not in {"0", "false", "no", "off"},

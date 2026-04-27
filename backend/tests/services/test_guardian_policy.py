@@ -4,24 +4,25 @@ from app.services.guardian.policy import decide_tool_use
 
 # ── Personal mode (default, SPARKBOT_GUARDIAN_POLICY_ENABLED unset / false) ──
 
-def test_personal_mode_allows_everything_by_default() -> None:
+def test_computer_control_on_allows_high_risk_tools_by_default() -> None:
     """In personal mode all tools execute freely — no gates, no confirms."""
     for tool in ("browser_click", "gmail_send", "server_read_command", "slack_send_message"):
-        decision = decide_tool_use(tool, {}, room_execution_allowed=False)
-        assert decision.action == "allow", f"{tool} should be allowed in personal mode"
+        decision = decide_tool_use(tool, {}, room_execution_allowed=True)
+        assert decision.action == "allow", f"{tool} should be allowed when Computer Control is on"
 
 
 # ── Office mode (SPARKBOT_GUARDIAN_POLICY_ENABLED=true) ──
 
-def test_policy_denies_execution_when_room_gate_is_off(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_policy_requires_pin_when_computer_control_is_off(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SPARKBOT_GUARDIAN_POLICY_ENABLED", "true")
     decision = decide_tool_use(
         "server_read_command",
         {"command": "memory"},
         room_execution_allowed=False,
+        is_operator=True,
     )
-    assert decision.action == "deny"
-    assert "Execution is disabled" in decision.reason
+    assert decision.action == "privileged"
+    assert "Computer Control is off" in decision.reason
 
 
 def test_policy_treats_service_status_as_read_only(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -50,6 +51,8 @@ def test_policy_requires_confirmation_for_browser_click(monkeypatch: pytest.Monk
     decision = decide_tool_use(
         "browser_click",
         {"session_id": "abc123", "target": "Sign up"},
+        room_execution_allowed=False,
+        is_operator=True,
     )
-    assert decision.action == "confirm"
+    assert decision.action == "privileged"
     assert decision.scope == "write"

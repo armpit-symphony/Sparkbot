@@ -148,6 +148,16 @@ interface GuardianRunRecord {
   created_at: string
 }
 
+interface GuardianStatus {
+  breakglass: { active: boolean; ttl_remaining: number | null }
+  operator: { username: string; usernames_configured: boolean; open_mode: boolean }
+  pin_configured: boolean
+  vault_configured: boolean
+  memory_guardian_enabled: boolean
+  task_guardian_enabled: boolean
+  task_guardian_write_enabled: boolean
+}
+
 interface ControlsDashboardSummary {
   summary: {
     pending_approvals: number
@@ -680,6 +690,10 @@ interface SparkbotSettingsDialogProps {
   savingExecution: boolean
   executionSaved: boolean
   executionError: string
+  guardianStatus: GuardianStatus | null
+  savingPin: boolean
+  pinSaved: boolean
+  pinError: string
   dashboardSummary: ControlsDashboardSummary | null
   modelsConfig: ModelsControlsConfig | null
   modelStack: ModelStackForm
@@ -712,6 +726,7 @@ interface SparkbotSettingsDialogProps {
   error: string
   onRefresh: () => void
   onToggleExecution: (enabled: boolean) => void
+  onSavePin: (currentPin: string, pin: string, pinConfirm: string) => void
   onModelStackChange: (field: keyof ModelStackForm, value: string) => void
   onDefaultSelectionChange: (field: keyof DefaultModelSelectionForm, value: string) => void
   onLocalDefaultModelChange: (value: string) => void
@@ -790,6 +805,10 @@ function SparkbotSettingsDialog({
   savingExecution,
   executionSaved,
   executionError,
+  guardianStatus,
+  savingPin,
+  pinSaved,
+  pinError,
   dashboardSummary,
   modelsConfig,
   modelStack,
@@ -821,6 +840,7 @@ function SparkbotSettingsDialog({
   error,
   onRefresh,
   onToggleExecution,
+  onSavePin,
   onModelStackChange,
   onDefaultSelectionChange,
   onLocalDefaultModelChange,
@@ -932,6 +952,18 @@ function SparkbotSettingsDialog({
   const ollamaProvider = modelsConfig?.providers?.find((provider) => provider.id === "ollama")
   const routingAgents = modelsConfig?.available_agents ?? []
   const showAdvancedControls = true
+  const [currentPinDraft, setCurrentPinDraft] = useState("")
+  const [pinDraft, setPinDraft] = useState("")
+  const [pinConfirmDraft, setPinConfirmDraft] = useState("")
+  const pinConfigured = Boolean(guardianStatus?.pin_configured)
+  const pinReady = /^\d{6}$/.test(pinDraft) && pinDraft === pinConfirmDraft && (!pinConfigured || currentPinDraft.length > 0)
+
+  useEffect(() => {
+    if (!pinSaved) return
+    setCurrentPinDraft("")
+    setPinDraft("")
+    setPinConfirmDraft("")
+  }, [pinSaved])
 
   const readyProviderCount = modelsConfig?.providers?.filter(
     (provider) => provider.configured || provider.models_available === true,
@@ -966,11 +998,11 @@ function SparkbotSettingsDialog({
             : "Enable Telegram, Discord, WhatsApp, GitHub, or Google after adding credentials",
         },
         {
-          title: "Keep write actions gated",
-          done: !room?.execution_allowed,
+          title: "Choose Computer Control mode",
+          done: Boolean(guardianStatus?.pin_configured),
           detail: room?.execution_allowed
-            ? "Execution gate is on for this room. Turn it off unless you need machine operations."
-            : "Recommended default for personal use: execution gate stays off",
+            ? "Computer Control is on: Sparkbot can operate this device without PIN prompts."
+            : "Computer Control is off: PIN is required for commands, edits, vault, and comms sends.",
         },
       ]
     : [
@@ -1006,7 +1038,7 @@ function SparkbotSettingsDialog({
               <DialogTitle>Sparkbot Controls</DialogTitle>
               <DialogDescription>
                 {showAdvancedControls
-                  ? "Room execution gate, function routing, dashboard access, and Task Guardian schedules."
+                  ? "Computer Control, operator PIN, function routing, dashboard access, and Task Guardian schedules."
                   : "Connect your AI model, choose a default, and optionally keep selected agents local on this machine."}
               </DialogDescription>
             </div>
@@ -1062,13 +1094,13 @@ function SparkbotSettingsDialog({
               </div>
               <div className="rounded-lg border bg-background/60 px-3 py-3">
                 <div className="flex items-center justify-between gap-2">
-                  <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Room execution gate</div>
+                  <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Computer Control</div>
                   <button onClick={onRefresh} className="rounded border px-1.5 py-0.5 text-[10px] hover:bg-muted" type="button">
                     <span className="inline-flex items-center gap-1"><RefreshCw className="size-3" /> Refresh</span>
                   </button>
                 </div>
                 <div className="mt-2 text-xs text-muted-foreground">
-                  Server and SSH tools fail closed unless this room is explicitly allowed to execute them.
+                  Tied to Sparkbot's Break-glass guardrail. On means always-on device control; off means PIN is required for risky actions.
                 </div>
                 <label className="mt-2 flex items-start gap-2 cursor-pointer">
                   <input
@@ -1079,10 +1111,61 @@ function SparkbotSettingsDialog({
                     onChange={(e) => onToggleExecution(e.target.checked)}
                   />
                   <div>
-                    <div className="text-xs font-medium">Allow machine operations in this room</div>
-                    <div className="text-[10px] text-muted-foreground">Required for `server_read_command`, `ssh_read_command`, and `server_manage_service`.</div>
+                    <div className="text-xs font-medium">Always allow Sparkbot to control this computer</div>
+                    <div className="text-[10px] text-muted-foreground">Shell, terminal, browser writes, service actions, and comms sends can run without a PIN while this is on.</div>
                   </div>
                 </label>
+                <div className="mt-3 rounded-md border bg-muted/30 p-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      {pinConfigured ? "Change PIN" : "Set 6-digit PIN"}
+                    </span>
+                    <span className={`text-[10px] font-medium ${pinConfigured ? "text-emerald-600" : "text-amber-600"}`}>
+                      {pinConfigured ? "Configured" : "Required"}
+                    </span>
+                  </div>
+                  {pinConfigured && (
+                    <input
+                      className="mt-2 w-full rounded border bg-background px-2 py-1.5 text-xs"
+                      type="password"
+                      inputMode="numeric"
+                      maxLength={6}
+                      placeholder="Current PIN"
+                      value={currentPinDraft}
+                      onChange={(e) => setCurrentPinDraft(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    />
+                  )}
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                    <input
+                      className="w-full rounded border bg-background px-2 py-1.5 text-xs"
+                      type="password"
+                      inputMode="numeric"
+                      maxLength={6}
+                      placeholder={pinConfigured ? "New PIN" : "New 6-digit PIN"}
+                      value={pinDraft}
+                      onChange={(e) => setPinDraft(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    />
+                    <input
+                      className="w-full rounded border bg-background px-2 py-1.5 text-xs"
+                      type="password"
+                      inputMode="numeric"
+                      maxLength={6}
+                      placeholder="Verify PIN"
+                      value={pinConfirmDraft}
+                      onChange={(e) => setPinConfirmDraft(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="mt-2 rounded-md border px-2 py-1 text-[10px] font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={!pinReady || savingPin}
+                    onClick={() => onSavePin(currentPinDraft, pinDraft, pinConfirmDraft)}
+                  >
+                    {savingPin ? "Saving..." : pinConfigured ? "Change PIN" : "Save PIN"}
+                  </button>
+                  {pinSaved && <p className="mt-1 text-[10px] font-medium text-green-600">PIN saved.</p>}
+                  {pinError && <p className="mt-1 text-[10px] font-medium text-destructive">{pinError}</p>}
+                </div>
                 {executionSaved && <p className="mt-1 text-[10px] font-medium text-green-600">Saved.</p>}
                 {executionError && <p className="mt-1 text-[10px] font-medium text-destructive">{executionError}</p>}
               </div>
@@ -1101,8 +1184,8 @@ function SparkbotSettingsDialog({
                   </div>
                   {showAdvancedControls ? (
                     <div>
-                      <span className="font-medium text-foreground">Execution gate = opt-in only.</span>{" "}
-                      Server commands and SSH tools are disabled by default. Turn on the room execution gate only when you need them.
+                      <span className="font-medium text-foreground">Computer Control is explicit.</span>{" "}
+                      Leave it off for PIN-gated commands and comms writes, or turn it on for always-on device control.
                     </div>
                   ) : null}
                 </div>
@@ -2490,6 +2573,10 @@ function SparkbotDmPage() {
   const [savingExecution, setSavingExecution] = useState(false)
   const [executionSaved, setExecutionSaved] = useState(false)
   const [executionError, setExecutionError] = useState("")
+  const [guardianStatus, setGuardianStatus] = useState<GuardianStatus | null>(null)
+  const [savingPin, setSavingPin] = useState(false)
+  const [pinSaved, setPinSaved] = useState(false)
+  const [pinError, setPinError] = useState("")
   const [controlsDashboard, setControlsDashboard] = useState<ControlsDashboardSummary | null>(null)
   const [modelsConfig, setModelsConfig] = useState<ModelsControlsConfig | null>(null)
   const [tokenGuardianMode, setTokenGuardianMode] = useState("shadow")
@@ -2810,13 +2897,14 @@ function SparkbotDmPage() {
     setSettingsError("")
     try {
       const safe = (p: Promise<Response>) => p.catch(() => null)
-      const [roomRes, policyRes, tasksRes, runsRes, dashboardRes, modelsConfigRes] = await Promise.all([
+      const [roomRes, policyRes, tasksRes, runsRes, dashboardRes, modelsConfigRes, guardianStatusRes] = await Promise.all([
         safe(apiFetch(`/api/v1/chat/rooms/${roomId}`, { credentials: "include" })),
         safe(apiFetch(`/api/v1/chat/audit?limit=10&room_id=${roomId}&tool=policy_decision`, { credentials: "include" })),
         safe(apiFetch(`/api/v1/chat/rooms/${roomId}/guardian/tasks?limit=20`, { credentials: "include" })),
         safe(apiFetch(`/api/v1/chat/rooms/${roomId}/guardian/runs?limit=10`, { credentials: "include" })),
         safe(apiFetch("/api/v1/chat/dashboard/summary", { credentials: "include" })),
         safe(apiFetch("/api/v1/chat/models/config", { credentials: "include" })),
+        safe(apiFetch("/api/v1/chat/guardian/status", { credentials: "include" })),
       ])
 
       if (roomRes?.ok) {
@@ -2837,6 +2925,9 @@ function SparkbotDmPage() {
       }
       if (dashboardRes?.ok) {
         try { setControlsDashboard(await dashboardRes.json()) } catch { /* ignore */ }
+      }
+      if (guardianStatusRes?.ok) {
+        try { setGuardianStatus(await guardianStatusRes.json()) } catch { /* ignore */ }
       }
       if (modelsConfigRes?.ok) {
         try {
@@ -2945,8 +3036,8 @@ function SparkbotDmPage() {
         body: JSON.stringify({ execution_allowed: enabled }),
       })
       if (!res.ok) {
-        const data = await res.json().catch(() => ({ detail: "Could not update execution gate." }))
-        setExecutionError(data.detail ?? "Could not update execution gate.")
+        const data = await res.json().catch(() => ({ detail: "Could not update Computer Control." }))
+        setExecutionError(data.detail ?? "Could not update Computer Control.")
       } else {
         const data = await res.json()
         setRoomInfo(data)
@@ -2954,11 +3045,42 @@ function SparkbotDmPage() {
         setTimeout(() => setExecutionSaved(false), 3000)
       }
     } catch {
-      setExecutionError("Could not update execution gate.")
+      setExecutionError("Could not update Computer Control.")
     } finally {
       setSavingExecution(false)
     }
   }, [roomId])
+
+  const saveOperatorPin = useCallback(async (currentPin: string, pin: string, pinConfirm: string) => {
+    setSavingPin(true)
+    setPinError("")
+    setPinSaved(false)
+    try {
+      const res = await apiFetch("/api/v1/chat/guardian/pin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          current_pin: currentPin || null,
+          pin,
+          pin_confirm: pinConfirm,
+        }),
+      })
+      const data = await res.json().catch(() => ({ detail: "Could not save PIN." }))
+      if (!res.ok) {
+        setPinError(data.detail ?? "Could not save PIN.")
+      } else {
+        setPinSaved(true)
+        setGuardianStatus(prev => prev ? { ...prev, pin_configured: true } : prev)
+        await refreshControls()
+        setTimeout(() => setPinSaved(false), 3000)
+      }
+    } catch {
+      setPinError("Could not save PIN.")
+    } finally {
+      setSavingPin(false)
+    }
+  }, [refreshControls])
 
   const savePersona = useCallback(async () => {
     if (!roomId) return
@@ -3920,7 +4042,7 @@ function SparkbotDmPage() {
             } else if (ev.type === "privileged_required") {
               setMessages(prev => prev.map(m => m.id === tempBotId ? {
                 ...m,
-                content: "This action requires breakglass approval. Type `/breakglass` to continue, then enter your PIN.",
+                content: "Computer Control is off for this room. Type `/breakglass` to continue, then enter your PIN.",
                 isStreaming: false,
                 toolActivity: undefined,
               } : m))
@@ -4071,7 +4193,7 @@ function SparkbotDmPage() {
             } else if (ev.type === "privileged_required") {
               setMessages(prev => prev.map(m => m.id === tempBotId ? {
                 ...m,
-                content: "This action requires breakglass approval. Type `/breakglass` to continue, then enter your PIN.",
+                content: "Computer Control is off for this room. Type `/breakglass` to continue, then enter your PIN.",
                 isStreaming: false,
                 toolActivity: undefined,
               } : m))
@@ -4231,6 +4353,10 @@ function SparkbotDmPage() {
         savingExecution={savingExecution}
         executionSaved={executionSaved}
         executionError={executionError}
+        guardianStatus={guardianStatus}
+        savingPin={savingPin}
+        pinSaved={pinSaved}
+        pinError={pinError}
         dashboardSummary={controlsDashboard}
         modelsConfig={modelsConfig}
         modelStack={modelStack}
@@ -4263,6 +4389,7 @@ function SparkbotDmPage() {
         error={settingsError}
         onRefresh={refreshControls}
         onToggleExecution={toggleExecutionGate}
+        onSavePin={saveOperatorPin}
         onModelStackChange={handleModelStackChange}
         onDefaultSelectionChange={handleDefaultSelectionChange}
         onLocalDefaultModelChange={handleLocalDefaultModelChange}

@@ -1265,14 +1265,14 @@ async def stream_room_message(
     if memory_context:
         system_prompt += f"\n\n{memory_context}"
 
-    # Inject room context — name, description, execution gate
+    # Inject room context — name, description, Computer Control gate
     _room_ctx_parts = [f"Room: {room.name}"]
     if room.description and room.description.strip():
         _room_ctx_parts.append(f"Purpose: {room.description.strip()}")
     _room_ctx_parts.append(
-        "Execution gate: OPEN — server and write tools enabled"
+        "Computer Control: ON — local machine, browser, terminal, and comms tools are enabled"
         if room.execution_allowed
-        else "Execution gate: CLOSED — prefer read-only tools"
+        else "Computer Control: OFF — privileged commands, edits, browser writes, vault access, and comms sends require operator PIN"
     )
     system_prompt += "\n\n## Room Context\n" + "\n".join(_room_ctx_parts)
 
@@ -1431,8 +1431,7 @@ async def stream_room_message(
 
         if privileged_event:
             prompt_text = (
-                "This action requires breakglass approval. "
-                "Type `/breakglass` to continue, then enter your PIN."
+                "Computer Control is off for this room. Type `/breakglass` to continue, then enter your PIN."
             )
             try:
                 bot_user = _get_or_create_agent_bot_user(db, agent_name or "sparkbot")
