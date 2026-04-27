@@ -58,6 +58,12 @@ import {
   saveSparkBudChatLaunchDraft,
 } from "@/lib/sparkbudLaunch"
 import {
+  MCP_RUN_TIMELINE,
+  MCP_TOOL_MANIFESTS,
+  type McpRiskLevel,
+  type McpToolManifest,
+} from "@/lib/mcpRegistry"
+import {
   launchMeetingRoom,
   launchTaskMeeting,
   ROUND_TABLE_SEAT_COUNT,
@@ -77,6 +83,7 @@ type PanelMode =
   | { kind: "table" }
   | { kind: "terminal"; station: Station }
   | { kind: "computercontrol" }
+  | { kind: "mcp" }
   | null
 
 interface ProjectRoom {
@@ -2669,6 +2676,280 @@ function ComputerControlPanel({ onClose, onOpenTerminal, status }: ComputerContr
 // ─── TerminalDetailPanel ──────────────────────────────────────────────────────
 // Phase 3: Live xterm.js terminal backed by a WebSocket PTY session.
 
+// MCPControlPlanePanel
+// One registry for Sparkbot tools and the LIMA Robotics OS MCP runtime.
+
+interface McpHealth {
+  loading: boolean
+  sparkbotApiLive: boolean
+  skillsCount: number | null
+  vaultConfigured: boolean | null
+  taskGuardianEnabled: boolean | null
+}
+
+function riskColor(risk: McpRiskLevel): string {
+  if (risk === "low") return "#4ade80"
+  if (risk === "medium") return "#38bdf8"
+  if (risk === "high") return "#fbbf24"
+  return "#fb7185"
+}
+
+function manifestHealthLabel(manifest: McpToolManifest, health: McpHealth): { label: string; color: string } {
+  if (manifest.healthSource === "external-mcp") {
+    return manifest.id === "lima.replay_simulation"
+      ? { label: "Demo-ready", color: "#4ade80" }
+      : { label: "Bridge needed", color: "#fbbf24" }
+  }
+  if (!health.sparkbotApiLive) return { label: "Checking", color: "#64748b" }
+  if (manifest.healthSource === "guardian-vault") {
+    return health.vaultConfigured
+      ? { label: "Vault live", color: "#4ade80" }
+      : { label: "Vault key missing", color: "#fbbf24" }
+  }
+  if (manifest.healthSource === "task-guardian") {
+    return health.taskGuardianEnabled
+      ? { label: "Scheduler live", color: "#4ade80" }
+      : { label: "Disabled", color: "#fbbf24" }
+  }
+  return { label: "API live", color: "#4ade80" }
+}
+
+function McpControlPlanePanel({ onClose }: { onClose: () => void }) {
+  const ACCENT = "#22d3ee"
+  const [health, setHealth] = useState<McpHealth>({
+    loading: true,
+    sparkbotApiLive: false,
+    skillsCount: null,
+    vaultConfigured: null,
+    taskGuardianEnabled: null,
+  })
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadHealth() {
+      try {
+        const [guardianRes, skillsRes] = await Promise.all([
+          apiFetch("/api/v1/chat/guardian/status", { credentials: "include" }).catch(() => null),
+          apiFetch("/api/v1/chat/skills", { credentials: "include" }).catch(() => null),
+        ])
+        const guardian = guardianRes?.ok ? await guardianRes.json().catch(() => null) : null
+        const skills = skillsRes?.ok ? await skillsRes.json().catch(() => null) : null
+        if (cancelled) return
+        setHealth({
+          loading: false,
+          sparkbotApiLive: Boolean(guardianRes?.ok || skillsRes?.ok),
+          skillsCount: Array.isArray(skills?.skills) ? skills.skills.length : null,
+          vaultConfigured: typeof guardian?.vault_configured === "boolean" ? guardian.vault_configured : null,
+          taskGuardianEnabled:
+            typeof guardian?.task_guardian_enabled === "boolean" ? guardian.task_guardian_enabled : null,
+        })
+      } catch {
+        if (!cancelled) {
+          setHealth((prev) => ({ ...prev, loading: false, sparkbotApiLive: false }))
+        }
+      }
+    }
+    loadHealth()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const runtimeCounts = MCP_TOOL_MANIFESTS.reduce(
+    (acc, manifest) => {
+      acc[manifest.runtime] += 1
+      return acc
+    },
+    { sparkbot: 0, "lima-robo-os": 0 },
+  )
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        top: 0,
+        right: 0,
+        bottom: 0,
+        width: 560,
+        backgroundColor: "#07101e",
+        borderLeft: `1px solid ${ACCENT}`,
+        boxShadow: `-4px 0 32px ${ACCENT}22`,
+        zIndex: 50,
+        display: "flex",
+        flexDirection: "column",
+        fontFamily: "system-ui, sans-serif",
+        overflow: "hidden",
+        animation: "slideInPanel 0.2s ease-out",
+      }}
+    >
+      <div
+        style={{
+          backgroundColor: `${ACCENT}18`,
+          borderBottom: `1px solid ${ACCENT}33`,
+          padding: "12px 16px",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          flexShrink: 0,
+        }}
+      >
+        <Rocket size={15} style={{ color: ACCENT }} />
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: ACCENT, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+            MCP Control Plane
+          </div>
+          <div style={{ fontSize: 10, color: "#6b7280", marginTop: 1 }}>
+            Sparkbot command center and LIMA Robotics OS
+          </div>
+        </div>
+        <button
+          onClick={onClose}
+          style={{
+            background: "none",
+            border: "1px solid #1f2937",
+            borderRadius: 4,
+            cursor: "pointer",
+            color: "#6b7280",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 28,
+            height: 28,
+          }}
+          aria-label="Close MCP control plane"
+        >
+          <X size={14} />
+        </button>
+      </div>
+
+      <div style={{ flex: 1, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
+        <p style={{ fontSize: 11, color: "#94a3b8", margin: 0, lineHeight: 1.65 }}>
+          Sparkbot is the governed agentic assistant and command center. LIMA Robotics OS is the
+          robotics and physical-world runtime exposed through MCP. This registry keeps both sets of
+          tools under one policy and audit model.
+        </p>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+          {[
+            ["Sparkbot tools", String(runtimeCounts.sparkbot), health.sparkbotApiLive ? "API live" : health.loading ? "Checking" : "Offline"],
+            ["Robo OS tools", String(runtimeCounts["lima-robo-os"]), "Replay/sim first"],
+            ["Loaded skills", health.skillsCount == null ? "--" : String(health.skillsCount), "Drop-in plugins"],
+          ].map(([label, value, detail]) => (
+            <div key={label} style={{ border: `1px solid ${ACCENT}1f`, borderRadius: 8, backgroundColor: "#040d1a", padding: "10px 12px" }}>
+              <div style={{ fontSize: 10, color: "#64748b", letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 700 }}>
+                {label}
+              </div>
+              <div style={{ fontSize: 20, color: "#e2e8f0", fontWeight: 800, marginTop: 4 }}>{value}</div>
+              <div style={{ fontSize: 10, color: ACCENT, marginTop: 2 }}>{detail}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ border: `1px solid ${ACCENT}1f`, borderRadius: 10, backgroundColor: "#040d1a", overflow: "hidden" }}>
+          <div style={{ padding: "10px 12px", borderBottom: `1px solid ${ACCENT}1f`, fontSize: 10, color: ACCENT, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700 }}>
+            Tool manifests and policy
+          </div>
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            {MCP_TOOL_MANIFESTS.map((manifest) => {
+              const healthState = manifestHealthLabel(manifest, health)
+              const color = riskColor(manifest.riskLevel)
+              return (
+                <div key={manifest.id} style={{ padding: "11px 12px", borderBottom: "1px solid #0d1f35", display: "grid", gridTemplateColumns: "minmax(0, 1fr) 86px", gap: 10 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 12, color: "#e2e8f0", fontWeight: 700 }}>{manifest.name}</span>
+                      <span style={{ fontSize: 9, color, border: `1px solid ${color}44`, borderRadius: 3, padding: "1px 6px", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                        {manifest.riskLevel}
+                      </span>
+                      <span style={{ fontSize: 9, color: healthState.color, border: `1px solid ${healthState.color}44`, borderRadius: 3, padding: "1px 6px", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                        {healthState.label}
+                      </span>
+                    </div>
+                    <p style={{ fontSize: 10, color: "#94a3b8", lineHeight: 1.55, margin: "6px 0 0" }}>{manifest.description}</p>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 7 }}>
+                      {manifest.policy.map((tag) => (
+                        <span key={tag} style={{ fontSize: 9, color: "#7dd3fc", backgroundColor: "#0c1f35", borderRadius: 4, padding: "2px 6px", fontFamily: "monospace" }}>
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                    <div style={{ fontSize: 9, color: "#64748b", marginTop: 7 }}>
+                      Secrets: {manifest.requiredSecrets.length ? manifest.requiredSecrets.join(", ") : "none"}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: "right", fontSize: 9, color: "#64748b", lineHeight: 1.5 }}>
+                    <div>{manifest.owner}</div>
+                    <div>{manifest.dryRunSupport}</div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div style={{ border: `1px solid ${ACCENT}1f`, borderRadius: 10, backgroundColor: "#040d1a", padding: "12px 14px" }}>
+            <div style={{ fontSize: 10, color: ACCENT, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700, marginBottom: 8 }}>
+              Dry run mode
+            </div>
+            <p style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.65, margin: 0 }}>
+              Read-only tools can run directly. Writes, sends, destructive commands, secret use, and robot motion should produce an explain-plan first, then wait for the operator approval path.
+            </p>
+          </div>
+          <div style={{ border: `1px solid ${ACCENT}1f`, borderRadius: 10, backgroundColor: "#040d1a", padding: "12px 14px" }}>
+            <div style={{ fontSize: 10, color: ACCENT, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700, marginBottom: 8 }}>
+              No hardware demos
+            </div>
+            <code style={{ display: "block", whiteSpace: "pre-wrap", color: "#cbd5e1", fontSize: 10, lineHeight: 1.6 }}>
+              LIMA --replay run unitree-go2{"\n"}LIMA --simulation run unitree-go2-agentic-mcp{"\n"}LIMA run demo-camera
+            </code>
+          </div>
+        </div>
+
+        <div style={{ border: `1px dashed ${ACCENT}33`, borderRadius: 10, backgroundColor: "#040d1a", padding: "12px 14px" }}>
+          <div style={{ fontSize: 10, color: ACCENT, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700, marginBottom: 8 }}>
+            Universal run timeline
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+            {MCP_RUN_TIMELINE.map((step, index) => (
+              <div key={step} style={{ display: "flex", gap: 9, alignItems: "center" }}>
+                <span style={{ width: 18, height: 18, borderRadius: 999, backgroundColor: `${ACCENT}18`, border: `1px solid ${ACCENT}44`, color: ACCENT, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700 }}>
+                  {index + 1}
+                </span>
+                <span style={{ fontSize: 11, color: "#cbd5e1" }}>{step}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => window.open("https://github.com/armpit-symphony/LIMA-Robo-OS", "_blank", "noopener,noreferrer")}
+          style={{
+            alignSelf: "flex-start",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 7,
+            background: `${ACCENT}18`,
+            border: `1px solid ${ACCENT}44`,
+            borderRadius: 6,
+            cursor: "pointer",
+            color: ACCENT,
+            fontSize: 11,
+            padding: "7px 12px",
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+            fontWeight: 700,
+          }}
+        >
+          <ExternalLink size={12} />
+          Open Robo OS README
+        </button>
+      </div>
+    </div>
+  )
+}
+
 interface TerminalDetailPanelProps {
   station: Station
   onClose: () => void
@@ -3668,6 +3949,11 @@ export default function WorkstationPage() {
     setSeatPicker(null)
     setInfoOpen((prev) => !prev)
   }, [])
+  const handleOpenRoboOs = useCallback(() => {
+    setInfoOpen(false)
+    setSeatPicker(null)
+    setPanel((prev) => (prev?.kind === "mcp" ? null : { kind: "mcp" }))
+  }, [])
 
   const handleLaunchSparkBud = useCallback(
     async (station: Station, config: { prompt: string; agentName?: string }) => {
@@ -3869,10 +4155,11 @@ export default function WorkstationPage() {
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <SparkbotSurfaceTabs
-              active={infoOpen ? "info" : "workstation"}
+              active={panel?.kind === "mcp" ? "robo_os" : infoOpen ? "info" : "workstation"}
               onChat={() => handleNavigate("/dm")}
               onWorkstation={() => handleNavigate("/workstation")}
               onControls={() => handleNavigate("/dm?controls=open")}
+              onRoboOs={handleOpenRoboOs}
               onInfo={handleOpenInfo}
             />
             <Link
@@ -4058,6 +4345,34 @@ export default function WorkstationPage() {
                   </div>
                   <span style={{ fontSize: 9, color: computerControlStatus.enabled ? "#4ade80" : "#fbbf24", border: `1px solid ${computerControlStatus.enabled ? "#4ade80" : "#fbbf24"}44`, borderRadius: 3, padding: "1px 6px", letterSpacing: "0.08em", textTransform: "uppercase" }}>
                     {computerControlStatus.enabled ? "Always on" : "PIN gated"}
+                  </span>
+                </button>
+                <button
+                  onClick={handleOpenRoboOs}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    background: panel?.kind === "mcp" ? "rgba(34,211,238,0.12)" : "rgba(7,13,28,0.56)",
+                    border: panel?.kind === "mcp" ? "1px solid rgba(34,211,238,0.5)" : "1px solid rgba(34,211,238,0.18)",
+                    borderRadius: 12,
+                    padding: "10px 14px",
+                    cursor: "pointer",
+                    textAlign: "left",
+                    width: "100%",
+                  }}
+                >
+                  <Rocket size={15} style={{ color: "#22d3ee", flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#22d3ee", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                      Robo OS
+                    </div>
+                    <div style={{ fontSize: 10, color: "#64748b", marginTop: 1 }}>
+                      LIMA MCP registry
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 9, color: "#4ade80", border: "1px solid #4ade8044", borderRadius: 3, padding: "1px 6px", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                    Sim ready
                   </span>
                 </button>
               </div>
@@ -4527,6 +4842,9 @@ export default function WorkstationPage() {
             onOpenTerminal={() => setPanel({ kind: "terminal", station: localTerminalDesk })}
             status={computerControlStatus}
           />
+        )}
+        {panel?.kind === "mcp" && (
+          <McpControlPlanePanel onClose={handleClosePanel} />
         )}
 
         {/* ─── Invite config modal ────────────────────────────────────── */}

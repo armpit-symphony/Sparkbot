@@ -1,0 +1,19 @@
+Sparkbot v1.6.39
+=================
+
+Product truth and MCP control-plane cleanup.
+
+- Position Sparkbot and LIMA Robotics OS as one system:
+  Sparkbot is the governed agentic assistant and command center;
+  LIMA Robotics OS is the Local Intelligent Machine Agent runtime
+  for robot skills and physical-world execution exposed through MCP.
+- Add the Workstation Robo OS button and MCP control-plane panel.
+- Add typed tool manifests for Sparkbot and LIMA tools with policy
+  metadata: read-only, write, destructive, external-send, robot-motion,
+  and secret-use.
+- Show risk level, required secrets, dry-run posture, and live Sparkbot
+  health signals from existing Guardian/skills APIs.
+- Document no-hardware LIMA demos through replay/simulation commands.
+- Refresh README, capabilities docs, release note, and public downloader
+  version markers for 1.6.39.
+

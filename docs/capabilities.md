@@ -47,22 +47,23 @@ References used for this roadmap framing: [Okta's 2026 agent governance framing]
 7. [AI & Model Configuration](#ai--model-configuration)
 8. [Multi-Agent System](#multi-agent-system)
 9. [Workstation](#workstation)
-10. [Task Guardian (Scheduled Autonomy)](#task-guardian-scheduled-autonomy)
-11. [Guardian Stack (Security)](#guardian-stack-security)
-12. [Communication Bridges](#communication-bridges)
-13. [Voice (Whisper + TTS)](#voice-whisper--tts)
-14. [Knowledge Base (RAG)](#knowledge-base-rag)
-15. [Meeting Mode & Roundtable](#meeting-mode--roundtable)
-16. [Persistent Memory](#persistent-memory)
-17. [Environment Variables — Full Reference](#environment-variables--full-reference)
-18. [API Endpoints](#api-endpoints)
-19. [Guardian Spine — Operator Reference](#guardian-spine--operator-reference)
-20. [Process Watcher & Model Throttling](#process-watcher--model-throttling)
-21. [Model Latency Tracking](#model-latency-tracking)
-22. [Skill Sandboxing](#skill-sandboxing)
-23. [API Usage Examples](#api-usage-examples)
-24. [Versioning & Compatibility](#versioning--compatibility)
-25. [Project File Map](#project-file-map)
+10. [MCP Control Plane & Robo OS](#mcp-control-plane--robo-os)
+11. [Task Guardian (Scheduled Autonomy)](#task-guardian-scheduled-autonomy)
+12. [Guardian Stack (Security)](#guardian-stack-security)
+13. [Communication Bridges](#communication-bridges)
+14. [Voice (Whisper + TTS)](#voice-whisper--tts)
+15. [Knowledge Base (RAG)](#knowledge-base-rag)
+16. [Meeting Mode & Roundtable](#meeting-mode--roundtable)
+17. [Persistent Memory](#persistent-memory)
+18. [Environment Variables — Full Reference](#environment-variables--full-reference)
+19. [API Endpoints](#api-endpoints)
+20. [Guardian Spine — Operator Reference](#guardian-spine--operator-reference)
+21. [Process Watcher & Model Throttling](#process-watcher--model-throttling)
+22. [Model Latency Tracking](#model-latency-tracking)
+23. [Skill Sandboxing](#skill-sandboxing)
+24. [API Usage Examples](#api-usage-examples)
+25. [Versioning & Compatibility](#versioning--compatibility)
+26. [Project File Map](#project-file-map)
 
 ---
 
@@ -576,6 +577,7 @@ A visual grid showing all active desks:
 - **Specialty Agents** — spawned custom agents
 - **Terminal Desk** — live xterm.js terminal panel
 - **Computer Control** — shell, terminal, and browser capability panel
+- **Robo OS** — unified MCP control-plane panel for Sparkbot tools and LIMA Robotics OS skills
 
 ### Computer Control Panel
 
@@ -585,6 +587,48 @@ Three capability cards visible in the Workstation:
 - **Browser** — open URLs, fill forms, click, save sessions
 
 The Workstation Computer Control card mirrors Sparkbot Controls: **Always on** means the room checkbox is enabled, and **PIN gated** means Sparkbot will ask for break-glass PIN authorization before risky commands, edits, browser writes, vault access, or comms sends.
+
+---
+
+## MCP Control Plane & Robo OS
+
+The **Robo OS** button opens the first unified MCP registry in Workstation. It positions the system as:
+
+| Layer | Ownership |
+|-------|-----------|
+| Sparkbot | Governed agentic assistant and command center for chat, computer work, cloud ops, business workflows, approvals, memory, Vault, and audit |
+| LIMA Robotics OS | Local Intelligent Machine Agent runtime for robot skills and physical-world execution exposed through MCP |
+| Together | One assistant surface for computer work, connected services, and robotics |
+
+The panel shows typed manifests for Sparkbot tools and LIMA robot skills with:
+
+- Runtime owner: `sparkbot` or `lima-robo-os`
+- Policy tags: `read-only`, `write`, `destructive`, `external-send`, `robot-motion`, `secret-use`
+- Risk level: low, medium, high, critical
+- Required secrets or daemon endpoints
+- Health source: Sparkbot API, Task Guardian, Guardian Vault, or external MCP
+- Dry-run posture: native dry run, explain-plan, or required-before-motion
+
+No hardware is required for the Robo OS demo path. LIMA replay/simulation commands are surfaced directly in Sparkbot:
+
+```bash
+LIMA --replay run unitree-go2
+LIMA --simulation run unitree-go2-agentic-mcp
+LIMA run demo-camera
+```
+
+Robot-motion tools such as `navigate`, `follow_route`, `return_home`, and `stop` are marked critical. They should produce a dry-run/explain-plan, then require operator approval and audit evidence before execution.
+
+The universal run timeline is:
+
+1. User request
+2. Parsed intent and context pack
+3. Tool manifests matched
+4. Policy tags and risk evaluated
+5. Dry run or explain plan
+6. Operator approval when required
+7. Execution
+8. Audit evidence and run summary
 
 ### Round Table
 
@@ -1591,7 +1635,7 @@ curl -b cookies.txt http://localhost:8000/api/v1/chat/system/watcher | python -m
 
 Desktop release tags and app versions are aligned on the `1.6.x` release line.
 
-For `v1.6.38`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together for the governed agent-operations release: agent identity and kill switches, room-scoped run timeline evidence, connector health metadata, workflow templates, deterministic governance evals, per-tool input/output guardrails, a PWA shell for the public site, privacy/retention docs, and aligned downloader versioning.
+For `v1.6.39`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story.
 
 ### How to upgrade safely
 

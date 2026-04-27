@@ -1,5 +1,12 @@
 # Release Notes
 
+## Sparkbot v1.6.39
+
+- Added the Workstation **Robo OS** button and unified MCP control-plane panel.
+- Positioned Sparkbot as the governed assistant/command center and LIMA Robotics OS as the Local Intelligent Machine Agent runtime exposed through MCP.
+- Added typed tool manifests with policy tags, risk levels, required secrets, dry-run posture, live Sparkbot health, and a universal run timeline.
+- Documented no-hardware LIMA replay/simulation demos and refreshed README, capabilities docs, release note, and downloader markers for `1.6.39`.
+
 ## Latest Changes
 
 ### Refactors

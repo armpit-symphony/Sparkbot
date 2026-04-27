@@ -1,10 +1,11 @@
-type SparkbotSurfaceTab = "chat" | "workstation" | "controls" | "info"
+export type SparkbotSurfaceTab = "chat" | "workstation" | "controls" | "robo_os" | "info"
 
 interface SparkbotSurfaceTabsProps {
   active?: SparkbotSurfaceTab
   onChat: () => void
   onWorkstation: () => void
   onControls: () => void
+  onRoboOs?: () => void
   onInfo?: () => void
 }
 
@@ -17,7 +18,7 @@ const TAB_ACTIVE_SHADOW = "0 10px 24px rgba(49, 46, 129, 0.24)"
 
 const TAB_CONFIG: Array<{
   id: SparkbotSurfaceTab
-  label: "Chat" | "Workstation" | "Controls" | "Info"
+  label: "Chat" | "Workstation" | "Controls" | "Robo OS" | "Info"
   onClick: (props: SparkbotSurfaceTabsProps) => void
 }> = [
   {
@@ -34,6 +35,17 @@ const TAB_CONFIG: Array<{
     id: "controls",
     label: "Controls",
     onClick: (props) => props.onControls(),
+  },
+  {
+    id: "robo_os",
+    label: "Robo OS",
+    onClick: (props) => {
+      if (props.onRoboOs) {
+        props.onRoboOs()
+        return
+      }
+      window.open("https://github.com/armpit-symphony/LIMA-Robo-OS", "_blank", "noopener,noreferrer")
+    },
   },
   {
     id: "info",

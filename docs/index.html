@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -979,7 +979,7 @@
         <span class="logo-name">Sparkbot</span>
       </div>
 
-      <div class="hero-badge">Free &amp; Open Source &nbsp;·&nbsp; <span id="version-badge">v1.6.38</span></div>
+      <div class="hero-badge">Free &amp; Open Source &nbsp;·&nbsp; <span id="version-badge">v1.6.39</span></div>
       <h1>Your own AI,<br>on your computer</h1>
 
       <p class="hero-tagline">
@@ -1001,7 +1001,7 @@
       <div class="download-primary-wrap">
         <a
           id="download-windows-primary"
-          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.38/Sparkbot.Local_1.6.38_x64-setup.exe"
+          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.39/Sparkbot.Local_1.6.39_x64-setup.exe"
           class="btn-download-windows"
           aria-label="Download Sparkbot for Windows, latest stable version"
         >
@@ -1013,7 +1013,7 @@
         </a>
       </div>
 
-      <p class="download-meta"><span id="download-version-label">Version 1.6.38</span> &nbsp;·&nbsp; Windows 10 &amp; 11 &nbsp;·&nbsp; 64-bit &nbsp;·&nbsp; Free forever</p>
+      <p class="download-meta"><span id="download-version-label">Version 1.6.39</span> &nbsp;·&nbsp; Windows 10 &amp; 11 &nbsp;·&nbsp; 64-bit &nbsp;·&nbsp; Free forever</p>
       <p class="download-meta" style="margin-top:12px; font-size:0.95rem;">
         This page checks GitHub for the latest stable desktop release automatically. If the button does not start a download, open
         <a href="https://github.com/armpit-symphony/Sparkbot/releases" target="_blank" rel="noopener noreferrer">All Releases</a>
@@ -1023,7 +1023,7 @@
       <div class="other-os">
         <a
           id="download-macos-link"
-          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.38/Sparkbot.Local_1.6.38_aarch64.dmg"
+          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.39/Sparkbot.Local_1.6.39_aarch64.dmg"
           class="btn-os-small"
           aria-label="Download Sparkbot for macOS"
         >
@@ -1031,7 +1031,7 @@
         </a>
         <a
           id="download-linux-link"
-          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.38/Sparkbot.Local_1.6.38_amd64.AppImage"
+          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.39/Sparkbot.Local_1.6.39_amd64.AppImage"
           class="btn-os-small"
           aria-label="Download Sparkbot for Linux AppImage"
         >
@@ -1121,66 +1121,33 @@
     =========================== -->
     <section class="section" aria-labelledby="new-heading">
       <div class="container">
-        <h2 class="section-title" id="new-heading">New in v1.6.38: governed agent operations</h2>
+        <h2 class="section-title" id="new-heading">New in v1.6.39: Sparkbot + Robo OS control plane</h2>
         <p class="section-subtitle">
-          Sparkbot now ships the governance roadmap baseline: agent identity and kill switches, traceable run timelines, connector health, workflow templates, tool guardrails, evals, and a mobile-friendly PWA shell.
+          Sparkbot now presents LIMA Robotics OS as part of one governed system: Sparkbot is the command center, Robo OS is the robotics runtime exposed through MCP, and the Workstation shows the first unified tool registry.
         </p>
 
         <div class="features-grid">
           <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">🧠</span>
-            <h3 class="feature-title">Agent identity + kill switches</h3>
-            <p class="feature-desc">Agents now expose owner, purpose, scopes, allowed tools, expiration, risk tier, and kill-switch state. Disabled agents will not route from <code>@mention</code>.</p>
-          </div>
-
-          <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">🪪</span>
-            <h3 class="feature-title">Run timeline with audit hash</h3>
-            <p class="feature-desc">The dashboard can now retrieve room-scoped policy/tool timelines with timestamp, model, agent, decision, summary, and a stable audit hash for evidence export.</p>
-          </div>
-
-          <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">📊</span>
-            <h3 class="feature-title">Connector quality dashboard</h3>
-            <p class="feature-desc">Connector health now reports setup state, read/write scopes, setup-test availability, and audit metadata so reliable integrations matter more than raw connector count.</p>
-          </div>
-
-          <div class="feature-card">
             <span class="feature-icon" role="img" aria-hidden="true">🧭</span>
-            <h3 class="feature-title">Workflow templates</h3>
-            <p class="feature-desc">Morning brief, PR monitor, deploy checklist, inbox triage, and incident response templates define trigger, conditions, tools, approval gate, notification, and audit export.</p>
+            <h3 class="feature-title">Robo OS button in Workstation</h3>
+            <p class="feature-desc">A new <strong>Robo OS</strong> button opens the MCP control-plane view for Sparkbot tools and LIMA Robotics OS skills.</p>
           </div>
 
           <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">🎯</span>
-            <h3 class="feature-title">Per-tool guardrails</h3>
-            <p class="feature-desc">Tool input checks run before execution, and output checks run after LLM/dashboard execution, adding a concrete validation layer around risky tool calls.</p>
+            <span class="feature-icon" role="img" aria-hidden="true">🧾</span>
+            <h3 class="feature-title">Typed tool manifests</h3>
+            <p class="feature-desc">The registry lists runtime owner, risk level, required secrets, dry-run support, and policy tags like <code>robot-motion</code>, <code>secret-use</code>, and <code>external-send</code>.</p>
           </div>
 
           <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">🛡️</span>
-            <h3 class="feature-title">Evaluation harness</h3>
-            <p class="feature-desc">A deterministic governance eval endpoint checks approval requirements, denied unknown tools, tool guardrails, and agent routing regressions.</p>
-          </div>
-
-          <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">🧑‍💼</span>
-            <h3 class="feature-title">Mobile companion shell</h3>
-            <p class="feature-desc">The public site now includes a PWA manifest and service worker so Sparkbot's mobile-facing docs and approval story can install like a lightweight companion.</p>
-          </div>
-
-          <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">🔐</span>
-            <h3 class="feature-title">Privacy and retention docs</h3>
-            <p class="feature-desc">A plain-language privacy page explains what stays local, what leaves for configured providers, retention defaults, and operator controls.</p>
+            <span class="feature-icon" role="img" aria-hidden="true">🎛️</span>
+            <h3 class="feature-title">No-hardware robot demos</h3>
+            <p class="feature-desc">LIMA replay and simulation commands are documented directly in Sparkbot so users can demo robot workflows before attaching hardware.</p>
           </div>
         </div>
 
         <p class="download-meta" style="margin-top:24px;">
-          Tunable via env: <code>SPARKBOT_MEMORY_GUARDIAN_RETRIEVER</code> (<code>fts</code> | <code>embed</code> | <code>hybrid</code>),
-          <code>SPARKBOT_MEMORY_GUARDIAN_ENABLE_EMBEDDINGS</code> (default <code>true</code>),
-          <code>SPARKBOT_MEMORY_GUARDIAN_RETRIEVE_LIMIT</code>.
-          Read the capability guide:
+          The registry uses live Sparkbot health where available and marks physical motion tools as critical, explain-plan first actions. Read the capability guide:
           <a href="https://github.com/armpit-symphony/Sparkbot/blob/main/docs/capabilities.md" target="_blank" rel="noopener noreferrer">Sparkbot Capabilities</a>
         </p>
       </div>
@@ -1202,7 +1169,7 @@
             <div class="step-num" aria-hidden="true">1</div>
             <div class="step-body">
               <h3 class="step-title">Click the big purple "Download for Windows" button above</h3>
-              <p class="step-desc">Your browser will download a file called <strong id="windows-filename-step-1">Sparkbot.Local_1.6.38_x64-setup.exe</strong>. This is the installer. It usually arrives in less than a minute.</p>
+              <p class="step-desc">Your browser will download a file called <strong id="windows-filename-step-1">Sparkbot.Local_1.6.39_x64-setup.exe</strong>. This is the installer. It usually arrives in less than a minute.</p>
             </div>
           </div>
 
@@ -1210,7 +1177,7 @@
             <div class="step-num" aria-hidden="true">2</div>
             <div class="step-body">
               <h3 class="step-title">Find the downloaded file and open it</h3>
-              <p class="step-desc">Look at the bottom of your browser for the downloaded file, or check your <strong>Downloads folder</strong>. Double-click the file named <strong id="windows-filename-step-2">Sparkbot.Local_1.6.38_x64-setup.exe</strong> to start installing.</p>
+              <p class="step-desc">Look at the bottom of your browser for the downloaded file, or check your <strong>Downloads folder</strong>. Double-click the file named <strong id="windows-filename-step-2">Sparkbot.Local_1.6.39_x64-setup.exe</strong> to start installing.</p>
             </div>
           </div>
 
@@ -1280,7 +1247,7 @@
               </div>
 
               <div class="win-info-row">
-                <strong>App:</strong> <span id="windows-filename-dialog">Sparkbot.Local_1.6.38_x64-setup.exe</span>
+                <strong>App:</strong> <span id="windows-filename-dialog">Sparkbot.Local_1.6.39_x64-setup.exe</span>
               </div>
               <div class="win-info-row">
                 <strong>Publisher:</strong> <span>Unknown publisher</span>
@@ -1525,7 +1492,7 @@
       <p>Free. Private. Yours. Download takes less than a minute.</p>
       <a
         id="download-windows-bottom"
-        href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.38/Sparkbot.Local_1.6.38_x64-setup.exe"
+        href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.39/Sparkbot.Local_1.6.39_x64-setup.exe"
         class="btn-download-windows"
         style="display:inline-flex;"
         aria-label="Download Sparkbot for Windows"
@@ -1545,7 +1512,7 @@
   =========================== -->
   <footer>
     <p>
-      <span role="img" aria-hidden="true">⚡</span> <strong>Sparkbot</strong> &nbsp;·&nbsp; <span id="footer-version-label">Version 1.6.38</span> &nbsp;·&nbsp; Free &amp; Open Source
+      <span role="img" aria-hidden="true">⚡</span> <strong>Sparkbot</strong> &nbsp;·&nbsp; <span id="footer-version-label">Version 1.6.39</span> &nbsp;·&nbsp; Free &amp; Open Source
     </p>
     <p style="margin-top:10px;">
       <a href="https://github.com/armpit-symphony/Sparkbot" target="_blank" rel="noopener noreferrer">GitHub</a>
@@ -1556,9 +1523,9 @@
     </p>
     <p style="margin-top:12px; font-size:0.8rem;">
       Other platforms:
-      <a id="footer-macos-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.38/Sparkbot.Local_1.6.38_aarch64.dmg">macOS (all Macs)</a>
+      <a id="footer-macos-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.39/Sparkbot.Local_1.6.39_aarch64.dmg">macOS (all Macs)</a>
       &nbsp;·&nbsp;
-      <a id="footer-linux-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.38/Sparkbot.Local_1.6.38_amd64.AppImage">Linux (AppImage)</a>
+      <a id="footer-linux-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.39/Sparkbot.Local_1.6.39_amd64.AppImage">Linux (AppImage)</a>
     </p>
   </footer>
 
@@ -1567,11 +1534,11 @@
   =========================== -->
   <script>
     var fallbackRelease = {
-      version: "1.6.38",
-      windowsFilename: "Sparkbot.Local_1.6.38_x64-setup.exe",
-      windowsUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.38/Sparkbot.Local_1.6.38_x64-setup.exe",
-      macosUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.38/Sparkbot.Local_1.6.38_aarch64.dmg",
-      linuxUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.38/Sparkbot.Local_1.6.38_amd64.AppImage"
+      version: "1.6.39",
+      windowsFilename: "Sparkbot.Local_1.6.39_x64-setup.exe",
+      windowsUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.39/Sparkbot.Local_1.6.39_x64-setup.exe",
+      macosUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.39/Sparkbot.Local_1.6.39_aarch64.dmg",
+      linuxUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.39/Sparkbot.Local_1.6.39_amd64.AppImage"
     };
 
     function setText(id, value) {

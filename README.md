@@ -6,7 +6,7 @@ Use it to chat, search, summarize documents, control a browser, run shell comman
 
 **Download:** [armpit-symphony.github.io/Sparkbot](https://armpit-symphony.github.io/Sparkbot/)
 
-**Current release line:** v1.6.38
+**Current release line:** v1.6.39
 
 > Sparkbot stores its app data locally. If you connect a cloud LLM provider or an external service, the text and actions needed for that provider or service are sent to that provider. Local models can run without an LLM cloud account.
 
@@ -21,6 +21,12 @@ Sparkbot combines five pieces into one local assistant:
 3. **Connected work tools** - email, calendars, files, GitHub, Slack, Notion, Confluence, Jira, Linear, contacts, stocks, Spotify, YouTube, and more.
 4. **Agent orchestrator** - multi-agent Round Table meetings, task-linked project rooms, scheduled Guardian jobs, meeting heartbeats, notes/artifacts, and owner interruptions.
 5. **Guardian controls** - policy checks, confirmations, policy simulation, persistent approvals, vault-backed secrets, break-glass access, scheduled-job verification, and audit logs.
+
+Sparkbot is also the command center for the wider **LIMA** system:
+
+- **Sparkbot** = governed agentic assistant for computer work, cloud ops, business workflows, approvals, memory, and audit.
+- **LIMA Robotics OS** (**LIMA = Local Intelligent Machine Agent**) = robotics and physical-world runtime exposed through MCP tools.
+- **Together** = one "everything agent" control plane for computer work, connected services, and robot skills, with replay/simulation demos available before any hardware is attached.
 
 The desktop app is the easiest path for one person. Docker and systemd deployments are available when you want Sparkbot on a server.
 
@@ -80,6 +86,7 @@ The desktop app is the easiest path for one person. Docker and systemd deploymen
 
 ### Workstation
 - **Office floor** — visual grid of all your AI desks: Sparkbot, model stack companions, agents, invite seats, terminal
+- **Robo OS** — Workstation button for the unified MCP control plane, LIMA Robotics OS manifests, policy tags, no-hardware replay/simulation commands, and robot-skill safety posture
 - **Invite Wing** — seat any model with its own API key and model ID; routes directly to that provider. The **Claude** and **ChatGPT** desks now use a matching `API Key / Subscription` setup pattern for Anthropic and OpenAI subscription-linked credentials, and the third desk is preset for **xAI Grok**
 - **Round Table** — autonomous multi-agent meeting room; all agents contribute without you typing between turns
 - **Company Operations** — view all Guardian Tasks across every room, active meetings, and launch project rooms in one click
@@ -266,6 +273,20 @@ Exports a dated `.md` file with all notes, decisions, and action items.
 
 The **Round Table** in the Workstation launches an autonomous multi-agent meeting. Click **Auto-fill Stack** to seat your configured models, then start the meeting. The chair frames the problem, specialists contribute, Sparkbot synthesizes the result, and the room can keep moving through a Guardian `meeting_heartbeat` task until it reaches a terminal state such as solved, blocked, recommendation ready, or needs approval. Meeting notes, decisions, action items, and project artifacts are captured so the room behaves like an orchestrator instead of a one-off chat. You can interrupt at any time.
 
+### Robo OS And MCP Control Plane
+
+Open **Workstation -> Robo OS** to see the first unified MCP registry for Sparkbot and LIMA Robotics OS. It lists typed tool manifests, owner/runtime, policy tags (`read-only`, `write`, `destructive`, `external-send`, `robot-motion`, `secret-use`), risk level, required secrets, dry-run posture, and live Sparkbot health from existing Guardian/skills APIs.
+
+LIMA Robotics OS is treated as the robotics runtime rather than a separate assistant. The no-hardware demo paths are shown directly in Sparkbot:
+
+```bash
+LIMA --replay run unitree-go2
+LIMA --simulation run unitree-go2-agentic-mcp
+LIMA run demo-camera
+```
+
+Robot-motion tools are marked critical and should go through dry-run/explain-plan and operator approval before execution.
+
 ### Scheduling Tasks (Task Guardian)
 
 Tell Sparkbot to run anything on a schedule:
@@ -436,6 +457,7 @@ User message → Token Guardian → Memory Guardian → LLM
 
 | Version | Date | Highlights |
 |---------|------|-----------|
+| v1.6.39 | Apr 2026 | Unified Sparkbot + LIMA Robotics OS positioning; Workstation Robo OS button; MCP control-plane registry with typed manifests, policy metadata, dry-run posture, live Sparkbot health, run timeline, and no-hardware LIMA replay/simulation demos |
 | v1.6.38 | Apr 2026 | Governance roadmap baseline: first-class agent identity/kill switches, run timeline API with audit hashes, connector health/scopes, workflow templates, PWA manifest, per-tool input/output guardrails, deterministic eval harness, privacy/data-retention docs, and aligned downloader versioning |
 | v1.6.37 | Apr 2026 | Self-learning memory + governed orchestration: hybrid Guardian recall with provenance/confidence, memory self-introspection tools, truth/confidence guardrails, approval-first improvement proposals, policy simulator, orchestrator docs, Telegram token-safe error handling, and write-like shell confirmation in policy mode |
 | v1.6.36 | Apr 2026 | Computer Control replaces the room execution gate; Workstation status now reflects the Controls checkbox; first-run 6-digit PIN setup/change flow for Break-glass, Vault, commands, browser writes, and comms sends |
