@@ -65,6 +65,9 @@ ALLOWED_TASK_TOOLS = {
     "list_tasks",
     "list_reminders",
     "morning_briefing",      # compound read skill: gmail + calendar + reminders digest
+    "memory_recall",         # diagnostics: hybrid recall against Guardian memory
+    "memory_retrieval_stats",# nightly memory telemetry digest
+    "memory_reindex",        # rebuild FTS + embedding indexes from the ledger
 }
 
 # Write tools allowed in scheduled context when SPARKBOT_TASK_GUARDIAN_WRITE_ENABLED=true.

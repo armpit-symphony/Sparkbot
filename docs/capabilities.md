@@ -664,7 +664,23 @@ SPARKBOT_MEMORY_GUARDIAN_ENABLED=true
 SPARKBOT_MEMORY_GUARDIAN_DATA_DIR=./data/memory_guardian
 SPARKBOT_MEMORY_GUARDIAN_MAX_TOKENS=1200
 SPARKBOT_MEMORY_GUARDIAN_RETRIEVE_LIMIT=6
+SPARKBOT_MEMORY_GUARDIAN_RETRIEVER=hybrid          # fts | embed | hybrid (default hybrid)
+SPARKBOT_MEMORY_GUARDIAN_ENABLE_EMBEDDINGS=true    # disable to skip the embedding rerank
 ```
+
+Hybrid retrieval combines an SQLite FTS5 (BM25) lexical search with a hashing-trick cosine
+embedding rerank. The embedding index ships in-process — no external service or model
+downloads. Every memory write is tagged with provenance (`source`, e.g.
+`fact.user_authored`, `tool.gmail_search`, `chat.user`) and a confidence score, both of
+which are surfaced through the new `memory_recall` tool.
+
+Built-in memory tools (read-only by default; whitelisted for Task Guardian scheduling):
+
+| Tool | Purpose |
+|------|---------|
+| `memory_recall` | Hybrid recall against Guardian memory; returns ranked items with provenance + score |
+| `memory_retrieval_stats` | In-process telemetry: writes, recalls, hit rate, latency, retriever mode, embed index size |
+| `memory_reindex` | Rebuild FTS + embedding indexes from the on-disk ledger (idempotent; safe to schedule nightly) |
 
 ### Executive Guardian + Task Guardian
 ```env

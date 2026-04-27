@@ -6,7 +6,7 @@ Use it to chat, search, summarize documents, control a browser, run shell comman
 
 **Download:** [armpit-symphony.github.io/Sparkbot](https://armpit-symphony.github.io/Sparkbot/)
 
-**Current release line:** v1.6.35
+**Current release line:** v1.6.37
 
 > Sparkbot stores its app data locally. If you connect a cloud LLM provider or an external service, the text and actions needed for that provider or service are sent to that provider. Local models can run without an LLM cloud account.
 
@@ -64,6 +64,8 @@ The desktop app is the easiest path for one person. Docker and systemd deploymen
 - **Multi-agent rooms** — mention `@researcher`, `@coder`, `@writer`, `@analyst`, or any custom agent for a specialist response
 - **Spawn agents** — create named agents with custom system prompts from 11 specialty templates
 - **Persistent memory** — Sparkbot stores facts about you and injects them into every conversation
+- **Hybrid recall** — Guardian Memory blends BM25 full-text search with an in-process embedding rerank, so Sparkbot finds relevant prior context even when you paraphrase. Provenance + confidence are tagged on every memory and surfaced to the model
+- **Self-introspection** — built-in `memory_recall`, `memory_retrieval_stats`, and `memory_reindex` tools let Sparkbot search its own ledger, report hit rate / latency, and rebuild indexes (schedulable as a nightly Task Guardian job)
 - **Knowledge base** — ingest any document or URL; Sparkbot searches it with BM25 full-text ranking when relevant
 - **Skill plugins** — drop a `.py` file into `backend/skills/` to add a new tool; auto-discovered on restart
 
@@ -425,6 +427,7 @@ User message → Token Guardian → Memory Guardian → LLM
 
 | Version | Date | Highlights |
 |---------|------|-----------|
+| v1.6.37 | Apr 2026 | Self-learning memory upgrade: hybrid recall (BM25 + in-process embedding rerank) on by default; provenance + confidence on every memory event; new `memory_recall`, `memory_retrieval_stats`, and `memory_reindex` tools (Task Guardian schedulable) |
 | v1.6.36 | Apr 2026 | Computer Control replaces the room execution gate; Workstation status now reflects the Controls checkbox; first-run 6-digit PIN setup/change flow for Break-glass, Vault, commands, browser writes, and comms sends |
 | v1.6.35 | Apr 2026 | Documentation and downloader refresh: coherent README flow, public site copy cleanup, packaging docs updated, and desktop/download version markers advanced |
 | v1.6.33 | Apr 2026 | Vault-backed runtime wiring for Discord, WhatsApp, GitHub, Gmail, and Google Calendar; Task Guardian supports `daily:HH:MM` schedules and Zulu one-shots; Windows-safe morning briefing; Jarvis demo kit |

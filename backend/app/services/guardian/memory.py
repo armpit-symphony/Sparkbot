@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import os
 import re
+import threading
+import time
 from functools import lru_cache
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,6 +22,7 @@ _SNAPSHOT_DIRNAME = "snapshots"
 _MAX_LEARNED_FACTS = 8
 _MAX_RECENT_FOCUS = 3
 _MAX_ACTIVE_TOOLS = 4
+_VALID_RETRIEVER_MODES = {"fts", "embed", "hybrid"}
 
 _SECRET_KEY_RE = re.compile(
     r"(password|passwd|secret|token|api_key|apikey|access_key|credential|auth_token|passphrase|private_key)",
@@ -83,6 +86,21 @@ def _retrieve_limit() -> int:
         return 6
 
 
+def _embeddings_enabled() -> bool:
+    """Hybrid retrieval embedding writes are on by default — the in-process
+    hashing-trick index has no external deps. Set to false to fall back to
+    pure FTS."""
+    raw = os.getenv("SPARKBOT_MEMORY_GUARDIAN_ENABLE_EMBEDDINGS", "true").strip().lower()
+    return raw not in {"0", "false", "no", "off"}
+
+
+def _retriever_mode() -> str:
+    raw = (os.getenv("SPARKBOT_MEMORY_GUARDIAN_RETRIEVER", "hybrid") or "hybrid").strip().lower()
+    if raw not in _VALID_RETRIEVER_MODES:
+        return "hybrid"
+    return raw
+
+
 def _data_dir() -> Path:
     configured = os.getenv("SPARKBOT_MEMORY_GUARDIAN_DATA_DIR", "").strip()
     if configured:
@@ -106,9 +124,108 @@ def _guardian() -> MemoryGuardian:
         Config(
             data_dir=str(_data_dir()),
             max_context_tokens=_max_context_tokens(),
-            enable_embeddings=False,
+            enable_embeddings=_embeddings_enabled(),
         )
     )
+
+
+# ── Telemetry --------------------------------------------------------------
+
+class _RetrievalStats:
+    """In-process counters for memory recall observability.
+
+    Numbers are best-effort and reset when the backend restarts. Use
+    ``memory_retrieval_stats()`` to inspect them or expose via a tool.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._reset()
+
+    def _reset(self) -> None:
+        self.writes = 0
+        self.write_failures = 0
+        self.recalls = 0
+        self.empty_recalls = 0
+        self.total_latency_ms = 0.0
+        self.last_latency_ms = 0.0
+        self.recalls_by_mode: dict[str, int] = {}
+        self.last_query: str = ""
+        self.last_mode: str = ""
+        self.last_event_count: int = 0
+        self.last_top_score: float = 0.0
+        self.started_at = datetime.now(timezone.utc).isoformat()
+
+    def record_write(self, *, ok: bool) -> None:
+        with self._lock:
+            if ok:
+                self.writes += 1
+            else:
+                self.write_failures += 1
+
+    def record_recall(
+        self,
+        *,
+        mode: str,
+        latency_ms: float,
+        event_count: int,
+        top_score: float,
+        query: str,
+    ) -> None:
+        with self._lock:
+            self.recalls += 1
+            self.total_latency_ms += latency_ms
+            self.last_latency_ms = latency_ms
+            self.recalls_by_mode[mode] = self.recalls_by_mode.get(mode, 0) + 1
+            self.last_query = query[:140]
+            self.last_mode = mode
+            self.last_event_count = event_count
+            self.last_top_score = round(top_score, 4)
+            if event_count == 0:
+                self.empty_recalls += 1
+
+    def snapshot(self) -> dict[str, Any]:
+        with self._lock:
+            avg = (self.total_latency_ms / self.recalls) if self.recalls else 0.0
+            hit = ((self.recalls - self.empty_recalls) / self.recalls) if self.recalls else 0.0
+            return {
+                "started_at": self.started_at,
+                "writes": self.writes,
+                "write_failures": self.write_failures,
+                "recalls": self.recalls,
+                "empty_recalls": self.empty_recalls,
+                "memory_hit_rate": round(hit, 4),
+                "avg_latency_ms": round(avg, 2),
+                "last_latency_ms": round(self.last_latency_ms, 2),
+                "recalls_by_mode": dict(self.recalls_by_mode),
+                "last_query": self.last_query,
+                "last_mode": self.last_mode,
+                "last_event_count": self.last_event_count,
+                "last_top_score": self.last_top_score,
+            }
+
+    def reset(self) -> None:
+        with self._lock:
+            self._reset()
+
+
+_STATS = _RetrievalStats()
+
+
+def memory_retrieval_stats() -> dict[str, Any]:
+    """Return a JSON-friendly snapshot of memory recall telemetry."""
+    snap = _STATS.snapshot()
+    snap["embeddings_enabled"] = _embeddings_enabled()
+    snap["retriever_mode"] = _retriever_mode()
+    try:
+        snap["embed_index_size"] = _guardian().embed.size()
+    except Exception:
+        snap["embed_index_size"] = 0
+    return snap
+
+
+def reset_memory_retrieval_stats() -> None:
+    _STATS.reset()
 
 
 def _user_session(user_id: str) -> str:
@@ -313,6 +430,8 @@ def _append_event(
     session_id: str,
     role: str | None = None,
     metadata: dict[str, Any] | None = None,
+    source: str = "chat",
+    confidence: float | None = None,
 ) -> bool:
     if not memory_guardian_enabled():
         return False
@@ -321,17 +440,34 @@ def _append_event(
     if not text:
         return False
 
+    sanitized = _sanitize_metadata(metadata or {})
+    sanitized.setdefault("source", source)
+    if confidence is not None:
+        sanitized["confidence"] = round(float(confidence), 4)
+    sanitized.setdefault("recorded_at", datetime.now(timezone.utc).isoformat())
+
     event = Event(
         type=event_type,
         role=role,
         content=text,
         session_id=session_id,
-        metadata=_sanitize_metadata(metadata or {}),
+        metadata=sanitized,
     )
     guardian = _guardian()
-    guardian.ledger.append(event)
-    guardian.fts.index_event(event)
-    return True
+    try:
+        guardian.ledger.append(event)
+        guardian.fts.index_event(event)
+        if _embeddings_enabled():
+            try:
+                guardian.embed.index_event(event)
+            except Exception:
+                # Hybrid retrieval is best-effort; never block on it.
+                pass
+        _STATS.record_write(ok=True)
+        return True
+    except Exception:
+        _STATS.record_write(ok=False)
+        return False
 
 
 def remember_chat_message(*, user_id: str, room_id: str, role: str, content: str) -> bool:
@@ -341,6 +477,8 @@ def remember_chat_message(*, user_id: str, room_id: str, role: str, content: str
         content=content,
         session_id=_room_session(user_id, room_id),
         metadata={"user_id": user_id, "room_id": room_id},
+        source=f"chat.{role}",
+        confidence=0.9 if role == "user" else 0.7,
     )
     if stored:
         try:
@@ -373,6 +511,8 @@ def remember_tool_event(
         content=f"{tool_name}({json.dumps(_sanitize_metadata(args), sort_keys=True)})",
         session_id=_room_session(user_id, room_id),
         metadata=payload,
+        source=f"tool.{tool_name}",
+        confidence=0.85,
     )
     if stored:
         try:
@@ -417,6 +557,8 @@ def remember_fact(*, user_id: str, fact: str, memory_id: str = "") -> bool:
         content=f"FACT: {_safe_text(fact, limit=500)}",
         session_id=_user_session(user_id),
         metadata=metadata,
+        source="fact.user_authored",
+        confidence=0.95,
     )
     if stored:
         _emit_memory_event(
@@ -474,14 +616,153 @@ def build_memory_context(*, user_id: str, room_id: str, query: str) -> str:
 
     guardian = _guardian()
     limit = _retrieve_limit()
-    user_block = guardian.get_context(prompt_query, limit=limit, session_id=_user_session(user_id)).strip()
-    room_block = guardian.get_context(prompt_query, limit=limit, session_id=_room_session(user_id, room_id)).strip()
+    mode = _retriever_mode()
+
+    user_block = ""
+    room_block = ""
+    user_count = 0
+    room_count = 0
+    user_top = 0.0
+    room_top = 0.0
+
+    started = time.perf_counter()
+    try:
+        user_scored = guardian.retriever.retrieve_scored(
+            prompt_query, limit=limit, session_id=_user_session(user_id), mode=mode
+        )
+        user_count = len(user_scored)
+        user_top = user_scored[0][1] if user_scored else 0.0
+        if user_scored:
+            user_block = guardian.packer.pack([e for e, _ in user_scored]).strip()
+
+        room_scored = guardian.retriever.retrieve_scored(
+            prompt_query, limit=limit, session_id=_room_session(user_id, room_id), mode=mode
+        )
+        room_count = len(room_scored)
+        room_top = room_scored[0][1] if room_scored else 0.0
+        if room_scored:
+            room_block = guardian.packer.pack([e for e, _ in room_scored]).strip()
+    except Exception:
+        # Fall back to the legacy packer path if the scored API fails for any reason.
+        user_block = guardian.get_context(
+            prompt_query, limit=limit, session_id=_user_session(user_id), mode=mode
+        ).strip()
+        room_block = guardian.get_context(
+            prompt_query, limit=limit, session_id=_room_session(user_id, room_id), mode=mode
+        ).strip()
+    finally:
+        latency_ms = (time.perf_counter() - started) * 1000.0
+        _STATS.record_recall(
+            mode=mode,
+            latency_ms=latency_ms,
+            event_count=user_count + room_count,
+            top_score=max(user_top, room_top),
+            query=prompt_query,
+        )
 
     if user_block and user_block != _NO_CONTEXT_MARKER:
         blocks.append("## Durable Memory\n" + user_block)
     if room_block and room_block != _NO_CONTEXT_MARKER:
         blocks.append("## Relevant Room Memory\n" + room_block)
     return "\n\n".join(blocks)
+
+
+def recall_relevant_events(
+    *,
+    user_id: str,
+    room_id: str | None,
+    query: str,
+    limit: int | None = None,
+    mode: str | None = None,
+) -> list[dict[str, Any]]:
+    """Hybrid recall returning structured event records with provenance + score.
+
+    Used by the ``memory_recall`` tool and any caller that needs
+    machine-readable recall results rather than a packed prompt block.
+    """
+    if not memory_guardian_enabled():
+        return []
+
+    prompt_query = _safe_text(query, limit=500)
+    if not prompt_query:
+        return []
+
+    guardian = _guardian()
+    effective_limit = max(1, min(int(limit or _retrieve_limit()), 25))
+    effective_mode = (mode or _retriever_mode()).strip().lower()
+    if effective_mode not in _VALID_RETRIEVER_MODES:
+        effective_mode = "hybrid"
+
+    sessions: list[str] = [_user_session(user_id)]
+    if room_id:
+        sessions.append(_room_session(user_id, room_id))
+
+    started = time.perf_counter()
+    aggregated: list[tuple[Event, float, str]] = []
+    try:
+        for sess in sessions:
+            scored = guardian.retriever.retrieve_scored(
+                prompt_query, limit=effective_limit, session_id=sess, mode=effective_mode
+            )
+            for event, score in scored:
+                aggregated.append((event, float(score), sess))
+    finally:
+        latency_ms = (time.perf_counter() - started) * 1000.0
+        top = max((s for _, s, _ in aggregated), default=0.0)
+        _STATS.record_recall(
+            mode=effective_mode,
+            latency_ms=latency_ms,
+            event_count=len(aggregated),
+            top_score=top,
+            query=prompt_query,
+        )
+
+    aggregated.sort(key=lambda triple: triple[1], reverse=True)
+    aggregated = aggregated[:effective_limit]
+
+    out: list[dict[str, Any]] = []
+    for event, score, sess in aggregated:
+        meta = dict(event.metadata or {})
+        out.append(
+            {
+                "id": event.id,
+                "session_id": sess,
+                "type": event.type.value if hasattr(event.type, "value") else str(event.type),
+                "role": event.role,
+                "content": _safe_text(event.content, limit=500),
+                "timestamp": event.timestamp.isoformat() if event.timestamp else None,
+                "score": round(score, 4),
+                "source": meta.get("source"),
+                "confidence": meta.get("confidence"),
+            }
+        )
+    return out
+
+
+def reindex_memory_indexes() -> dict[str, Any]:
+    """Rebuild FTS + embedding indexes from the ledger.
+
+    Returns a small summary suitable for a Task Guardian run record.
+    """
+    guardian = _guardian()
+    fts_count = 0
+    embed_count = 0
+    try:
+        guardian.fts.rebuild_from_ledger(guardian.ledger.ledger_path)
+        fts_count = sum(1 for _ in guardian.ledger.iter_events())
+    except Exception:
+        pass
+    if _embeddings_enabled():
+        try:
+            embed_count = guardian.embed.rebuild_from_ledger(guardian.ledger.ledger_path)
+        except Exception:
+            embed_count = 0
+    return {
+        "fts_indexed": fts_count,
+        "embed_indexed": embed_count,
+        "embeddings_enabled": _embeddings_enabled(),
+        "retriever_mode": _retriever_mode(),
+    }
 
 
 def delete_fact_memory(*, user_id: str, memory_id: str) -> int:
@@ -531,3 +812,8 @@ def _rewrite_events(events: list[Event]) -> None:
     for event in events:
         guardian.ledger.append(event)
     guardian.fts.rebuild_from_ledger(guardian.ledger.ledger_path)
+    if _embeddings_enabled():
+        try:
+            guardian.embed.rebuild_from_ledger(guardian.ledger.ledger_path)
+        except Exception:
+            pass

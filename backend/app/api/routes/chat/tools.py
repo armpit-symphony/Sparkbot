@@ -262,6 +262,60 @@ TOOL_DEFINITIONS = [
     {
         "type": "function",
         "function": {
+            "name": "memory_recall",
+            "description": (
+                "Search Guardian memory for relevant facts, prior messages, or tool results. "
+                "Use this when you need to recall what the user has said before, what tools "
+                "have been run, or any durable fact tied to this user/room. Returns ranked "
+                "items with provenance (source, confidence, score). Prefer this over guessing."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Natural-language query — keywords from the user's question work fine.",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum items to return (default 6, max 25).",
+                    },
+                    "mode": {
+                        "type": "string",
+                        "enum": ["fts", "embed", "hybrid"],
+                        "description": "Retrieval mode. Default: hybrid (FTS + embedding rerank).",
+                    },
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "memory_retrieval_stats",
+            "description": (
+                "Return in-process telemetry for the Guardian Memory pipeline (writes, recalls, "
+                "hit rate, latency, current retriever mode, embed index size). Useful for self-"
+                "diagnostics or to surface to the user when they ask how memory is performing."
+            ),
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "memory_reindex",
+            "description": (
+                "Rebuild the Guardian memory FTS + embedding indexes from the on-disk ledger. "
+                "Safe to run any time; idempotent. Schedulable via Task Guardian."
+            ),
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "web_search",
             "description": (
                 "Search the web for current information. Use this for recent events, "
@@ -4630,6 +4684,91 @@ async def _calendar_create_event(
 
 # ─── Memory tool executors ────────────────────────────────────────────────────
 
+async def _memory_recall(
+    query: str,
+    user_id: Optional[str],
+    room_id: Optional[str],
+    limit: int = 6,
+    mode: str = "",
+) -> str:
+    """Hybrid Guardian recall — surfaces relevant durable + room memory with scores."""
+    if not user_id:
+        return "Memory recall unavailable (no user context)."
+    if not query.strip():
+        return "Provide a query string to recall."
+    try:
+        from app.services.guardian.memory import recall_relevant_events
+
+        events = recall_relevant_events(
+            user_id=user_id,
+            room_id=room_id,
+            query=query,
+            limit=int(limit) if limit else 6,
+            mode=(mode or None),
+        )
+    except Exception as exc:
+        return f"Memory recall failed: {exc}"
+    if not events:
+        return "No relevant memory found."
+    out_lines: list[str] = [f"Recalled {len(events)} item(s):"]
+    for item in events:
+        ts = (item.get("timestamp") or "")[:19].replace("T", " ")
+        score = item.get("score")
+        source = item.get("source") or item.get("type")
+        confidence = item.get("confidence")
+        prefix_bits = [f"score={score}"]
+        if confidence is not None:
+            prefix_bits.append(f"conf={confidence}")
+        if source:
+            prefix_bits.append(f"source={source}")
+        if ts:
+            prefix_bits.append(f"ts={ts}")
+        prefix = " ".join(prefix_bits)
+        out_lines.append(f"- [{prefix}] {item.get('content','')}")
+    return "\n".join(out_lines)
+
+
+async def _memory_retrieval_stats() -> str:
+    """Show in-process memory recall telemetry."""
+    try:
+        from app.services.guardian.memory import memory_retrieval_stats
+    except Exception as exc:
+        return f"Memory stats unavailable: {exc}"
+    snap = memory_retrieval_stats()
+    parts = [
+        "Memory Guardian retrieval telemetry:",
+        f"- mode: {snap.get('retriever_mode')}",
+        f"- embeddings_enabled: {snap.get('embeddings_enabled')}",
+        f"- embed_index_size: {snap.get('embed_index_size')}",
+        f"- writes: {snap.get('writes')} (failures {snap.get('write_failures')})",
+        f"- recalls: {snap.get('recalls')} (empty {snap.get('empty_recalls')})",
+        f"- memory_hit_rate: {snap.get('memory_hit_rate')}",
+        f"- avg_latency_ms: {snap.get('avg_latency_ms')}",
+        f"- last_latency_ms: {snap.get('last_latency_ms')}",
+        f"- recalls_by_mode: {snap.get('recalls_by_mode')}",
+    ]
+    if snap.get("last_query"):
+        parts.append(
+            f"- last: query={snap.get('last_query')!r} mode={snap.get('last_mode')} "
+            f"events={snap.get('last_event_count')} top_score={snap.get('last_top_score')}"
+        )
+    return "\n".join(parts)
+
+
+async def _memory_reindex() -> str:
+    """Rebuild Guardian memory FTS + embedding indexes from the ledger."""
+    try:
+        from app.services.guardian.memory import reindex_memory_indexes
+    except Exception as exc:
+        return f"Memory reindex unavailable: {exc}"
+    summary = reindex_memory_indexes()
+    return (
+        "Reindex complete -- "
+        f"fts={summary.get('fts_indexed')} embed={summary.get('embed_indexed')} "
+        f"mode={summary.get('retriever_mode')} embeddings={summary.get('embeddings_enabled')}"
+    )
+
+
 async def _remember_fact(fact: str, user_id: Optional[str], session) -> str:
     if not user_id or session is None:
         return "Memory unavailable (no session context)."
@@ -4669,6 +4808,18 @@ async def execute_tool(
         return await _remember_fact(args.get("fact", ""), user_id, session)
     if name == "forget_fact":
         return await _forget_fact(args.get("memory_id", ""), user_id, session)
+    if name == "memory_recall":
+        return await _memory_recall(
+            args.get("query", ""),
+            user_id,
+            room_id,
+            int(args.get("limit") or 6),
+            str(args.get("mode") or ""),
+        )
+    if name == "memory_retrieval_stats":
+        return await _memory_retrieval_stats()
+    if name == "memory_reindex":
+        return await _memory_reindex()
     if name == "web_search":
         return await _web_search(args.get("query", ""))
     if name == "fetch_url":
