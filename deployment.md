@@ -20,6 +20,20 @@ cd Sparkbot
 bash scripts/sparkbot-start.sh
 ```
 
+On a fresh Ubuntu server, this launcher can install the required Docker build
+plugins for you:
+
+```bash
+bash scripts/sparkbot-start.sh --install-docker-plugins
+```
+
+Equivalent manual prerequisite:
+
+```bash
+sudo apt update
+sudo apt install docker-buildx-plugin docker-compose-plugin -y
+```
+
 For SSH sessions where hidden input makes paste feedback unclear, use:
 
 ```bash
@@ -36,8 +50,9 @@ bash scripts/sparkbot-start.sh --from-env
 The launcher:
 
 * detects `docker compose` and falls back to legacy `docker-compose` 1.29.x
+* checks for a working Docker buildx component before building images
 * creates `.env.local` from `.env.local.example` when missing
-* prompts for OpenAI, Anthropic, Google, Groq, OpenRouter, or local Ollama setup
+* prompts for OpenAI, Anthropic, Google, Groq, MiniMax, OpenRouter, or local Ollama setup
 * requires at least one provider key or an Ollama model
 * starts `compose.local.yml`
 

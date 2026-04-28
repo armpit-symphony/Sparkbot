@@ -171,6 +171,19 @@ bash scripts/sparkbot-start.sh
 
 The start script supports both Docker Compose v2 (`docker compose`) and legacy Docker Compose v1.29.x (`docker-compose`), creates `.env.local` when needed, opens the setup wizard if no provider is configured, and then starts Sparkbot. Open `http://localhost:3000`. Default passphrase: `sparkbot-local`.
 
+On a fresh Ubuntu server, install the Docker Compose v2 and buildx plugins first:
+
+```bash
+sudo apt update
+sudo apt install docker-buildx-plugin docker-compose-plugin -y
+```
+
+Or let Sparkbot try that install step:
+
+```bash
+bash scripts/sparkbot-start.sh --install-docker-plugins
+```
+
 Over SSH, provider key input is hidden by default. If paste or terminal echo is confusing, run:
 
 ```bash

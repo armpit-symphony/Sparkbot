@@ -7,9 +7,48 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SETUP_SCRIPT="${ROOT_DIR}/scripts/sparkbot-setup.sh"
 ENV_FILE="${SPARKBOT_ENV_FILE:-${ROOT_DIR}/.env.local}"
-SETUP_ARGS=("$@")
+INSTALL_DOCKER_PLUGINS=0
+SETUP_ARGS=()
+
+for arg in "$@"; do
+  case "${arg}" in
+    --install-docker-plugins)
+      INSTALL_DOCKER_PLUGINS=1
+      ;;
+    *)
+      SETUP_ARGS+=("${arg}")
+      ;;
+  esac
+done
 
 cd "${ROOT_DIR}"
+
+install_docker_plugins() {
+  echo "Installing Docker Compose v2 and buildx plugins with apt..."
+  sudo apt update
+  sudo apt install docker-buildx-plugin docker-compose-plugin -y
+}
+
+buildx_available() {
+  docker buildx version >/dev/null 2>&1
+}
+
+print_buildx_fix() {
+  cat >&2 <<'EOF'
+Docker buildx is missing or not working.
+
+Sparkbot's Dockerfiles use BuildKit features, so Docker must have a working
+buildx component before `compose up --build` can run.
+
+On Ubuntu, install the Docker plugins, then rerun:
+  sudo apt update
+  sudo apt install docker-buildx-plugin docker-compose-plugin -y
+  bash scripts/sparkbot-start.sh
+
+Or let Sparkbot try that install step:
+  bash scripts/sparkbot-start.sh --install-docker-plugins
+EOF
+}
 
 if ! command -v docker >/dev/null 2>&1; then
   cat >&2 <<'EOF'
@@ -33,10 +72,19 @@ EOF
   exit 1
 fi
 
+if [ "${INSTALL_DOCKER_PLUGINS}" = "1" ]; then
+  install_docker_plugins
+fi
+
 compose_cmd="$(bash "${SETUP_SCRIPT}" --print-compose-command)"
 read -r -a compose_parts <<< "${compose_cmd}"
 if [ "${compose_cmd}" = "docker-compose" ]; then
   echo "Using legacy docker-compose compatibility mode"
+fi
+
+if ! buildx_available; then
+  print_buildx_fix
+  exit 1
 fi
 
 if [ "${#SETUP_ARGS[@]}" -gt 0 ] || [ ! -f "${ENV_FILE}" ] || ! SPARKBOT_ENV_FILE="${ENV_FILE}" bash "${SETUP_SCRIPT}" --check-config; then

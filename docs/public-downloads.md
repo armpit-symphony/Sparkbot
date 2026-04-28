@@ -32,6 +32,12 @@ cd Sparkbot
 bash scripts/sparkbot-start.sh
 ```
 
+Fresh Ubuntu with missing Docker plugins:
+
+```bash
+bash scripts/sparkbot-start.sh --install-docker-plugins
+```
+
 SSH troubleshooting:
 
 ```bash

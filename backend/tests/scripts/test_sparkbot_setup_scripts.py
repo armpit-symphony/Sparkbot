@@ -53,6 +53,7 @@ def _template(path: Path) -> None:
                 "ANTHROPIC_API_KEY=",
                 "GOOGLE_API_KEY=",
                 "GROQ_API_KEY=",
+                "MINIMAX_API_KEY=",
                 "OPENROUTER_API_KEY=",
                 "SPARKBOT_DEFAULT_PROVIDER=openai",
                 "SPARKBOT_MODEL=gpt-5-mini",
@@ -302,6 +303,34 @@ def test_direct_provider_key_argument_writes_key_without_echoing_secret(tmp_path
     assert "sk-or-direct" not in result.stderr
 
 
+def test_minimax_provider_key_argument_writes_key_and_model(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    _write_executable(
+        fake_bin / "docker",
+        '#!/usr/bin/env sh\n[ "$1" = "compose" ] && [ "$2" = "version" ] && exit 0\nexit 1\n',
+    )
+    template = tmp_path / ".env.local.example"
+    env_file = tmp_path / ".env.local"
+    _template(template)
+
+    result = _run_setup(
+        ["--minimax-key", "minimax-direct"],
+        env={
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "SPARKBOT_ENV_FILE": str(env_file),
+            "SPARKBOT_ENV_TEMPLATE": str(template),
+        },
+    )
+
+    assert result.returncode == 0
+    content = env_file.read_text()
+    assert "MINIMAX_API_KEY=minimax-direct" in content
+    assert "SPARKBOT_MODEL=minimax/MiniMax-M2.5" in content
+    assert "minimax-direct" not in result.stdout
+    assert "minimax-direct" not in result.stderr
+
+
 def test_start_script_passes_setup_args_through(tmp_path: Path) -> None:
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
@@ -309,6 +338,7 @@ def test_start_script_passes_setup_args_through(tmp_path: Path) -> None:
         fake_bin / "docker",
         """#!/usr/bin/env sh
 if [ "$1" = "info" ]; then exit 0; fi
+if [ "$1" = "buildx" ] && [ "$2" = "version" ]; then exit 0; fi
 if [ "$1" = "compose" ] && [ "$2" = "version" ]; then exit 0; fi
 if [ "$1" = "compose" ]; then exit 0; fi
 exit 1
@@ -351,6 +381,7 @@ def test_start_script_prefers_docker_compose_v2_path(tmp_path: Path) -> None:
         f"""#!/usr/bin/env sh
 echo "$@" >> "{log_file}"
 if [ "$1" = "info" ]; then exit 0; fi
+if [ "$1" = "buildx" ] && [ "$2" = "version" ]; then exit 0; fi
 if [ "$1" = "compose" ] && [ "$2" = "version" ]; then exit 0; fi
 if [ "$1" = "compose" ]; then exit 0; fi
 exit 1
@@ -380,7 +411,7 @@ def test_start_script_prints_legacy_mode_and_uses_docker_compose(tmp_path: Path)
     log_file = tmp_path / "compose.log"
     _write_executable(
         fake_bin / "docker",
-        "#!/usr/bin/env sh\n[ \"$1\" = \"info\" ] && exit 0\nexit 1\n",
+        "#!/usr/bin/env sh\n[ \"$1\" = \"info\" ] && exit 0\n[ \"$1\" = \"buildx\" ] && [ \"$2\" = \"version\" ] && exit 0\nexit 1\n",
     )
     _write_executable(
         fake_bin / "docker-compose",
@@ -405,3 +436,92 @@ exit 0
     assert result.returncode == 0
     assert "Using legacy docker-compose compatibility mode" in result.stdout
     assert "-f compose.local.yml up --build" in log_file.read_text()
+
+
+def test_start_script_legacy_compose_without_buildx_fails_before_raw_buildkit_error(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    log_file = tmp_path / "compose.log"
+    _write_executable(
+        fake_bin / "docker",
+        "#!/usr/bin/env sh\n[ \"$1\" = \"info\" ] && exit 0\nexit 1\n",
+    )
+    _write_executable(
+        fake_bin / "docker-compose",
+        f"""#!/usr/bin/env sh
+echo "$@" >> "{log_file}"
+exit 0
+""",
+    )
+    template = tmp_path / ".env.local.example"
+    env_file = tmp_path / ".env.local"
+    _template(template)
+
+    result = _run_start(
+        ["--openai-key", "sk-no-buildx"],
+        env={
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "SPARKBOT_ENV_FILE": str(env_file),
+            "SPARKBOT_ENV_TEMPLATE": str(template),
+        },
+    )
+
+    combined = result.stdout + result.stderr
+    assert result.returncode != 0
+    assert "Using legacy docker-compose compatibility mode" in result.stdout
+    assert "Docker buildx is missing or not working." in result.stderr
+    assert "docker-buildx-plugin docker-compose-plugin" in result.stderr
+    assert "BuildKit is enabled but the buildx component is missing or broken" not in combined
+    assert not log_file.exists()
+
+
+def test_start_script_install_docker_plugins_then_prefers_modern_compose(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    installed_marker = tmp_path / "plugins-installed"
+    compose_log = tmp_path / "compose.log"
+    sudo_log = tmp_path / "sudo.log"
+    _write_executable(
+        fake_bin / "docker",
+        f"""#!/usr/bin/env sh
+if [ "$1" = "info" ]; then exit 0; fi
+if [ "$1" = "buildx" ] && [ "$2" = "version" ] && [ -f "{installed_marker}" ]; then exit 0; fi
+if [ "$1" = "compose" ] && [ "$2" = "version" ] && [ -f "{installed_marker}" ]; then exit 0; fi
+if [ "$1" = "compose" ] && [ -f "{installed_marker}" ]; then echo "$@" >> "{compose_log}"; exit 0; fi
+exit 1
+""",
+    )
+    _write_executable(
+        fake_bin / "docker-compose",
+        f"""#!/usr/bin/env sh
+echo "$@" >> "{compose_log}"
+exit 0
+""",
+    )
+    _write_executable(
+        fake_bin / "sudo",
+        f"""#!/usr/bin/env sh
+echo "$@" >> "{sudo_log}"
+touch "{installed_marker}"
+exit 0
+""",
+    )
+    template = tmp_path / ".env.local.example"
+    env_file = tmp_path / ".env.local"
+    _template(template)
+
+    result = _run_start(
+        ["--install-docker-plugins", "--openai-key", "sk-install-path"],
+        env={
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "SPARKBOT_ENV_FILE": str(env_file),
+            "SPARKBOT_ENV_TEMPLATE": str(template),
+        },
+    )
+
+    assert result.returncode == 0
+    assert "Installing Docker Compose v2 and buildx plugins with apt..." in result.stdout
+    assert "apt update" in sudo_log.read_text()
+    assert "apt install docker-buildx-plugin docker-compose-plugin -y" in sudo_log.read_text()
+    assert "Using legacy docker-compose compatibility mode" not in result.stdout
+    assert "compose -f compose.local.yml up --build" in compose_log.read_text()

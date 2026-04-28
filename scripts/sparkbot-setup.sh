@@ -16,6 +16,7 @@ SPARKBOT_PROVIDER_KEYS=(
   "ANTHROPIC_API_KEY:Anthropic:claude-sonnet-4-5:anthropic"
   "GOOGLE_API_KEY:Google:gemini/gemini-2.0-flash:google"
   "GROQ_API_KEY:Groq:groq/llama-3.3-70b-versatile:groq"
+  "MINIMAX_API_KEY:MiniMax:minimax/MiniMax-M2.5:minimax"
   "OPENROUTER_API_KEY:OpenRouter:openrouter/openai/gpt-4o-mini:openrouter"
 )
 SPARKBOT_SETUP_SHOW_INPUT="${SPARKBOT_SETUP_SHOW_INPUT:-0}"
@@ -152,6 +153,7 @@ sparkbot_model_provider() {
     claude*) printf '%s\n' "anthropic" ;;
     gemini/*) printf '%s\n' "google" ;;
     groq/*) printf '%s\n' "groq" ;;
+    minimax/*) printf '%s\n' "minimax" ;;
     *) printf '%s\n' "other" ;;
   esac
 }
@@ -414,6 +416,12 @@ sparkbot_setup_main() {
         SPARKBOT_SETUP_NONINTERACTIVE=1
         shift 2
         ;;
+      --minimax-key)
+        [ "$#" -ge 2 ] || { echo "--minimax-key requires a value." >&2; return 2; }
+        MINIMAX_API_KEY="$2"
+        SPARKBOT_SETUP_NONINTERACTIVE=1
+        shift 2
+        ;;
       --openrouter-key)
         [ "$#" -ge 2 ] || { echo "--openrouter-key requires a value." >&2; return 2; }
         OPENROUTER_API_KEY="$2"
@@ -454,6 +462,7 @@ Options:
   --anthropic-key KEY      Save an Anthropic API key.
   --google-key KEY         Save a Google API key.
   --groq-key KEY           Save a Groq API key.
+  --minimax-key KEY        Save a MiniMax API key.
   --openrouter-key KEY     Save an OpenRouter API key.
 EOF
       ;;
