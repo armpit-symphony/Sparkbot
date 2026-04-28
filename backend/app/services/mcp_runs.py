@@ -24,6 +24,13 @@ CREATE TABLE IF NOT EXISTS mcp_runs (
   approval_required INTEGER NOT NULL DEFAULT 0,
   dry_run_required INTEGER NOT NULL DEFAULT 0,
   can_execute_now INTEGER NOT NULL DEFAULT 0,
+  approval_id TEXT,
+  approval_requested_at TEXT,
+  approved_by TEXT,
+  approved_at TEXT,
+  denied_by TEXT,
+  denied_at TEXT,
+  status_message TEXT,
   user_request TEXT NOT NULL,
   next_action TEXT NOT NULL,
   plan_json TEXT NOT NULL,
@@ -65,6 +72,20 @@ def _conn() -> sqlite3.Connection:
 def _init_store() -> None:
     with _conn() as conn:
         conn.executescript(_SCHEMA)
+        _ensure_column(conn, "mcp_runs", "approval_id", "TEXT")
+        _ensure_column(conn, "mcp_runs", "approval_requested_at", "TEXT")
+        _ensure_column(conn, "mcp_runs", "approved_by", "TEXT")
+        _ensure_column(conn, "mcp_runs", "approved_at", "TEXT")
+        _ensure_column(conn, "mcp_runs", "denied_by", "TEXT")
+        _ensure_column(conn, "mcp_runs", "denied_at", "TEXT")
+        _ensure_column(conn, "mcp_runs", "status_message", "TEXT")
+
+
+def _ensure_column(conn: sqlite3.Connection, table: str, column: str, column_def: str) -> None:
+    existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    if column in existing:
+        return
+    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {column_def}")
 
 
 def _status_for_plan(plan: dict[str, Any]) -> McpRunStatus:
@@ -93,6 +114,13 @@ def _row_to_run(row: sqlite3.Row) -> dict[str, Any]:
         "approvalRequired": bool(row["approval_required"]),
         "dryRunRequired": bool(row["dry_run_required"]),
         "canExecuteNow": bool(row["can_execute_now"]),
+        "approvalId": row["approval_id"],
+        "approvalRequestedAt": row["approval_requested_at"],
+        "approvedBy": row["approved_by"],
+        "approvedAt": row["approved_at"],
+        "deniedBy": row["denied_by"],
+        "deniedAt": row["denied_at"],
+        "statusMessage": row["status_message"],
         "userRequest": row["user_request"],
         "nextAction": row["next_action"],
         "plan": plan,
@@ -176,3 +204,94 @@ def list_mcp_runs(*, user_id: str, room_id: str | None = None, limit: int = 20) 
     with _conn() as conn:
         rows = conn.execute(query, params).fetchall()
     return [_row_to_run(row) for row in rows]
+
+
+def request_mcp_run_approval(run_id: str, *, user_id: str) -> dict[str, Any] | None:
+    _init_store()
+    approval_id = str(uuid.uuid4())
+    now = _now_iso()
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM mcp_runs WHERE id = ? AND user_id = ?",
+            (run_id, user_id),
+        ).fetchone()
+        if not row:
+            return None
+        if row["status"] == "awaiting_approval":
+            return _row_to_run(row)
+        if row["status"] not in {"planned", "ready"}:
+            raise ValueError(f"Cannot request approval for MCP run in {row['status']} state.")
+        conn.execute(
+            """
+            UPDATE mcp_runs
+            SET status = ?, approval_id = ?, approval_requested_at = ?, status_message = ?,
+                updated_at = ?
+            WHERE id = ? AND user_id = ?
+            """,
+            (
+                "awaiting_approval",
+                approval_id,
+                now,
+                "Approval requested. Execution remains disabled until an operator approves and a runner is wired.",
+                now,
+                run_id,
+                user_id,
+            ),
+        )
+    return get_mcp_run(run_id, user_id=user_id)
+
+
+def approve_mcp_run(run_id: str, *, user_id: str, approver_id: str) -> dict[str, Any] | None:
+    _init_store()
+    now = _now_iso()
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM mcp_runs WHERE id = ? AND user_id = ?",
+            (run_id, user_id),
+        ).fetchone()
+        if not row:
+            return None
+        if row["status"] != "awaiting_approval":
+            raise ValueError(f"Cannot approve MCP run in {row['status']} state.")
+        conn.execute(
+            """
+            UPDATE mcp_runs
+            SET status = ?, approved_by = ?, approved_at = ?, denied_by = NULL, denied_at = NULL,
+                status_message = ?, updated_at = ?
+            WHERE id = ? AND user_id = ?
+            """,
+            (
+                "ready",
+                approver_id,
+                now,
+                "Approved for execution handoff. No tool has been executed by MCP run history.",
+                now,
+                run_id,
+                user_id,
+            ),
+        )
+    return get_mcp_run(run_id, user_id=user_id)
+
+
+def deny_mcp_run(run_id: str, *, user_id: str, denier_id: str, reason: str = "") -> dict[str, Any] | None:
+    _init_store()
+    now = _now_iso()
+    message = reason.strip() or "Denied by operator."
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM mcp_runs WHERE id = ? AND user_id = ?",
+            (run_id, user_id),
+        ).fetchone()
+        if not row:
+            return None
+        if row["status"] != "awaiting_approval":
+            raise ValueError(f"Cannot deny MCP run in {row['status']} state.")
+        conn.execute(
+            """
+            UPDATE mcp_runs
+            SET status = ?, denied_by = ?, denied_at = ?, status_message = ?, updated_at = ?
+            WHERE id = ? AND user_id = ?
+            """,
+            ("blocked", denier_id, now, message[:500], now, run_id, user_id),
+        )
+    return get_mcp_run(run_id, user_id=user_id)

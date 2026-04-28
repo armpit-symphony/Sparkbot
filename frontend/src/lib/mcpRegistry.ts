@@ -247,6 +247,13 @@ export interface McpRunRecord {
   approvalRequired: boolean
   dryRunRequired: boolean
   canExecuteNow: boolean
+  approvalId: string | null
+  approvalRequestedAt: string | null
+  approvedBy: string | null
+  approvedAt: string | null
+  deniedBy: string | null
+  deniedAt: string | null
+  statusMessage: string | null
   userRequest: string
   nextAction: string
   plan: McpExplainPlanResponse
@@ -293,6 +300,41 @@ export async function fetchMcpRuns(limit = 10): Promise<{ runs: McpRunRecord[]; 
     throw new Error(`MCP runs API ${response.status}`)
   }
   return response.json() as Promise<{ runs: McpRunRecord[]; count: number }>
+}
+
+export async function requestMcpRunApproval(runId: string): Promise<McpRunRecord> {
+  const response = await apiFetch(`/api/v1/chat/mcp/runs/${encodeURIComponent(runId)}/request-approval`, {
+    method: "POST",
+    credentials: "include",
+  })
+  if (!response.ok) {
+    throw new Error(`MCP approval request API ${response.status}`)
+  }
+  return response.json() as Promise<McpRunRecord>
+}
+
+export async function approveMcpRun(runId: string): Promise<McpRunRecord> {
+  const response = await apiFetch(`/api/v1/chat/mcp/runs/${encodeURIComponent(runId)}/approve`, {
+    method: "POST",
+    credentials: "include",
+  })
+  if (!response.ok) {
+    throw new Error(`MCP approve API ${response.status}`)
+  }
+  return response.json() as Promise<McpRunRecord>
+}
+
+export async function denyMcpRun(runId: string, reason = ""): Promise<McpRunRecord> {
+  const response = await apiFetch(`/api/v1/chat/mcp/runs/${encodeURIComponent(runId)}/deny`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason }),
+  })
+  if (!response.ok) {
+    throw new Error(`MCP deny API ${response.status}`)
+  }
+  return response.json() as Promise<McpRunRecord>
 }
 
 export const FALLBACK_MCP_REGISTRY: McpRegistryResponse = {

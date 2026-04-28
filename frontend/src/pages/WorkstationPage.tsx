@@ -59,9 +59,12 @@ import {
 } from "@/lib/sparkbudLaunch"
 import {
   FALLBACK_MCP_REGISTRY,
+  approveMcpRun,
+  denyMcpRun,
   fetchMcpExplainPlan,
   fetchMcpRegistry,
   fetchMcpRuns,
+  requestMcpRunApproval,
   type McpExplainPlanResponse,
   type McpRunRecord,
   type McpRiskLevel,
@@ -2737,6 +2740,7 @@ function McpControlPlanePanel({ onClose }: { onClose: () => void }) {
   const [explainPlanError, setExplainPlanError] = useState<string | null>(null)
   const [explainingManifestId, setExplainingManifestId] = useState<string | null>(null)
   const [mcpRuns, setMcpRuns] = useState<McpRunRecord[]>([])
+  const [actioningRunId, setActioningRunId] = useState<string | null>(null)
   const [health, setHealth] = useState<McpHealth>({
     loading: true,
     apiBacked: false,
@@ -2808,6 +2812,33 @@ function McpControlPlanePanel({ onClose }: { onClose: () => void }) {
       setExplainPlanError("Explain-plan API is unavailable for this session.")
     } finally {
       setExplainingManifestId(null)
+    }
+  }
+
+  async function refreshMcpRuns() {
+    try {
+      const payload = await fetchMcpRuns(6)
+      setMcpRuns(payload.runs)
+    } catch {
+      setMcpRuns([])
+    }
+  }
+
+  async function handleRunAction(run: McpRunRecord, action: "request" | "approve" | "deny") {
+    setActioningRunId(`${run.id}:${action}`)
+    try {
+      if (action === "request") {
+        await requestMcpRunApproval(run.id)
+      } else if (action === "approve") {
+        await approveMcpRun(run.id)
+      } else {
+        await denyMcpRun(run.id, "Denied from Workstation Robo OS.")
+      }
+      await refreshMcpRuns()
+    } catch {
+      setExplainPlanError("Could not update MCP run approval state.")
+    } finally {
+      setActioningRunId(null)
     }
   }
 
@@ -3017,9 +3048,46 @@ function McpControlPlanePanel({ onClose }: { onClose: () => void }) {
                         {run.nextAction}
                       </div>
                     </div>
-                    <div style={{ color: "#64748b", fontSize: 9, textAlign: "right" }}>
+                    <div style={{ color: "#64748b", fontSize: 9, textAlign: "right", display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end" }}>
                       <div>{run.runtime}</div>
                       <div>{new Date(run.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
+                      {run.statusMessage && (
+                        <div style={{ color: "#94a3b8", fontSize: 8, maxWidth: 150 }}>
+                          {run.statusMessage}
+                        </div>
+                      )}
+                      <div style={{ display: "flex", gap: 4, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                        {(run.status === "planned" || (run.status === "ready" && !run.approvedAt)) && (
+                          <button
+                            type="button"
+                            onClick={() => handleRunAction(run, "request")}
+                            disabled={actioningRunId !== null}
+                            style={{ background: "#0c1f35", border: "1px solid #22d3ee44", borderRadius: 4, color: ACCENT, cursor: "pointer", fontSize: 8, padding: "3px 5px", textTransform: "uppercase" }}
+                          >
+                            {actioningRunId === `${run.id}:request` ? "..." : "Request"}
+                          </button>
+                        )}
+                        {run.status === "awaiting_approval" && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleRunAction(run, "approve")}
+                              disabled={actioningRunId !== null}
+                              style={{ background: "#052e1b", border: "1px solid #4ade8044", borderRadius: 4, color: "#4ade80", cursor: "pointer", fontSize: 8, padding: "3px 5px", textTransform: "uppercase" }}
+                            >
+                              {actioningRunId === `${run.id}:approve` ? "..." : "Approve"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRunAction(run, "deny")}
+                              disabled={actioningRunId !== null}
+                              style={{ background: "#3b0a0a", border: "1px solid #f8717144", borderRadius: 4, color: "#f87171", cursor: "pointer", fontSize: 8, padding: "3px 5px", textTransform: "uppercase" }}
+                            >
+                              {actioningRunId === `${run.id}:deny` ? "..." : "Deny"}
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )

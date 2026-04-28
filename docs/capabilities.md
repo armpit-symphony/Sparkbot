@@ -28,7 +28,7 @@ Sparkbot is a local-first agent OS with enterprise-grade governance. In practica
 | Agent run resume | Shipped baseline: approval-gated tool calls persist exact payloads and resume on approval; full multi-hour graph serialization remains future expansion. |
 | Tool guardrails before/after execution | Shipped baseline: per-tool input guardrails run before execution and output guardrails run after LLM/dashboard execution. |
 | Workflow builder | Shipped baseline: `/api/v1/chat/dashboard/workflows/templates` exposes trigger -> condition -> tool/agent -> approval -> notify -> audit templates. |
-| Unified MCP registry | Shipped baseline: `/api/v1/chat/mcp/registry` returns backend-owned Sparkbot and LIMA Robotics OS manifests, policy tags, approval posture, run timeline, and live health for the Workstation Robo OS panel. `POST /api/v1/chat/mcp/explain-plan` previews any manifest through Guardian policy without executing it. |
+| Unified MCP registry | Shipped baseline: `/api/v1/chat/mcp/registry` returns backend-owned Sparkbot and LIMA Robotics OS manifests, policy tags, approval posture, run timeline, and live health for the Workstation Robo OS panel. `POST /api/v1/chat/mcp/explain-plan` previews any manifest through Guardian policy without executing it, then the run approval endpoints can request, approve, or deny the saved plan without triggering execution. |
 | Mobile companion / PWA | Shipped baseline: public site includes PWA manifest and service worker; dashboard/bridge approval surfaces remain mobile-readable. |
 | Connector quality | Shipped baseline: `/api/v1/chat/dashboard/connectors/health` reports connector setup state, read/write scopes, setup-test flag, and audit metadata. |
 | Evaluation harness | Shipped baseline: `/api/v1/chat/dashboard/evals/agent-behavior` runs deterministic governance eval cases for tool choice, approval requirements, guardrails, and agent routing. |
@@ -625,8 +625,11 @@ The explain-plan also creates a durable MCP run record in `mcp_runs.db` under th
 
 - `GET /api/v1/chat/mcp/runs`
 - `GET /api/v1/chat/mcp/runs/{run_id}`
+- `POST /api/v1/chat/mcp/runs/{run_id}/request-approval`
+- `POST /api/v1/chat/mcp/runs/{run_id}/approve`
+- `POST /api/v1/chat/mcp/runs/{run_id}/deny`
 
-Run statuses are `planned`, `awaiting_approval`, `ready`, `blocked`, `completed`, or `failed`. The current implementation records planning and policy state only; execution and approval resume wiring remain the next Phase 1 step.
+Run statuses are `planned`, `awaiting_approval`, `ready`, `blocked`, `completed`, or `failed`. The current implementation records planning, policy, and approval state only. Approval marks a run `ready` for future runner handoff, denial marks it `blocked`, and neither path executes the underlying Sparkbot or LIMA tool yet.
 
 No hardware is required for the Robo OS demo path. LIMA replay/simulation commands are surfaced directly in Sparkbot:
 
@@ -1284,6 +1287,9 @@ PUBLIC_URL=
 | `POST` | `/api/v1/chat/mcp/explain-plan` | No-execution dry-run plan for a registry manifest using Guardian policy simulation |
 | `GET` | `/api/v1/chat/mcp/runs` | Recent durable MCP explain-plan/run records for the current user |
 | `GET` | `/api/v1/chat/mcp/runs/{run_id}` | One MCP run record with persisted explain-plan payload |
+| `POST` | `/api/v1/chat/mcp/runs/{run_id}/request-approval` | Move a planned or unapproved ready MCP run to awaiting approval without executing it |
+| `POST` | `/api/v1/chat/mcp/runs/{run_id}/approve` | Guardian-operator approval that marks an awaiting MCP run ready for future runner handoff without executing it |
+| `POST` | `/api/v1/chat/mcp/runs/{run_id}/deny` | Guardian-operator denial that blocks an awaiting MCP run with an audit reason |
 | `GET` | `/api/v1/chat/audit` | Recent tool audit log (room-scoped) |
 | `GET` | `/api/v1/utils/health-check/` | Health check → `true` |
 

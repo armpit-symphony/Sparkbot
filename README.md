@@ -279,7 +279,7 @@ Open **Workstation -> Robo OS** to see the unified MCP registry for Sparkbot and
 
 Click **Explain** beside any Robo OS or Sparkbot manifest to call `POST /api/v1/chat/mcp/explain-plan`. The endpoint never executes tools; it runs the same Guardian policy simulator used by chat tools, returns the dry-run timeline, records an audit entry, and tells the operator whether approval, break-glass, or policy cleanup is required first.
 
-Each explain-plan creates a durable MCP run record. Use `GET /api/v1/chat/mcp/runs` or the **Recent MCP runs** panel in Robo OS to review planned, awaiting-approval, ready, blocked, completed, and failed states with the persisted policy decision and next action.
+Each explain-plan creates a durable MCP run record. Use `GET /api/v1/chat/mcp/runs` or the **Recent MCP runs** panel in Robo OS to review planned, awaiting-approval, ready, blocked, completed, and failed states with the persisted policy decision and next action. Planned or unapproved ready runs can request approval, awaiting runs can be approved or denied by a Guardian operator, and every transition writes audit evidence. This approval lifecycle is intentionally non-executing until the Phase 1 runner handoff is wired.
 
 LIMA Robotics OS is treated as the robotics runtime rather than a separate assistant. The no-hardware demo paths are shown directly in Sparkbot:
 
