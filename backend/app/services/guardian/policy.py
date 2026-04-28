@@ -178,6 +178,57 @@ def _build_policy_registry() -> dict[str, ToolPolicy]:
         requires_execution_gate=True,
     )
 
+    add(
+        "memory_recall",
+        scope="read",
+        resource="memory",
+        default_action="allow",
+        action_type="read",
+    )
+    add(
+        "memory_reindex",
+        scope="write",
+        resource="memory",
+        default_action="confirm",
+        action_type="memory_write",
+        high_risk=True,
+    )
+
+    add(
+        "lima.navigate",
+        scope="execute",
+        resource="robot",
+        default_action="privileged",
+        action_type="robot_motion",
+        high_risk=True,
+        requires_execution_gate=True,
+    )
+    add(
+        "lima.inspect",
+        scope="read",
+        resource="robot",
+        default_action="allow",
+        action_type="robot_read",
+        high_risk=False,
+    )
+    add(
+        "lima.stop",
+        scope="execute",
+        resource="robot",
+        default_action="privileged",
+        action_type="robot_motion",
+        high_risk=True,
+        requires_execution_gate=True,
+    )
+    add(
+        "lima.replay_simulation",
+        scope="read",
+        resource="robot_simulation",
+        default_action="allow",
+        action_type="robot_simulation",
+        high_risk=False,
+    )
+
     for tool_name in ("telegram_send_message", "discord_send_message", "whatsapp_send_message"):
         add(
             tool_name,

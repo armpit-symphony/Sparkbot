@@ -179,6 +179,54 @@ MCP_RUN_TIMELINE = [
     "Audit evidence and run summary",
 ]
 
+MCP_POLICY_TOOL_NAMES = {
+    "sparkbot.shell_run": "shell_run",
+    "sparkbot.terminal_send": "terminal_send",
+    "sparkbot.browser_control": "browser_open",
+    "sparkbot.google_calendar": "calendar_create_event",
+    "sparkbot.task_guardian": "guardian_schedule_task",
+    "sparkbot.guardian_vault": "vault_add_secret",
+    "sparkbot.memory_recall": "memory_recall",
+    "lima.navigate": "lima.navigate",
+    "lima.inspect": "lima.inspect",
+    "lima.stop": "lima.stop",
+    "lima.replay_simulation": "lima.replay_simulation",
+}
+
+MCP_SAMPLE_TOOL_ARGS: dict[str, dict[str, Any]] = {
+    "shell_run": {"command": "echo Sparkbot dry run"},
+    "terminal_send": {
+        "session_id": "<terminal-session-id>",
+        "text": "echo Sparkbot dry run",
+        "press_enter": True,
+    },
+    "browser_open": {"url": "https://example.com"},
+    "calendar_create_event": {
+        "summary": "Dry-run meeting",
+        "start_time": "2026-04-28T09:00:00-04:00",
+        "end_time": "2026-04-28T09:30:00-04:00",
+        "attendees": [],
+    },
+    "guardian_schedule_task": {
+        "name": "Dry-run workflow",
+        "schedule": "daily:09:00",
+        "tool_name": "memory_recall",
+    },
+    "vault_add_secret": {"alias": "example_secret", "policy": "use_only"},
+    "memory_recall": {"query": "recent project decisions", "limit": 5},
+    "lima.navigate": {"route": "demo_route", "mode": "simulation"},
+    "lima.inspect": {"target": "demo_camera", "mode": "replay"},
+    "lima.stop": {"target": "active_blueprint", "mode": "simulation"},
+    "lima.replay_simulation": {"blueprint": "unitree-go2-agentic-mcp", "mode": "simulation"},
+}
+
+MCP_EXECUTION_NOTES = {
+    "lima.navigate": "Robot motion stays blocked until a dry run, active limits, and operator approval are present.",
+    "lima.stop": "Stop is safety-critical robot motion; keep it available but audited and operator-scoped.",
+    "lima.replay_simulation": "Replay/simulation is demo-ready and does not require robot hardware.",
+    "sparkbot.guardian_vault": "Secret values are never included in dry-run output.",
+}
+
 
 def _truthy_env(name: str, default: bool = False) -> bool:
     raw = os.getenv(name)
@@ -264,6 +312,123 @@ def _requires_approval(manifest: McpToolManifest) -> bool:
     )
 
 
+def _manifest_by_id(manifest_id: str) -> McpToolManifest | None:
+    return next((manifest for manifest in MCP_TOOL_MANIFESTS if manifest["id"] == manifest_id), None)
+
+
+def _default_args_for(policy_tool_name: str, tool_args: dict[str, Any] | None) -> dict[str, Any]:
+    if isinstance(tool_args, dict) and tool_args:
+        return dict(tool_args)
+    return dict(MCP_SAMPLE_TOOL_ARGS.get(policy_tool_name, {}))
+
+
+def build_mcp_explain_plan(
+    manifest_id: str,
+    *,
+    tool_args: dict[str, Any] | None = None,
+    user_request: str = "",
+    room_execution_allowed: bool | None = None,
+    is_operator: bool = False,
+    is_privileged: bool = False,
+) -> dict[str, Any]:
+    manifest = _manifest_by_id(manifest_id)
+    if manifest is None:
+        raise KeyError(manifest_id)
+
+    policy_tool_name = MCP_POLICY_TOOL_NAMES.get(manifest_id, manifest_id)
+    resolved_args = _default_args_for(policy_tool_name, tool_args)
+    policy_payload = get_guardian_suite().policy.simulate_tool_policy(
+        policy_tool_name,
+        resolved_args,
+        room_execution_allowed=room_execution_allowed,
+        is_operator=is_operator,
+        is_privileged=is_privileged,
+    )
+    decision = policy_payload["decision"]
+    action = str(decision["action"])
+    dry_run_required = manifest["dryRunSupport"] == "required-before-motion" or _requires_approval(manifest)
+    approval_required = action in {"confirm", "privileged", "privileged_reveal"} or (
+        dry_run_required and action != "allow"
+    )
+
+    timeline = [
+        {
+            "step": MCP_RUN_TIMELINE[0],
+            "status": "ready",
+            "detail": user_request.strip() or f"Preview {manifest['name']}.",
+        },
+        {
+            "step": MCP_RUN_TIMELINE[1],
+            "status": "ready",
+            "detail": f"Use manifest {manifest_id} through policy tool {policy_tool_name}.",
+        },
+        {
+            "step": MCP_RUN_TIMELINE[2],
+            "status": "ready",
+            "detail": f"Runtime owner: {manifest['owner']} ({manifest['runtime']}).",
+        },
+        {
+            "step": MCP_RUN_TIMELINE[3],
+            "status": "ready",
+            "detail": f"Policy action: {action}; risk: {manifest['riskLevel']}.",
+        },
+        {
+            "step": MCP_RUN_TIMELINE[4],
+            "status": "required" if dry_run_required else "available",
+            "detail": f"Dry-run posture: {manifest['dryRunSupport']}.",
+        },
+        {
+            "step": MCP_RUN_TIMELINE[5],
+            "status": "required" if approval_required else "not-required",
+            "detail": decision["reason"],
+        },
+        {
+            "step": MCP_RUN_TIMELINE[6],
+            "status": "blocked" if action in {"deny", "privileged", "privileged_reveal"} else "ready",
+            "detail": "No action is executed by this explain-plan endpoint.",
+        },
+        {
+            "step": MCP_RUN_TIMELINE[7],
+            "status": "ready",
+            "detail": "Persist the final execution evidence in normal tool audit logs after approval.",
+        },
+    ]
+
+    notes = [
+        "This endpoint never executes tools.",
+        "Use it before write, destructive, external-send, secret-use, or robot-motion actions.",
+    ]
+    manifest_note = MCP_EXECUTION_NOTES.get(manifest_id)
+    if manifest_note:
+        notes.append(manifest_note)
+
+    return {
+        "simulationOnly": True,
+        "manifest": {**manifest, "status": _manifest_status(manifest)},
+        "policyToolName": policy_tool_name,
+        "toolArgs": resolved_args,
+        "policy": policy_payload,
+        "dryRunRequired": dry_run_required,
+        "approvalRequired": approval_required,
+        "canExecuteNow": action == "allow",
+        "nextAction": _next_action(action, dry_run_required),
+        "timeline": timeline,
+        "notes": notes,
+    }
+
+
+def _next_action(policy_action: str, dry_run_required: bool) -> str:
+    if policy_action == "deny":
+        return "Blocked by policy."
+    if policy_action in {"privileged", "privileged_reveal"}:
+        return "Start a break-glass PIN session, then request explicit approval before execution."
+    if policy_action == "confirm":
+        return "Request operator approval before execution."
+    if dry_run_required:
+        return "Review this explain plan, then continue through the approval path if the action still makes sense."
+    return "Read-only or natively dry-run capable action can proceed."
+
+
 def get_mcp_registry() -> dict[str, Any]:
     manifests = [
         {
@@ -287,4 +452,3 @@ def get_mcp_registry() -> dict[str, Any]:
             or bool(os.getenv("LIMA_DAEMON_URL", "").strip()),
         },
     }
-

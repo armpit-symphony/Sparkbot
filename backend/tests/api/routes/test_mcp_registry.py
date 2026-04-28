@@ -54,3 +54,26 @@ def test_mcp_registry_returns_policy_manifests(client: TestClient) -> None:
 
     assert payload["runTimeline"][0] == "User request"
     assert payload["health"]["sparkbotApiLive"] is True
+
+
+def test_mcp_explain_plan_returns_policy_dry_run(client: TestClient) -> None:
+    response = client.post(
+        f"{settings.API_V1_STR}/chat/mcp/explain-plan",
+        headers=_chat_headers(),
+        json={
+            "manifest_id": "lima.navigate",
+            "user_request": "Send the demo robot through a patrol route.",
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["simulationOnly"] is True
+    assert payload["manifest"]["id"] == "lima.navigate"
+    assert payload["policyToolName"] == "lima.navigate"
+    assert payload["dryRunRequired"] is True
+    assert payload["approvalRequired"] is True
+    assert payload["canExecuteNow"] is False
+    assert payload["policy"]["decision"]["action"] in {"privileged", "deny"}
+    assert payload["timeline"][0]["step"] == "User request"
+    assert "route" in payload["toolArgs"]

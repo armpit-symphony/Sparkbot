@@ -191,12 +191,75 @@ export interface McpRegistryResponse {
   }
 }
 
+export interface McpExplainPlanRequest {
+  manifestId: string
+  toolArgs?: Record<string, unknown>
+  userRequest?: string
+  roomId?: string
+}
+
+export interface McpExplainPlanStep {
+  step: string
+  status: string
+  detail: string
+}
+
+export interface McpExplainPlanResponse {
+  simulationOnly: boolean
+  manifest: McpToolManifest
+  policyToolName: string
+  toolArgs: Record<string, unknown>
+  policy: {
+    decision: {
+      action: string
+      reason: string
+      high_risk: boolean
+      resource: string
+      scope: string
+    }
+    classification: {
+      action_type: string
+      default_action: string
+      requires_execution_gate: boolean
+    }
+  }
+  dryRunRequired: boolean
+  approvalRequired: boolean
+  canExecuteNow: boolean
+  nextAction: string
+  timeline: McpExplainPlanStep[]
+  notes: string[]
+}
+
 export async function fetchMcpRegistry(): Promise<McpRegistryResponse> {
   const response = await apiFetch("/api/v1/chat/mcp/registry", { credentials: "include" })
   if (!response.ok) {
     throw new Error(`MCP registry API ${response.status}`)
   }
   return response.json() as Promise<McpRegistryResponse>
+}
+
+export async function fetchMcpExplainPlan({
+  manifestId,
+  toolArgs = {},
+  userRequest = "",
+  roomId,
+}: McpExplainPlanRequest): Promise<McpExplainPlanResponse> {
+  const response = await apiFetch("/api/v1/chat/mcp/explain-plan", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      manifest_id: manifestId,
+      tool_args: toolArgs,
+      user_request: userRequest,
+      room_id: roomId,
+    }),
+  })
+  if (!response.ok) {
+    throw new Error(`MCP explain-plan API ${response.status}`)
+  }
+  return response.json() as Promise<McpExplainPlanResponse>
 }
 
 export const FALLBACK_MCP_REGISTRY: McpRegistryResponse = {

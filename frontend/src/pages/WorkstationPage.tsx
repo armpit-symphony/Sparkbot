@@ -59,10 +59,12 @@ import {
 } from "@/lib/sparkbudLaunch"
 import {
   FALLBACK_MCP_REGISTRY,
+  fetchMcpExplainPlan,
   fetchMcpRegistry,
+  type McpExplainPlanResponse,
   type McpRiskLevel,
-  type McpToolManifest,
   type McpRegistryResponse,
+  type McpToolManifest,
 } from "@/lib/mcpRegistry"
 import {
   launchMeetingRoom,
@@ -2729,6 +2731,9 @@ function manifestHealthLabel(manifest: McpToolManifest, health: McpHealth): { la
 function McpControlPlanePanel({ onClose }: { onClose: () => void }) {
   const ACCENT = "#22d3ee"
   const [registry, setRegistry] = useState<McpRegistryResponse>(FALLBACK_MCP_REGISTRY)
+  const [explainPlan, setExplainPlan] = useState<McpExplainPlanResponse | null>(null)
+  const [explainPlanError, setExplainPlanError] = useState<string | null>(null)
+  const [explainingManifestId, setExplainingManifestId] = useState<string | null>(null)
   const [health, setHealth] = useState<McpHealth>({
     loading: true,
     apiBacked: false,
@@ -2778,6 +2783,22 @@ function McpControlPlanePanel({ onClose }: { onClose: () => void }) {
     },
     { sparkbot: 0, "lima-robo-os": 0 },
   )
+
+  async function handleExplainPlan(manifest: McpToolManifest) {
+    setExplainingManifestId(manifest.id)
+    setExplainPlanError(null)
+    try {
+      const plan = await fetchMcpExplainPlan({
+        manifestId: manifest.id,
+        userRequest: `Preview ${manifest.name} from Workstation Robo OS.`,
+      })
+      setExplainPlan(plan)
+    } catch {
+      setExplainPlanError("Explain-plan API is unavailable for this session.")
+    } finally {
+      setExplainingManifestId(null)
+    }
+  }
 
   return (
     <div
@@ -2870,7 +2891,7 @@ function McpControlPlanePanel({ onClose }: { onClose: () => void }) {
               const healthState = manifestHealthLabel(manifest, health)
               const color = riskColor(manifest.riskLevel)
               return (
-                <div key={manifest.id} style={{ padding: "11px 12px", borderBottom: "1px solid #0d1f35", display: "grid", gridTemplateColumns: "minmax(0, 1fr) 86px", gap: 10 }}>
+                <div key={manifest.id} style={{ padding: "11px 12px", borderBottom: "1px solid #0d1f35", display: "grid", gridTemplateColumns: "minmax(0, 1fr) 106px", gap: 10 }}>
                   <div style={{ minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                       <span style={{ fontSize: 12, color: "#e2e8f0", fontWeight: 700 }}>{manifest.name}</span>
@@ -2897,12 +2918,71 @@ function McpControlPlanePanel({ onClose }: { onClose: () => void }) {
                     <div>{manifest.owner}</div>
                     <div>{manifest.dryRunSupport}</div>
                     {manifest.approvalRequired && <div>approval required</div>}
+                    <button
+                      type="button"
+                      onClick={() => handleExplainPlan(manifest)}
+                      disabled={explainingManifestId === manifest.id || !health.apiBacked}
+                      style={{
+                        marginTop: 8,
+                        background: health.apiBacked ? `${ACCENT}18` : "#111827",
+                        border: `1px solid ${health.apiBacked ? `${ACCENT}44` : "#1f2937"}`,
+                        borderRadius: 5,
+                        color: health.apiBacked ? ACCENT : "#64748b",
+                        cursor: health.apiBacked ? "pointer" : "not-allowed",
+                        fontSize: 9,
+                        fontWeight: 700,
+                        padding: "5px 7px",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      {explainingManifestId === manifest.id ? "Planning" : "Explain"}
+                    </button>
                   </div>
                 </div>
               )
             })}
           </div>
         </div>
+
+        {(explainPlan || explainPlanError) && (
+          <div style={{ border: `1px solid ${ACCENT}33`, borderRadius: 10, backgroundColor: "#040d1a", padding: "12px 14px" }}>
+            <div style={{ fontSize: 10, color: ACCENT, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700, marginBottom: 8 }}>
+              Explain plan
+            </div>
+            {explainPlanError ? (
+              <p style={{ fontSize: 11, color: "#fbbf24", margin: 0 }}>{explainPlanError}</p>
+            ) : explainPlan ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  <span style={{ fontSize: 12, color: "#e2e8f0", fontWeight: 700 }}>{explainPlan.manifest.name}</span>
+                  <span style={{ fontSize: 9, color: riskColor(explainPlan.manifest.riskLevel), border: `1px solid ${riskColor(explainPlan.manifest.riskLevel)}44`, borderRadius: 3, padding: "1px 6px", textTransform: "uppercase" }}>
+                    {explainPlan.policy.decision.action}
+                  </span>
+                  {explainPlan.approvalRequired && (
+                    <span style={{ fontSize: 9, color: "#fbbf24", border: "1px solid #fbbf2444", borderRadius: 3, padding: "1px 6px", textTransform: "uppercase" }}>
+                      approval required
+                    </span>
+                  )}
+                </div>
+                <p style={{ fontSize: 11, color: "#cbd5e1", lineHeight: 1.6, margin: 0 }}>
+                  {explainPlan.nextAction}
+                </p>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  {explainPlan.timeline.slice(3, 7).map((step) => (
+                    <div key={step.step} style={{ border: "1px solid #0d1f35", borderRadius: 7, padding: "8px 9px" }}>
+                      <div style={{ fontSize: 9, color: ACCENT, textTransform: "uppercase", fontWeight: 700 }}>{step.status}</div>
+                      <div style={{ fontSize: 10, color: "#e2e8f0", fontWeight: 700, marginTop: 3 }}>{step.step}</div>
+                      <div style={{ fontSize: 10, color: "#94a3b8", lineHeight: 1.45, marginTop: 4 }}>{step.detail}</div>
+                    </div>
+                  ))}
+                </div>
+                <code style={{ display: "block", whiteSpace: "pre-wrap", color: "#94a3b8", fontSize: 10, lineHeight: 1.55 }}>
+                  {JSON.stringify(explainPlan.toolArgs, null, 2)}
+                </code>
+              </div>
+            ) : null}
+          </div>
+        )}
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <div style={{ border: `1px solid ${ACCENT}1f`, borderRadius: 10, backgroundColor: "#040d1a", padding: "12px 14px" }}>

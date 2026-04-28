@@ -28,7 +28,7 @@ Sparkbot is a local-first agent OS with enterprise-grade governance. In practica
 | Agent run resume | Shipped baseline: approval-gated tool calls persist exact payloads and resume on approval; full multi-hour graph serialization remains future expansion. |
 | Tool guardrails before/after execution | Shipped baseline: per-tool input guardrails run before execution and output guardrails run after LLM/dashboard execution. |
 | Workflow builder | Shipped baseline: `/api/v1/chat/dashboard/workflows/templates` exposes trigger -> condition -> tool/agent -> approval -> notify -> audit templates. |
-| Unified MCP registry | Shipped baseline: `/api/v1/chat/mcp/registry` returns backend-owned Sparkbot and LIMA Robotics OS manifests, policy tags, approval posture, run timeline, and live health for the Workstation Robo OS panel. |
+| Unified MCP registry | Shipped baseline: `/api/v1/chat/mcp/registry` returns backend-owned Sparkbot and LIMA Robotics OS manifests, policy tags, approval posture, run timeline, and live health for the Workstation Robo OS panel. `POST /api/v1/chat/mcp/explain-plan` previews any manifest through Guardian policy without executing it. |
 | Mobile companion / PWA | Shipped baseline: public site includes PWA manifest and service worker; dashboard/bridge approval surfaces remain mobile-readable. |
 | Connector quality | Shipped baseline: `/api/v1/chat/dashboard/connectors/health` reports connector setup state, read/write scopes, setup-test flag, and audit metadata. |
 | Evaluation harness | Shipped baseline: `/api/v1/chat/dashboard/evals/agent-behavior` runs deterministic governance eval cases for tool choice, approval requirements, guardrails, and agent routing. |
@@ -611,6 +611,15 @@ The panel loads from `GET /api/v1/chat/mcp/registry` and falls back to the bundl
 - Live status: configured, missing secrets, bridge needed, disabled, or demo-ready
 - Approval posture: whether the tool requires operator approval before execution
 - Dry-run posture: native dry run, explain-plan, or required-before-motion
+
+Click **Explain** on a manifest to call `POST /api/v1/chat/mcp/explain-plan`. Sparkbot maps the manifest to the concrete policy tool name, supplies safe sample args when none are provided, runs Guardian policy simulation, writes an `mcp_explain_plan` audit entry, and returns:
+
+- Simulation-only flag
+- Policy decision and reason
+- Whether dry run or approval is required
+- Whether execution can happen now
+- Next required operator action
+- Timeline steps from user request through audit evidence
 
 No hardware is required for the Robo OS demo path. LIMA replay/simulation commands are surfaced directly in Sparkbot:
 
@@ -1265,6 +1274,7 @@ PUBLIC_URL=
 |--------|------|-------------|
 | `GET` | `/api/v1/chat/skills` | List loaded skill plugins (name, description, policy flags) |
 | `GET` | `/api/v1/chat/mcp/registry` | Unified Sparkbot + LIMA MCP registry: manifests, policy metadata, approval posture, health, and run timeline |
+| `POST` | `/api/v1/chat/mcp/explain-plan` | No-execution dry-run plan for a registry manifest using Guardian policy simulation |
 | `GET` | `/api/v1/chat/audit` | Recent tool audit log (room-scoped) |
 | `GET` | `/api/v1/utils/health-check/` | Health check → `true` |
 

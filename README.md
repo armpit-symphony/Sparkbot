@@ -277,6 +277,8 @@ The **Round Table** in the Workstation launches an autonomous multi-agent meetin
 
 Open **Workstation -> Robo OS** to see the unified MCP registry for Sparkbot and LIMA Robotics OS. The panel is backed by `GET /api/v1/chat/mcp/registry`, with a local fallback for offline desktop views. It lists typed tool manifests, owner/runtime, policy tags (`read-only`, `write`, `destructive`, `external-send`, `robot-motion`, `secret-use`), risk level, required secrets, approval posture, dry-run posture, and live health for Sparkbot APIs, Task Guardian, Guardian Vault, and the optional LIMA bridge.
 
+Click **Explain** beside any Robo OS or Sparkbot manifest to call `POST /api/v1/chat/mcp/explain-plan`. The endpoint never executes tools; it runs the same Guardian policy simulator used by chat tools, returns the dry-run timeline, records an audit entry, and tells the operator whether approval, break-glass, or policy cleanup is required first.
+
 LIMA Robotics OS is treated as the robotics runtime rather than a separate assistant. The no-hardware demo paths are shown directly in Sparkbot:
 
 ```bash
@@ -285,7 +287,7 @@ LIMA --simulation run unitree-go2-agentic-mcp
 LIMA run demo-camera
 ```
 
-Robot-motion tools are marked critical and should go through dry-run/explain-plan and operator approval before execution.
+Robot-motion tools are marked critical and go through explain-plan and operator approval before execution.
 
 Set `LIMA_MCP_URL` or `LIMA_DAEMON_URL` when a LIMA Robotics OS MCP bridge is available. Without those values, Sparkbot keeps Robo OS in replay/simulation-first mode so the demos remain usable with no hardware.
 
