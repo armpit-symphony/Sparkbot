@@ -171,6 +171,19 @@ bash scripts/sparkbot-start.sh
 
 The start script detects `docker compose` vs `docker-compose`, creates `.env.local` when needed, opens the setup wizard if no provider is configured, and then starts Sparkbot. Open `http://localhost:3000`. Default passphrase: `sparkbot-local`.
 
+Over SSH, provider key input is hidden by default. If paste or terminal echo is confusing, run:
+
+```bash
+bash scripts/sparkbot-start.sh --show-input
+```
+
+You can also import an exported key without interactive entry:
+
+```bash
+export OPENAI_API_KEY="sk-..."
+bash scripts/sparkbot-start.sh --from-env
+```
+
 Advanced users can still edit `.env.local` directly, but normal installs do not require opening an env file.
 
 For a public or private server install, use [deployment.md](./deployment.md) for Docker, Traefik, and Let's Encrypt, or [docs/systemd-single-node.md](./docs/systemd-single-node.md) for systemd and nginx.

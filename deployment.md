@@ -20,6 +20,19 @@ cd Sparkbot
 bash scripts/sparkbot-start.sh
 ```
 
+For SSH sessions where hidden input makes paste feedback unclear, use:
+
+```bash
+bash scripts/sparkbot-start.sh --show-input
+```
+
+To import keys already exported in the shell:
+
+```bash
+export OPENAI_API_KEY="sk-..."
+bash scripts/sparkbot-start.sh --from-env
+```
+
 The launcher:
 
 * detects `docker compose` and falls back to `docker-compose`

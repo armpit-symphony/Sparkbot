@@ -32,6 +32,19 @@ cd Sparkbot
 bash scripts/sparkbot-start.sh
 ```
 
+SSH troubleshooting:
+
+```bash
+bash scripts/sparkbot-start.sh --show-input
+```
+
+Paste-free env import:
+
+```bash
+export OPENAI_API_KEY="sk-..."
+bash scripts/sparkbot-start.sh --from-env
+```
+
 **CLI**
 
 ```bash

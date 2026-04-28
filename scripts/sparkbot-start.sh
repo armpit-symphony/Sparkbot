@@ -7,6 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SETUP_SCRIPT="${ROOT_DIR}/scripts/sparkbot-setup.sh"
 ENV_FILE="${SPARKBOT_ENV_FILE:-${ROOT_DIR}/.env.local}"
+SETUP_ARGS=("$@")
 
 cd "${ROOT_DIR}"
 
@@ -35,11 +36,15 @@ fi
 compose_cmd="$(bash "${SETUP_SCRIPT}" --print-compose-command)"
 read -r -a compose_parts <<< "${compose_cmd}"
 
-if [ ! -f "${ENV_FILE}" ] || ! SPARKBOT_ENV_FILE="${ENV_FILE}" bash "${SETUP_SCRIPT}" --check-config; then
+if [ "${#SETUP_ARGS[@]}" -gt 0 ] || [ ! -f "${ENV_FILE}" ] || ! SPARKBOT_ENV_FILE="${ENV_FILE}" bash "${SETUP_SCRIPT}" --check-config; then
   echo ""
-  echo "Sparkbot has not been configured yet. Starting first-run setup."
+  if [ "${#SETUP_ARGS[@]}" -gt 0 ]; then
+    echo "Running Sparkbot setup with requested options."
+  else
+    echo "Sparkbot has not been configured yet. Starting first-run setup."
+  fi
   echo ""
-  SPARKBOT_ENV_FILE="${ENV_FILE}" bash "${SETUP_SCRIPT}"
+  SPARKBOT_ENV_FILE="${ENV_FILE}" bash "${SETUP_SCRIPT}" "${SETUP_ARGS[@]}"
 fi
 
 passphrase="sparkbot-local"

@@ -19,5 +19,9 @@ Product truth and MCP control-plane cleanup.
   provider/Ollama prompts, `.env.local` preservation, CLI setup fallback,
   and a clearer web Controls fallback when no usable model provider is
   configured.
+- Fix SSH first-run setup input: hidden key prompts now warn before input,
+  `--show-input` makes key paste visible for troubleshooting, `--from-env`
+  imports exported provider keys, and direct provider key flags can seed
+  setup without manual `.env.local` editing.
 - Refresh README, capabilities docs, release note, and public downloader
   version markers for 1.6.39.

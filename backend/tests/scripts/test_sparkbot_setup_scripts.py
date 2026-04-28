@@ -8,6 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = ROOT / "scripts" / "sparkbot-setup.sh"
+START_SCRIPT = ROOT / "scripts" / "sparkbot-start.sh"
 
 
 def _write_executable(path: Path, content: str) -> None:
@@ -20,6 +21,19 @@ def _run_setup(args: list[str], *, env: dict[str, str]) -> subprocess.CompletedP
     merged_env.update(env)
     return subprocess.run(
         ["bash", str(SCRIPT), *args],
+        cwd=ROOT,
+        env=merged_env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+
+def _run_start(args: list[str], *, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+    merged_env = os.environ.copy()
+    merged_env.update(env)
+    return subprocess.run(
+        ["bash", str(START_SCRIPT), *args],
         cwd=ROOT,
         env=merged_env,
         text=True,
@@ -186,3 +200,134 @@ def test_noninteractive_setup_preserves_existing_provider_value(tmp_path: Path) 
     content = env_file.read_text()
     assert "OPENAI_API_KEY=sk-existing" in content
     assert "sk-new" not in content
+
+
+def test_hidden_input_prompt_warns_user_and_keeps_secret_out_of_output(tmp_path: Path) -> None:
+    template = tmp_path / ".env.local.example"
+    env_file = tmp_path / ".env.local"
+    _template(template)
+
+    result = _run_setup(
+        [],
+        env={
+            "SPARKBOT_SETUP_SKIP_COMPOSE_CHECK": "1",
+            "SPARKBOT_ENV_FILE": str(env_file),
+            "SPARKBOT_ENV_TEMPLATE": str(template),
+        },
+    )
+
+    assert result.returncode != 0
+    assert "Input will be hidden. Paste/type your key, then press Enter." in result.stderr
+
+
+def test_show_input_path_accepts_typed_provider_key(tmp_path: Path) -> None:
+    template = tmp_path / ".env.local.example"
+    env_file = tmp_path / ".env.local"
+    _template(template)
+
+    result = subprocess.run(
+        ["bash", str(SCRIPT), "--show-input"],
+        cwd=ROOT,
+        env={
+            **os.environ,
+            "SPARKBOT_SETUP_SKIP_COMPOSE_CHECK": "1",
+            "SPARKBOT_ENV_FILE": str(env_file),
+            "SPARKBOT_ENV_TEMPLATE": str(template),
+        },
+        input="sk-visible-input\n\n\n\n\n\n\n",
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert "Input will be hidden" not in result.stderr
+    assert "OPENAI_API_KEY=sk-visible-input" in env_file.read_text()
+
+
+def test_from_env_imports_exported_provider_key_without_echoing_secret(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    _write_executable(
+        fake_bin / "docker",
+        '#!/usr/bin/env sh\n[ "$1" = "compose" ] && [ "$2" = "version" ] && exit 0\nexit 1\n',
+    )
+    template = tmp_path / ".env.local.example"
+    env_file = tmp_path / ".env.local"
+    _template(template)
+
+    result = _run_setup(
+        ["--from-env"],
+        env={
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "SPARKBOT_ENV_FILE": str(env_file),
+            "SPARKBOT_ENV_TEMPLATE": str(template),
+            "OPENAI_API_KEY": "sk-from-env",
+        },
+    )
+
+    assert result.returncode == 0
+    content = env_file.read_text()
+    assert "OPENAI_API_KEY=sk-from-env" in content
+    assert "sk-from-env" not in result.stdout
+    assert "sk-from-env" not in result.stderr
+
+
+def test_direct_provider_key_argument_writes_key_without_echoing_secret(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    _write_executable(
+        fake_bin / "docker",
+        '#!/usr/bin/env sh\n[ "$1" = "compose" ] && [ "$2" = "version" ] && exit 0\nexit 1\n',
+    )
+    template = tmp_path / ".env.local.example"
+    env_file = tmp_path / ".env.local"
+    _template(template)
+
+    result = _run_setup(
+        ["--openrouter-key", "sk-or-direct"],
+        env={
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "SPARKBOT_ENV_FILE": str(env_file),
+            "SPARKBOT_ENV_TEMPLATE": str(template),
+        },
+    )
+
+    assert result.returncode == 0
+    content = env_file.read_text()
+    assert "OPENROUTER_API_KEY=sk-or-direct" in content
+    assert "SPARKBOT_MODEL=openrouter/openai/gpt-4o-mini" in content
+    assert "sk-or-direct" not in result.stdout
+    assert "sk-or-direct" not in result.stderr
+
+
+def test_start_script_passes_setup_args_through(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    _write_executable(
+        fake_bin / "docker",
+        """#!/usr/bin/env sh
+if [ "$1" = "info" ]; then exit 0; fi
+if [ "$1" = "compose" ] && [ "$2" = "version" ]; then exit 0; fi
+if [ "$1" = "compose" ]; then exit 0; fi
+exit 1
+""",
+    )
+    template = tmp_path / ".env.local.example"
+    env_file = tmp_path / ".env.local"
+    _template(template)
+
+    result = _run_start(
+        ["--openai-key", "sk-start-direct"],
+        env={
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "SPARKBOT_ENV_FILE": str(env_file),
+            "SPARKBOT_ENV_TEMPLATE": str(template),
+        },
+    )
+
+    assert result.returncode == 0
+    assert "Running Sparkbot setup with requested options." in result.stdout
+    assert "OPENAI_API_KEY=sk-start-direct" in env_file.read_text()
+    assert "sk-start-direct" not in result.stdout
+    assert "sk-start-direct" not in result.stderr

@@ -18,6 +18,7 @@ SPARKBOT_PROVIDER_KEYS=(
   "GROQ_API_KEY:Groq:groq/llama-3.3-70b-versatile:groq"
   "OPENROUTER_API_KEY:OpenRouter:openrouter/openai/gpt-4o-mini:openrouter"
 )
+SPARKBOT_SETUP_SHOW_INPUT="${SPARKBOT_SETUP_SHOW_INPUT:-0}"
 
 sparkbot_detect_compose() {
   if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
@@ -203,8 +204,13 @@ sparkbot_yes_no() {
 sparkbot_prompt_secret() {
   local prompt="$1"
   local value
-  read -r -s -p "${prompt}: " value
-  printf '\n' >&2
+  if [ "${SPARKBOT_SETUP_SHOW_INPUT}" = "1" ]; then
+    read -r -p "${prompt}: " value
+  else
+    echo "Input will be hidden. Paste/type your key, then press Enter." >&2
+    read -r -s -p "${prompt}: " value
+    printf '\n' >&2
+  fi
   printf '%s' "${value}"
 }
 
@@ -374,6 +380,56 @@ EOF
 }
 
 sparkbot_setup_main() {
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --show-input)
+        SPARKBOT_SETUP_SHOW_INPUT=1
+        shift
+        ;;
+      --from-env)
+        SPARKBOT_SETUP_NONINTERACTIVE=1
+        shift
+        ;;
+      --openai-key)
+        [ "$#" -ge 2 ] || { echo "--openai-key requires a value." >&2; return 2; }
+        OPENAI_API_KEY="$2"
+        SPARKBOT_SETUP_NONINTERACTIVE=1
+        shift 2
+        ;;
+      --anthropic-key)
+        [ "$#" -ge 2 ] || { echo "--anthropic-key requires a value." >&2; return 2; }
+        ANTHROPIC_API_KEY="$2"
+        SPARKBOT_SETUP_NONINTERACTIVE=1
+        shift 2
+        ;;
+      --google-key)
+        [ "$#" -ge 2 ] || { echo "--google-key requires a value." >&2; return 2; }
+        GOOGLE_API_KEY="$2"
+        SPARKBOT_SETUP_NONINTERACTIVE=1
+        shift 2
+        ;;
+      --groq-key)
+        [ "$#" -ge 2 ] || { echo "--groq-key requires a value." >&2; return 2; }
+        GROQ_API_KEY="$2"
+        SPARKBOT_SETUP_NONINTERACTIVE=1
+        shift 2
+        ;;
+      --openrouter-key)
+        [ "$#" -ge 2 ] || { echo "--openrouter-key requires a value." >&2; return 2; }
+        OPENROUTER_API_KEY="$2"
+        SPARKBOT_SETUP_NONINTERACTIVE=1
+        shift 2
+        ;;
+      --)
+        shift
+        break
+        ;;
+      *)
+        break
+        ;;
+    esac
+  done
+
   case "${1:-}" in
     --print-compose-command)
       sparkbot_detect_compose
@@ -386,10 +442,19 @@ sparkbot_setup_main() {
       ;;
     -h|--help)
       cat <<'EOF'
-Usage: bash scripts/sparkbot-setup.sh
+Usage: bash scripts/sparkbot-setup.sh [options]
 
 Guides first-run Docker/server setup, writes .env.local safely, and detects
 Docker Compose v2 or legacy docker-compose.
+
+Options:
+  --show-input             Show provider key input while typing or pasting.
+  --from-env               Import exported provider key environment variables.
+  --openai-key KEY         Save an OpenAI API key.
+  --anthropic-key KEY      Save an Anthropic API key.
+  --google-key KEY         Save a Google API key.
+  --groq-key KEY           Save a Groq API key.
+  --openrouter-key KEY     Save an OpenRouter API key.
 EOF
       ;;
     *)

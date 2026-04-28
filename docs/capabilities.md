@@ -1033,6 +1033,14 @@ The setup wizard creates `.env.local`, prompts for provider keys or local
 Ollama, preserves existing values, and detects Docker Compose v2 or legacy
 `docker-compose`. Advanced operators can still edit env files directly.
 
+SSH setup helpers:
+
+```bash
+bash scripts/sparkbot-start.sh --show-input   # visible key input for paste troubleshooting
+export OPENAI_API_KEY="sk-..."
+bash scripts/sparkbot-start.sh --from-env     # import exported provider keys
+```
+
 ### Core / Required
 
 ```env
