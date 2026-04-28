@@ -106,7 +106,7 @@ services:
       args:
         - VITE_API_URL=http://localhost:8000
         - NODE_ENV=production
-        - VITE_V1_LOCAL_MODE=true
+        - VITE_V1_LOCAL_MODE=${VITE_V1_LOCAL_MODE:-false}
     restart: unless-stopped
     ports:
       - "${SPARKBOT_FRONTEND_BIND_HOST:-127.0.0.1}:${SPARKBOT_FRONTEND_PORT:-3000}:80"

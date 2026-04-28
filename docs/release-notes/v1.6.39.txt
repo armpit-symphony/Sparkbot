@@ -42,6 +42,10 @@ Product truth and MCP control-plane cleanup.
   `--local` keeps the web UI bound to 127.0.0.1, while `--server` binds it to
   0.0.0.0, detects the public IP, prints the public URL, and warns operators to
   use firewall rules or reverse-proxy auth.
+- Harden server mode authentication: server startup disables local auto-login,
+  refuses missing/default/placeholder/short passphrases before Compose starts,
+  never prints passphrases, and builds the frontend with local auto-login off so
+  the login/passphrase screen gates workspace access.
 - Start Docker Compose detached by default and mirror only non-secret frontend
   bind/port values into root `.env` so Compose interpolation works even though
   provider secrets stay in `.env.local`.

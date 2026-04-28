@@ -1036,6 +1036,9 @@ Ollama, preserves existing values, and supports Docker Compose v2
 The launcher starts Compose detached by default, exports and mirrors only the
 non-secret frontend bind/port values into root `.env` for Compose interpolation,
 auto-selects a free frontend port when 3000 is busy, and prints the real URL.
+Server mode disables local auto-login and refuses to start until a private
+`SPARKBOT_PASSPHRASE` is configured; defaults, blanks, placeholders, and short
+values are rejected and the passphrase is never printed.
 Advanced operators can still edit env files or run Compose directly.
 
 SSH setup helpers:

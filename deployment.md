@@ -75,9 +75,11 @@ The launcher:
 
 Local mode opens at `http://localhost:<port>`. Server mode binds the frontend
 to `0.0.0.0`, detects the public IP, and prints `http://<server-ip>:<port>`.
-Restrict server mode with a firewall/security group or a reverse proxy with
-authentication. The default local passphrase is `sparkbot-local` unless you
-changed `SPARKBOT_PASSPHRASE`.
+Server mode disables local auto-login and refuses to start until
+`SPARKBOT_PASSPHRASE` is a private value, not blank, a placeholder, too short,
+or the local default. The launcher does not print the passphrase. Restrict
+server mode with a firewall/security group or a reverse proxy with
+authentication.
 
 Normal users should use `scripts/sparkbot-start.sh`. Advanced users may still
 edit `.env.local`, `.env`, or Compose files directly.

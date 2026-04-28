@@ -32,6 +32,15 @@ def _run_setup(args: list[str], *, env: dict[str, str]) -> subprocess.CompletedP
 
 def _run_start(args: list[str], *, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
     merged_env = os.environ.copy()
+    for key in (
+        "SPARKBOT_FRONTEND_BIND_HOST",
+        "SPARKBOT_FRONTEND_PORT",
+        "SPARKBOT_PASSPHRASE",
+        "SPARKBOT_AUTH_DISABLED",
+        "VITE_V1_LOCAL_MODE",
+    ):
+        if key not in env:
+            merged_env.pop(key, None)
     merged_env.update(env)
     if "SPARKBOT_COMPOSE_ENV_FILE" not in merged_env and "SPARKBOT_ENV_FILE" in merged_env:
         merged_env["SPARKBOT_COMPOSE_ENV_FILE"] = str(Path(merged_env["SPARKBOT_ENV_FILE"]).with_name(".env"))
@@ -501,8 +510,131 @@ exit 0
     assert "SPARKBOT_FRONTEND_BIND_HOST=127.0.0.1" in env_file.read_text()
     assert "SPARKBOT_FRONTEND_PORT=3000" in compose_env.read_text()
     assert "SPARKBOT_FRONTEND_BIND_HOST=127.0.0.1" in compose_env.read_text()
+    assert "VITE_V1_LOCAL_MODE=true" in compose_env.read_text()
+    assert "V1_LOCAL_MODE=true" in env_file.read_text()
     assert "SPARKBOT_FRONTEND_BIND_HOST=127.0.0.1" in compose_log.read_text()
     assert "up --build -d" in compose_log.read_text()
+
+
+def test_start_script_server_mode_with_default_passphrase_fails_before_startup(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    compose_log = tmp_path / "compose.log"
+    _write_executable(
+        fake_bin / "docker",
+        f"""#!/usr/bin/env sh
+if [ "$1" = "info" ]; then exit 0; fi
+if [ "$1" = "buildx" ] && [ "$2" = "version" ]; then exit 0; fi
+if [ "$1" = "compose" ] && [ "$2" = "version" ]; then exit 0; fi
+if [ "$1" = "compose" ]; then echo "$@" >> "{compose_log}"; exit 0; fi
+exit 1
+""",
+    )
+    _write_executable(
+        fake_bin / "ss",
+        """#!/usr/bin/env sh
+echo "State Recv-Q Send-Q Local Address:Port Peer Address:Port"
+exit 0
+""",
+    )
+    template = tmp_path / ".env.local.example"
+    env_file = tmp_path / ".env.local"
+    _template(template)
+
+    result = _run_start(
+        ["--server", "--openai-key", "sk-server-default-passphrase"],
+        env={
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "SPARKBOT_ENV_FILE": str(env_file),
+            "SPARKBOT_ENV_TEMPLATE": str(template),
+        },
+    )
+
+    assert result.returncode != 0
+    assert "Server mode requires authentication" in result.stderr
+    assert "SPARKBOT_PASSPHRASE is missing, blank, too short, a placeholder, or a default value." in result.stderr
+    assert not compose_log.exists()
+
+
+def test_start_script_server_mode_with_missing_passphrase_fails_before_startup(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    compose_log = tmp_path / "compose.log"
+    _write_executable(
+        fake_bin / "docker",
+        f"""#!/usr/bin/env sh
+if [ "$1" = "info" ]; then exit 0; fi
+if [ "$1" = "buildx" ] && [ "$2" = "version" ]; then exit 0; fi
+if [ "$1" = "compose" ] && [ "$2" = "version" ]; then exit 0; fi
+if [ "$1" = "compose" ]; then echo "$@" >> "{compose_log}"; exit 0; fi
+exit 1
+""",
+    )
+    _write_executable(
+        fake_bin / "ss",
+        """#!/usr/bin/env sh
+echo "State Recv-Q Send-Q Local Address:Port Peer Address:Port"
+exit 0
+""",
+    )
+    template = tmp_path / ".env.local.example"
+    env_file = tmp_path / ".env.local"
+    _template(template)
+    template.write_text(template.read_text().replace("SPARKBOT_PASSPHRASE=sparkbot-local", "SPARKBOT_PASSPHRASE="))
+
+    result = _run_start(
+        ["--server", "--openai-key", "sk-server-missing-passphrase"],
+        env={
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "SPARKBOT_ENV_FILE": str(env_file),
+            "SPARKBOT_ENV_TEMPLATE": str(template),
+        },
+    )
+
+    assert result.returncode != 0
+    assert "Server mode requires authentication" in result.stderr
+    assert not compose_log.exists()
+
+
+def test_start_script_server_mode_refuses_disabled_auth(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    compose_log = tmp_path / "compose.log"
+    _write_executable(
+        fake_bin / "docker",
+        f"""#!/usr/bin/env sh
+if [ "$1" = "info" ]; then exit 0; fi
+if [ "$1" = "buildx" ] && [ "$2" = "version" ]; then exit 0; fi
+if [ "$1" = "compose" ] && [ "$2" = "version" ]; then exit 0; fi
+if [ "$1" = "compose" ]; then echo "$@" >> "{compose_log}"; exit 0; fi
+exit 1
+""",
+    )
+    _write_executable(
+        fake_bin / "ss",
+        """#!/usr/bin/env sh
+echo "State Recv-Q Send-Q Local Address:Port Peer Address:Port"
+exit 0
+""",
+    )
+    template = tmp_path / ".env.local.example"
+    env_file = tmp_path / ".env.local"
+    _template(template)
+
+    result = _run_start(
+        ["--server", "--openai-key", "sk-server-auth-disabled"],
+        env={
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "SPARKBOT_ENV_FILE": str(env_file),
+            "SPARKBOT_ENV_TEMPLATE": str(template),
+            "SPARKBOT_PASSPHRASE": "valid-server-passphrase",
+            "SPARKBOT_AUTH_DISABLED": "true",
+        },
+    )
+
+    assert result.returncode != 0
+    assert "Server mode refuses to start because auth is disabled." in result.stderr
+    assert not compose_log.exists()
 
 
 def test_start_script_server_mode_binds_publicly_and_prints_detected_url(tmp_path: Path) -> None:
@@ -540,6 +672,7 @@ exit 0
             "SPARKBOT_ENV_TEMPLATE": str(template),
             "SPARKBOT_COMPOSE_ENV_FILE": str(compose_env),
             "SPARKBOT_PUBLIC_HOST": "203.0.113.10",
+            "SPARKBOT_PASSPHRASE": "valid-server-passphrase",
         },
     )
 
@@ -549,9 +682,14 @@ exit 0
     assert "Detected public IP: 203.0.113.10" in result.stdout
     assert "Open Sparkbot:\nhttp://203.0.113.10:3001" in result.stdout
     assert "Security warning:" in result.stdout
+    assert "valid-server-passphrase" not in result.stdout
+    assert "valid-server-passphrase" not in result.stderr
     assert "SPARKBOT_FRONTEND_BIND_HOST=0.0.0.0" in env_file.read_text()
+    assert "SPARKBOT_PASSPHRASE=valid-server-passphrase" in env_file.read_text()
+    assert "V1_LOCAL_MODE=false" in env_file.read_text()
     assert "SPARKBOT_FRONTEND_PORT=3001" in compose_env.read_text()
     assert "SPARKBOT_FRONTEND_BIND_HOST=0.0.0.0" in compose_env.read_text()
+    assert "VITE_V1_LOCAL_MODE=false" in compose_env.read_text()
     assert "SPARKBOT_FRONTEND_BIND_HOST=0.0.0.0" in compose_log.read_text()
 
 
@@ -580,7 +718,9 @@ exit 0
     env_file = tmp_path / ".env.local"
     _template(template)
     env_file.write_text(
-        template.read_text().replace("OPENAI_API_KEY=", "OPENAI_API_KEY=sk-existing")
+        template.read_text()
+        .replace("OPENAI_API_KEY=", "OPENAI_API_KEY=sk-existing")
+        .replace("SPARKBOT_PASSPHRASE=sparkbot-local", "SPARKBOT_PASSPHRASE=existing-server-passphrase")
         + "\nSPARKBOT_FRONTEND_PORT=3105\nSPARKBOT_FRONTEND_BIND_HOST=0.0.0.0\n"
     )
 
@@ -600,6 +740,7 @@ exit 0
     assert "Open Sparkbot:\nhttp://203.0.113.20:3105" in result.stdout
     assert "SPARKBOT_FRONTEND_PORT=3105" in env_file.read_text()
     assert "SPARKBOT_FRONTEND_BIND_HOST=0.0.0.0" in env_file.read_text()
+    assert "SPARKBOT_PASSPHRASE=existing-server-passphrase" in env_file.read_text()
     assert "SPARKBOT_FRONTEND_PORT=3105" in compose_log.read_text()
     assert "SPARKBOT_FRONTEND_BIND_HOST=0.0.0.0" in compose_log.read_text()
 
@@ -611,6 +752,7 @@ def test_compose_local_uses_legacy_compatible_env_file_syntax() -> None:
     assert "path: .env.local" not in content
     assert "env_file:\n      - .env.local" in content
     assert '"${SPARKBOT_FRONTEND_BIND_HOST:-127.0.0.1}:${SPARKBOT_FRONTEND_PORT:-3000}:80"' in content
+    assert "VITE_V1_LOCAL_MODE=${VITE_V1_LOCAL_MODE:-false}" in content
     assert "OPENAI_API_KEY=${OPENAI_API_KEY:-}" not in content
     assert "SPARKBOT_PASSPHRASE=${SPARKBOT_PASSPHRASE:-sparkbot-local}" not in content
 

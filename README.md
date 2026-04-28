@@ -177,7 +177,9 @@ cd Sparkbot
 bash scripts/sparkbot-start.sh --server
 ```
 
-The start script supports both Docker Compose v2 (`docker compose`) and legacy Docker Compose v1.29.x (`docker-compose`), creates `.env.local` when needed, opens the setup wizard if no provider is configured, writes the non-secret Compose interpolation values to root `.env`, and starts Sparkbot detached in the background. Local mode binds to `127.0.0.1`. Server mode binds the web UI to `0.0.0.0`, detects the public IP, prints the real browser URL, and warns you to use firewall rules or a reverse proxy with auth. Default passphrase: `sparkbot-local`.
+The start script supports both Docker Compose v2 (`docker compose`) and legacy Docker Compose v1.29.x (`docker-compose`), creates `.env.local` when needed, opens the setup wizard if no provider is configured, writes the non-secret Compose interpolation values to root `.env`, and starts Sparkbot detached in the background. Local mode binds to `127.0.0.1`. Server mode binds the web UI to `0.0.0.0`, disables local auto-login, requires a private passphrase before startup, detects the public IP, prints the real browser URL, and warns you to use firewall rules or a reverse proxy with auth.
+
+Server mode refuses to start if `SPARKBOT_PASSPHRASE` is blank, missing, a placeholder, too short, or still set to the local default. The passphrase is never printed in launcher output.
 
 On a fresh Ubuntu server, install the Docker Compose v2 and buildx plugins first:
 
@@ -380,7 +382,7 @@ Most configuration is available from **Sparkbot Controls** or the setup wizard.
 
 - **Desktop app** — set keys in **Sparkbot Controls** (UI). Advanced settings: the `.env` file beside the installed executable.
 - **Docker / local** — run `bash scripts/sparkbot-start.sh --local`; it creates and configures `.env.local`
-- **Docker / server** — run `bash scripts/sparkbot-start.sh --server`; it binds the web UI to the server network interface and prints the public URL
+- **Docker / server** — run `bash scripts/sparkbot-start.sh --server`; it requires a private passphrase, binds the web UI to the server network interface, and prints the public URL
 - **CLI / server setup** — run `python3 sparkbot-cli.py --setup`
 - **Server / systemd** — run the setup wizard first, then copy or adapt the generated values for `.env`
 

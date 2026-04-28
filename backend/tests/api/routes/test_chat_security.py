@@ -264,6 +264,18 @@ def test_models_config_requires_operator_identity(client: TestClient, monkeypatc
     assert outsider_response.status_code == 403
 
 
+def test_sensitive_chat_controls_require_authentication(client: TestClient) -> None:
+    client.cookies.clear()
+
+    models_response = client.get(f"{settings.API_V1_STR}/chat/models/config")
+    users_response = client.get(f"{settings.API_V1_STR}/chat/users/")
+    dashboard_response = client.get(f"{settings.API_V1_STR}/chat/dashboard/summary")
+
+    assert models_response.status_code in {401, 403}
+    assert users_response.status_code in {401, 403}
+    assert dashboard_response.status_code in {401, 403}
+
+
 def test_models_config_update_requires_operator_identity(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SPARKBOT_OPERATOR_USERNAMES", "sparkbot-user")
     outsider_id = _create_chat_user("outsider")

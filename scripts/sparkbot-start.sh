@@ -10,6 +10,7 @@ ENV_FILE="${SPARKBOT_ENV_FILE:-${ROOT_DIR}/.env.local}"
 COMPOSE_ENV_FILE="${SPARKBOT_COMPOSE_ENV_FILE:-${ROOT_DIR}/.env}"
 INSTALL_DOCKER_PLUGINS=0
 START_MODE=""
+START_SHOW_INPUT=0
 SETUP_ARGS=()
 
 for arg in "$@"; do
@@ -22,6 +23,10 @@ for arg in "$@"; do
       ;;
     --server)
       START_MODE="server"
+      ;;
+    --show-input)
+      START_SHOW_INPUT=1
+      SETUP_ARGS+=("${arg}")
       ;;
     *)
       SETUP_ARGS+=("${arg}")
@@ -99,6 +104,24 @@ valid_bind_host() {
       return 1
       ;;
   esac
+}
+
+truthy() {
+  case "${1:-}" in
+    1|true|TRUE|yes|YES|on|ON) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+weak_passphrase() {
+  local value="${1:-}"
+  [ -n "${value}" ] || return 0
+  case "${value}" in
+    sparkbot-local|changeme-in-production|changethis|password|admin123|REPLACE_WITH_*|please-change*)
+      return 0
+      ;;
+  esac
+  [ "${#value}" -lt 12 ]
 }
 
 port_available() {
@@ -211,8 +234,10 @@ EOF
 sync_compose_env() {
   local frontend_port="$1"
   local frontend_bind_host="$2"
+  local frontend_local_mode="$3"
   env_set_in_file "${COMPOSE_ENV_FILE}" "SPARKBOT_FRONTEND_PORT" "${frontend_port}"
   env_set_in_file "${COMPOSE_ENV_FILE}" "SPARKBOT_FRONTEND_BIND_HOST" "${frontend_bind_host}"
+  env_set_in_file "${COMPOSE_ENV_FILE}" "VITE_V1_LOCAL_MODE" "${frontend_local_mode}"
 }
 
 detect_public_ip() {
@@ -223,6 +248,83 @@ detect_public_ip() {
   if command -v curl >/dev/null 2>&1; then
     curl -fsS --max-time 2 https://api.ipify.org 2>/dev/null || true
   fi
+}
+
+prompt_server_passphrase() {
+  local first second
+  while true; do
+    if [ "${START_SHOW_INPUT}" = "1" ]; then
+      read -r -p "Create a server passphrase: " first
+      read -r -p "Confirm server passphrase: " second
+    else
+      echo "Input will be hidden. Paste/type the new server passphrase, then press Enter." >&2
+      read -r -s -p "Create a server passphrase: " first
+      printf '\n' >&2
+      echo "Input will be hidden. Paste/type it again, then press Enter." >&2
+      read -r -s -p "Confirm server passphrase: " second
+      printf '\n' >&2
+    fi
+    if [ "${first}" != "${second}" ]; then
+      echo "Passphrases did not match. Try again." >&2
+      continue
+    fi
+    if weak_passphrase "${first}"; then
+      echo "Passphrase must be at least 12 characters and cannot use Sparkbot defaults or placeholders." >&2
+      continue
+    fi
+    printf '%s' "${first}"
+    return 0
+  done
+}
+
+ensure_server_auth() {
+  local configured="${SPARKBOT_PASSPHRASE:-}"
+  if [ -z "${configured}" ]; then
+    configured="$(env_get "SPARKBOT_PASSPHRASE")"
+  fi
+
+  if truthy "${SPARKBOT_AUTH_DISABLED:-}" || truthy "$(env_get "SPARKBOT_AUTH_DISABLED")"; then
+    cat >&2 <<'EOF'
+Server mode refuses to start because auth is disabled.
+Remove SPARKBOT_AUTH_DISABLED or set it to false before exposing Sparkbot.
+EOF
+    exit 1
+  fi
+
+  if ! weak_passphrase "${configured}"; then
+    env_set "SPARKBOT_PASSPHRASE" "${configured}"
+    return 0
+  fi
+
+  if [ -t 0 ] && [ -t 1 ]; then
+    cat >&2 <<'EOF'
+Server mode requires authentication. Do not expose Sparkbot without a passphrase or reverse proxy auth.
+Create a new Sparkbot passphrase before startup.
+EOF
+    configured="$(prompt_server_passphrase)"
+    env_set "SPARKBOT_PASSPHRASE" "${configured}"
+    return 0
+  fi
+
+  cat >&2 <<'EOF'
+Server mode requires authentication. Do not expose Sparkbot without a passphrase or reverse proxy auth.
+SPARKBOT_PASSPHRASE is missing, blank, too short, a placeholder, or a default value.
+Set a strong passphrase, then rerun:
+  export SPARKBOT_PASSPHRASE="replace-with-a-long-private-passphrase"
+  bash scripts/sparkbot-start.sh --server
+EOF
+  exit 1
+}
+
+configure_auth_mode() {
+  local frontend_bind_host="$1"
+  local local_mode="true"
+  if [ "${frontend_bind_host}" = "0.0.0.0" ]; then
+    ensure_server_auth
+    local_mode="false"
+  fi
+  env_set "V1_LOCAL_MODE" "${local_mode}"
+  printf '%s\n' "${local_mode}"
 }
 
 print_buildx_fix() {
@@ -297,9 +399,11 @@ fi
 
 frontend_port="$(choose_frontend_port)"
 frontend_bind_host="$(choose_frontend_bind_host)"
+frontend_local_mode="$(configure_auth_mode "${frontend_bind_host}")"
 export SPARKBOT_FRONTEND_PORT="${frontend_port}"
 export SPARKBOT_FRONTEND_BIND_HOST="${frontend_bind_host}"
-sync_compose_env "${frontend_port}" "${frontend_bind_host}"
+export VITE_V1_LOCAL_MODE="${frontend_local_mode}"
+sync_compose_env "${frontend_port}" "${frontend_bind_host}" "${frontend_local_mode}"
 
 web_url="http://localhost:${frontend_port}"
 public_ip=""
@@ -309,16 +413,18 @@ if [ "${frontend_bind_host}" = "0.0.0.0" ]; then
   web_url="http://${public_ip}:${frontend_port}"
 fi
 
-passphrase="sparkbot-local"
-passphrase_label="sparkbot-local"
+passphrase=""
+passphrase_label="configured in ${ENV_FILE}"
 if [ -f "${ENV_FILE}" ]; then
   configured_passphrase="$(awk -F= '/^SPARKBOT_PASSPHRASE=/ {print substr($0, index($0, "=") + 1); exit}' "${ENV_FILE}")"
   if [ -n "${configured_passphrase}" ]; then
     passphrase="${configured_passphrase}"
   fi
 fi
-if [ "${passphrase}" != "sparkbot-local" ]; then
-  passphrase_label="configured in ${ENV_FILE}"
+if [ -z "${passphrase}" ]; then
+  passphrase_label="not configured"
+elif [ "${passphrase}" = "sparkbot-local" ]; then
+  passphrase_label="local default configured"
 fi
 
 cat <<EOF
@@ -338,6 +444,7 @@ Open Sparkbot:
 ${web_url}
 
 Security warning:
+  Server mode requires authentication. Do not expose Sparkbot without a passphrase or reverse proxy auth.
   Server mode exposes the Sparkbot web UI on the server network interface.
   Restrict access with a firewall/security group or put Sparkbot behind a
   reverse proxy with authentication before using it on an open network.
