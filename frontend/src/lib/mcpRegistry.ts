@@ -1,3 +1,5 @@
+import { apiFetch } from "@/lib/apiBase"
+
 export type McpPolicyTag =
   | "read-only"
   | "write"
@@ -21,6 +23,14 @@ export interface McpToolManifest {
   requiredSecrets: string[]
   healthSource: "sparkbot-api" | "task-guardian" | "guardian-vault" | "external-mcp"
   dryRunSupport: "native" | "explain-plan" | "required-before-motion"
+  approvalRequired?: boolean
+  explainPlanRequired?: boolean
+  status?: {
+    state: string
+    label: string
+    configured: boolean
+    details: string
+  }
 }
 
 export const MCP_TOOL_MANIFESTS: McpToolManifest[] = [
@@ -168,4 +178,36 @@ export const MCP_RUN_TIMELINE = [
   "Execution",
   "Audit evidence and run summary",
 ]
+
+export interface McpRegistryResponse {
+  manifests: McpToolManifest[]
+  runTimeline: string[]
+  health: {
+    sparkbotApiLive: boolean
+    vaultConfigured: boolean
+    taskGuardianEnabled: boolean
+    taskGuardianWriteEnabled: boolean
+    limaBridgeConfigured: boolean
+  }
+}
+
+export async function fetchMcpRegistry(): Promise<McpRegistryResponse> {
+  const response = await apiFetch("/api/v1/chat/mcp/registry", { credentials: "include" })
+  if (!response.ok) {
+    throw new Error(`MCP registry API ${response.status}`)
+  }
+  return response.json() as Promise<McpRegistryResponse>
+}
+
+export const FALLBACK_MCP_REGISTRY: McpRegistryResponse = {
+  manifests: MCP_TOOL_MANIFESTS,
+  runTimeline: MCP_RUN_TIMELINE,
+  health: {
+    sparkbotApiLive: false,
+    vaultConfigured: false,
+    taskGuardianEnabled: false,
+    taskGuardianWriteEnabled: false,
+    limaBridgeConfigured: false,
+  },
+}
 

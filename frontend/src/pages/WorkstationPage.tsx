@@ -58,10 +58,11 @@ import {
   saveSparkBudChatLaunchDraft,
 } from "@/lib/sparkbudLaunch"
 import {
-  MCP_RUN_TIMELINE,
-  MCP_TOOL_MANIFESTS,
+  FALLBACK_MCP_REGISTRY,
+  fetchMcpRegistry,
   type McpRiskLevel,
   type McpToolManifest,
+  type McpRegistryResponse,
 } from "@/lib/mcpRegistry"
 import {
   launchMeetingRoom,
@@ -2681,10 +2682,12 @@ function ComputerControlPanel({ onClose, onOpenTerminal, status }: ComputerContr
 
 interface McpHealth {
   loading: boolean
+  apiBacked: boolean
   sparkbotApiLive: boolean
-  skillsCount: number | null
   vaultConfigured: boolean | null
   taskGuardianEnabled: boolean | null
+  taskGuardianWriteEnabled: boolean | null
+  limaBridgeConfigured: boolean | null
 }
 
 function riskColor(risk: McpRiskLevel): string {
@@ -2695,6 +2698,15 @@ function riskColor(risk: McpRiskLevel): string {
 }
 
 function manifestHealthLabel(manifest: McpToolManifest, health: McpHealth): { label: string; color: string } {
+  if (manifest.status) {
+    if (manifest.status.state === "configured" || manifest.status.state === "demo-ready") {
+      return { label: manifest.status.label, color: "#4ade80" }
+    }
+    if (manifest.status.state === "disabled" || manifest.status.state === "bridge-needed" || manifest.status.state === "missing-secrets" || manifest.status.state === "missing-vault-key") {
+      return { label: manifest.status.label, color: "#fbbf24" }
+    }
+    return { label: manifest.status.label, color: "#64748b" }
+  }
   if (manifest.healthSource === "external-mcp") {
     return manifest.id === "lima.replay_simulation"
       ? { label: "Demo-ready", color: "#4ade80" }
@@ -2716,36 +2728,40 @@ function manifestHealthLabel(manifest: McpToolManifest, health: McpHealth): { la
 
 function McpControlPlanePanel({ onClose }: { onClose: () => void }) {
   const ACCENT = "#22d3ee"
+  const [registry, setRegistry] = useState<McpRegistryResponse>(FALLBACK_MCP_REGISTRY)
   const [health, setHealth] = useState<McpHealth>({
     loading: true,
+    apiBacked: false,
     sparkbotApiLive: false,
-    skillsCount: null,
     vaultConfigured: null,
     taskGuardianEnabled: null,
+    taskGuardianWriteEnabled: null,
+    limaBridgeConfigured: null,
   })
 
   useEffect(() => {
     let cancelled = false
     async function loadHealth() {
       try {
-        const [guardianRes, skillsRes] = await Promise.all([
-          apiFetch("/api/v1/chat/guardian/status", { credentials: "include" }).catch(() => null),
-          apiFetch("/api/v1/chat/skills", { credentials: "include" }).catch(() => null),
-        ])
-        const guardian = guardianRes?.ok ? await guardianRes.json().catch(() => null) : null
-        const skills = skillsRes?.ok ? await skillsRes.json().catch(() => null) : null
+        const nextRegistry = await fetchMcpRegistry()
         if (cancelled) return
+        setRegistry(nextRegistry)
         setHealth({
           loading: false,
-          sparkbotApiLive: Boolean(guardianRes?.ok || skillsRes?.ok),
-          skillsCount: Array.isArray(skills?.skills) ? skills.skills.length : null,
-          vaultConfigured: typeof guardian?.vault_configured === "boolean" ? guardian.vault_configured : null,
+          apiBacked: true,
+          sparkbotApiLive: Boolean(nextRegistry.health.sparkbotApiLive),
+          vaultConfigured: Boolean(nextRegistry.health.vaultConfigured),
           taskGuardianEnabled:
-            typeof guardian?.task_guardian_enabled === "boolean" ? guardian.task_guardian_enabled : null,
+            typeof nextRegistry.health.taskGuardianEnabled === "boolean" ? nextRegistry.health.taskGuardianEnabled : null,
+          taskGuardianWriteEnabled:
+            typeof nextRegistry.health.taskGuardianWriteEnabled === "boolean" ? nextRegistry.health.taskGuardianWriteEnabled : null,
+          limaBridgeConfigured:
+            typeof nextRegistry.health.limaBridgeConfigured === "boolean" ? nextRegistry.health.limaBridgeConfigured : null,
         })
       } catch {
         if (!cancelled) {
-          setHealth((prev) => ({ ...prev, loading: false, sparkbotApiLive: false }))
+          setRegistry(FALLBACK_MCP_REGISTRY)
+          setHealth((prev) => ({ ...prev, loading: false, apiBacked: false, sparkbotApiLive: false }))
         }
       }
     }
@@ -2755,7 +2771,7 @@ function McpControlPlanePanel({ onClose }: { onClose: () => void }) {
     }
   }, [])
 
-  const runtimeCounts = MCP_TOOL_MANIFESTS.reduce(
+  const runtimeCounts = registry.manifests.reduce(
     (acc, manifest) => {
       acc[manifest.runtime] += 1
       return acc
@@ -2831,9 +2847,9 @@ function McpControlPlanePanel({ onClose }: { onClose: () => void }) {
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
           {[
-            ["Sparkbot tools", String(runtimeCounts.sparkbot), health.sparkbotApiLive ? "API live" : health.loading ? "Checking" : "Offline"],
-            ["Robo OS tools", String(runtimeCounts["lima-robo-os"]), "Replay/sim first"],
-            ["Loaded skills", health.skillsCount == null ? "--" : String(health.skillsCount), "Drop-in plugins"],
+            ["Sparkbot tools", String(runtimeCounts.sparkbot), health.apiBacked ? "Backend registry" : health.loading ? "Checking" : "Fallback registry"],
+            ["Robo OS tools", String(runtimeCounts["lima-robo-os"]), health.limaBridgeConfigured ? "Bridge configured" : "Replay/sim first"],
+            ["Policy source", health.apiBacked ? "API" : "Local", "Typed manifests"],
           ].map(([label, value, detail]) => (
             <div key={label} style={{ border: `1px solid ${ACCENT}1f`, borderRadius: 8, backgroundColor: "#040d1a", padding: "10px 12px" }}>
               <div style={{ fontSize: 10, color: "#64748b", letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 700 }}>
@@ -2850,7 +2866,7 @@ function McpControlPlanePanel({ onClose }: { onClose: () => void }) {
             Tool manifests and policy
           </div>
           <div style={{ display: "flex", flexDirection: "column" }}>
-            {MCP_TOOL_MANIFESTS.map((manifest) => {
+            {registry.manifests.map((manifest) => {
               const healthState = manifestHealthLabel(manifest, health)
               const color = riskColor(manifest.riskLevel)
               return (
@@ -2880,6 +2896,7 @@ function McpControlPlanePanel({ onClose }: { onClose: () => void }) {
                   <div style={{ textAlign: "right", fontSize: 9, color: "#64748b", lineHeight: 1.5 }}>
                     <div>{manifest.owner}</div>
                     <div>{manifest.dryRunSupport}</div>
+                    {manifest.approvalRequired && <div>approval required</div>}
                   </div>
                 </div>
               )
@@ -2911,7 +2928,7 @@ function McpControlPlanePanel({ onClose }: { onClose: () => void }) {
             Universal run timeline
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-            {MCP_RUN_TIMELINE.map((step, index) => (
+            {registry.runTimeline.map((step, index) => (
               <div key={step} style={{ display: "flex", gap: 9, alignItems: "center" }}>
                 <span style={{ width: 18, height: 18, borderRadius: 999, backgroundColor: `${ACCENT}18`, border: `1px solid ${ACCENT}44`, color: ACCENT, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700 }}>
                   {index + 1}

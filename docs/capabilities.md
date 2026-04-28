@@ -28,6 +28,7 @@ Sparkbot is a local-first agent OS with enterprise-grade governance. In practica
 | Agent run resume | Shipped baseline: approval-gated tool calls persist exact payloads and resume on approval; full multi-hour graph serialization remains future expansion. |
 | Tool guardrails before/after execution | Shipped baseline: per-tool input guardrails run before execution and output guardrails run after LLM/dashboard execution. |
 | Workflow builder | Shipped baseline: `/api/v1/chat/dashboard/workflows/templates` exposes trigger -> condition -> tool/agent -> approval -> notify -> audit templates. |
+| Unified MCP registry | Shipped baseline: `/api/v1/chat/mcp/registry` returns backend-owned Sparkbot and LIMA Robotics OS manifests, policy tags, approval posture, run timeline, and live health for the Workstation Robo OS panel. |
 | Mobile companion / PWA | Shipped baseline: public site includes PWA manifest and service worker; dashboard/bridge approval surfaces remain mobile-readable. |
 | Connector quality | Shipped baseline: `/api/v1/chat/dashboard/connectors/health` reports connector setup state, read/write scopes, setup-test flag, and audit metadata. |
 | Evaluation harness | Shipped baseline: `/api/v1/chat/dashboard/evals/agent-behavior` runs deterministic governance eval cases for tool choice, approval requirements, guardrails, and agent routing. |
@@ -600,13 +601,15 @@ The **Robo OS** button opens the first unified MCP registry in Workstation. It p
 | LIMA Robotics OS | Local Intelligent Machine Agent runtime for robot skills and physical-world execution exposed through MCP |
 | Together | One assistant surface for computer work, connected services, and robotics |
 
-The panel shows typed manifests for Sparkbot tools and LIMA robot skills with:
+The panel loads from `GET /api/v1/chat/mcp/registry` and falls back to the bundled frontend manifests only if the API is unavailable. It shows typed manifests for Sparkbot tools and LIMA robot skills with:
 
 - Runtime owner: `sparkbot` or `lima-robo-os`
 - Policy tags: `read-only`, `write`, `destructive`, `external-send`, `robot-motion`, `secret-use`
 - Risk level: low, medium, high, critical
 - Required secrets or daemon endpoints
 - Health source: Sparkbot API, Task Guardian, Guardian Vault, or external MCP
+- Live status: configured, missing secrets, bridge needed, disabled, or demo-ready
+- Approval posture: whether the tool requires operator approval before execution
 - Dry-run posture: native dry run, explain-plan, or required-before-motion
 
 No hardware is required for the Robo OS demo path. LIMA replay/simulation commands are surfaced directly in Sparkbot:
@@ -618,6 +621,8 @@ LIMA run demo-camera
 ```
 
 Robot-motion tools such as `navigate`, `follow_route`, `return_home`, and `stop` are marked critical. They should produce a dry-run/explain-plan, then require operator approval and audit evidence before execution.
+
+Set `LIMA_MCP_URL` or `LIMA_DAEMON_URL` to mark live LIMA bridge tools as configured. If neither is set, Robo OS still exposes the replay/simulation manifests as demo-ready so the control plane remains testable without hardware.
 
 The universal run timeline is:
 
@@ -1259,6 +1264,7 @@ PUBLIC_URL=
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/api/v1/chat/skills` | List loaded skill plugins (name, description, policy flags) |
+| `GET` | `/api/v1/chat/mcp/registry` | Unified Sparkbot + LIMA MCP registry: manifests, policy metadata, approval posture, health, and run timeline |
 | `GET` | `/api/v1/chat/audit` | Recent tool audit log (room-scoped) |
 | `GET` | `/api/v1/utils/health-check/` | Health check → `true` |
 

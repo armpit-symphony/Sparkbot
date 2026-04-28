@@ -19,5 +19,6 @@ from app.api.routes.chat.voice import router as voice_router
 from app.api.routes.chat.skills import router as skills_router
 from app.api.routes.chat.projects import router as projects_router
 from app.api.routes.chat.workstation import router as workstation_router
+from app.api.routes.chat.mcp import router as mcp_router
 
-__all__ = ["messages_router", "rooms_router", "users_router", "ws_router", "bot_integration_router", "uploads_router", "model_router", "memory_router", "tasks_router", "reminders_router", "slack_router", "github_router", "audit_router", "guardian_router", "dashboard_router", "spine_router", "voice_router", "skills_router", "projects_router", "workstation_router"]
+__all__ = ["messages_router", "rooms_router", "users_router", "ws_router", "bot_integration_router", "uploads_router", "model_router", "memory_router", "tasks_router", "reminders_router", "slack_router", "github_router", "audit_router", "guardian_router", "dashboard_router", "spine_router", "voice_router", "skills_router", "projects_router", "workstation_router", "mcp_router"]
