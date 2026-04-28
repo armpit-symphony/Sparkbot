@@ -265,6 +265,85 @@ def test_locked_provider_retries_without_tools_before_failing(monkeypatch) -> No
     ]
 
 
+def test_tool_manifest_selection_stays_under_provider_limit() -> None:
+    tool_definitions = [
+        {"type": "function", "function": {"name": f"tool_{idx}", "parameters": {"type": "object"}}}
+        for idx in range(130)
+    ]
+    tool_definitions.append(
+        {"type": "function", "function": {"name": "youtube_transcript", "parameters": {"type": "object"}}}
+    )
+    tool_definitions.append(
+        {"type": "function", "function": {"name": "youtube_summarize", "parameters": {"type": "object"}}}
+    )
+    tool_definitions.append(
+        {"type": "function", "function": {"name": "tool_1", "parameters": {"type": "object"}}}
+    )
+
+    selected = llm._select_tool_definitions(
+        tool_definitions,
+        latest_user_message="Summarize this YouTube video.",
+    )
+    names = [tool["function"]["name"] for tool in selected]
+
+    assert len(selected) == 128
+    assert len(names) == len(set(names))
+    assert "youtube_transcript" in names
+    assert "youtube_summarize" in names
+
+
+def test_minimax_locked_route_retries_with_safe_text_settings(monkeypatch) -> None:
+    calls: list[tuple[str, bool, bool]] = []
+
+    class _FakeMessage:
+        tool_calls = None
+        content = "MINIMAX_SAFE_OK"
+
+        def model_dump(self, exclude_none: bool = True):
+            return {"role": "assistant", "content": "MINIMAX_SAFE_OK"}
+
+    class _FakeResponse:
+        choices = [SimpleNamespace(finish_reason="stop", message=_FakeMessage())]
+
+    async def fake_acompletion(*, model: str, **kwargs):
+        has_tools = "tools" in kwargs
+        has_temperature = "temperature" in kwargs
+        calls.append((model, has_tools, has_temperature))
+        if has_tools or has_temperature:
+            raise RuntimeError("bad_request_error: invalid params, invalid chat setting (2013)")
+        return _FakeResponse()
+
+    monkeypatch.setattr(llm.litellm, "acompletion", fake_acompletion)
+
+    route_context = {
+        "route": "default",
+        "provider_locked": True,
+        "requested_provider": "minimax",
+        "model": "minimax/MiniMax-M2.5",
+        "cross_provider_fallback": False,
+    }
+
+    chosen_model, response = asyncio.run(
+        llm._acompletion_with_fallback(
+            model="minimax/MiniMax-M2.5",
+            route_context=route_context,
+            messages=[{"role": "user", "content": "test"}],
+            tools=[{"type": "function", "function": {"name": "noop", "parameters": {"type": "object"}}}],
+            tool_choice="auto",
+            temperature=0.2,
+            stream=False,
+        )
+    )
+
+    assert chosen_model == "minimax/MiniMax-M2.5"
+    assert response.choices[0].message.content == "MINIMAX_SAFE_OK"
+    assert calls == [
+        ("minimax/MiniMax-M2.5", True, True),
+        ("minimax/MiniMax-M2.5", False, True),
+        ("minimax/MiniMax-M2.5", False, False),
+    ]
+
+
 def test_stream_chat_with_tools_keeps_forced_local_off_token_guardian(monkeypatch) -> None:
     calls: list[tuple[str, bool]] = []
 

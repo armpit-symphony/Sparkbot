@@ -32,6 +32,61 @@ LOCAL_DEFAULT_MODEL_ENV = "SPARKBOT_LOCAL_MODEL"
 AGENT_MODEL_OVERRIDES_ENV = "SPARKBOT_AGENT_MODEL_OVERRIDES_JSON"
 DEFAULT_CROSS_PROVIDER_FALLBACK_ENV = "SPARKBOT_DEFAULT_CROSS_PROVIDER_FALLBACK"
 _HEAVY_HITTER_CLASSIFICATIONS = {"coding", "creative", "data_analysis", "reasoning"}
+_LLM_TOOL_LIMIT = 128
+_TOOL_KEYWORD_PROMOTIONS: dict[str, set[str]] = {
+    "youtube": {"youtube_transcript", "youtube_summarize"},
+    "video": {"youtube_transcript", "youtube_summarize"},
+    "timer": {"time_start", "time_stop", "time_status", "time_report", "time_log"},
+    "time tracking": {"time_start", "time_stop", "time_status", "time_report", "time_log"},
+    "spotify": {
+        "spotify_play",
+        "spotify_pause",
+        "spotify_next",
+        "spotify_previous",
+        "spotify_now_playing",
+        "spotify_search",
+        "spotify_volume",
+    },
+    "portfolio": {"portfolio_add", "portfolio_view", "portfolio_remove", "stock_quote", "stock_history"},
+    "stock": {"stock_quote", "stock_history", "portfolio_view"},
+}
+_CORE_TOOL_PRIORITY = {
+    "remember_fact",
+    "memory_recall",
+    "web_search",
+    "fetch_url",
+    "browser_open",
+    "browser_snapshot",
+    "browser_click",
+    "browser_fill_field",
+    "browser_close",
+    "terminal_list_sessions",
+    "terminal_send",
+    "get_datetime",
+    "calculate",
+    "create_task",
+    "list_tasks",
+    "complete_task",
+    "github_list_prs",
+    "github_get_pr",
+    "github_create_issue",
+    "gmail_search",
+    "gmail_get_message",
+    "gmail_send",
+    "guardian_schedule_task",
+    "guardian_list_tasks",
+    "guardian_propose_improvement",
+    "guardian_simulate_policy",
+    "calendar_list_events",
+    "calendar_create_event",
+    "vault_list_secrets",
+    "vault_use_secret",
+    "shell_run",
+    "run_code",
+    "morning_briefing",
+    "news_headlines",
+    "send_alert",
+}
 
 # ─── System prompt ────────────────────────────────────────────────────────────
 # Loaded from prompts/system.md (backend root) at startup.
@@ -1032,6 +1087,51 @@ def _extract_text_content(value: Any) -> str:
     return ""
 
 
+def _tool_name(tool: dict[str, Any]) -> str:
+    function = tool.get("function")
+    if not isinstance(function, dict):
+        return ""
+    return str(function.get("name") or "")
+
+
+def _select_tool_definitions(
+    tool_definitions: list[dict[str, Any]],
+    *,
+    latest_user_message: str = "",
+    max_tools: int = _LLM_TOOL_LIMIT,
+) -> list[dict[str, Any]]:
+    """Keep tool payloads within provider limits while preserving relevant tools."""
+    by_name: dict[str, dict[str, Any]] = {}
+    ordered_names: list[str] = []
+    for tool in tool_definitions:
+        name = _tool_name(tool)
+        if not name or name in by_name:
+            continue
+        by_name[name] = tool
+        ordered_names.append(name)
+
+    deduped = [by_name[name] for name in ordered_names]
+    if len(deduped) <= max_tools:
+        return deduped
+
+    text = (latest_user_message or "").lower()
+    promoted: set[str] = set()
+    for keyword, names in _TOOL_KEYWORD_PROMOTIONS.items():
+        if keyword in text:
+            promoted.update(names)
+
+    def priority(name: str) -> int:
+        if name in promoted:
+            return 0
+        if name in _CORE_TOOL_PRIORITY:
+            return 1
+        return 2
+
+    indexed = [(idx, name, by_name[name]) for idx, name in enumerate(ordered_names)]
+    selected = sorted(indexed, key=lambda item: (priority(item[1]), item[0]))[:max_tools]
+    return [tool for _, _, tool in sorted(selected, key=lambda item: item[0])]
+
+
 def _should_retry_without_tools(error: Exception, candidate: str, kwargs: dict[str, Any]) -> bool:
     if "tools" not in kwargs:
         return False
@@ -1044,6 +1144,30 @@ def _should_retry_without_tools(error: Exception, candidate: str, kwargs: dict[s
     ):
         return True
     return False
+
+
+def _should_retry_minimax_safe(error: Exception, candidate: str) -> bool:
+    if model_provider(candidate) != "minimax":
+        return False
+    text = str(error).lower()
+    return "invalid chat setting" in text or "bad_request_error" in text
+
+
+def _minimax_safe_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
+    stripped = dict(kwargs)
+    for key in (
+        "tools",
+        "tool_choice",
+        "temperature",
+        "top_p",
+        "presence_penalty",
+        "frequency_penalty",
+        "reasoning_effort",
+        "thinking",
+        "reasoning_split",
+    ):
+        stripped.pop(key, None)
+    return stripped
 
 
 async def _acompletion_with_fallback(
@@ -1139,6 +1263,21 @@ async def _acompletion_with_fallback(
                     last_error = exc2
                     errors.append(f"{candidate}(no-tools): {type(exc2).__name__}: {exc2}")
                     exc = exc2
+            if _should_retry_minimax_safe(exc, candidate):
+                try:
+                    safe_kwargs = _minimax_safe_kwargs(call_kwargs)
+                    _t0 = time.perf_counter()
+                    response = await litellm.acompletion(model=candidate, **safe_kwargs)
+                    record_latency(candidate, time.perf_counter() - _t0)
+                    log.warning(
+                        "MiniMax rejected chat settings for %s; retried with safe text-only settings successfully",
+                        candidate,
+                    )
+                    return chosen_candidate, response
+                except Exception as exc3:
+                    last_error = exc3
+                    errors.append(f"{candidate}(minimax-safe): {type(exc3).__name__}: {exc3}")
+                    exc = exc3
             if route_context and route_context.get("provider_locked"):
                 friendly_error = _format_locked_route_error(route_context, exc)
                 log.error(
@@ -1340,6 +1479,17 @@ async def stream_chat_with_tools(
         ),
         "",
     )
+    selected_tool_definitions = _select_tool_definitions(
+        TOOL_DEFINITIONS,
+        latest_user_message=latest_user_message,
+    )
+    if len(selected_tool_definitions) < len(TOOL_DEFINITIONS):
+        log.info(
+            "LLM tool manifest trimmed: original=%s selected=%s latest_user_message_len=%s",
+            len(TOOL_DEFINITIONS),
+            len(selected_tool_definitions),
+            len(latest_user_message),
+        )
 
     if latest_user_message:
         if route_context["provider_locked"]:
@@ -1528,7 +1678,7 @@ async def stream_chat_with_tools(
                 route_payload=route_payload,
                 route_context=route_context,
                 messages=msgs,
-                tools=TOOL_DEFINITIONS,
+                tools=selected_tool_definitions,
                 tool_choice=tool_choice,
                 temperature=0.2,
             )
