@@ -177,6 +177,7 @@ def test_noninteractive_setup_creates_env_and_does_not_echo_secret(tmp_path: Pat
     assert "POSTGRES_DB=sparkbot" in content
     assert "POSTGRES_USER=sparkbot" in content
     assert "POSTGRES_PASSWORD=sparkbot-local" in content
+    assert "SPARKBOT_FRONTEND_PORT=3000" in content
     assert "SPARKBOT_MODEL=gpt-5-mini" in content
     assert "sk-test-secret" not in result.stdout
     assert "sk-test-secret" not in result.stderr
@@ -370,12 +371,96 @@ exit 1
     assert "sk-start-direct" not in result.stderr
 
 
+def test_start_script_selects_next_frontend_port_when_default_is_busy(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    compose_log = tmp_path / "compose.log"
+    _write_executable(
+        fake_bin / "docker",
+        f"""#!/usr/bin/env sh
+if [ "$1" = "info" ]; then exit 0; fi
+if [ "$1" = "buildx" ] && [ "$2" = "version" ]; then exit 0; fi
+if [ "$1" = "compose" ] && [ "$2" = "version" ]; then exit 0; fi
+if [ "$1" = "compose" ]; then echo "$@" >> "{compose_log}"; echo "SPARKBOT_FRONTEND_PORT=${{SPARKBOT_FRONTEND_PORT:-}}" >> "{compose_log}"; exit 0; fi
+exit 1
+""",
+    )
+    _write_executable(
+        fake_bin / "ss",
+        """#!/usr/bin/env sh
+echo "State Recv-Q Send-Q Local Address:Port Peer Address:Port"
+echo "LISTEN 0 128 127.0.0.1:3000 0.0.0.0:*"
+exit 0
+""",
+    )
+    template = tmp_path / ".env.local.example"
+    env_file = tmp_path / ".env.local"
+    _template(template)
+
+    result = _run_start(
+        ["--openai-key", "sk-port-busy"],
+        env={
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "SPARKBOT_ENV_FILE": str(env_file),
+            "SPARKBOT_ENV_TEMPLATE": str(template),
+        },
+    )
+
+    assert result.returncode == 0
+    assert "Port 3000 is already in use. Using 3001" in result.stderr
+    assert "SPARKBOT_FRONTEND_PORT=3001" in env_file.read_text()
+    assert "Web UI: http://localhost:3001" in result.stdout
+    assert "SPARKBOT_FRONTEND_PORT=3001" in compose_log.read_text()
+
+
+def test_start_script_respects_custom_frontend_port(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    compose_log = tmp_path / "compose.log"
+    _write_executable(
+        fake_bin / "docker",
+        f"""#!/usr/bin/env sh
+if [ "$1" = "info" ]; then exit 0; fi
+if [ "$1" = "buildx" ] && [ "$2" = "version" ]; then exit 0; fi
+if [ "$1" = "compose" ] && [ "$2" = "version" ]; then exit 0; fi
+if [ "$1" = "compose" ]; then echo "$@" >> "{compose_log}"; echo "SPARKBOT_FRONTEND_PORT=${{SPARKBOT_FRONTEND_PORT:-}}" >> "{compose_log}"; exit 0; fi
+exit 1
+""",
+    )
+    _write_executable(
+        fake_bin / "ss",
+        """#!/usr/bin/env sh
+echo "State Recv-Q Send-Q Local Address:Port Peer Address:Port"
+exit 0
+""",
+    )
+    template = tmp_path / ".env.local.example"
+    env_file = tmp_path / ".env.local"
+    _template(template)
+
+    result = _run_start(
+        ["--openai-key", "sk-custom-port"],
+        env={
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "SPARKBOT_ENV_FILE": str(env_file),
+            "SPARKBOT_ENV_TEMPLATE": str(template),
+            "SPARKBOT_FRONTEND_PORT": "3100",
+        },
+    )
+
+    assert result.returncode == 0
+    assert "SPARKBOT_FRONTEND_PORT=3100" in env_file.read_text()
+    assert "Web UI: http://localhost:3100" in result.stdout
+    assert "SPARKBOT_FRONTEND_PORT=3100" in compose_log.read_text()
+
+
 def test_compose_local_uses_legacy_compatible_env_file_syntax() -> None:
     content = LOCAL_COMPOSE.read_text()
 
     assert "required: false" not in content
     assert "path: .env.local" not in content
     assert "env_file:\n      - .env.local" in content
+    assert '"127.0.0.1:${SPARKBOT_FRONTEND_PORT:-3000}:80"' in content
 
 
 def test_compose_local_prestart_waits_for_database_health() -> None:

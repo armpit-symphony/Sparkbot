@@ -6,7 +6,7 @@
 # Quick start:
 #   bash scripts/sparkbot-start.sh
 #
-# Web UI:  http://localhost:3000
+# Web UI:  http://localhost:${SPARKBOT_FRONTEND_PORT:-3000}
 # API:     http://localhost:8000
 # API docs: http://localhost:8000/docs
 #
@@ -57,7 +57,7 @@ services:
       - SECRET_KEY=${SECRET_KEY:-please-change-this-secret-key-min-32}
       - FIRST_SUPERUSER=${FIRST_SUPERUSER:-admin@example.com}
       - FIRST_SUPERUSER_PASSWORD=${FIRST_SUPERUSER_PASSWORD:-changeme}
-      - BACKEND_CORS_ORIGINS=http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000
+      - BACKEND_CORS_ORIGINS=http://localhost:${SPARKBOT_FRONTEND_PORT:-3000},http://127.0.0.1:${SPARKBOT_FRONTEND_PORT:-3000},http://localhost:5173,http://127.0.0.1:5173
 
   backend:
     build:
@@ -84,8 +84,8 @@ services:
       - POSTGRES_PASSWORD=sparkbot-local
       - ENVIRONMENT=local
       - DOMAIN=localhost
-      - FRONTEND_HOST=http://localhost:3000
-      - BACKEND_CORS_ORIGINS=http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000
+      - FRONTEND_HOST=http://localhost:${SPARKBOT_FRONTEND_PORT:-3000}
+      - BACKEND_CORS_ORIGINS=http://localhost:${SPARKBOT_FRONTEND_PORT:-3000},http://127.0.0.1:${SPARKBOT_FRONTEND_PORT:-3000},http://localhost:5173,http://127.0.0.1:5173
       - DATABASE_TYPE=postgresql
       - PROJECT_NAME=${PROJECT_NAME:-Sparkbot}
       - SECRET_KEY=${SECRET_KEY:-please-change-this-secret-key-min-32}
@@ -126,7 +126,7 @@ services:
         - VITE_V1_LOCAL_MODE=true
     restart: unless-stopped
     ports:
-      - "127.0.0.1:3000:80"
+      - "127.0.0.1:${SPARKBOT_FRONTEND_PORT:-3000}:80"
     depends_on:
       - backend
 

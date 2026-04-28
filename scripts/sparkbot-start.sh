@@ -33,6 +33,99 @@ buildx_available() {
   docker buildx version >/dev/null 2>&1
 }
 
+env_get() {
+  local key="$1"
+  local line
+  [ -f "${ENV_FILE}" ] || return 0
+  while IFS= read -r line || [ -n "${line}" ]; do
+    line="${line%$'\r'}"
+    case "${line}" in
+      "${key}="*) printf '%s\n' "${line#*=}"; return 0 ;;
+    esac
+  done < "${ENV_FILE}"
+}
+
+env_set() {
+  local key="$1"
+  local value="$2"
+  local tmp="${ENV_FILE}.tmp.$$"
+  if [ -f "${ENV_FILE}" ] && grep -q "^${key}=" "${ENV_FILE}"; then
+    awk -v key="${key}" -v value="${value}" '
+      $0 ~ "^" key "=" { print key "=" value; replaced = 1; next }
+      { print }
+      END { if (!replaced) print key "=" value }
+    ' "${ENV_FILE}" > "${tmp}"
+    mv "${tmp}" "${ENV_FILE}"
+  else
+    printf '%s=%s\n' "${key}" "${value}" >> "${ENV_FILE}"
+  fi
+}
+
+valid_port() {
+  local port="$1"
+  [[ "${port}" =~ ^[0-9]+$ ]] && [ "${port}" -ge 1 ] && [ "${port}" -le 65535 ]
+}
+
+port_available() {
+  local port="$1"
+  if command -v ss >/dev/null 2>&1; then
+    ! ss -ltn | awk -v port=":${port}" 'NR > 1 && $4 ~ port "$" { found = 1 } END { exit found ? 0 : 1 }'
+  elif command -v lsof >/dev/null 2>&1; then
+    ! lsof -nP -iTCP:"${port}" -sTCP:LISTEN >/dev/null 2>&1
+  else
+    python3 - "${port}" <<'PY'
+import socket
+import sys
+
+port = int(sys.argv[1])
+with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        sock.bind(("127.0.0.1", port))
+    except OSError:
+        sys.exit(1)
+PY
+  fi
+}
+
+next_available_port() {
+  local port="$1"
+  while [ "${port}" -le 65535 ]; do
+    if port_available "${port}"; then
+      printf '%s\n' "${port}"
+      return 0
+    fi
+    port=$((port + 1))
+  done
+  return 1
+}
+
+choose_frontend_port() {
+  local requested="${SPARKBOT_FRONTEND_PORT:-}"
+  if [ -z "${requested}" ]; then
+    requested="$(env_get "SPARKBOT_FRONTEND_PORT")"
+  fi
+  requested="${requested:-3000}"
+  if ! valid_port "${requested}"; then
+    echo "SPARKBOT_FRONTEND_PORT must be a valid TCP port from 1 to 65535." >&2
+    exit 1
+  fi
+  if port_available "${requested}"; then
+    env_set "SPARKBOT_FRONTEND_PORT" "${requested}"
+    printf '%s\n' "${requested}"
+    return 0
+  fi
+
+  local selected
+  selected="$(next_available_port "$((requested + 1))")" || {
+    echo "No available frontend port found after ${requested}." >&2
+    exit 1
+  }
+  echo "Port ${requested} is already in use. Using ${selected} for Sparkbot web UI." >&2
+  env_set "SPARKBOT_FRONTEND_PORT" "${selected}"
+  printf '%s\n' "${selected}"
+}
+
 print_buildx_fix() {
   cat >&2 <<'EOF'
 Docker buildx is missing or not working.
@@ -98,6 +191,9 @@ if [ "${#SETUP_ARGS[@]}" -gt 0 ] || [ ! -f "${ENV_FILE}" ] || ! SPARKBOT_ENV_FIL
   SPARKBOT_ENV_FILE="${ENV_FILE}" bash "${SETUP_SCRIPT}" "${SETUP_ARGS[@]}"
 fi
 
+frontend_port="$(choose_frontend_port)"
+export SPARKBOT_FRONTEND_PORT="${frontend_port}"
+
 passphrase="sparkbot-local"
 passphrase_label="sparkbot-local"
 if [ -f "${ENV_FILE}" ]; then
@@ -114,12 +210,12 @@ cat <<EOF
 
 Starting Sparkbot...
 
-Web UI: http://localhost:3000
+Web UI: http://localhost:${frontend_port}
 API:    http://localhost:8000
 Passphrase: ${passphrase_label}
 
 Next steps:
-  1. Open http://localhost:3000
+  1. Open http://localhost:${frontend_port}
   2. Sign in with the passphrase above
   3. Open Sparkbot Controls to change providers, models, or safety settings
 

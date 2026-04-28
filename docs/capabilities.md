@@ -1041,6 +1041,7 @@ bash scripts/sparkbot-start.sh --install-docker-plugins
 bash scripts/sparkbot-start.sh --show-input   # visible key input for paste troubleshooting
 export OPENAI_API_KEY="sk-..."
 bash scripts/sparkbot-start.sh --from-env     # import exported provider keys
+SPARKBOT_FRONTEND_PORT=3001 bash scripts/sparkbot-start.sh
 ```
 
 ### Core / Required

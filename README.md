@@ -197,6 +197,12 @@ export OPENAI_API_KEY="sk-..."
 bash scripts/sparkbot-start.sh --from-env
 ```
 
+If another app already uses port 3000, Sparkbot auto-selects the next open port and prints the actual URL. You can also choose one:
+
+```bash
+SPARKBOT_FRONTEND_PORT=3001 bash scripts/sparkbot-start.sh
+```
+
 Advanced users can still edit `.env.local` directly, but normal installs do not require opening an env file.
 
 For a public or private server install, use [deployment.md](./deployment.md) for Docker, Traefik, and Let's Encrypt, or [docs/systemd-single-node.md](./docs/systemd-single-node.md) for systemd and nginx.

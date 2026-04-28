@@ -35,5 +35,8 @@ Product truth and MCP control-plane cleanup.
   partially initialized installs do not fail on duplicate `usertype`.
 - Improve prestart diagnostics with plain-English database env validation and
   failure context while avoiding provider secret logging.
+- Make the local Docker frontend port configurable with
+  `SPARKBOT_FRONTEND_PORT`, auto-select the next available port when 3000 is
+  busy, and print the actual startup URL.
 - Refresh README, capabilities docs, release note, and public downloader
   version markers for 1.6.39.

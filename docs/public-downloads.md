@@ -51,6 +51,12 @@ export OPENAI_API_KEY="sk-..."
 bash scripts/sparkbot-start.sh --from-env
 ```
 
+Custom frontend port:
+
+```bash
+SPARKBOT_FRONTEND_PORT=3001 bash scripts/sparkbot-start.sh
+```
+
 **CLI**
 
 ```bash

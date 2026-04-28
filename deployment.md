@@ -47,10 +47,18 @@ export OPENAI_API_KEY="sk-..."
 bash scripts/sparkbot-start.sh --from-env
 ```
 
+If port 3000 is already used, Sparkbot chooses the next available frontend port
+and prints the actual URL. You can also set it explicitly:
+
+```bash
+SPARKBOT_FRONTEND_PORT=3001 bash scripts/sparkbot-start.sh
+```
+
 The launcher:
 
 * detects `docker compose` and falls back to legacy `docker-compose` 1.29.x
 * checks for a working Docker buildx component before building images
+* writes the selected `SPARKBOT_FRONTEND_PORT` to `.env.local`
 * creates `.env.local` from `.env.local.example` when missing
 * prompts for OpenAI, Anthropic, Google, Groq, MiniMax, OpenRouter, or local Ollama setup
 * requires at least one provider key or an Ollama model
