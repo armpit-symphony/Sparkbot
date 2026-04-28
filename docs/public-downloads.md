@@ -24,12 +24,20 @@ The GitHub Pages download copy should keep the install paths this simple:
 3. Add a provider key or choose local Ollama.
 4. Start chatting.
 
-**Linux / Server**
+**Linux local machine**
 
 ```bash
 git clone https://github.com/armpit-symphony/Sparkbot.git
 cd Sparkbot
-bash scripts/sparkbot-start.sh
+bash scripts/sparkbot-start.sh --local
+```
+
+**Cloud server / VPS**
+
+```bash
+git clone https://github.com/armpit-symphony/Sparkbot.git
+cd Sparkbot
+bash scripts/sparkbot-start.sh --server
 ```
 
 Fresh Ubuntu with missing Docker plugins:
@@ -48,14 +56,16 @@ Paste-free env import:
 
 ```bash
 export OPENAI_API_KEY="sk-..."
-bash scripts/sparkbot-start.sh --from-env
+bash scripts/sparkbot-start.sh --local --from-env
 ```
 
 Custom frontend port:
 
 ```bash
-SPARKBOT_FRONTEND_PORT=3001 bash scripts/sparkbot-start.sh
+SPARKBOT_FRONTEND_PORT=3001 bash scripts/sparkbot-start.sh --server
 ```
+
+Normal users should use `scripts/sparkbot-start.sh`. Raw Docker Compose is an advanced path because Compose interpolation reads root `.env`, while the launcher also manages `.env.local`, bind mode, port fallback, setup checks, and detached startup.
 
 **CLI**
 

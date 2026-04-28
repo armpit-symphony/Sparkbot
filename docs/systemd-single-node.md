@@ -11,6 +11,11 @@ working server layout closely:
 
 ## 1. Prepare the repo
 
+If you want the guided Docker/server path instead of managing systemd by hand,
+use `bash scripts/sparkbot-start.sh --server`; it handles `.env.local`, provider
+setup, bind mode, port fallback, and detached Compose startup. Continue below
+only when you want the manual systemd profile.
+
 ```bash
 git clone https://github.com/armpit-symphony/Sparkbot.git
 cd Sparkbot

@@ -139,6 +139,7 @@ sparkbot_ensure_local_docker_db_defaults() {
       sparkbot_env_set_if_missing "POSTGRES_USER" "sparkbot"
       sparkbot_env_set_if_missing "POSTGRES_PASSWORD" "sparkbot-local"
       sparkbot_env_set_if_missing "SPARKBOT_FRONTEND_PORT" "3000"
+      sparkbot_env_set_if_missing "SPARKBOT_FRONTEND_BIND_HOST" "127.0.0.1"
       ;;
   esac
 }

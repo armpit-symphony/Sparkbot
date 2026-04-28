@@ -1433,15 +1433,16 @@
               <span class="server-card-icon" role="img" aria-hidden="true">🏠</span>
               <div class="server-badge server-badge-green">Guided setup</div>
               <h3 class="server-card-title">Linux / Server Install</h3>
-              <p class="server-card-subtitle">Run on Ubuntu, Debian, a home server, NAS, or cloud VM. The wizard handles Docker Compose v1/v2, provider keys, and model defaults.</p>
+              <p class="server-card-subtitle">Run on Ubuntu, Debian, a home server, NAS, or cloud VM. The wizard handles Docker Compose v1/v2, provider keys, model defaults, bind mode, and port fallback.</p>
               <p class="server-note">
                 <code>git clone https://github.com/armpit-symphony/Sparkbot.git</code><br>
                 <code>cd Sparkbot</code><br>
-                <code>bash scripts/sparkbot-start.sh</code><br>
+                Local machine: <code>bash scripts/sparkbot-start.sh --local</code><br>
+                Cloud server/VPS: <code>bash scripts/sparkbot-start.sh --server</code><br>
                 <code>bash scripts/sparkbot-start.sh --install-docker-plugins</code> if Ubuntu is missing buildx/Compose plugins<br>
-                <code>SPARKBOT_FRONTEND_PORT=3001 bash scripts/sparkbot-start.sh</code> if port 3000 is busy<br>
+                <code>SPARKBOT_FRONTEND_PORT=3001 bash scripts/sparkbot-start.sh --server</code> if you want a specific port<br>
                 <code>bash scripts/sparkbot-start.sh --show-input</code> for visible SSH key input<br>
-                Open the printed URL, then use Sparkbot Controls any time you want to change providers or models.
+                The launcher starts detached, prints the actual URL, and is the normal install path. Raw Docker Compose is advanced only.
               </p>
             </div>
 

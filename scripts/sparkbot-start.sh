@@ -7,13 +7,21 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SETUP_SCRIPT="${ROOT_DIR}/scripts/sparkbot-setup.sh"
 ENV_FILE="${SPARKBOT_ENV_FILE:-${ROOT_DIR}/.env.local}"
+COMPOSE_ENV_FILE="${SPARKBOT_COMPOSE_ENV_FILE:-${ROOT_DIR}/.env}"
 INSTALL_DOCKER_PLUGINS=0
+START_MODE=""
 SETUP_ARGS=()
 
 for arg in "$@"; do
   case "${arg}" in
     --install-docker-plugins)
       INSTALL_DOCKER_PLUGINS=1
+      ;;
+    --local)
+      START_MODE="local"
+      ;;
+    --server)
+      START_MODE="server"
       ;;
     *)
       SETUP_ARGS+=("${arg}")
@@ -33,37 +41,64 @@ buildx_available() {
   docker buildx version >/dev/null 2>&1
 }
 
-env_get() {
-  local key="$1"
+env_get_from_file() {
+  local file="$1"
+  local key="$2"
   local line
-  [ -f "${ENV_FILE}" ] || return 0
+  [ -f "${file}" ] || return 0
   while IFS= read -r line || [ -n "${line}" ]; do
     line="${line%$'\r'}"
     case "${line}" in
       "${key}="*) printf '%s\n' "${line#*=}"; return 0 ;;
     esac
-  done < "${ENV_FILE}"
+  done < "${file}"
 }
 
-env_set() {
-  local key="$1"
-  local value="$2"
-  local tmp="${ENV_FILE}.tmp.$$"
-  if [ -f "${ENV_FILE}" ] && grep -q "^${key}=" "${ENV_FILE}"; then
+env_get() {
+  env_get_from_file "${ENV_FILE}" "$1"
+}
+
+env_set_in_file() {
+  local file="$1"
+  local key="$2"
+  local value="$3"
+  local tmp="${file}.tmp.$$"
+  touch "${file}"
+  if grep -q "^${key}=" "${file}"; then
     awk -v key="${key}" -v value="${value}" '
       $0 ~ "^" key "=" { print key "=" value; replaced = 1; next }
       { print }
       END { if (!replaced) print key "=" value }
-    ' "${ENV_FILE}" > "${tmp}"
-    mv "${tmp}" "${ENV_FILE}"
+    ' "${file}" > "${tmp}"
+    mv "${tmp}" "${file}"
   else
-    printf '%s=%s\n' "${key}" "${value}" >> "${ENV_FILE}"
+    printf '%s=%s\n' "${key}" "${value}" >> "${file}"
   fi
+}
+
+env_set() {
+  env_set_in_file "${ENV_FILE}" "$1" "$2"
+}
+
+bind_host_configured_at_start() {
+  [ -f "${ENV_FILE}" ] && [ -n "$(env_get "SPARKBOT_FRONTEND_BIND_HOST")" ]
 }
 
 valid_port() {
   local port="$1"
   [[ "${port}" =~ ^[0-9]+$ ]] && [ "${port}" -ge 1 ] && [ "${port}" -le 65535 ]
+}
+
+valid_bind_host() {
+  local host="$1"
+  case "${host}" in
+    127.0.0.1|0.0.0.0|localhost)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
 }
 
 port_available() {
@@ -126,6 +161,70 @@ choose_frontend_port() {
   printf '%s\n' "${selected}"
 }
 
+choose_frontend_bind_host() {
+  local selected=""
+  case "${START_MODE}" in
+    local)
+      selected="127.0.0.1"
+      ;;
+    server)
+      selected="0.0.0.0"
+      ;;
+    "")
+      selected="${SPARKBOT_FRONTEND_BIND_HOST:-}"
+      if [ -z "${selected}" ] && [ "${BIND_HOST_CONFIGURED_AT_START}" = "1" ]; then
+        selected="$(env_get "SPARKBOT_FRONTEND_BIND_HOST")"
+      fi
+      if [ -z "${selected}" ] && [ -t 0 ] && [ -t 1 ]; then
+        cat <<'EOF'
+Where are you running Sparkbot?
+
+1) Personal local machine (safer)
+   Binds the web UI to 127.0.0.1.
+
+2) Cloud server / VPS / DigitalOcean
+   Binds the web UI to 0.0.0.0 so your laptop or phone can reach it.
+EOF
+        read -r -p "Choose install mode [1]: " mode_choice
+        case "${mode_choice}" in
+          2) selected="0.0.0.0" ;;
+          *) selected="127.0.0.1" ;;
+        esac
+      fi
+      selected="${selected:-127.0.0.1}"
+      ;;
+    *)
+      echo "Unknown start mode: ${START_MODE}" >&2
+      exit 1
+      ;;
+  esac
+
+  if ! valid_bind_host "${selected}"; then
+    echo "SPARKBOT_FRONTEND_BIND_HOST must be 127.0.0.1, localhost, or 0.0.0.0." >&2
+    exit 1
+  fi
+
+  env_set "SPARKBOT_FRONTEND_BIND_HOST" "${selected}"
+  printf '%s\n' "${selected}"
+}
+
+sync_compose_env() {
+  local frontend_port="$1"
+  local frontend_bind_host="$2"
+  env_set_in_file "${COMPOSE_ENV_FILE}" "SPARKBOT_FRONTEND_PORT" "${frontend_port}"
+  env_set_in_file "${COMPOSE_ENV_FILE}" "SPARKBOT_FRONTEND_BIND_HOST" "${frontend_bind_host}"
+}
+
+detect_public_ip() {
+  if [ -n "${SPARKBOT_PUBLIC_HOST:-}" ]; then
+    printf '%s\n' "${SPARKBOT_PUBLIC_HOST}"
+    return 0
+  fi
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsS --max-time 2 https://api.ipify.org 2>/dev/null || true
+  fi
+}
+
 print_buildx_fix() {
   cat >&2 <<'EOF'
 Docker buildx is missing or not working.
@@ -169,6 +268,11 @@ if [ "${INSTALL_DOCKER_PLUGINS}" = "1" ]; then
   install_docker_plugins
 fi
 
+BIND_HOST_CONFIGURED_AT_START=0
+if bind_host_configured_at_start; then
+  BIND_HOST_CONFIGURED_AT_START=1
+fi
+
 compose_cmd="$(bash "${SETUP_SCRIPT}" --print-compose-command)"
 read -r -a compose_parts <<< "${compose_cmd}"
 if [ "${compose_cmd}" = "docker-compose" ]; then
@@ -192,7 +296,18 @@ if [ "${#SETUP_ARGS[@]}" -gt 0 ] || [ ! -f "${ENV_FILE}" ] || ! SPARKBOT_ENV_FIL
 fi
 
 frontend_port="$(choose_frontend_port)"
+frontend_bind_host="$(choose_frontend_bind_host)"
 export SPARKBOT_FRONTEND_PORT="${frontend_port}"
+export SPARKBOT_FRONTEND_BIND_HOST="${frontend_bind_host}"
+sync_compose_env "${frontend_port}" "${frontend_bind_host}"
+
+web_url="http://localhost:${frontend_port}"
+public_ip=""
+if [ "${frontend_bind_host}" = "0.0.0.0" ]; then
+  public_ip="$(detect_public_ip)"
+  public_ip="${public_ip:-<server-ip>}"
+  web_url="http://${public_ip}:${frontend_port}"
+fi
 
 passphrase="sparkbot-local"
 passphrase_label="sparkbot-local"
@@ -208,14 +323,31 @@ fi
 
 cat <<EOF
 
-Starting Sparkbot...
+Starting Sparkbot in the background...
 
-Web UI: http://localhost:${frontend_port}
+Bind host: ${frontend_bind_host}
+Web UI: ${web_url}
 API:    http://localhost:8000
 Passphrase: ${passphrase_label}
+EOF
+
+if [ "${frontend_bind_host}" = "0.0.0.0" ]; then
+  cat <<EOF
+Detected public IP: ${public_ip}
+Open Sparkbot:
+${web_url}
+
+Security warning:
+  Server mode exposes the Sparkbot web UI on the server network interface.
+  Restrict access with a firewall/security group or put Sparkbot behind a
+  reverse proxy with authentication before using it on an open network.
+EOF
+fi
+
+cat <<EOF
 
 Next steps:
-  1. Open http://localhost:${frontend_port}
+  1. Open ${web_url}
   2. Sign in with the passphrase above
   3. Open Sparkbot Controls to change providers, models, or safety settings
 
@@ -227,4 +359,4 @@ Backend logs:
 
 EOF
 
-"${compose_parts[@]}" -f compose.local.yml up --build
+"${compose_parts[@]}" -f compose.local.yml up --build -d

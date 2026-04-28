@@ -33,6 +33,8 @@ def _run_setup(args: list[str], *, env: dict[str, str]) -> subprocess.CompletedP
 def _run_start(args: list[str], *, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
     merged_env = os.environ.copy()
     merged_env.update(env)
+    if "SPARKBOT_COMPOSE_ENV_FILE" not in merged_env and "SPARKBOT_ENV_FILE" in merged_env:
+        merged_env["SPARKBOT_COMPOSE_ENV_FILE"] = str(Path(merged_env["SPARKBOT_ENV_FILE"]).with_name(".env"))
     return subprocess.run(
         ["bash", str(START_SCRIPT), *args],
         cwd=ROOT,
@@ -178,6 +180,7 @@ def test_noninteractive_setup_creates_env_and_does_not_echo_secret(tmp_path: Pat
     assert "POSTGRES_USER=sparkbot" in content
     assert "POSTGRES_PASSWORD=sparkbot-local" in content
     assert "SPARKBOT_FRONTEND_PORT=3000" in content
+    assert "SPARKBOT_FRONTEND_BIND_HOST=127.0.0.1" in content
     assert "SPARKBOT_MODEL=gpt-5-mini" in content
     assert "sk-test-secret" not in result.stdout
     assert "sk-test-secret" not in result.stderr
@@ -381,7 +384,7 @@ def test_start_script_selects_next_frontend_port_when_default_is_busy(tmp_path: 
 if [ "$1" = "info" ]; then exit 0; fi
 if [ "$1" = "buildx" ] && [ "$2" = "version" ]; then exit 0; fi
 if [ "$1" = "compose" ] && [ "$2" = "version" ]; then exit 0; fi
-if [ "$1" = "compose" ]; then echo "$@" >> "{compose_log}"; echo "SPARKBOT_FRONTEND_PORT=${{SPARKBOT_FRONTEND_PORT:-}}" >> "{compose_log}"; exit 0; fi
+if [ "$1" = "compose" ]; then echo "$@" >> "{compose_log}"; echo "SPARKBOT_FRONTEND_PORT=${{SPARKBOT_FRONTEND_PORT:-}}" >> "{compose_log}"; echo "SPARKBOT_FRONTEND_BIND_HOST=${{SPARKBOT_FRONTEND_BIND_HOST:-}}" >> "{compose_log}"; exit 0; fi
 exit 1
 """,
     )
@@ -411,6 +414,7 @@ exit 0
     assert "SPARKBOT_FRONTEND_PORT=3001" in env_file.read_text()
     assert "Web UI: http://localhost:3001" in result.stdout
     assert "SPARKBOT_FRONTEND_PORT=3001" in compose_log.read_text()
+    assert "SPARKBOT_FRONTEND_BIND_HOST=127.0.0.1" in compose_log.read_text()
 
 
 def test_start_script_respects_custom_frontend_port(tmp_path: Path) -> None:
@@ -423,7 +427,7 @@ def test_start_script_respects_custom_frontend_port(tmp_path: Path) -> None:
 if [ "$1" = "info" ]; then exit 0; fi
 if [ "$1" = "buildx" ] && [ "$2" = "version" ]; then exit 0; fi
 if [ "$1" = "compose" ] && [ "$2" = "version" ]; then exit 0; fi
-if [ "$1" = "compose" ]; then echo "$@" >> "{compose_log}"; echo "SPARKBOT_FRONTEND_PORT=${{SPARKBOT_FRONTEND_PORT:-}}" >> "{compose_log}"; exit 0; fi
+if [ "$1" = "compose" ]; then echo "$@" >> "{compose_log}"; echo "SPARKBOT_FRONTEND_PORT=${{SPARKBOT_FRONTEND_PORT:-}}" >> "{compose_log}"; echo "SPARKBOT_FRONTEND_BIND_HOST=${{SPARKBOT_FRONTEND_BIND_HOST:-}}" >> "{compose_log}"; exit 0; fi
 exit 1
 """,
     )
@@ -452,6 +456,152 @@ exit 0
     assert "SPARKBOT_FRONTEND_PORT=3100" in env_file.read_text()
     assert "Web UI: http://localhost:3100" in result.stdout
     assert "SPARKBOT_FRONTEND_PORT=3100" in compose_log.read_text()
+    assert "SPARKBOT_FRONTEND_BIND_HOST=127.0.0.1" in compose_log.read_text()
+
+
+def test_start_script_local_mode_binds_loopback_and_syncs_compose_env(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    compose_log = tmp_path / "compose.log"
+    _write_executable(
+        fake_bin / "docker",
+        f"""#!/usr/bin/env sh
+if [ "$1" = "info" ]; then exit 0; fi
+if [ "$1" = "buildx" ] && [ "$2" = "version" ]; then exit 0; fi
+if [ "$1" = "compose" ] && [ "$2" = "version" ]; then exit 0; fi
+if [ "$1" = "compose" ]; then echo "$@" >> "{compose_log}"; echo "SPARKBOT_FRONTEND_PORT=${{SPARKBOT_FRONTEND_PORT:-}}" >> "{compose_log}"; echo "SPARKBOT_FRONTEND_BIND_HOST=${{SPARKBOT_FRONTEND_BIND_HOST:-}}" >> "{compose_log}"; exit 0; fi
+exit 1
+""",
+    )
+    _write_executable(
+        fake_bin / "ss",
+        """#!/usr/bin/env sh
+echo "State Recv-Q Send-Q Local Address:Port Peer Address:Port"
+exit 0
+""",
+    )
+    template = tmp_path / ".env.local.example"
+    env_file = tmp_path / ".env.local"
+    compose_env = tmp_path / ".env"
+    _template(template)
+
+    result = _run_start(
+        ["--local", "--openai-key", "sk-local-mode"],
+        env={
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "SPARKBOT_ENV_FILE": str(env_file),
+            "SPARKBOT_ENV_TEMPLATE": str(template),
+            "SPARKBOT_COMPOSE_ENV_FILE": str(compose_env),
+        },
+    )
+
+    assert result.returncode == 0
+    assert "Bind host: 127.0.0.1" in result.stdout
+    assert "Web UI: http://localhost:3000" in result.stdout
+    assert "SPARKBOT_FRONTEND_BIND_HOST=127.0.0.1" in env_file.read_text()
+    assert "SPARKBOT_FRONTEND_PORT=3000" in compose_env.read_text()
+    assert "SPARKBOT_FRONTEND_BIND_HOST=127.0.0.1" in compose_env.read_text()
+    assert "SPARKBOT_FRONTEND_BIND_HOST=127.0.0.1" in compose_log.read_text()
+    assert "up --build -d" in compose_log.read_text()
+
+
+def test_start_script_server_mode_binds_publicly_and_prints_detected_url(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    compose_log = tmp_path / "compose.log"
+    _write_executable(
+        fake_bin / "docker",
+        f"""#!/usr/bin/env sh
+if [ "$1" = "info" ]; then exit 0; fi
+if [ "$1" = "buildx" ] && [ "$2" = "version" ]; then exit 0; fi
+if [ "$1" = "compose" ] && [ "$2" = "version" ]; then exit 0; fi
+if [ "$1" = "compose" ]; then echo "$@" >> "{compose_log}"; echo "SPARKBOT_FRONTEND_PORT=${{SPARKBOT_FRONTEND_PORT:-}}" >> "{compose_log}"; echo "SPARKBOT_FRONTEND_BIND_HOST=${{SPARKBOT_FRONTEND_BIND_HOST:-}}" >> "{compose_log}"; exit 0; fi
+exit 1
+""",
+    )
+    _write_executable(
+        fake_bin / "ss",
+        """#!/usr/bin/env sh
+echo "State Recv-Q Send-Q Local Address:Port Peer Address:Port"
+echo "LISTEN 0 128 127.0.0.1:3000 0.0.0.0:*"
+exit 0
+""",
+    )
+    template = tmp_path / ".env.local.example"
+    env_file = tmp_path / ".env.local"
+    compose_env = tmp_path / ".env"
+    _template(template)
+
+    result = _run_start(
+        ["--server", "--openai-key", "sk-server-mode"],
+        env={
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "SPARKBOT_ENV_FILE": str(env_file),
+            "SPARKBOT_ENV_TEMPLATE": str(template),
+            "SPARKBOT_COMPOSE_ENV_FILE": str(compose_env),
+            "SPARKBOT_PUBLIC_HOST": "203.0.113.10",
+        },
+    )
+
+    assert result.returncode == 0
+    assert "Port 3000 is already in use. Using 3001" in result.stderr
+    assert "Bind host: 0.0.0.0" in result.stdout
+    assert "Detected public IP: 203.0.113.10" in result.stdout
+    assert "Open Sparkbot:\nhttp://203.0.113.10:3001" in result.stdout
+    assert "Security warning:" in result.stdout
+    assert "SPARKBOT_FRONTEND_BIND_HOST=0.0.0.0" in env_file.read_text()
+    assert "SPARKBOT_FRONTEND_PORT=3001" in compose_env.read_text()
+    assert "SPARKBOT_FRONTEND_BIND_HOST=0.0.0.0" in compose_env.read_text()
+    assert "SPARKBOT_FRONTEND_BIND_HOST=0.0.0.0" in compose_log.read_text()
+
+
+def test_start_script_preserves_existing_bind_mode_and_port(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    compose_log = tmp_path / "compose.log"
+    _write_executable(
+        fake_bin / "docker",
+        f"""#!/usr/bin/env sh
+if [ "$1" = "info" ]; then exit 0; fi
+if [ "$1" = "buildx" ] && [ "$2" = "version" ]; then exit 0; fi
+if [ "$1" = "compose" ] && [ "$2" = "version" ]; then exit 0; fi
+if [ "$1" = "compose" ]; then echo "$@" >> "{compose_log}"; echo "SPARKBOT_FRONTEND_PORT=${{SPARKBOT_FRONTEND_PORT:-}}" >> "{compose_log}"; echo "SPARKBOT_FRONTEND_BIND_HOST=${{SPARKBOT_FRONTEND_BIND_HOST:-}}" >> "{compose_log}"; exit 0; fi
+exit 1
+""",
+    )
+    _write_executable(
+        fake_bin / "ss",
+        """#!/usr/bin/env sh
+echo "State Recv-Q Send-Q Local Address:Port Peer Address:Port"
+exit 0
+""",
+    )
+    template = tmp_path / ".env.local.example"
+    env_file = tmp_path / ".env.local"
+    _template(template)
+    env_file.write_text(
+        template.read_text().replace("OPENAI_API_KEY=", "OPENAI_API_KEY=sk-existing")
+        + "\nSPARKBOT_FRONTEND_PORT=3105\nSPARKBOT_FRONTEND_BIND_HOST=0.0.0.0\n"
+    )
+
+    result = _run_start(
+        [],
+        env={
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "SPARKBOT_ENV_FILE": str(env_file),
+            "SPARKBOT_ENV_TEMPLATE": str(template),
+            "SPARKBOT_PUBLIC_HOST": "203.0.113.20",
+        },
+    )
+
+    assert result.returncode == 0
+    assert "Running Sparkbot setup with requested options." not in result.stdout
+    assert "Bind host: 0.0.0.0" in result.stdout
+    assert "Open Sparkbot:\nhttp://203.0.113.20:3105" in result.stdout
+    assert "SPARKBOT_FRONTEND_PORT=3105" in env_file.read_text()
+    assert "SPARKBOT_FRONTEND_BIND_HOST=0.0.0.0" in env_file.read_text()
+    assert "SPARKBOT_FRONTEND_PORT=3105" in compose_log.read_text()
+    assert "SPARKBOT_FRONTEND_BIND_HOST=0.0.0.0" in compose_log.read_text()
 
 
 def test_compose_local_uses_legacy_compatible_env_file_syntax() -> None:
@@ -460,7 +610,9 @@ def test_compose_local_uses_legacy_compatible_env_file_syntax() -> None:
     assert "required: false" not in content
     assert "path: .env.local" not in content
     assert "env_file:\n      - .env.local" in content
-    assert '"127.0.0.1:${SPARKBOT_FRONTEND_PORT:-3000}:80"' in content
+    assert '"${SPARKBOT_FRONTEND_BIND_HOST:-127.0.0.1}:${SPARKBOT_FRONTEND_PORT:-3000}:80"' in content
+    assert "OPENAI_API_KEY=${OPENAI_API_KEY:-}" not in content
+    assert "SPARKBOT_PASSPHRASE=${SPARKBOT_PASSPHRASE:-sparkbot-local}" not in content
 
 
 def test_compose_local_prestart_waits_for_database_health() -> None:

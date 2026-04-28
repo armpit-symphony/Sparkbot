@@ -161,15 +161,23 @@ Click **Sparkbot** on the office floor to open the main chat. Everything else ca
 
 ### Docker Local
 
-Linux/macOS:
+Local machine:
 
 ```bash
 git clone https://github.com/armpit-symphony/Sparkbot.git
 cd Sparkbot
-bash scripts/sparkbot-start.sh
+bash scripts/sparkbot-start.sh --local
 ```
 
-The start script supports both Docker Compose v2 (`docker compose`) and legacy Docker Compose v1.29.x (`docker-compose`), creates `.env.local` when needed, opens the setup wizard if no provider is configured, and then starts Sparkbot. Open `http://localhost:3000`. Default passphrase: `sparkbot-local`.
+Cloud server / VPS / DigitalOcean:
+
+```bash
+git clone https://github.com/armpit-symphony/Sparkbot.git
+cd Sparkbot
+bash scripts/sparkbot-start.sh --server
+```
+
+The start script supports both Docker Compose v2 (`docker compose`) and legacy Docker Compose v1.29.x (`docker-compose`), creates `.env.local` when needed, opens the setup wizard if no provider is configured, writes the non-secret Compose interpolation values to root `.env`, and starts Sparkbot detached in the background. Local mode binds to `127.0.0.1`. Server mode binds the web UI to `0.0.0.0`, detects the public IP, prints the real browser URL, and warns you to use firewall rules or a reverse proxy with auth. Default passphrase: `sparkbot-local`.
 
 On a fresh Ubuntu server, install the Docker Compose v2 and buildx plugins first:
 
@@ -194,16 +202,16 @@ You can also import an exported key without interactive entry:
 
 ```bash
 export OPENAI_API_KEY="sk-..."
-bash scripts/sparkbot-start.sh --from-env
+bash scripts/sparkbot-start.sh --local --from-env
 ```
 
 If another app already uses port 3000, Sparkbot auto-selects the next open port and prints the actual URL. You can also choose one:
 
 ```bash
-SPARKBOT_FRONTEND_PORT=3001 bash scripts/sparkbot-start.sh
+SPARKBOT_FRONTEND_PORT=3001 bash scripts/sparkbot-start.sh --local
 ```
 
-Advanced users can still edit `.env.local` directly, but normal installs do not require opening an env file.
+Normal installs should use `scripts/sparkbot-start.sh`. Advanced users can still edit `.env.local` directly or run Compose manually, but raw `docker compose` reads root `.env` for interpolation and bypasses the launcher's mode, port, and setup checks.
 
 For a public or private server install, use [deployment.md](./deployment.md) for Docker, Traefik, and Let's Encrypt, or [docs/systemd-single-node.md](./docs/systemd-single-node.md) for systemd and nginx.
 
@@ -371,7 +379,8 @@ Sparkbot uses BM25 full-text search to pull relevant chunks into the conversatio
 Most configuration is available from **Sparkbot Controls** or the setup wizard.
 
 - **Desktop app** — set keys in **Sparkbot Controls** (UI). Advanced settings: the `.env` file beside the installed executable.
-- **Docker / local** — run `bash scripts/sparkbot-start.sh`; it creates and configures `.env.local`
+- **Docker / local** — run `bash scripts/sparkbot-start.sh --local`; it creates and configures `.env.local`
+- **Docker / server** — run `bash scripts/sparkbot-start.sh --server`; it binds the web UI to the server network interface and prints the public URL
 - **CLI / server setup** — run `python3 sparkbot-cli.py --setup`
 - **Server / systemd** — run the setup wizard first, then copy or adapt the generated values for `.env`
 

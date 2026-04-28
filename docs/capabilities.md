@@ -1026,13 +1026,17 @@ For normal Docker/server installs, run the guided setup instead of editing env
 files by hand:
 
 ```bash
-bash scripts/sparkbot-start.sh
+bash scripts/sparkbot-start.sh --local   # personal machine, binds to 127.0.0.1
+bash scripts/sparkbot-start.sh --server  # VPS/cloud server, binds web UI to 0.0.0.0
 ```
 
 The setup wizard creates `.env.local`, prompts for provider keys or local
 Ollama, preserves existing values, and supports Docker Compose v2
 (`docker compose`) plus legacy Docker Compose v1.29.x (`docker-compose`).
-Advanced operators can still edit env files directly.
+The launcher starts Compose detached by default, exports and mirrors only the
+non-secret frontend bind/port values into root `.env` for Compose interpolation,
+auto-selects a free frontend port when 3000 is busy, and prints the real URL.
+Advanced operators can still edit env files or run Compose directly.
 
 SSH setup helpers:
 
@@ -1040,8 +1044,8 @@ SSH setup helpers:
 bash scripts/sparkbot-start.sh --install-docker-plugins
 bash scripts/sparkbot-start.sh --show-input   # visible key input for paste troubleshooting
 export OPENAI_API_KEY="sk-..."
-bash scripts/sparkbot-start.sh --from-env     # import exported provider keys
-SPARKBOT_FRONTEND_PORT=3001 bash scripts/sparkbot-start.sh
+bash scripts/sparkbot-start.sh --local --from-env  # import exported provider keys
+SPARKBOT_FRONTEND_PORT=3001 bash scripts/sparkbot-start.sh --server
 ```
 
 ### Core / Required

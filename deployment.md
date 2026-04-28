@@ -11,13 +11,20 @@ have to manually edit `.env.local` just to get chat working.
 
 ## One-command local/server start
 
-For a local server, home server, or fresh Ubuntu droplet where Docker is already
-installed:
+For a personal local machine:
 
 ```bash
 git clone https://github.com/armpit-symphony/Sparkbot.git
 cd Sparkbot
-bash scripts/sparkbot-start.sh
+bash scripts/sparkbot-start.sh --local
+```
+
+For a cloud server / VPS / DigitalOcean droplet:
+
+```bash
+git clone https://github.com/armpit-symphony/Sparkbot.git
+cd Sparkbot
+bash scripts/sparkbot-start.sh --server
 ```
 
 On a fresh Ubuntu server, this launcher can install the required Docker build
@@ -44,30 +51,36 @@ To import keys already exported in the shell:
 
 ```bash
 export OPENAI_API_KEY="sk-..."
-bash scripts/sparkbot-start.sh --from-env
+bash scripts/sparkbot-start.sh --server --from-env
 ```
 
 If port 3000 is already used, Sparkbot chooses the next available frontend port
 and prints the actual URL. You can also set it explicitly:
 
 ```bash
-SPARKBOT_FRONTEND_PORT=3001 bash scripts/sparkbot-start.sh
+SPARKBOT_FRONTEND_PORT=3001 bash scripts/sparkbot-start.sh --server
 ```
 
 The launcher:
 
 * detects `docker compose` and falls back to legacy `docker-compose` 1.29.x
 * checks for a working Docker buildx component before building images
-* writes the selected `SPARKBOT_FRONTEND_PORT` to `.env.local`
+* writes the selected `SPARKBOT_FRONTEND_PORT` and `SPARKBOT_FRONTEND_BIND_HOST` to `.env.local`
+* mirrors those non-secret frontend values to root `.env` because Compose interpolation does not read `.env.local`
 * creates `.env.local` from `.env.local.example` when missing
 * prompts for OpenAI, Anthropic, Google, Groq, MiniMax, OpenRouter, or local Ollama setup
 * requires at least one provider key or an Ollama model
-* starts `compose.local.yml`
+* starts `compose.local.yml` detached in the background
+* prints the actual browser URL
 
-Open `http://localhost:3000` when the containers are ready. The default local
-passphrase is `sparkbot-local` unless you changed `SPARKBOT_PASSPHRASE`.
+Local mode opens at `http://localhost:<port>`. Server mode binds the frontend
+to `0.0.0.0`, detects the public IP, and prints `http://<server-ip>:<port>`.
+Restrict server mode with a firewall/security group or a reverse proxy with
+authentication. The default local passphrase is `sparkbot-local` unless you
+changed `SPARKBOT_PASSPHRASE`.
 
-Advanced users may still edit `.env.local`, `.env`, or Compose files directly.
+Normal users should use `scripts/sparkbot-start.sh`. Advanced users may still
+edit `.env.local`, `.env`, or Compose files directly.
 
 ## Preparation
 

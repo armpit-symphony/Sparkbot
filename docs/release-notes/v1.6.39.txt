@@ -38,5 +38,18 @@ Product truth and MCP control-plane cleanup.
 - Make the local Docker frontend port configurable with
   `SPARKBOT_FRONTEND_PORT`, auto-select the next available port when 3000 is
   busy, and print the actual startup URL.
+- Split Docker launcher startup into local and server modes:
+  `--local` keeps the web UI bound to 127.0.0.1, while `--server` binds it to
+  0.0.0.0, detects the public IP, prints the public URL, and warns operators to
+  use firewall rules or reverse-proxy auth.
+- Start Docker Compose detached by default and mirror only non-secret frontend
+  bind/port values into root `.env` so Compose interpolation works even though
+  provider secrets stay in `.env.local`.
+- Let Docker `env_file` supply provider keys, generated `SECRET_KEY`, passphrase,
+  and Guardian settings without Compose interpolation overriding them with
+  empty strings or development defaults.
+- Proxy same-origin `/api`, `/docs`, and `/redoc` through the frontend nginx
+  container so server-mode browser sessions do not depend on localhost API
+  access from the user's laptop.
 - Refresh README, capabilities docs, release note, and public downloader
   version markers for 1.6.39.

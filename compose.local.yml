@@ -53,8 +53,6 @@ services:
       - POSTGRES_PASSWORD=sparkbot-local
       - ENVIRONMENT=local
       - DATABASE_TYPE=postgresql
-      - PROJECT_NAME=${PROJECT_NAME:-Sparkbot}
-      - SECRET_KEY=${SECRET_KEY:-please-change-this-secret-key-min-32}
       - FIRST_SUPERUSER=${FIRST_SUPERUSER:-admin@example.com}
       - FIRST_SUPERUSER_PASSWORD=${FIRST_SUPERUSER_PASSWORD:-changeme}
       - BACKEND_CORS_ORIGINS=http://localhost:${SPARKBOT_FRONTEND_PORT:-3000},http://127.0.0.1:${SPARKBOT_FRONTEND_PORT:-3000},http://localhost:5173,http://127.0.0.1:5173
@@ -87,23 +85,8 @@ services:
       - FRONTEND_HOST=http://localhost:${SPARKBOT_FRONTEND_PORT:-3000}
       - BACKEND_CORS_ORIGINS=http://localhost:${SPARKBOT_FRONTEND_PORT:-3000},http://127.0.0.1:${SPARKBOT_FRONTEND_PORT:-3000},http://localhost:5173,http://127.0.0.1:5173
       - DATABASE_TYPE=postgresql
-      - PROJECT_NAME=${PROJECT_NAME:-Sparkbot}
-      - SECRET_KEY=${SECRET_KEY:-please-change-this-secret-key-min-32}
       - FIRST_SUPERUSER=${FIRST_SUPERUSER:-admin@example.com}
       - FIRST_SUPERUSER_PASSWORD=${FIRST_SUPERUSER_PASSWORD:-changeme}
-      - SPARKBOT_PASSPHRASE=${SPARKBOT_PASSPHRASE:-sparkbot-local}
-      # LLM keys — set in .env.local or export before running
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
-      - GROQ_API_KEY=${GROQ_API_KEY:-}
-      - MINIMAX_API_KEY=${MINIMAX_API_KEY:-}
-      # Optional bridges
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
-      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN:-}
-      - DISCORD_ENABLED=${DISCORD_ENABLED:-false}
-      # Guardian policy mode: false = personal (no gates), true = office/team (full enforcement)
-      - SPARKBOT_GUARDIAN_POLICY_ENABLED=${SPARKBOT_GUARDIAN_POLICY_ENABLED:-false}
       # Persist saved API keys and runtime .env to the data volume so they survive container restarts
       - SPARKBOT_DATA_DIR=/app/backend/data
       - SPARKBOT_GUARDIAN_DATA_DIR=/app/backend/data/guardian
@@ -126,7 +109,7 @@ services:
         - VITE_V1_LOCAL_MODE=true
     restart: unless-stopped
     ports:
-      - "127.0.0.1:${SPARKBOT_FRONTEND_PORT:-3000}:80"
+      - "${SPARKBOT_FRONTEND_BIND_HOST:-127.0.0.1}:${SPARKBOT_FRONTEND_PORT:-3000}:80"
     depends_on:
       - backend
 
