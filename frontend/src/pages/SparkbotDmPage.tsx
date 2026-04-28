@@ -2874,7 +2874,7 @@ function SparkbotDmPage() {
               sessionStorage.setItem(CONTROLS_AUTOOPEN_KEY, "true")
               setMessages(prev => [
                 ...prev,
-                systemMsg("Welcome to Sparkbot! To get started, connect an AI in the **Sparkbot Controls** panel. The easiest option is **OpenRouter** — sign up free at openrouter.ai, copy your API key, and paste it in. You can also use a free local AI with no account needed."),
+                systemMsg("No model provider configured yet. To get started, connect an AI in **Sparkbot Controls**. Paste a cloud provider key, or use a local Ollama model if you want local-only model execution."),
               ])
             }
           }
@@ -4501,15 +4501,15 @@ function SparkbotDmPage() {
       {/* Messages */}
       <div className="flex-1 overflow-auto px-4 py-4 space-y-2">
         {messages.length === 0 ? (
-          (modelsConfig?.providers?.filter((p) => p.configured || p.models_available === true).length ?? 0) === 0 ? (
+          !controlsOnboardingComplete(modelsConfig) ? (
             <div className="flex flex-col items-center justify-center h-full gap-4 py-12 text-center px-4">
               <div className="flex size-14 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-500">
                 <svg xmlns="http://www.w3.org/2000/svg" className="size-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
               </div>
               <div className="space-y-1">
-                <p className="text-sm font-semibold">No AI provider connected</p>
+                <p className="text-sm font-semibold">No model provider configured yet</p>
                 <p className="text-xs text-muted-foreground max-w-xs">
-                  Sparkbot needs a model before it can reply. Connect cloud AI in Controls, or use a local Ollama model on this machine.
+                  Sparkbot needs a working model before it can reply. Connect cloud AI in Controls, or use a local Ollama model on this machine.
                 </p>
               </div>
               <div className="flex flex-col gap-2 sm:flex-row">

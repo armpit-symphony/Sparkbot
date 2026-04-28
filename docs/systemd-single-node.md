@@ -14,11 +14,15 @@ working server layout closely:
 ```bash
 git clone https://github.com/armpit-symphony/Sparkbot.git
 cd Sparkbot
-cp .env.example .env
+SPARKBOT_SETUP_SKIP_COMPOSE_CHECK=1 \
+SPARKBOT_ENV_FILE=.env \
+SPARKBOT_ENV_TEMPLATE=.env.example \
+  bash scripts/sparkbot-setup.sh
 ```
 
-Edit `.env` and replace every `REPLACE_WITH_...` placeholder. The minimum safe
-set is:
+The wizard creates `.env`, prompts for provider keys or a local Ollama model,
+and avoids printing secrets. Advanced users may still edit `.env` directly. For
+a production public hostname, confirm these values before starting systemd:
 
 ```env
 ENVIRONMENT=production
@@ -37,7 +41,7 @@ MINIMAX_API_KEY=
 OPENROUTER_API_KEY=
 ```
 
-Set at least one LLM provider key before expecting chat responses.
+Set at least one LLM provider key or an Ollama model before expecting chat responses.
 
 ## 2. Create the backend venv
 

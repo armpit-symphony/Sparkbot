@@ -67,10 +67,24 @@ export interface ChatEntryTarget {
 
 export function controlsOnboardingComplete(config: SparkbotControlsConfig | null): boolean {
   if (!config) return false
-  const usableProviders = config.providers.filter(
-    (provider) => provider.configured || provider.models_available === true,
-  ).length
-  return usableProviders > 0 && Boolean(config.default_selection?.model)
+  const defaultModel = config.default_selection?.model || config.active_model
+  if (!defaultModel) return false
+  const providerId = providerForModel(defaultModel)
+  const provider = config.providers.find((item) => item.id === providerId)
+  if (!provider) return false
+  return provider.configured || provider.models_available === true
+}
+
+export function providerForModel(model: string): string {
+  if (model.startsWith("openrouter/")) return "openrouter"
+  if (model.startsWith("ollama/")) return "ollama"
+  if (model.startsWith("gpt-") || model.startsWith("codex-")) return "openai"
+  if (model.startsWith("claude")) return "anthropic"
+  if (model.startsWith("gemini/")) return "google"
+  if (model.startsWith("groq/")) return "groq"
+  if (model.startsWith("minimax/")) return "minimax"
+  if (model.startsWith("xai/")) return "xai"
+  return "other"
 }
 
 export async function fetchControlsConfig(): Promise<SparkbotControlsConfig | null> {

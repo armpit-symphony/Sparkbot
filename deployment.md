@@ -1,4 +1,4 @@
-# FastAPI Project - Deployment
+# Sparkbot Server Deployment
 
 You can deploy the project using Docker Compose to a remote server.
 
@@ -6,7 +6,32 @@ This project expects you to have a Traefik proxy handling communication to the o
 
 You can use CI/CD (continuous integration and continuous deployment) systems to deploy automatically, there are already configurations to do it with GitHub Actions.
 
-But you have to configure a couple things first. 🤓
+Normal Sparkbot installs should start with the setup wizard. Users should not
+have to manually edit `.env.local` just to get chat working.
+
+## One-command local/server start
+
+For a local server, home server, or fresh Ubuntu droplet where Docker is already
+installed:
+
+```bash
+git clone https://github.com/armpit-symphony/Sparkbot.git
+cd Sparkbot
+bash scripts/sparkbot-start.sh
+```
+
+The launcher:
+
+* detects `docker compose` and falls back to `docker-compose`
+* creates `.env.local` from `.env.local.example` when missing
+* prompts for OpenAI, Anthropic, Google, Groq, OpenRouter, or local Ollama setup
+* requires at least one provider key or an Ollama model
+* starts `compose.local.yml`
+
+Open `http://localhost:3000` when the containers are ready. The default local
+passphrase is `sparkbot-local` unless you changed `SPARKBOT_PASSPHRASE`.
+
+Advanced users may still edit `.env.local`, `.env`, or Compose files directly.
 
 ## Preparation
 
@@ -119,7 +144,22 @@ Note: `--filter=":- .gitignore"` tells `rsync` to use the same rules as git, ign
 
 ## Environment Variables
 
-You need to set some environment variables first.
+For normal local/server installs, run the setup wizard first:
+
+```bash
+bash scripts/sparkbot-setup.sh
+```
+
+It writes `.env.local` safely and does not print secrets back to the terminal.
+Use manual environment editing only for advanced production customization.
+
+For the production `compose.yml` profile, write `.env` instead of `.env.local`:
+
+```bash
+SPARKBOT_ENV_FILE=.env \
+SPARKBOT_ENV_TEMPLATE=.env.example \
+  bash scripts/sparkbot-setup.sh
+```
 
 ### Generate secret keys
 
@@ -133,7 +173,7 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 
 Copy the content and use that as password / secret key. And run that again to generate another secure key.
 
-### Required Environment Variables
+### Required Environment Variables For Advanced Production Deployments
 
 Set the `ENVIRONMENT`, by default `local` (for development), but when deploying to a server you would put something like `staging` or `production`:
 
@@ -202,6 +242,7 @@ With the environment variables in place, you can deploy with Docker Compose:
 
 ```bash
 cd /root/code/app/
+SPARKBOT_ENV_FILE=.env SPARKBOT_ENV_TEMPLATE=.env.example bash scripts/sparkbot-setup.sh
 docker compose -f compose.yml build
 docker compose -f compose.yml up -d
 ```

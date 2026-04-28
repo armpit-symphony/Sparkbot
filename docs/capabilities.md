@@ -1022,6 +1022,17 @@ Memory sessions:
 
 ## Environment Variables — Full Reference
 
+For normal Docker/server installs, run the guided setup instead of editing env
+files by hand:
+
+```bash
+bash scripts/sparkbot-start.sh
+```
+
+The setup wizard creates `.env.local`, prompts for provider keys or local
+Ollama, preserves existing values, and detects Docker Compose v2 or legacy
+`docker-compose`. Advanced operators can still edit env files directly.
+
 ### Core / Required
 
 ```env
@@ -1794,7 +1805,10 @@ sparkbot/
 │   ├── index.html                         # Public download page
 │   └── systemd-single-node.md            # Server deployment guide
 ├── deploy/systemd/                        # systemd service examples
-├── scripts/                              # Build and packaging scripts
+├── scripts/
+│   ├── sparkbot-setup.sh                 # First-run provider/model setup wizard
+│   ├── sparkbot-start.sh                 # One-command Docker/server launcher
+│   └── quickstart.sh                     # Compatibility wrapper for sparkbot-start.sh
 └── .github/workflows/
     ├── desktop-release.yml               # Desktop installer CI (triggers on desktop-v* tags)
     └── build-installer.yml               # QA build (does not publish)

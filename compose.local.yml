@@ -4,8 +4,7 @@
 # Works on Windows (Docker Desktop), macOS, Linux.
 #
 # Quick start:
-#   cp .env.local.example .env.local    # then add your API keys
-#   docker compose -f compose.local.yml up --build
+#   bash scripts/sparkbot-start.sh
 #
 # Web UI:  http://localhost:3000
 # API:     http://localhost:8000
@@ -68,6 +67,9 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:8000:8000"
+    extra_hosts:
+      # Lets the backend container reach Ollama running on the host machine.
+      - "host.docker.internal:host-gateway"
     depends_on:
       db:
         condition: service_healthy

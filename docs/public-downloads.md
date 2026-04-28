@@ -13,6 +13,32 @@ For a release, keep these pieces aligned:
 
 The current governed Sparkbot + Robo OS control-plane release is `v1.6.39`.
 
+## Public install choices
+
+The GitHub Pages download copy should keep the install paths this simple:
+
+**Windows**
+
+1. Download the installer.
+2. Open Sparkbot Controls.
+3. Add a provider key or choose local Ollama.
+4. Start chatting.
+
+**Linux / Server**
+
+```bash
+git clone https://github.com/armpit-symphony/Sparkbot.git
+cd Sparkbot
+bash scripts/sparkbot-start.sh
+```
+
+**CLI**
+
+```bash
+python3 sparkbot-cli.py --setup
+python3 sparkbot-cli.py
+```
+
 ## Build `latest`
 
 ```bash

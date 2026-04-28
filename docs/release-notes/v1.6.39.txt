@@ -14,6 +14,10 @@ Product truth and MCP control-plane cleanup.
 - Show risk level, required secrets, dry-run posture, and live Sparkbot
   health signals from existing Guardian/skills APIs.
 - Document no-hardware LIMA demos through replay/simulation commands.
+- Add first-run server/CLI onboarding: `scripts/sparkbot-setup.sh`,
+  `scripts/sparkbot-start.sh`, Docker Compose v1/v2 detection, guided
+  provider/Ollama prompts, `.env.local` preservation, CLI setup fallback,
+  and a clearer web Controls fallback when no usable model provider is
+  configured.
 - Refresh README, capabilities docs, release note, and public downloader
   version markers for 1.6.39.
-

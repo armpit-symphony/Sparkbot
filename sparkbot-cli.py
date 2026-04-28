@@ -28,6 +28,7 @@ import getpass
 import http.cookiejar
 import json
 import os
+import subprocess
 import sys
 import urllib.request
 from pathlib import Path
@@ -40,6 +41,7 @@ CONFIG_PATH = Path.home() / ".sparkbot" / "cli.json"
 DEFAULT_URL = "http://localhost:8000"
 API = "/api/v1"
 PROVIDER_FIELDS = {
+    "openrouter": "openrouter_api_key",
     "openai": "openai_api_key",
     "anthropic": "anthropic_api_key",
     "google": "google_api_key",
@@ -66,6 +68,23 @@ def _load_config() -> dict:
 def _save_config(cfg: dict) -> None:
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     CONFIG_PATH.write_text(json.dumps(cfg, indent=2))
+
+
+def run_local_env_setup_wizard() -> int:
+    """Run the local Docker/server setup wizard when no server is online yet."""
+    setup_script = Path(__file__).resolve().parent / "scripts" / "sparkbot-setup.sh"
+    if not setup_script.is_file():
+        print(
+            "Local setup script not found. Start Sparkbot, then rerun: python3 sparkbot-cli.py --setup",
+            file=sys.stderr,
+        )
+        return 1
+    try:
+        completed = subprocess.run(["bash", str(setup_script)], check=False)
+        return int(completed.returncode)
+    except FileNotFoundError:
+        print("bash is required to run scripts/sparkbot-setup.sh.", file=sys.stderr)
+        return 1
 
 
 # ---------------------------------------------------------------------------
@@ -560,14 +579,23 @@ def main() -> None:
 
     client = SparkbotClient(url, passphrase)
 
-    # Login + bootstrap
+    # Login + bootstrap. For first-run server setup, --setup can also work
+    # before Sparkbot is running by writing .env.local through the shell wizard.
     try:
         client.login()
         client.bootstrap()
     except RuntimeError as exc:
+        if args.setup:
+            print(f"Could not connect to {url}: {exc}", file=sys.stderr)
+            print("Running local Docker/server setup instead.\n", file=sys.stderr)
+            sys.exit(run_local_env_setup_wizard())
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
     except Exception as exc:
+        if args.setup:
+            print(f"Cannot connect to {url}: {exc}", file=sys.stderr)
+            print("Running local Docker/server setup instead.\n", file=sys.stderr)
+            sys.exit(run_local_env_setup_wizard())
         print(f"Cannot connect to {url}: {exc}", file=sys.stderr)
         print("Is Sparkbot running? Check: python sparkbot-cli.py --url <URL>", file=sys.stderr)
         sys.exit(1)

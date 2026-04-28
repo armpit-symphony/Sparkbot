@@ -161,17 +161,17 @@ Click **Sparkbot** on the office floor to open the main chat. Everything else ca
 
 ### Docker Local
 
+Linux/macOS:
+
 ```bash
-# Clone and configure
 git clone https://github.com/armpit-symphony/Sparkbot.git
 cd Sparkbot
-cp .env.local.example .env.local   # add at least one LLM API key
-
-# Start
-docker compose -f compose.local.yml up --build
+bash scripts/sparkbot-start.sh
 ```
 
-Open `http://localhost:3000`. Default passphrase: `sparkbot-local`.
+The start script detects `docker compose` vs `docker-compose`, creates `.env.local` when needed, opens the setup wizard if no provider is configured, and then starts Sparkbot. Open `http://localhost:3000`. Default passphrase: `sparkbot-local`.
+
+Advanced users can still edit `.env.local` directly, but normal installs do not require opening an env file.
 
 For a public or private server install, use [deployment.md](./deployment.md) for Docker, Traefik, and Let's Encrypt, or [docs/systemd-single-node.md](./docs/systemd-single-node.md) for systemd and nginx.
 
@@ -180,13 +180,13 @@ For a public or private server install, use [deployment.md](./deployment.md) for
 ### CLI (No Browser Required)
 
 ```bash
+python sparkbot-cli.py --setup                  # first-run provider/model setup
 python sparkbot-cli.py                          # interactive
-python sparkbot-cli.py --setup                  # configure provider keys + model roles
 python sparkbot-cli.py "What's on my calendar?" # one-shot
 echo "Summarise my inbox" | python sparkbot-cli.py
 ```
 
-Requires Python 3.10+, no extra packages. On first run it prompts for your server URL and passphrase and saves them to `~/.sparkbot/cli.json`.
+Requires Python 3.10+, no extra packages. When Sparkbot is running, `--setup` configures provider keys and model roles through the backend Controls API. Before the server is running, it falls back to the local `.env.local` setup wizard.
 
 ---
 
@@ -336,11 +336,14 @@ Sparkbot uses BM25 full-text search to pull relevant chunks into the conversatio
 
 ## Configuration
 
-All configuration is via environment variables.
+Most configuration is available from **Sparkbot Controls** or the setup wizard.
 
 - **Desktop app** — set keys in **Sparkbot Controls** (UI). Advanced settings: the `.env` file beside the installed executable.
-- **Docker / local** — copy `.env.local.example` to `.env.local`
-- **Server / systemd** — copy `.env.example` to `.env`
+- **Docker / local** — run `bash scripts/sparkbot-start.sh`; it creates and configures `.env.local`
+- **CLI / server setup** — run `python3 sparkbot-cli.py --setup`
+- **Server / systemd** — run the setup wizard first, then copy or adapt the generated values for `.env`
+
+Advanced users may still edit env files directly.
 
 ### Minimum required (server install)
 
