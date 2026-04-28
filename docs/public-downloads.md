@@ -53,14 +53,18 @@ bash scripts/sparkbot-start.sh --install-docker-plugins
 SSH troubleshooting:
 
 ```bash
-bash scripts/sparkbot-start.sh --show-input
+bash scripts/sparkbot-start.sh --server --hide-input
 ```
 
-Paste-free env import:
+Provider key prompts are visible by default so SSH paste works reliably. Use
+`--hide-input` only if you prefer hidden provider-key entry. The passphrase
+prompt remains hidden by default.
+
+Paste-free env import for SSH servers:
 
 ```bash
 export OPENAI_API_KEY="sk-..."
-bash scripts/sparkbot-start.sh --local --from-env
+bash scripts/sparkbot-start.sh --server --from-env
 ```
 
 Custom frontend port:

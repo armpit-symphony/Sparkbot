@@ -19,10 +19,10 @@ Product truth and MCP control-plane cleanup.
   provider/Ollama prompts, `.env.local` preservation, CLI setup fallback,
   and a clearer web Controls fallback when no usable model provider is
   configured.
-- Fix SSH first-run setup input: hidden key prompts now warn before input,
-  `--show-input` makes key paste visible for troubleshooting, `--from-env`
-  imports exported provider keys, and direct provider key flags can seed
-  setup without manual `.env.local` editing.
+- Fix SSH first-run setup input: provider key prompts are visible by default
+  so paste works naturally, `--hide-input` is available for users who prefer
+  hidden provider-key entry, `--from-env` imports exported provider keys, and
+  direct provider key flags can seed setup without manual `.env.local` editing.
 - Fix local Docker startup on legacy `docker-compose` 1.29.x by using
   v1-compatible `env_file` syntax and printing a legacy compatibility mode
   message when the launcher falls back from Compose v2.

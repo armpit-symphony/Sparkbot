@@ -1040,15 +1040,17 @@ Server mode disables local auto-login and prompts for a private
 `SPARKBOT_PASSPHRASE` when needed; defaults, blanks, placeholders, and short
 values are rejected, the accepted passphrase is saved to `.env.local`, and the
 launcher does not print it.
+Provider key prompts are visible by default so SSH paste works reliably; the
+wizard warns before visible key entry and does not print stored secrets itself.
 Advanced operators can still edit env files or run Compose directly.
 
 SSH setup helpers:
 
 ```bash
 bash scripts/sparkbot-start.sh --install-docker-plugins
-bash scripts/sparkbot-start.sh --show-input   # visible key input for paste troubleshooting
+bash scripts/sparkbot-start.sh --server --hide-input  # optional hidden provider-key entry
 export OPENAI_API_KEY="sk-..."
-bash scripts/sparkbot-start.sh --local --from-env  # import exported provider keys
+bash scripts/sparkbot-start.sh --server --from-env  # import exported provider keys
 SPARKBOT_FRONTEND_PORT=3001 bash scripts/sparkbot-start.sh --server
 ```
 

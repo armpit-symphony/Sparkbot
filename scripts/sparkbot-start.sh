@@ -28,6 +28,9 @@ for arg in "$@"; do
       START_SHOW_INPUT=1
       SETUP_ARGS+=("${arg}")
       ;;
+    --hide-input)
+      SETUP_ARGS+=("${arg}")
+      ;;
     *)
       SETUP_ARGS+=("${arg}")
       ;;
@@ -459,7 +462,7 @@ cat <<EOF
 
 Next steps:
   1. Open ${web_url}
-  2. Sign in with the passphrase above
+  2. Sign in with your configured passphrase
   3. Open Sparkbot Controls to change providers, models, or safety settings
 
 Stop Sparkbot:

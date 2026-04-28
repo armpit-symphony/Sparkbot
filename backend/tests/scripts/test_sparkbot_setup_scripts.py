@@ -17,13 +17,19 @@ def _write_executable(path: Path, content: str) -> None:
     path.chmod(path.stat().st_mode | stat.S_IXUSR)
 
 
-def _run_setup(args: list[str], *, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+def _run_setup(
+    args: list[str],
+    *,
+    env: dict[str, str],
+    input_text: str | None = None,
+) -> subprocess.CompletedProcess[str]:
     merged_env = os.environ.copy()
     merged_env.update(env)
     return subprocess.run(
         ["bash", str(SCRIPT), *args],
         cwd=ROOT,
         env=merged_env,
+        input=input_text,
         text=True,
         capture_output=True,
         check=False,
@@ -229,7 +235,7 @@ def test_noninteractive_setup_preserves_existing_provider_value(tmp_path: Path) 
     assert "sk-new" not in content
 
 
-def test_hidden_input_prompt_warns_user_and_keeps_secret_out_of_output(tmp_path: Path) -> None:
+def test_provider_prompt_is_visible_by_default_and_keeps_secret_out_of_output(tmp_path: Path) -> None:
     template = tmp_path / ".env.local.example"
     env_file = tmp_path / ".env.local"
     _template(template)
@@ -241,10 +247,15 @@ def test_hidden_input_prompt_warns_user_and_keeps_secret_out_of_output(tmp_path:
             "SPARKBOT_ENV_FILE": str(env_file),
             "SPARKBOT_ENV_TEMPLATE": str(template),
         },
+        input_text="sk-visible-default\n\n\n\n\n\n\n\n\n",
     )
 
-    assert result.returncode != 0
-    assert "Input will be hidden. Paste/type your key, then press Enter." in result.stderr
+    assert result.returncode == 0
+    assert "Your key will be visible while typing in this terminal session." in result.stderr
+    assert "Input will be hidden" not in result.stderr
+    assert "OPENAI_API_KEY=sk-visible-default" in env_file.read_text()
+    assert "sk-visible-default" not in result.stdout
+    assert "sk-visible-default" not in result.stderr
 
 
 def test_show_input_path_accepts_typed_provider_key(tmp_path: Path) -> None:
@@ -261,7 +272,7 @@ def test_show_input_path_accepts_typed_provider_key(tmp_path: Path) -> None:
             "SPARKBOT_ENV_FILE": str(env_file),
             "SPARKBOT_ENV_TEMPLATE": str(template),
         },
-        input="sk-visible-input\n\n\n\n\n\n\n",
+        input="sk-visible-input\n\n\n\n\n\n\n\n\n",
         text=True,
         capture_output=True,
         check=False,
@@ -270,6 +281,54 @@ def test_show_input_path_accepts_typed_provider_key(tmp_path: Path) -> None:
     assert result.returncode == 0
     assert "Input will be hidden" not in result.stderr
     assert "OPENAI_API_KEY=sk-visible-input" in env_file.read_text()
+
+
+def test_hide_input_path_accepts_typed_provider_key(tmp_path: Path) -> None:
+    template = tmp_path / ".env.local.example"
+    env_file = tmp_path / ".env.local"
+    _template(template)
+
+    result = _run_setup(
+        ["--hide-input"],
+        env={
+            "SPARKBOT_SETUP_SKIP_COMPOSE_CHECK": "1",
+            "SPARKBOT_ENV_FILE": str(env_file),
+            "SPARKBOT_ENV_TEMPLATE": str(template),
+        },
+        input_text="sk-hidden-provider\n\n\n\n\n\n\n\n\n",
+    )
+
+    assert result.returncode == 0
+    assert "Input will be hidden. Paste/type your key, then press Enter." in result.stderr
+    assert "Your key will be visible" not in result.stderr
+    assert "OPENAI_API_KEY=sk-hidden-provider" in env_file.read_text()
+    assert "sk-hidden-provider" not in result.stdout
+    assert "sk-hidden-provider" not in result.stderr
+
+
+def test_ssh_environment_uses_visible_provider_prompt(tmp_path: Path) -> None:
+    template = tmp_path / ".env.local.example"
+    env_file = tmp_path / ".env.local"
+    _template(template)
+
+    result = _run_setup(
+        [],
+        env={
+            "SPARKBOT_SETUP_SKIP_COMPOSE_CHECK": "1",
+            "SPARKBOT_ENV_FILE": str(env_file),
+            "SPARKBOT_ENV_TEMPLATE": str(template),
+            "SSH_CONNECTION": "203.0.113.5 55555 203.0.113.10 22",
+        },
+        input_text="sk-ssh-visible\n\n\n\n\n\n\n\n\n",
+    )
+
+    assert result.returncode == 0
+    assert "SSH session detected. Provider key input will be visible so paste works reliably." in result.stderr
+    assert "Your key will be visible while typing in this terminal session." in result.stderr
+    assert "Input will be hidden" not in result.stderr
+    assert "OPENAI_API_KEY=sk-ssh-visible" in env_file.read_text()
+    assert "sk-ssh-visible" not in result.stdout
+    assert "sk-ssh-visible" not in result.stderr
 
 
 def test_from_env_imports_exported_provider_key_without_echoing_secret(tmp_path: Path) -> None:

@@ -151,6 +151,7 @@ On first launch, Sparkbot opens **Sparkbot Controls**. Paste at least one LLM AP
 | Anthropic | [console.anthropic.com](https://console.anthropic.com) |
 | Google | [aistudio.google.com](https://aistudio.google.com) |
 | Groq | [console.groq.com](https://console.groq.com) |
+| MiniMax | [minimax.io](https://www.minimax.io) |
 | OpenRouter | [openrouter.ai](https://openrouter.ai) — one key, 100+ models |
 
 **Step 3 — Start chatting**
@@ -179,7 +180,7 @@ bash scripts/sparkbot-start.sh --server
 
 The start script supports both Docker Compose v2 (`docker compose`) and legacy Docker Compose v1.29.x (`docker-compose`), creates `.env.local` when needed, opens the setup wizard if no provider is configured, writes the non-secret Compose interpolation values to root `.env`, and starts Sparkbot detached in the background. Local mode binds to `127.0.0.1`. Server mode binds the web UI to `0.0.0.0`, disables local auto-login, prompts you to create a private passphrase before startup, detects the public IP, prints the real browser URL, and warns you to use firewall rules or a reverse proxy with auth.
 
-Server mode rejects blank, placeholder, too-short, and local-default passphrases. Hidden input is used by default; add `--show-input` if SSH paste troubleshooting requires visible input. The passphrase is saved to `.env.local` and is not printed by the launcher.
+Server mode rejects blank, placeholder, too-short, and local-default passphrases. Passphrase prompts stay hidden by default; add `--show-input` only if passphrase entry troubleshooting requires visible input. The passphrase is saved to `.env.local` and is not printed by the launcher.
 
 On a fresh Ubuntu server, install the Docker Compose v2 and buildx plugins first:
 
@@ -194,17 +195,17 @@ Or let Sparkbot try that install step:
 bash scripts/sparkbot-start.sh --install-docker-plugins
 ```
 
-Over SSH, provider key input is hidden by default. If paste or terminal echo is confusing, run:
+Provider key prompts are visible by default so SSH paste works reliably. The setup script warns before each visible key prompt and does not print stored secrets itself. If you prefer hidden provider-key entry, run:
 
 ```bash
-bash scripts/sparkbot-start.sh --show-input
+bash scripts/sparkbot-start.sh --server --hide-input
 ```
 
-You can also import an exported key without interactive entry:
+For SSH servers, the most reliable no-prompt path is exporting a provider key first:
 
 ```bash
 export OPENAI_API_KEY="sk-..."
-bash scripts/sparkbot-start.sh --local --from-env
+bash scripts/sparkbot-start.sh --server --from-env
 ```
 
 If another app already uses port 3000, Sparkbot auto-selects the next open port and prints the actual URL. You can also choose one:

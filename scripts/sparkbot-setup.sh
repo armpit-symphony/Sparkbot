@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Sparkbot first-run setup wizard for Docker/server installs.
 #
-# This script intentionally keeps provider keys out of terminal output. It can
-# be sourced by tests; normal execution runs sparkbot_setup_main.
+# This script intentionally avoids printing provider key values itself. Provider
+# prompts are visible by default so paste works reliably over SSH.
 
 set -euo pipefail
 
@@ -19,7 +19,7 @@ SPARKBOT_PROVIDER_KEYS=(
   "MINIMAX_API_KEY:MiniMax:minimax/MiniMax-M2.5:minimax"
   "OPENROUTER_API_KEY:OpenRouter:openrouter/openai/gpt-4o-mini:openrouter"
 )
-SPARKBOT_SETUP_SHOW_INPUT="${SPARKBOT_SETUP_SHOW_INPUT:-0}"
+SPARKBOT_SETUP_HIDE_INPUT="${SPARKBOT_SETUP_HIDE_INPUT:-0}"
 
 sparkbot_detect_compose() {
   if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
@@ -226,15 +226,25 @@ sparkbot_yes_no() {
   done
 }
 
+sparkbot_ssh_session() {
+  [ -n "${SSH_CONNECTION:-}" ] || [ -n "${SSH_TTY:-}" ] || [ -n "${SSH_CLIENT:-}" ]
+}
+
 sparkbot_prompt_secret() {
   local prompt="$1"
   local value
-  if [ "${SPARKBOT_SETUP_SHOW_INPUT}" = "1" ]; then
-    read -r -p "${prompt}: " value
-  else
+  if [ "${SPARKBOT_SETUP_HIDE_INPUT}" = "1" ]; then
     echo "Input will be hidden. Paste/type your key, then press Enter." >&2
-    read -r -s -p "${prompt}: " value
+    printf '%s: ' "${prompt}" >&2
+    read -r -s value
     printf '\n' >&2
+  else
+    if sparkbot_ssh_session; then
+      echo "SSH session detected. Provider key input will be visible so paste works reliably." >&2
+    fi
+    echo "Your key will be visible while typing in this terminal session." >&2
+    printf '%s: ' "${prompt}" >&2
+    read -r value
   fi
   printf '%s' "${value}"
 }
@@ -382,6 +392,8 @@ sparkbot_setup_wizard() {
   echo "Sparkbot setup"
   echo "Add at least one cloud provider key, or choose a local Ollama model."
   echo "Press Enter at any key prompt to skip that provider."
+  echo "Provider key prompts are visible by default so SSH paste works reliably."
+  echo "Use --hide-input if you prefer hidden provider key entry."
   echo ""
 
   for item in "${SPARKBOT_PROVIDER_KEYS[@]}"; do
@@ -409,7 +421,11 @@ sparkbot_setup_main() {
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --show-input)
-        SPARKBOT_SETUP_SHOW_INPUT=1
+        SPARKBOT_SETUP_HIDE_INPUT=0
+        shift
+        ;;
+      --hide-input)
+        SPARKBOT_SETUP_HIDE_INPUT=1
         shift
         ;;
       --from-env)
@@ -480,7 +496,8 @@ Guides first-run Docker/server setup, writes .env.local safely, and detects
 Docker Compose v2 or legacy docker-compose.
 
 Options:
-  --show-input             Show provider key input while typing or pasting.
+  --show-input             Compatibility alias; provider input is visible by default.
+  --hide-input             Hide provider key input (not recommended over SSH).
   --from-env               Import exported provider key environment variables.
   --openai-key KEY         Save an OpenAI API key.
   --anthropic-key KEY      Save an Anthropic API key.

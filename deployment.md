@@ -41,10 +41,11 @@ sudo apt update
 sudo apt install docker-buildx-plugin docker-compose-plugin -y
 ```
 
-For SSH sessions where hidden input makes paste feedback unclear, use:
+Provider key prompts are visible by default so paste works reliably in SSH
+sessions. If you prefer hidden provider-key entry, use:
 
 ```bash
-bash scripts/sparkbot-start.sh --show-input
+bash scripts/sparkbot-start.sh --server --hide-input
 ```
 
 To import keys already exported in the shell:
@@ -69,6 +70,7 @@ The launcher:
 * mirrors those non-secret frontend values to root `.env` because Compose interpolation does not read `.env.local`
 * creates `.env.local` from `.env.local.example` when missing
 * prompts for OpenAI, Anthropic, Google, Groq, MiniMax, OpenRouter, or local Ollama setup
+* uses visible provider-key prompts by default so SSH paste works naturally
 * requires at least one provider key or an Ollama model
 * starts `compose.local.yml` detached in the background
 * prints the actual browser URL

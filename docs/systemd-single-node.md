@@ -26,10 +26,11 @@ SPARKBOT_ENV_TEMPLATE=.env.example \
 ```
 
 The wizard creates `.env`, prompts for provider keys or a local Ollama model,
-and avoids printing secrets. If SSH hidden input makes paste feedback unclear,
-add `--show-input`. To import exported shell keys, add `--from-env`. Advanced
-users may still edit `.env` directly. For a production public hostname, confirm
-these values before starting systemd:
+and avoids printing stored secrets itself. Provider key prompts are visible by
+default so SSH paste works reliably; add `--hide-input` only if you prefer
+hidden provider-key entry. To import exported shell keys without prompts, add
+`--from-env`. Advanced users may still edit `.env` directly. For a production
+public hostname, confirm these values before starting systemd:
 
 ```env
 ENVIRONMENT=production
