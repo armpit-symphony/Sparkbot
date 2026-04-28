@@ -61,7 +61,9 @@ import {
   FALLBACK_MCP_REGISTRY,
   fetchMcpExplainPlan,
   fetchMcpRegistry,
+  fetchMcpRuns,
   type McpExplainPlanResponse,
+  type McpRunRecord,
   type McpRiskLevel,
   type McpRegistryResponse,
   type McpToolManifest,
@@ -2734,6 +2736,7 @@ function McpControlPlanePanel({ onClose }: { onClose: () => void }) {
   const [explainPlan, setExplainPlan] = useState<McpExplainPlanResponse | null>(null)
   const [explainPlanError, setExplainPlanError] = useState<string | null>(null)
   const [explainingManifestId, setExplainingManifestId] = useState<string | null>(null)
+  const [mcpRuns, setMcpRuns] = useState<McpRunRecord[]>([])
   const [health, setHealth] = useState<McpHealth>({
     loading: true,
     apiBacked: false,
@@ -2763,6 +2766,13 @@ function McpControlPlanePanel({ onClose }: { onClose: () => void }) {
           limaBridgeConfigured:
             typeof nextRegistry.health.limaBridgeConfigured === "boolean" ? nextRegistry.health.limaBridgeConfigured : null,
         })
+        fetchMcpRuns(6)
+          .then((payload) => {
+            if (!cancelled) setMcpRuns(payload.runs)
+          })
+          .catch(() => {
+            if (!cancelled) setMcpRuns([])
+          })
       } catch {
         if (!cancelled) {
           setRegistry(FALLBACK_MCP_REGISTRY)
@@ -2793,6 +2803,7 @@ function McpControlPlanePanel({ onClose }: { onClose: () => void }) {
         userRequest: `Preview ${manifest.name} from Workstation Robo OS.`,
       })
       setExplainPlan(plan)
+      fetchMcpRuns(6).then((payload) => setMcpRuns(payload.runs)).catch(() => {})
     } catch {
       setExplainPlanError("Explain-plan API is unavailable for this session.")
     } finally {
@@ -2981,6 +2992,39 @@ function McpControlPlanePanel({ onClose }: { onClose: () => void }) {
                 </code>
               </div>
             ) : null}
+          </div>
+        )}
+
+        {mcpRuns.length > 0 && (
+          <div style={{ border: `1px solid ${ACCENT}1f`, borderRadius: 10, backgroundColor: "#040d1a", overflow: "hidden" }}>
+            <div style={{ padding: "10px 12px", borderBottom: `1px solid ${ACCENT}1f`, fontSize: 10, color: ACCENT, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700 }}>
+              Recent MCP runs
+            </div>
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              {mcpRuns.map((run) => {
+                const runColor = run.status === "ready" || run.status === "completed" ? "#4ade80" : run.status === "blocked" || run.status === "failed" ? "#f87171" : "#fbbf24"
+                return (
+                  <div key={run.id} style={{ padding: "9px 12px", borderBottom: "1px solid #0d1f35", display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 10, alignItems: "center" }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+                        <span style={{ color: "#e2e8f0", fontSize: 11, fontWeight: 700 }}>{run.manifestName}</span>
+                        <span style={{ color: runColor, border: `1px solid ${runColor}44`, borderRadius: 3, padding: "1px 6px", fontSize: 9, textTransform: "uppercase" }}>
+                          {run.status}
+                        </span>
+                        <span style={{ color: "#7dd3fc", fontSize: 9, fontFamily: "monospace" }}>{run.policyAction}</span>
+                      </div>
+                      <div style={{ color: "#94a3b8", fontSize: 10, marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {run.nextAction}
+                      </div>
+                    </div>
+                    <div style={{ color: "#64748b", fontSize: 9, textAlign: "right" }}>
+                      <div>{run.runtime}</div>
+                      <div>{new Date(run.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           </div>
         )}
 

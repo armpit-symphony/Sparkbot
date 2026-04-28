@@ -621,6 +621,13 @@ Click **Explain** on a manifest to call `POST /api/v1/chat/mcp/explain-plan`. Sp
 - Next required operator action
 - Timeline steps from user request through audit evidence
 
+The explain-plan also creates a durable MCP run record in `mcp_runs.db` under the Guardian data directory. The Robo OS panel shows recent runs, and API clients can inspect them with:
+
+- `GET /api/v1/chat/mcp/runs`
+- `GET /api/v1/chat/mcp/runs/{run_id}`
+
+Run statuses are `planned`, `awaiting_approval`, `ready`, `blocked`, `completed`, or `failed`. The current implementation records planning and policy state only; execution and approval resume wiring remain the next Phase 1 step.
+
 No hardware is required for the Robo OS demo path. LIMA replay/simulation commands are surfaced directly in Sparkbot:
 
 ```bash
@@ -1275,6 +1282,8 @@ PUBLIC_URL=
 | `GET` | `/api/v1/chat/skills` | List loaded skill plugins (name, description, policy flags) |
 | `GET` | `/api/v1/chat/mcp/registry` | Unified Sparkbot + LIMA MCP registry: manifests, policy metadata, approval posture, health, and run timeline |
 | `POST` | `/api/v1/chat/mcp/explain-plan` | No-execution dry-run plan for a registry manifest using Guardian policy simulation |
+| `GET` | `/api/v1/chat/mcp/runs` | Recent durable MCP explain-plan/run records for the current user |
+| `GET` | `/api/v1/chat/mcp/runs/{run_id}` | One MCP run record with persisted explain-plan payload |
 | `GET` | `/api/v1/chat/audit` | Recent tool audit log (room-scoped) |
 | `GET` | `/api/v1/utils/health-check/` | Health check → `true` |
 

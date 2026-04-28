@@ -69,6 +69,8 @@ def test_mcp_explain_plan_returns_policy_dry_run(client: TestClient) -> None:
     payload = response.json()
 
     assert payload["simulationOnly"] is True
+    assert payload["runId"]
+    assert payload["runStatus"] in {"awaiting_approval", "blocked"}
     assert payload["manifest"]["id"] == "lima.navigate"
     assert payload["policyToolName"] == "lima.navigate"
     assert payload["dryRunRequired"] is True
@@ -77,3 +79,32 @@ def test_mcp_explain_plan_returns_policy_dry_run(client: TestClient) -> None:
     assert payload["policy"]["decision"]["action"] in {"privileged", "deny"}
     assert payload["timeline"][0]["step"] == "User request"
     assert "route" in payload["toolArgs"]
+
+    runs_response = client.get(
+        f"{settings.API_V1_STR}/chat/mcp/runs",
+        headers=_chat_headers(),
+    )
+    assert runs_response.status_code == 200
+
+
+def test_mcp_runs_list_includes_created_plan(client: TestClient) -> None:
+    headers = _chat_headers()
+    plan_response = client.post(
+        f"{settings.API_V1_STR}/chat/mcp/explain-plan",
+        headers=headers,
+        json={"manifest_id": "lima.replay_simulation", "user_request": "Preview robot replay."},
+    )
+    assert plan_response.status_code == 200
+    run_id = plan_response.json()["runId"]
+
+    runs_response = client.get(f"{settings.API_V1_STR}/chat/mcp/runs", headers=headers)
+    assert runs_response.status_code == 200
+    runs = runs_response.json()["runs"]
+    assert any(run["id"] == run_id for run in runs)
+
+    detail_response = client.get(f"{settings.API_V1_STR}/chat/mcp/runs/{run_id}", headers=headers)
+    assert detail_response.status_code == 200
+    detail = detail_response.json()
+    assert detail["id"] == run_id
+    assert detail["manifestId"] == "lima.replay_simulation"
+    assert detail["plan"]["simulationOnly"] is True

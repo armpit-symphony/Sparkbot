@@ -206,6 +206,9 @@ export interface McpExplainPlanStep {
 
 export interface McpExplainPlanResponse {
   simulationOnly: boolean
+  runId?: string
+  runStatus?: string
+  createdAt?: string
   manifest: McpToolManifest
   policyToolName: string
   toolArgs: Record<string, unknown>
@@ -229,6 +232,26 @@ export interface McpExplainPlanResponse {
   nextAction: string
   timeline: McpExplainPlanStep[]
   notes: string[]
+}
+
+export interface McpRunRecord {
+  id: string
+  userId: string
+  roomId: string | null
+  manifestId: string
+  manifestName: string
+  runtime: "sparkbot" | "lima-robo-os" | string
+  policyToolName: string
+  policyAction: string
+  status: string
+  approvalRequired: boolean
+  dryRunRequired: boolean
+  canExecuteNow: boolean
+  userRequest: string
+  nextAction: string
+  plan: McpExplainPlanResponse
+  createdAt: string
+  updatedAt: string
 }
 
 export async function fetchMcpRegistry(): Promise<McpRegistryResponse> {
@@ -260,6 +283,16 @@ export async function fetchMcpExplainPlan({
     throw new Error(`MCP explain-plan API ${response.status}`)
   }
   return response.json() as Promise<McpExplainPlanResponse>
+}
+
+export async function fetchMcpRuns(limit = 10): Promise<{ runs: McpRunRecord[]; count: number }> {
+  const response = await apiFetch(`/api/v1/chat/mcp/runs?limit=${encodeURIComponent(String(limit))}`, {
+    credentials: "include",
+  })
+  if (!response.ok) {
+    throw new Error(`MCP runs API ${response.status}`)
+  }
+  return response.json() as Promise<{ runs: McpRunRecord[]; count: number }>
 }
 
 export const FALLBACK_MCP_REGISTRY: McpRegistryResponse = {
