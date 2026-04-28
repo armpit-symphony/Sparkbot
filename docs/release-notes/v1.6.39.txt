@@ -23,5 +23,8 @@ Product truth and MCP control-plane cleanup.
   `--show-input` makes key paste visible for troubleshooting, `--from-env`
   imports exported provider keys, and direct provider key flags can seed
   setup without manual `.env.local` editing.
+- Fix local Docker startup on legacy `docker-compose` 1.29.x by using
+  v1-compatible `env_file` syntax and printing a legacy compatibility mode
+  message when the launcher falls back from Compose v2.
 - Refresh README, capabilities docs, release note, and public downloader
   version markers for 1.6.39.

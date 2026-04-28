@@ -9,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = ROOT / "scripts" / "sparkbot-setup.sh"
 START_SCRIPT = ROOT / "scripts" / "sparkbot-start.sh"
+LOCAL_COMPOSE = ROOT / "compose.local.yml"
 
 
 def _write_executable(path: Path, content: str) -> None:
@@ -331,3 +332,76 @@ exit 1
     assert "OPENAI_API_KEY=sk-start-direct" in env_file.read_text()
     assert "sk-start-direct" not in result.stdout
     assert "sk-start-direct" not in result.stderr
+
+
+def test_compose_local_uses_legacy_compatible_env_file_syntax() -> None:
+    content = LOCAL_COMPOSE.read_text()
+
+    assert "required: false" not in content
+    assert "path: .env.local" not in content
+    assert "env_file:\n      - .env.local" in content
+
+
+def test_start_script_prefers_docker_compose_v2_path(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    log_file = tmp_path / "compose.log"
+    _write_executable(
+        fake_bin / "docker",
+        f"""#!/usr/bin/env sh
+echo "$@" >> "{log_file}"
+if [ "$1" = "info" ]; then exit 0; fi
+if [ "$1" = "compose" ] && [ "$2" = "version" ]; then exit 0; fi
+if [ "$1" = "compose" ]; then exit 0; fi
+exit 1
+""",
+    )
+    template = tmp_path / ".env.local.example"
+    env_file = tmp_path / ".env.local"
+    _template(template)
+
+    result = _run_start(
+        ["--openai-key", "sk-v2-start"],
+        env={
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "SPARKBOT_ENV_FILE": str(env_file),
+            "SPARKBOT_ENV_TEMPLATE": str(template),
+        },
+    )
+
+    assert result.returncode == 0
+    assert "Using legacy docker-compose compatibility mode" not in result.stdout
+    assert "compose -f compose.local.yml up --build" in log_file.read_text()
+
+
+def test_start_script_prints_legacy_mode_and_uses_docker_compose(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    log_file = tmp_path / "compose.log"
+    _write_executable(
+        fake_bin / "docker",
+        "#!/usr/bin/env sh\n[ \"$1\" = \"info\" ] && exit 0\nexit 1\n",
+    )
+    _write_executable(
+        fake_bin / "docker-compose",
+        f"""#!/usr/bin/env sh
+echo "$@" >> "{log_file}"
+exit 0
+""",
+    )
+    template = tmp_path / ".env.local.example"
+    env_file = tmp_path / ".env.local"
+    _template(template)
+
+    result = _run_start(
+        ["--openai-key", "sk-v1-start"],
+        env={
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "SPARKBOT_ENV_FILE": str(env_file),
+            "SPARKBOT_ENV_TEMPLATE": str(template),
+        },
+    )
+
+    assert result.returncode == 0
+    assert "Using legacy docker-compose compatibility mode" in result.stdout
+    assert "-f compose.local.yml up --build" in log_file.read_text()

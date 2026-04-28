@@ -1030,8 +1030,9 @@ bash scripts/sparkbot-start.sh
 ```
 
 The setup wizard creates `.env.local`, prompts for provider keys or local
-Ollama, preserves existing values, and detects Docker Compose v2 or legacy
-`docker-compose`. Advanced operators can still edit env files directly.
+Ollama, preserves existing values, and supports Docker Compose v2
+(`docker compose`) plus legacy Docker Compose v1.29.x (`docker-compose`).
+Advanced operators can still edit env files directly.
 
 SSH setup helpers:
 

@@ -35,6 +35,9 @@ fi
 
 compose_cmd="$(bash "${SETUP_SCRIPT}" --print-compose-command)"
 read -r -a compose_parts <<< "${compose_cmd}"
+if [ "${compose_cmd}" = "docker-compose" ]; then
+  echo "Using legacy docker-compose compatibility mode"
+fi
 
 if [ "${#SETUP_ARGS[@]}" -gt 0 ] || [ ! -f "${ENV_FILE}" ] || ! SPARKBOT_ENV_FILE="${ENV_FILE}" bash "${SETUP_SCRIPT}" --check-config; then
   echo ""

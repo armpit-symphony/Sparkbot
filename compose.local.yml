@@ -44,8 +44,7 @@ services:
         condition: service_healthy
     command: bash scripts/prestart.sh
     env_file:
-      - path: .env.local
-        required: false
+      - .env.local
     environment:
       - POSTGRES_SERVER=db
       - POSTGRES_PORT=5432
@@ -76,8 +75,7 @@ services:
       prestart:
         condition: service_completed_successfully
     env_file:
-      - path: .env.local
-        required: false
+      - .env.local
     environment:
       - POSTGRES_SERVER=db
       - POSTGRES_PORT=5432

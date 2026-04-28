@@ -35,7 +35,7 @@ bash scripts/sparkbot-start.sh --from-env
 
 The launcher:
 
-* detects `docker compose` and falls back to `docker-compose`
+* detects `docker compose` and falls back to legacy `docker-compose` 1.29.x
 * creates `.env.local` from `.env.local.example` when missing
 * prompts for OpenAI, Anthropic, Google, Groq, OpenRouter, or local Ollama setup
 * requires at least one provider key or an Ollama model
