@@ -12,6 +12,7 @@ Note: chat_rooms.persona is NOT included here; it is added by a1f4c8e9d203.
 """
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 import sqlmodel.sql.sqltypes
 
 
@@ -22,13 +23,26 @@ branch_labels = None
 depends_on = None
 
 
+USER_TYPE_ENUM = postgresql.ENUM('HUMAN', 'BOT', name='usertype', create_type=False)
+ROOM_ROLE_ENUM = postgresql.ENUM('OWNER', 'MOD', 'MEMBER', 'VIEWER', 'BOT', name='roomrole', create_type=False)
+MEETING_ARTIFACT_TYPE_ENUM = postgresql.ENUM(
+    'AGENDA',
+    'NOTES',
+    'DECISIONS',
+    'ACTION_ITEMS',
+    name='meetingartifacttype',
+    create_type=False,
+)
+
+
 def upgrade():
-    # Create PostgreSQL enum types explicitly via raw SQL.
-    # All sa.Enum(...) column references below use create_type=False so
-    # SQLAlchemy never attempts a second CREATE TYPE for the same name.
-    op.execute("CREATE TYPE usertype AS ENUM ('HUMAN', 'BOT')")
-    op.execute("CREATE TYPE roomrole AS ENUM ('OWNER', 'MOD', 'MEMBER', 'VIEWER', 'BOT')")
-    op.execute("CREATE TYPE meetingartifacttype AS ENUM ('AGENDA', 'NOTES', 'DECISIONS', 'ACTION_ITEMS')")
+    # Create PostgreSQL enum types explicitly and idempotently. The table column
+    # references below reuse these named enum objects with create_type=False so
+    # SQLAlchemy never attempts a second CREATE TYPE during op.create_table.
+    bind = op.get_bind()
+    USER_TYPE_ENUM.create(bind, checkfirst=True)
+    ROOM_ROLE_ENUM.create(bind, checkfirst=True)
+    MEETING_ARTIFACT_TYPE_ENUM.create(bind, checkfirst=True)
 
     # 1. chat_users — no FK dependencies on other chat tables
     op.create_table('chat_users',
@@ -36,7 +50,7 @@ def upgrade():
         sa.Column('username', sqlmodel.sql.sqltypes.AutoString(length=100), nullable=False),
         sa.Column('hashed_password', sqlmodel.sql.sqltypes.AutoString(length=255), nullable=True),
         sa.Column('is_active', sa.Boolean(), nullable=False),
-        sa.Column('type', sa.Enum('HUMAN', 'BOT', name='usertype', create_type=False), nullable=False),
+        sa.Column('type', USER_TYPE_ENUM, nullable=False),
         sa.Column('bot_service_key_hash', sqlmodel.sql.sqltypes.AutoString(length=255), nullable=True),
         sa.Column('bot_auto_mode', sa.Boolean(), nullable=False),
         sa.Column('bot_display_name', sqlmodel.sql.sqltypes.AutoString(length=100), nullable=True),
@@ -73,7 +87,7 @@ def upgrade():
         sa.Column('id', sa.Uuid(), nullable=False),
         sa.Column('room_id', sa.Uuid(), nullable=False),
         sa.Column('user_id', sa.Uuid(), nullable=False),
-        sa.Column('role', sa.Enum('OWNER', 'MOD', 'MEMBER', 'VIEWER', 'BOT', name='roomrole', create_type=False), nullable=False),
+        sa.Column('role', ROOM_ROLE_ENUM, nullable=False),
         sa.Column('joined_at', sa.DateTime(), nullable=False),
         sa.ForeignKeyConstraint(['room_id'], ['chat_rooms.id'], ondelete='CASCADE'),
         sa.ForeignKeyConstraint(['user_id'], ['chat_users.id']),
@@ -87,7 +101,7 @@ def upgrade():
         sa.Column('id', sa.Uuid(), nullable=False),
         sa.Column('room_id', sa.Uuid(), nullable=False),
         sa.Column('sender_id', sa.Uuid(), nullable=False),
-        sa.Column('sender_type', sa.Enum('HUMAN', 'BOT', name='usertype', create_type=False), nullable=False),
+        sa.Column('sender_type', USER_TYPE_ENUM, nullable=False),
         sa.Column('content', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
         sa.Column('created_at', sa.DateTime(), nullable=False),
         sa.Column('meta_json', sa.JSON(), nullable=True),
@@ -111,7 +125,7 @@ def upgrade():
         sa.Column('expires_at', sa.DateTime(), nullable=True),
         sa.Column('usage_limit', sa.Integer(), nullable=True),
         sa.Column('used_count', sa.Integer(), nullable=False),
-        sa.Column('role', sa.Enum('OWNER', 'MOD', 'MEMBER', 'VIEWER', 'BOT', name='roomrole', create_type=False), nullable=False),
+        sa.Column('role', ROOM_ROLE_ENUM, nullable=False),
         sa.ForeignKeyConstraint(['created_by'], ['chat_users.id']),
         sa.ForeignKeyConstraint(['room_id'], ['chat_rooms.id'], ondelete='CASCADE'),
         sa.PrimaryKeyConstraint('id'),
@@ -125,7 +139,7 @@ def upgrade():
         sa.Column('room_id', sa.Uuid(), nullable=False),
         sa.Column('created_at', sa.DateTime(), nullable=False),
         sa.Column('created_by_user_id', sa.Uuid(), nullable=False),
-        sa.Column('type', sa.Enum('AGENDA', 'NOTES', 'DECISIONS', 'ACTION_ITEMS', name='meetingartifacttype', create_type=False), nullable=False),
+        sa.Column('type', MEETING_ARTIFACT_TYPE_ENUM, nullable=False),
         sa.Column('window_start_ts', sa.DateTime(), nullable=True),
         sa.Column('window_end_ts', sa.DateTime(), nullable=True),
         sa.Column('content_markdown', sqlmodel.sql.sqltypes.AutoString(), nullable=False),

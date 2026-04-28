@@ -121,6 +121,27 @@ sparkbot_ensure_secret_key() {
   sparkbot_env_set "SECRET_KEY" "$(sparkbot_generate_secret_key)"
 }
 
+sparkbot_env_set_if_missing() {
+  local key="$1"
+  local value="$2"
+  if ! sparkbot_env_has_value "${key}"; then
+    sparkbot_env_set "${key}" "${value}"
+  fi
+}
+
+sparkbot_ensure_local_docker_db_defaults() {
+  case "$(basename "${SPARKBOT_SETUP_ENV_FILE}")" in
+    .env.local)
+      sparkbot_env_set_if_missing "DATABASE_TYPE" "postgresql"
+      sparkbot_env_set_if_missing "POSTGRES_SERVER" "db"
+      sparkbot_env_set_if_missing "POSTGRES_PORT" "5432"
+      sparkbot_env_set_if_missing "POSTGRES_DB" "sparkbot"
+      sparkbot_env_set_if_missing "POSTGRES_USER" "sparkbot"
+      sparkbot_env_set_if_missing "POSTGRES_PASSWORD" "sparkbot-local"
+      ;;
+  esac
+}
+
 sparkbot_cloud_provider_configured() {
   local item key env_value
   for item in "${SPARKBOT_PROVIDER_KEYS[@]}"; do
@@ -353,6 +374,7 @@ sparkbot_setup_wizard() {
 
   sparkbot_ensure_env_file
   sparkbot_ensure_secret_key
+  sparkbot_ensure_local_docker_db_defaults
 
   echo ""
   echo "Sparkbot setup"

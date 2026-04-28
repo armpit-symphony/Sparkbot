@@ -171,6 +171,12 @@ def test_noninteractive_setup_creates_env_and_does_not_echo_secret(tmp_path: Pat
     content = env_file.read_text()
     assert "OPENAI_API_KEY=sk-test-secret" in content
     assert "SECRET_KEY=" in content
+    assert "DATABASE_TYPE=postgresql" in content
+    assert "POSTGRES_SERVER=db" in content
+    assert "POSTGRES_PORT=5432" in content
+    assert "POSTGRES_DB=sparkbot" in content
+    assert "POSTGRES_USER=sparkbot" in content
+    assert "POSTGRES_PASSWORD=sparkbot-local" in content
     assert "SPARKBOT_MODEL=gpt-5-mini" in content
     assert "sk-test-secret" not in result.stdout
     assert "sk-test-secret" not in result.stderr
@@ -370,6 +376,14 @@ def test_compose_local_uses_legacy_compatible_env_file_syntax() -> None:
     assert "required: false" not in content
     assert "path: .env.local" not in content
     assert "env_file:\n      - .env.local" in content
+
+
+def test_compose_local_prestart_waits_for_database_health() -> None:
+    content = LOCAL_COMPOSE.read_text()
+
+    assert "prestart:" in content
+    assert "db:\n        condition: service_healthy" in content
+    assert "command: bash scripts/prestart.sh" in content
 
 
 def test_start_script_prefers_docker_compose_v2_path(tmp_path: Path) -> None:

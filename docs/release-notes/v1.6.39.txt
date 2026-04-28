@@ -31,5 +31,9 @@ Product truth and MCP control-plane cleanup.
 - Add Docker buildx preflight checks and `--install-docker-plugins` so fresh
   Ubuntu installs get a clear plugin fix instead of a raw BuildKit/buildx
   failure.
+- Make the chat-table enum migration idempotent for PostgreSQL so fresh and
+  partially initialized installs do not fail on duplicate `usertype`.
+- Improve prestart diagnostics with plain-English database env validation and
+  failure context while avoiding provider secret logging.
 - Refresh README, capabilities docs, release note, and public downloader
   version markers for 1.6.39.
