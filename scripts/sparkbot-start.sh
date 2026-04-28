@@ -117,7 +117,7 @@ weak_passphrase() {
   local value="${1:-}"
   [ -n "${value}" ] || return 0
   case "${value}" in
-    sparkbot-local|changeme-in-production|changethis|password|admin123|REPLACE_WITH_*|please-change*)
+    sparkbot-local|changeme|changeme-in-production|changethis|password|admin123|REPLACE_WITH_*|replace-with-*|please-change*)
       return 0
       ;;
   esac
@@ -254,14 +254,18 @@ prompt_server_passphrase() {
   local first second
   while true; do
     if [ "${START_SHOW_INPUT}" = "1" ]; then
-      read -r -p "Create a server passphrase: " first
-      read -r -p "Confirm server passphrase: " second
+      printf 'Create Sparkbot server passphrase: ' >&2
+      read -r first
+      printf 'Confirm passphrase: ' >&2
+      read -r second
     else
       echo "Input will be hidden. Paste/type the new server passphrase, then press Enter." >&2
-      read -r -s -p "Create a server passphrase: " first
+      printf 'Create Sparkbot server passphrase: ' >&2
+      read -r -s first
       printf '\n' >&2
       echo "Input will be hidden. Paste/type it again, then press Enter." >&2
-      read -r -s -p "Confirm server passphrase: " second
+      printf 'Confirm passphrase: ' >&2
+      read -r -s second
       printf '\n' >&2
     fi
     if [ "${first}" != "${second}" ]; then
@@ -296,7 +300,7 @@ EOF
     return 0
   fi
 
-  if [ -t 0 ] && [ -t 1 ]; then
+  if [ -t 0 ] || [ "${START_SHOW_INPUT}" = "1" ]; then
     cat >&2 <<'EOF'
 Server mode requires authentication. Do not expose Sparkbot without a passphrase or reverse proxy auth.
 Create a new Sparkbot passphrase before startup.

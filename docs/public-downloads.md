@@ -40,9 +40,9 @@ cd Sparkbot
 bash scripts/sparkbot-start.sh --server
 ```
 
-Server mode forces passphrase setup before startup, disables local auto-login,
-and will not print the passphrase. Do not expose Sparkbot without that
-passphrase gate or reverse proxy authentication.
+Server mode prompts for a private passphrase before startup, disables local
+auto-login, saves the passphrase to `.env.local`, and will not print it. Do not
+expose Sparkbot without that passphrase gate or reverse proxy authentication.
 
 Fresh Ubuntu with missing Docker plugins:
 

@@ -177,9 +177,9 @@ cd Sparkbot
 bash scripts/sparkbot-start.sh --server
 ```
 
-The start script supports both Docker Compose v2 (`docker compose`) and legacy Docker Compose v1.29.x (`docker-compose`), creates `.env.local` when needed, opens the setup wizard if no provider is configured, writes the non-secret Compose interpolation values to root `.env`, and starts Sparkbot detached in the background. Local mode binds to `127.0.0.1`. Server mode binds the web UI to `0.0.0.0`, disables local auto-login, requires a private passphrase before startup, detects the public IP, prints the real browser URL, and warns you to use firewall rules or a reverse proxy with auth.
+The start script supports both Docker Compose v2 (`docker compose`) and legacy Docker Compose v1.29.x (`docker-compose`), creates `.env.local` when needed, opens the setup wizard if no provider is configured, writes the non-secret Compose interpolation values to root `.env`, and starts Sparkbot detached in the background. Local mode binds to `127.0.0.1`. Server mode binds the web UI to `0.0.0.0`, disables local auto-login, prompts you to create a private passphrase before startup, detects the public IP, prints the real browser URL, and warns you to use firewall rules or a reverse proxy with auth.
 
-Server mode refuses to start if `SPARKBOT_PASSPHRASE` is blank, missing, a placeholder, too short, or still set to the local default. The passphrase is never printed in launcher output.
+Server mode rejects blank, placeholder, too-short, and local-default passphrases. Hidden input is used by default; add `--show-input` if SSH paste troubleshooting requires visible input. The passphrase is saved to `.env.local` and is not printed by the launcher.
 
 On a fresh Ubuntu server, install the Docker Compose v2 and buildx plugins first:
 

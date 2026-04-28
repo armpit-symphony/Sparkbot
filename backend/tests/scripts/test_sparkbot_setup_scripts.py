@@ -30,7 +30,12 @@ def _run_setup(args: list[str], *, env: dict[str, str]) -> subprocess.CompletedP
     )
 
 
-def _run_start(args: list[str], *, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+def _run_start(
+    args: list[str],
+    *,
+    env: dict[str, str],
+    input_text: str | None = None,
+) -> subprocess.CompletedProcess[str]:
     merged_env = os.environ.copy()
     for key in (
         "SPARKBOT_FRONTEND_BIND_HOST",
@@ -48,6 +53,7 @@ def _run_start(args: list[str], *, env: dict[str, str]) -> subprocess.CompletedP
         ["bash", str(START_SCRIPT), *args],
         cwd=ROOT,
         env=merged_env,
+        input=input_text,
         text=True,
         capture_output=True,
         check=False,
@@ -594,6 +600,101 @@ exit 0
     assert result.returncode != 0
     assert "Server mode requires authentication" in result.stderr
     assert not compose_log.exists()
+
+
+def test_start_script_server_mode_show_input_prompts_for_passphrase(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    compose_log = tmp_path / "compose.log"
+    _write_executable(
+        fake_bin / "docker",
+        f"""#!/usr/bin/env sh
+if [ "$1" = "info" ]; then exit 0; fi
+if [ "$1" = "buildx" ] && [ "$2" = "version" ]; then exit 0; fi
+if [ "$1" = "compose" ] && [ "$2" = "version" ]; then exit 0; fi
+if [ "$1" = "compose" ]; then echo "$@" >> "{compose_log}"; exit 0; fi
+exit 1
+""",
+    )
+    _write_executable(
+        fake_bin / "ss",
+        """#!/usr/bin/env sh
+echo "State Recv-Q Send-Q Local Address:Port Peer Address:Port"
+exit 0
+""",
+    )
+    template = tmp_path / ".env.local.example"
+    env_file = tmp_path / ".env.local"
+    _template(template)
+
+    result = _run_start(
+        ["--server", "--show-input", "--openai-key", "sk-server-prompt"],
+        env={
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "SPARKBOT_ENV_FILE": str(env_file),
+            "SPARKBOT_ENV_TEMPLATE": str(template),
+            "SPARKBOT_PUBLIC_HOST": "203.0.113.30",
+        },
+        input_text="server-passphrase-123\nserver-passphrase-123\n",
+    )
+
+    assert result.returncode == 0
+    combined = result.stdout + result.stderr
+    assert "Create Sparkbot server passphrase:" in combined
+    assert "Confirm passphrase:" in combined
+    assert "server-passphrase-123" not in result.stdout
+    assert "server-passphrase-123" not in result.stderr
+    assert "SPARKBOT_PASSPHRASE=server-passphrase-123" in env_file.read_text()
+    assert "V1_LOCAL_MODE=false" in env_file.read_text()
+    assert compose_log.exists()
+
+
+def test_start_script_server_mode_rejects_weak_prompted_passphrase_then_accepts_valid(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    compose_log = tmp_path / "compose.log"
+    _write_executable(
+        fake_bin / "docker",
+        f"""#!/usr/bin/env sh
+if [ "$1" = "info" ]; then exit 0; fi
+if [ "$1" = "buildx" ] && [ "$2" = "version" ]; then exit 0; fi
+if [ "$1" = "compose" ] && [ "$2" = "version" ]; then exit 0; fi
+if [ "$1" = "compose" ]; then echo "$@" >> "{compose_log}"; exit 0; fi
+exit 1
+""",
+    )
+    _write_executable(
+        fake_bin / "ss",
+        """#!/usr/bin/env sh
+echo "State Recv-Q Send-Q Local Address:Port Peer Address:Port"
+exit 0
+""",
+    )
+    template = tmp_path / ".env.local.example"
+    env_file = tmp_path / ".env.local"
+    _template(template)
+
+    result = _run_start(
+        ["--server", "--show-input", "--openai-key", "sk-server-retry"],
+        env={
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "SPARKBOT_ENV_FILE": str(env_file),
+            "SPARKBOT_ENV_TEMPLATE": str(template),
+            "SPARKBOT_PUBLIC_HOST": "203.0.113.31",
+        },
+        input_text=(
+            "replace-with-a-long-private-passphrase\n"
+            "replace-with-a-long-private-passphrase\n"
+            "valid-server-passphrase\n"
+            "valid-server-passphrase\n"
+        ),
+    )
+
+    assert result.returncode == 0
+    assert "Passphrase must be at least 12 characters" in result.stderr
+    assert "replace-with-a-long-private-passphrase" not in env_file.read_text()
+    assert "SPARKBOT_PASSPHRASE=valid-server-passphrase" in env_file.read_text()
+    assert compose_log.exists()
 
 
 def test_start_script_server_mode_refuses_disabled_auth(tmp_path: Path) -> None:
