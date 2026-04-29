@@ -160,6 +160,32 @@ def _sanitize_env_value(value: str) -> str:
     return str(value or "").replace("\r", "").replace("\n", "").strip()
 
 
+def _reload_persisted_env() -> None:
+    """Re-read the data/.env file and apply all keys to os.environ.
+
+    In multi-worker deployments (e.g. 4 uvicorn workers), only the worker
+    that handled the save request has updated os.environ.  Other workers
+    still carry the original container env vars.  This function ensures
+    every config read reflects the latest saved state on disk.
+    """
+    env_path = _env_path()
+    if not env_path.exists():
+        return
+    try:
+        for line in env_path.read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            match = _ENV_UPDATE_RE.match(line)
+            if not match:
+                continue
+            key = match.group(1)
+            value = line[match.end():]
+            os.environ[key] = value
+    except Exception:
+        pass
+
+
 def _write_env_updates(updates: dict[str, str]) -> None:
     env_path = _env_path()
     existing_lines = env_path.read_text().splitlines() if env_path.exists() else []
@@ -350,6 +376,7 @@ def _build_comms_status() -> dict[str, Any]:
 
 
 async def _build_controls_config(current_user: CurrentChatUser, notices: list[str] | None = None) -> dict[str, Any]:
+    _reload_persisted_env()
     ollama_status = await get_ollama_status()
     # Only expose a model in default_selection/stack when the user has explicitly
     # configured one.  Fall back to empty string so the UI shows a clean slate on

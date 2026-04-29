@@ -1,0 +1,12 @@
+Sparkbot v1.6.42
+
+Highlights
+
+- Fixed Computer Control checkbox not staying enabled: bootstrap no longer resets the execution_allowed flag to the environment default on every page load. The flag is now only set when the DM room is first created.
+- Fixed model stack auto-reverting to initial defaults: in multi-worker deployments (e.g. 4 uvicorn workers), saved model stack and provider settings now persist correctly across all workers by re-reading the data/.env file before building the controls config response.
+- Added startup env loading: all workers now load saved settings from data/.env on boot, so container restarts no longer lose operator-configured model stack, provider keys, or guardian mode.
+
+Notes
+
+- Both fixes affect the server/Docker deployment path. Desktop (Tauri) users were less likely to hit Bug 2 since the desktop launcher already loaded data/.env on startup.
+- No frontend changes required — the bugs were backend-only.

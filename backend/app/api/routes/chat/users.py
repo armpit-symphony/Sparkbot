@@ -332,12 +332,6 @@ def chat_bootstrap(
     
     if existing_room:
         room = existing_room[0]
-        desired_execution_allowed = default_dm_execution_allowed(room_name)
-        if room.execution_allowed != desired_execution_allowed:
-            room.execution_allowed = desired_execution_allowed
-            session.add(room)
-            session.commit()
-            session.refresh(room)
     else:
         # Create new room
         room = ChatRoom(

@@ -94,6 +94,17 @@ if not settings.V1_LOCAL_MODE:
 
 
 @app.on_event("startup")
+async def _load_persisted_env() -> None:
+    """Load saved settings from data/.env so all workers start with the
+    latest operator-configured values (model stack, provider keys, etc.)."""
+    try:
+        from app.api.routes.chat.model import _reload_persisted_env
+        _reload_persisted_env()
+    except Exception:
+        pass
+
+
+@app.on_event("startup")
 async def _start_background_guardians() -> None:
     guardian_suite = get_guardian_suite()
     if not getattr(app.state, "reminder_scheduler_task", None):
