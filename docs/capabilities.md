@@ -300,7 +300,7 @@ These tools are called automatically mid-conversation. A chip appears briefly in
 | `remember_fact` | Store a fact about the user for future sessions |
 | `forget_fact` | Remove a stored fact by ID |
 
-Tool calling uses litellm's function-calling API (OpenAI format). Up to 20 tool-calling rounds per message.
+Tool calling uses litellm's function-calling API (OpenAI format). Up to 20 tool-calling rounds per message. Sparkbot deduplicates and trims the tool manifest to the provider limit before every LiteLLM call, so dynamic skills cannot push OpenAI-compatible providers past the 128-tool cap.
 
 ---
 

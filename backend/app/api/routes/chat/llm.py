@@ -1132,6 +1132,44 @@ def _select_tool_definitions(
     return [tool for _, _, tool in sorted(selected, key=lambda item: item[0])]
 
 
+def _latest_user_message_from_call_kwargs(kwargs: dict[str, Any]) -> str:
+    messages = kwargs.get("messages")
+    if not isinstance(messages, list):
+        return ""
+    for message in reversed(messages):
+        if not isinstance(message, dict) or message.get("role") != "user":
+            continue
+        content = message.get("content")
+        if isinstance(content, str):
+            return content
+        return _extract_text_content(content)
+    return ""
+
+
+def _normalize_tool_call_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
+    """Defensively enforce provider tool-count limits at the LiteLLM boundary."""
+    tools = kwargs.get("tools")
+    if not isinstance(tools, list):
+        return kwargs
+
+    latest_user_message = _latest_user_message_from_call_kwargs(kwargs)
+    selected_tools = _select_tool_definitions(
+        tools,
+        latest_user_message=latest_user_message,
+    )
+    if len(selected_tools) < len(tools):
+        log.warning(
+            "LLM tool payload trimmed before provider call: original=%s selected=%s latest_user_message_len=%s",
+            len(tools),
+            len(selected_tools),
+            len(latest_user_message),
+        )
+        normalized = dict(kwargs)
+        normalized["tools"] = selected_tools
+        return normalized
+    return kwargs
+
+
 def _should_retry_without_tools(error: Exception, candidate: str, kwargs: dict[str, Any]) -> bool:
     if "tools" not in kwargs:
         return False
@@ -1177,6 +1215,7 @@ async def _acompletion_with_fallback(
     route_context: dict[str, Any] | None = None,
     **kwargs,
 ):
+    kwargs = _normalize_tool_call_kwargs(kwargs)
     last_error: Exception | None = None
     chosen_candidate = model
     errors: list[str] = []

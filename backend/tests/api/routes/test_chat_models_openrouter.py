@@ -292,6 +292,54 @@ def test_tool_manifest_selection_stays_under_provider_limit() -> None:
     assert "youtube_summarize" in names
 
 
+def test_acompletion_with_fallback_clamps_oversized_tool_payload(monkeypatch) -> None:
+    observed_tool_counts: list[int] = []
+
+    class _FakeMessage:
+        tool_calls = None
+        content = "OK"
+
+        def model_dump(self, exclude_none: bool = True):
+            return {"role": "assistant", "content": "OK"}
+
+    class _FakeResponse:
+        choices = [SimpleNamespace(finish_reason="stop", message=_FakeMessage())]
+
+    async def fake_acompletion(*, model: str, **kwargs):
+        assert model == "gpt-4o-mini"
+        observed_tool_counts.append(len(kwargs.get("tools") or []))
+        return _FakeResponse()
+
+    monkeypatch.setattr(llm.litellm, "acompletion", fake_acompletion)
+
+    tools = [
+        {"type": "function", "function": {"name": f"tool_{idx}", "parameters": {"type": "object"}}}
+        for idx in range(134)
+    ]
+    route_context = {
+        "route": "default",
+        "provider_locked": True,
+        "requested_provider": "openai",
+        "model": "gpt-4o-mini",
+        "cross_provider_fallback": False,
+    }
+
+    chosen_model, response = asyncio.run(
+        llm._acompletion_with_fallback(
+            model="gpt-4o-mini",
+            route_context=route_context,
+            messages=[{"role": "user", "content": "i want room for work"}],
+            tools=tools,
+            tool_choice="auto",
+            stream=False,
+        )
+    )
+
+    assert chosen_model == "gpt-4o-mini"
+    assert response.choices[0].message.content == "OK"
+    assert observed_tool_counts == [128]
+
+
 def test_minimax_locked_route_retries_with_safe_text_settings(monkeypatch) -> None:
     calls: list[tuple[str, bool, bool]] = []
 

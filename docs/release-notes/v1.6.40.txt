@@ -22,5 +22,8 @@ Guardian Memory retrieval governance and metrics.
   `/api/v1/chat/guardian/metrics`:
   `memory_hit_rate`, `recall_precision@5`, `avg_retrieval_latency`,
   `guardian_job_success_rate`, and `pending_approvals_rate`.
+- Defensively trim the LiteLLM tool manifest to provider limits at the final
+  provider-call boundary so Telegram, web chat, and scheduled jobs keep working
+  even when dynamic skills expand the registered tool list.
 - Refresh README, capabilities docs, release note, and public downloader
   version markers for 1.6.40.
