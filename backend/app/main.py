@@ -102,6 +102,10 @@ async def _start_background_guardians() -> None:
         app.state.task_guardian_scheduler_task = asyncio.create_task(
             guardian_suite.task_guardian.task_guardian_scheduler(get_db)
         )
+    if not getattr(app.state, "memory_guardian_nightly_task", None):
+        app.state.memory_guardian_nightly_task = asyncio.create_task(
+            guardian_suite.task_guardian.memory_guardian_nightly_scheduler(get_db)
+        )
     try:
         from app.services.telegram_bridge import telegram_polling_loop
         if not getattr(app.state, "telegram_poller_task", None):
@@ -144,7 +148,7 @@ async def _start_background_guardians() -> None:
 
 @app.on_event("shutdown")
 async def _stop_background_guardians() -> None:
-    cancel_attrs = ["reminder_scheduler_task", "task_guardian_scheduler_task", "process_watcher_task", "telegram_poller_task", "discord_bot_task"]
+    cancel_attrs = ["reminder_scheduler_task", "task_guardian_scheduler_task", "memory_guardian_nightly_task", "process_watcher_task", "telegram_poller_task", "discord_bot_task"]
     for attr in cancel_attrs:
         task = getattr(app.state, attr, None)
         if task:

@@ -821,22 +821,34 @@ SPARKBOT_MEMORY_GUARDIAN_ENABLED=true
 SPARKBOT_MEMORY_GUARDIAN_DATA_DIR=./data/memory_guardian
 SPARKBOT_MEMORY_GUARDIAN_MAX_TOKENS=1200
 SPARKBOT_MEMORY_GUARDIAN_RETRIEVE_LIMIT=6
-SPARKBOT_MEMORY_GUARDIAN_RETRIEVER=hybrid          # fts | embed | hybrid (default hybrid)
-SPARKBOT_MEMORY_GUARDIAN_ENABLE_EMBEDDINGS=true    # disable to skip the embedding rerank
+SPARKBOT_MEMORY_GUARDIAN_RETRIEVER=fts             # fts | hybrid (default fts)
+SPARKBOT_MEMORY_GUARDIAN_ENABLE_EMBEDDINGS=false   # set true to enable hybrid embedding rerank
 ```
 
-Hybrid retrieval combines an SQLite FTS5 (BM25) lexical search with a hashing-trick cosine
-embedding rerank. The embedding index ships in-process — no external service or model
-downloads. Every memory write is tagged with provenance (`source`, e.g.
-`fact.user_authored`, `tool.gmail_search`, `chat.user`) and a confidence score, both of
-which are surfaced through the new `memory_recall` tool.
+Guardian Memory uses a Sparkbot-level retriever interface. The default implementation is
+a BM25 shim over SQLite FTS5, so fresh installs do not write embedding indexes. Optional
+hybrid retrieval combines BM25 candidates with a hashing-trick cosine rerank when
+`SPARKBOT_MEMORY_GUARDIAN_ENABLE_EMBEDDINGS=true`. The embedding index ships in-process:
+no external service or model downloads.
+
+Every memory write is tagged with provenance (`source`, e.g. `fact.user_authored`,
+`tool.gmail_search`, `chat.user`), confidence, verification state, and whether redaction
+was applied. Durable fact promotion calls `verify_fact()` first; low-confidence or
+uncertain facts create `pending_approvals` records instead of entering the long-term KB.
+
+Task Guardian also runs a nightly memory verification/evaluation pass. It verifies recent
+memory events, records promotion and pending-approval stats, evaluates BM25 vs hybrid
+retrieval with `retrieval_eval.py`, and exports the five digest metrics:
+`memory_hit_rate`, `recall_precision@5`, `avg_retrieval_latency`,
+`guardian_job_success_rate`, and `pending_approvals_rate`. Operators can read the same
+data from `/api/v1/chat/guardian/metrics`.
 
 Built-in memory tools (read-only by default; whitelisted for Task Guardian scheduling):
 
 | Tool | Purpose |
 |------|---------|
-| `memory_recall` | Hybrid recall against Guardian memory; returns ranked items with provenance + score |
-| `memory_retrieval_stats` | In-process telemetry: writes, recalls, hit rate, latency, retriever mode, embed index size |
+| `memory_recall` | BM25 recall by default, optional hybrid recall when embeddings are enabled; returns ranked items with provenance + score |
+| `memory_retrieval_stats` | In-process telemetry: writes, recalls, hit rate, precision@5, latency, retriever mode, Guardian job success, pending approval rate, embed index size |
 | `memory_reindex` | Rebuild FTS + embedding indexes from the on-disk ledger (idempotent; safe to schedule nightly) |
 
 ### Executive Guardian + Task Guardian
@@ -1704,7 +1716,7 @@ curl -b cookies.txt http://localhost:8000/api/v1/chat/system/watcher | python -m
 
 Desktop release tags and app versions are aligned on the `1.6.x` release line.
 
-For `v1.6.39`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story.
+For `v1.6.40`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story.
 
 ### How to upgrade safely
 

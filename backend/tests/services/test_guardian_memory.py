@@ -9,6 +9,8 @@ def _reset_memory_guardian(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("SPARKBOT_MEMORY_GUARDIAN_DATA_DIR", str(tmp_path / "memory_guardian"))
     monkeypatch.setenv("SPARKBOT_MEMORY_GUARDIAN_MAX_TOKENS", "1200")
     monkeypatch.setenv("SPARKBOT_MEMORY_GUARDIAN_RETRIEVE_LIMIT", "6")
+    monkeypatch.delenv("SPARKBOT_MEMORY_GUARDIAN_ENABLE_EMBEDDINGS", raising=False)
+    monkeypatch.delenv("SPARKBOT_MEMORY_GUARDIAN_RETRIEVER", raising=False)
     monkeypatch.setenv("SPARKBOT_IMPROVEMENT_DATA_DIR", str(tmp_path / "improvement_loop"))
     memory._guardian.cache_clear()
 
@@ -160,3 +162,41 @@ def test_memory_guardian_includes_promoted_workflow_patterns(monkeypatch, tmp_pa
     assert "Promoted Workflow Patterns" in context
     assert "ollama/qwen2:latest" in context
     assert "github get pr" in context.lower()
+
+
+def test_memory_guardian_defaults_to_bm25_and_requires_embedding_flag(monkeypatch, tmp_path: Path) -> None:
+    _reset_memory_guardian(monkeypatch, tmp_path)
+
+    assert memory._embeddings_enabled() is False
+    assert memory._retriever_mode() == "fts"
+
+    monkeypatch.setenv("SPARKBOT_MEMORY_GUARDIAN_RETRIEVER", "hybrid")
+    assert memory._retriever_mode() == "fts"
+
+    monkeypatch.setenv("SPARKBOT_MEMORY_GUARDIAN_ENABLE_EMBEDDINGS", "true")
+    assert memory._embeddings_enabled() is True
+    assert memory._retriever_mode() == "hybrid"
+
+
+def test_low_confidence_fact_creates_pending_approval(monkeypatch, tmp_path: Path) -> None:
+    _reset_memory_guardian(monkeypatch, tmp_path)
+    calls = []
+
+    def _fake_store_pending_approval(**kwargs):
+        calls.append(kwargs)
+
+    import app.services.guardian.pending_approvals as pending_approvals
+
+    monkeypatch.setattr(pending_approvals, "store_pending_approval", _fake_store_pending_approval)
+
+    stored = memory.remember_fact(
+        user_id="user-1",
+        fact="Maybe the user prefers release notes on Fridays.",
+        confidence=0.4,
+        source="fact.inferred",
+    )
+
+    assert stored is False
+    assert calls
+    assert calls[0]["tool_name"] == "memory_fact_promotion"
+    assert calls[0]["tool_args"]["verification_state"] == "unverified"

@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
-
+from dataclasses import dataclass
 
 _FAILURE_MARKERS = (
     "failed:",
@@ -56,6 +55,8 @@ _STRICT_READ_TOOLS = {
     "list_tasks",
     "list_reminders",
     "morning_briefing",
+    "retrieval_eval",
+    "memory_guardian_nightly",
 }
 _INTERACTIVE_VERIFY_ACTION_TYPES = {
     "write_external",
@@ -73,6 +74,14 @@ _SECRET_EVIDENCE_TOOLS = {
     "vault_delete_secret",
 }
 _URL_RE = re.compile(r"https?://|www\.", re.IGNORECASE)
+_SECRET_FACT_RE = re.compile(
+    r"(password|passwd|secret|token|api[_-]?key|credential|private[_-]?key|passphrase)",
+    re.IGNORECASE,
+)
+_FACT_UNCERTAINTY_RE = re.compile(
+    r"\b(maybe|possibly|probably|i think|not sure|might|could be|guess)\b",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -227,6 +236,54 @@ def verify_task_run(
         output=output,
         execution_status=execution_status,
         allow_output_evidence=tool_name not in _SECRET_EVIDENCE_TOOLS,
+    )
+
+
+def verify_fact(
+    *,
+    fact: str,
+    source: str = "memory",
+    confidence: float = 0.5,
+) -> VerificationResult:
+    """Verify whether a proposed durable memory fact is safe to promote."""
+    cleaned = " ".join((fact or "").split()).strip()
+    if not cleaned:
+        return VerificationResult(
+            status="failed",
+            confidence=1.0,
+            summary="Fact promotion rejected because the fact was empty.",
+            evidence=[],
+            recommended_next_action="Do not store empty facts.",
+        )
+    if len(cleaned) > 500:
+        return VerificationResult(
+            status="failed",
+            confidence=0.95,
+            summary="Fact promotion rejected because the fact was too long for durable memory.",
+            evidence=[{"type": "memory_source", "detail": source}],
+            recommended_next_action="Store a shorter, user-approved summary instead.",
+        )
+    if _SECRET_FACT_RE.search(cleaned):
+        return VerificationResult(
+            status="blocked",
+            confidence=0.98,
+            summary="Fact promotion blocked because the text appears to contain secret material.",
+            evidence=[{"type": "memory_source", "detail": source}],
+            recommended_next_action="Do not promote secrets into long-term memory.",
+        )
+    if confidence < 0.75 or _FACT_UNCERTAINTY_RE.search(cleaned):
+        return VerificationResult(
+            status="unverified",
+            confidence=max(0.2, min(float(confidence), 0.74)),
+            summary="Fact promotion needs human approval before it becomes durable memory.",
+            evidence=[{"type": "memory_source", "detail": source}],
+            recommended_next_action="Create a pending approval and only promote after confirmation.",
+        )
+    return VerificationResult(
+        status="verified",
+        confidence=max(0.75, min(float(confidence), 1.0)),
+        summary="Fact is safe to promote to durable memory.",
+        evidence=[{"type": "memory_source", "detail": source}],
     )
 
 

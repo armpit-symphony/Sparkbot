@@ -7,14 +7,17 @@ import os
 import re
 import threading
 import time
+import uuid
+from datetime import datetime, timedelta, timezone
 from functools import lru_cache
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from .memory_os.api import MemoryGuardian
 from .memory_os.config import Config
 from .memory_os.schemas import Event, EventType
+from .retrievers import build_retriever
+from .verifier import verify_fact
 
 _DEFAULT_DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "memory_guardian"
 _NO_CONTEXT_MARKER = "<!-- No relevant context found -->"
@@ -87,17 +90,18 @@ def _retrieve_limit() -> int:
 
 
 def _embeddings_enabled() -> bool:
-    """Hybrid retrieval embedding writes are on by default — the in-process
-    hashing-trick index has no external deps. Set to false to fall back to
-    pure FTS."""
-    raw = os.getenv("SPARKBOT_MEMORY_GUARDIAN_ENABLE_EMBEDDINGS", "true").strip().lower()
+    """Embedding writes are opt-in. Default retrieval is BM25/FTS only."""
+    raw = os.getenv("SPARKBOT_MEMORY_GUARDIAN_ENABLE_EMBEDDINGS", "false").strip().lower()
     return raw not in {"0", "false", "no", "off"}
 
 
 def _retriever_mode() -> str:
-    raw = (os.getenv("SPARKBOT_MEMORY_GUARDIAN_RETRIEVER", "hybrid") or "hybrid").strip().lower()
+    default = "hybrid" if _embeddings_enabled() else "fts"
+    raw = (os.getenv("SPARKBOT_MEMORY_GUARDIAN_RETRIEVER", default) or default).strip().lower()
     if raw not in _VALID_RETRIEVER_MODES:
-        return "hybrid"
+        return default
+    if raw in {"embed", "hybrid"} and not _embeddings_enabled():
+        return "fts"
     return raw
 
 
@@ -154,6 +158,12 @@ class _RetrievalStats:
         self.last_mode: str = ""
         self.last_event_count: int = 0
         self.last_top_score: float = 0.0
+        self.guardian_jobs = 0
+        self.guardian_job_failures = 0
+        self.pending_approvals_created = 0
+        self.recent_memory_events_checked = 0
+        self.recall_precision_at_5 = 0.0
+        self.last_guardian_job: dict[str, Any] = {}
         self.started_at = datetime.now(timezone.utc).isoformat()
 
     def record_write(self, *, ok: bool) -> None:
@@ -188,6 +198,16 @@ class _RetrievalStats:
         with self._lock:
             avg = (self.total_latency_ms / self.recalls) if self.recalls else 0.0
             hit = ((self.recalls - self.empty_recalls) / self.recalls) if self.recalls else 0.0
+            job_success = (
+                (self.guardian_jobs - self.guardian_job_failures) / self.guardian_jobs
+                if self.guardian_jobs
+                else 0.0
+            )
+            pending_rate = (
+                self.pending_approvals_created / self.recent_memory_events_checked
+                if self.recent_memory_events_checked
+                else 0.0
+            )
             return {
                 "started_at": self.started_at,
                 "writes": self.writes,
@@ -202,11 +222,39 @@ class _RetrievalStats:
                 "last_mode": self.last_mode,
                 "last_event_count": self.last_event_count,
                 "last_top_score": self.last_top_score,
+                "recall_precision@5": round(self.recall_precision_at_5, 4),
+                "avg_retrieval_latency": round(avg, 2),
+                "guardian_job_success_rate": round(job_success, 4),
+                "pending_approvals_rate": round(pending_rate, 4),
+                "guardian_jobs": self.guardian_jobs,
+                "guardian_job_failures": self.guardian_job_failures,
+                "pending_approvals_created": self.pending_approvals_created,
+                "recent_memory_events_checked": self.recent_memory_events_checked,
+                "last_guardian_job": dict(self.last_guardian_job),
             }
 
     def reset(self) -> None:
         with self._lock:
             self._reset()
+
+    def record_guardian_job(
+        self,
+        *,
+        ok: bool,
+        checked: int,
+        pending_created: int,
+        recall_precision_at_5: float | None,
+        summary: dict[str, Any],
+    ) -> None:
+        with self._lock:
+            self.guardian_jobs += 1
+            if not ok:
+                self.guardian_job_failures += 1
+            self.recent_memory_events_checked += max(0, int(checked))
+            self.pending_approvals_created += max(0, int(pending_created))
+            if recall_precision_at_5 is not None:
+                self.recall_precision_at_5 = round(float(recall_precision_at_5), 4)
+            self.last_guardian_job = dict(summary)
 
 
 _STATS = _RetrievalStats()
@@ -222,6 +270,18 @@ def memory_retrieval_stats() -> dict[str, Any]:
     except Exception:
         snap["embed_index_size"] = 0
     return snap
+
+
+def memory_metrics() -> dict[str, Any]:
+    """Return the five high-level memory quality metrics."""
+    snap = memory_retrieval_stats()
+    return {
+        "memory_hit_rate": snap.get("memory_hit_rate", 0.0),
+        "recall_precision@5": snap.get("recall_precision@5", 0.0),
+        "avg_retrieval_latency": snap.get("avg_retrieval_latency", snap.get("avg_latency_ms", 0.0)),
+        "guardian_job_success_rate": snap.get("guardian_job_success_rate", 0.0),
+        "pending_approvals_rate": snap.get("pending_approvals_rate", 0.0),
+    }
 
 
 def reset_memory_retrieval_stats() -> None:
@@ -432,11 +492,15 @@ def _append_event(
     metadata: dict[str, Any] | None = None,
     source: str = "chat",
     confidence: float | None = None,
+    verification_state: str | None = None,
 ) -> bool:
     if not memory_guardian_enabled():
         return False
 
-    text = _safe_text(_redact_sensitive_text(content))
+    raw_text = _safe_text(content)
+    redacted_text = _redact_sensitive_text(raw_text)
+    redacted = redacted_text != raw_text
+    text = _safe_text(redacted_text)
     if not text:
         return False
 
@@ -444,6 +508,8 @@ def _append_event(
     sanitized.setdefault("source", source)
     if confidence is not None:
         sanitized["confidence"] = round(float(confidence), 4)
+    sanitized.setdefault("verification_state", verification_state or "recorded")
+    sanitized.setdefault("redacted", redacted)
     sanitized.setdefault("recorded_at", datetime.now(timezone.utc).isoformat())
 
     event = Event(
@@ -547,24 +613,100 @@ def _emit_memory_event(event_type: str, content: str, payload: dict) -> None:
         pass
 
 
-def remember_fact(*, user_id: str, fact: str, memory_id: str = "") -> bool:
-    metadata = {"user_id": user_id}
+def _store_pending_memory_approval(
+    *,
+    user_id: str,
+    fact: str,
+    source: str,
+    confidence: float,
+    verification_state: str,
+    summary: str,
+    memory_id: str = "",
+    confirm_id: str | None = None,
+) -> str | None:
+    try:
+        from app.services.guardian.pending_approvals import store_pending_approval
+
+        confirm_id = confirm_id or f"memory_fact:{uuid.uuid4()}"
+        store_pending_approval(
+            confirm_id=confirm_id,
+            tool_name="memory_fact_promotion",
+            tool_args={
+                "fact": _safe_text(_redact_sensitive_text(fact), limit=500),
+                "source": source,
+                "confidence": round(float(confidence), 4),
+                "verification_state": verification_state,
+                "verification_summary": summary,
+                "memory_id": memory_id,
+            },
+            user_id=user_id,
+            room_id=None,
+        )
+        return confirm_id
+    except Exception:
+        return None
+
+
+def remember_fact(
+    *,
+    user_id: str,
+    fact: str,
+    memory_id: str = "",
+    source: str = "fact.user_authored",
+    confidence: float = 0.95,
+) -> bool:
+    safe_fact = _safe_text(fact, limit=500)
+    verification = verify_fact(fact=safe_fact, source=source, confidence=confidence)
+    if verification.status != "verified":
+        confirm_id = _store_pending_memory_approval(
+            user_id=user_id,
+            fact=safe_fact,
+            source=source,
+            confidence=verification.confidence,
+            verification_state=verification.status,
+            summary=verification.summary,
+            memory_id=memory_id,
+        )
+        _emit_memory_event(
+            "memory.fact_pending_approval",
+            _safe_text(safe_fact, limit=120),
+            {
+                "user_id": user_id,
+                "memory_id": memory_id,
+                "confirm_id": confirm_id,
+                "verification_state": verification.status,
+                "confidence": verification.confidence,
+            },
+        )
+        return False
+
+    metadata = {
+        "user_id": user_id,
+        "verification_state": verification.status,
+        "verification_summary": verification.summary,
+    }
     if memory_id:
         metadata["memory_id"] = memory_id
     stored = _append_event(
         event_type=EventType.SYSTEM,
         role="system",
-        content=f"FACT: {_safe_text(fact, limit=500)}",
+        content=f"FACT: {safe_fact}",
         session_id=_user_session(user_id),
         metadata=metadata,
-        source="fact.user_authored",
-        confidence=0.95,
+        source=source,
+        confidence=verification.confidence,
+        verification_state=verification.status,
     )
     if stored:
         _emit_memory_event(
             "memory.fact_stored",
-            _safe_text(fact, limit=120),
-            {"user_id": user_id, "memory_id": memory_id},
+            _safe_text(safe_fact, limit=120),
+            {
+                "user_id": user_id,
+                "memory_id": memory_id,
+                "verification_state": verification.status,
+                "confidence": verification.confidence,
+            },
         )
     return stored
 
@@ -627,28 +769,33 @@ def build_memory_context(*, user_id: str, room_id: str, query: str) -> str:
 
     started = time.perf_counter()
     try:
-        user_scored = guardian.retriever.retrieve_scored(
-            prompt_query, limit=limit, session_id=_user_session(user_id), mode=mode
+        retriever = build_retriever(
+            guardian,
+            requested_mode=mode,
+            embeddings_enabled=_embeddings_enabled(),
         )
-        user_count = len(user_scored)
-        user_top = user_scored[0][1] if user_scored else 0.0
-        if user_scored:
-            user_block = guardian.packer.pack([e for e, _ in user_scored]).strip()
+        user_hits = retriever.retrieve_scored(
+            prompt_query, limit=limit, session_id=_user_session(user_id)
+        )
+        user_count = len(user_hits)
+        user_top = user_hits[0].score if user_hits else 0.0
+        if user_hits:
+            user_block = guardian.packer.pack([hit.event for hit in user_hits]).strip()
 
-        room_scored = guardian.retriever.retrieve_scored(
-            prompt_query, limit=limit, session_id=_room_session(user_id, room_id), mode=mode
+        room_hits = retriever.retrieve_scored(
+            prompt_query, limit=limit, session_id=_room_session(user_id, room_id)
         )
-        room_count = len(room_scored)
-        room_top = room_scored[0][1] if room_scored else 0.0
-        if room_scored:
-            room_block = guardian.packer.pack([e for e, _ in room_scored]).strip()
+        room_count = len(room_hits)
+        room_top = room_hits[0].score if room_hits else 0.0
+        if room_hits:
+            room_block = guardian.packer.pack([hit.event for hit in room_hits]).strip()
     except Exception:
         # Fall back to the legacy packer path if the scored API fails for any reason.
         user_block = guardian.get_context(
-            prompt_query, limit=limit, session_id=_user_session(user_id), mode=mode
+            prompt_query, limit=limit, session_id=_user_session(user_id), mode="fts"
         ).strip()
         room_block = guardian.get_context(
-            prompt_query, limit=limit, session_id=_room_session(user_id, room_id), mode=mode
+            prompt_query, limit=limit, session_id=_room_session(user_id, room_id), mode="fts"
         ).strip()
     finally:
         latency_ms = (time.perf_counter() - started) * 1000.0
@@ -691,7 +838,9 @@ def recall_relevant_events(
     effective_limit = max(1, min(int(limit or _retrieve_limit()), 25))
     effective_mode = (mode or _retriever_mode()).strip().lower()
     if effective_mode not in _VALID_RETRIEVER_MODES:
-        effective_mode = "hybrid"
+        effective_mode = _retriever_mode()
+    if effective_mode in {"embed", "hybrid"} and not _embeddings_enabled():
+        effective_mode = "fts"
 
     sessions: list[str] = [_user_session(user_id)]
     if room_id:
@@ -700,12 +849,15 @@ def recall_relevant_events(
     started = time.perf_counter()
     aggregated: list[tuple[Event, float, str]] = []
     try:
+        retriever = build_retriever(
+            guardian,
+            requested_mode=effective_mode,
+            embeddings_enabled=_embeddings_enabled(),
+        )
         for sess in sessions:
-            scored = guardian.retriever.retrieve_scored(
-                prompt_query, limit=effective_limit, session_id=sess, mode=effective_mode
-            )
-            for event, score in scored:
-                aggregated.append((event, float(score), sess))
+            hits = retriever.retrieve_scored(prompt_query, limit=effective_limit, session_id=sess)
+            for hit in hits:
+                aggregated.append((hit.event, float(hit.score), sess))
     finally:
         latency_ms = (time.perf_counter() - started) * 1000.0
         top = max((s for _, s, _ in aggregated), default=0.0)
@@ -763,6 +915,128 @@ def reindex_memory_indexes() -> dict[str, Any]:
         "embeddings_enabled": _embeddings_enabled(),
         "retriever_mode": _retriever_mode(),
     }
+
+
+def _guardian_job_log_path() -> Path:
+    path = _data_dir() / "memory_guardian_jobs.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _append_guardian_job_log(payload: dict[str, Any]) -> None:
+    try:
+        with _guardian_job_log_path().open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n")
+    except Exception:
+        pass
+
+
+def verify_recent_memory_events(
+    *,
+    lookback_hours: int = 24,
+    limit: int = 200,
+) -> dict[str, Any]:
+    """Verify recent memory events and queue approvals for weak fact promotions."""
+    guardian = _guardian()
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=max(1, min(int(lookback_hours), 24 * 30)))
+    events = list(guardian.ledger.iter_events())[-max(1, min(int(limit), 1000)):]
+    checked = 0
+    verified_promotions = 0
+    pending_created = 0
+    blocked = 0
+    verification_states: dict[str, int] = {}
+
+    for event in events:
+        event_ts = event.timestamp
+        if event_ts and event_ts.tzinfo is None:
+            event_ts = event_ts.replace(tzinfo=timezone.utc)
+        if event_ts and event_ts < cutoff:
+            continue
+        checked += 1
+        meta = dict(event.metadata or {})
+        state = str(meta.get("verification_state") or "recorded")
+        verification_states[state] = verification_states.get(state, 0) + 1
+        if event.type != EventType.SYSTEM or not event.content.startswith("FACT:"):
+            continue
+        fact = _normalize_fact_text(event.content.removeprefix("FACT:").strip())
+        confidence = float(meta.get("confidence") or 0.5)
+        source = str(meta.get("source") or "memory")
+        verification = verify_fact(fact=fact, source=source, confidence=confidence)
+        verification_states[verification.status] = verification_states.get(verification.status, 0) + 1
+        if verification.status == "verified":
+            verified_promotions += 1
+            continue
+        if verification.status == "blocked":
+            blocked += 1
+        confirm_id = _store_pending_memory_approval(
+            user_id=str(meta.get("user_id") or ""),
+            fact=fact,
+            source=source,
+            confidence=verification.confidence,
+            verification_state=verification.status,
+            summary=verification.summary,
+            memory_id=str(meta.get("memory_id") or ""),
+            confirm_id=f"memory_fact:{event.id}",
+        )
+        if confirm_id:
+            pending_created += 1
+
+    return {
+        "checked": checked,
+        "verified_promotions": verified_promotions,
+        "pending_approvals_created": pending_created,
+        "blocked": blocked,
+        "verification_states": verification_states,
+    }
+
+
+def run_nightly_memory_guardian_job(*, session: Any | None = None) -> dict[str, Any]:
+    """Run the nightly memory verification/evaluation pass and update metrics."""
+    ok = True
+    error = ""
+    verification_summary: dict[str, Any] = {}
+    eval_summary: dict[str, Any] = {}
+    try:
+        verification_summary = verify_recent_memory_events()
+        try:
+            from .retrieval_eval import run_retrieval_eval
+
+            eval_summary = run_retrieval_eval(session=session)
+        except Exception as exc:
+            eval_summary = {"error": str(exc), "cases": 0}
+    except Exception as exc:
+        ok = False
+        error = str(exc)
+
+    precision = None
+    try:
+        modes = eval_summary.get("modes") or {}
+        preferred = eval_summary.get("preferred_mode") or _retriever_mode()
+        if preferred in modes:
+            precision = float(modes[preferred].get("precision@5") or 0.0)
+        elif "fts" in modes:
+            precision = float(modes["fts"].get("precision@5") or 0.0)
+    except Exception:
+        precision = None
+
+    summary = {
+        "ran_at": datetime.now(timezone.utc).isoformat(),
+        "ok": ok,
+        "error": error,
+        "verification": verification_summary,
+        "retrieval_eval": eval_summary,
+        "metrics": memory_metrics(),
+    }
+    _STATS.record_guardian_job(
+        ok=ok,
+        checked=int(verification_summary.get("checked") or 0),
+        pending_created=int(verification_summary.get("pending_approvals_created") or 0),
+        recall_precision_at_5=precision,
+        summary=summary,
+    )
+    summary["metrics"] = memory_metrics()
+    _append_guardian_job_log(summary)
+    return summary
 
 
 def delete_fact_memory(*, user_id: str, memory_id: str) -> int:

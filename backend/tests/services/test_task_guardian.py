@@ -47,6 +47,23 @@ def test_task_guardian_allows_meeting_heartbeat(monkeypatch, tmp_path) -> None:
     assert task.tool_name == "meeting_heartbeat"
 
 
+def test_task_guardian_allows_memory_guardian_nightly(monkeypatch, tmp_path) -> None:
+    task_guardian = _reload_task_guardian(monkeypatch, tmp_path)
+
+    scheduled = task_guardian.schedule_task(
+        name="Nightly memory verification",
+        tool_name="memory_guardian_nightly",
+        tool_args={},
+        schedule="daily:03:10",
+        room_id="room-123",
+        user_id="user-123",
+    )
+
+    task = task_guardian.get_task(scheduled["id"])
+    assert task is not None
+    assert task.tool_name == "memory_guardian_nightly"
+
+
 def test_task_guardian_daily_schedule_calculates_next_utc_run(monkeypatch, tmp_path) -> None:
     task_guardian = _reload_task_guardian(monkeypatch, tmp_path)
 

@@ -482,6 +482,20 @@ def get_task_guardian_write_mode(current_user: CurrentChatUser) -> dict[str, Any
     return {"write_enabled": tg.TASK_GUARDIAN_WRITE_ENABLED}
 
 
+# ── Metrics ───────────────────────────────────────────────────────────────────
+
+@router.get("/guardian/metrics")
+def guardian_metrics(current_user: CurrentChatUser) -> dict[str, Any]:
+    """Return authenticated Guardian memory metrics for daily digest/monitoring."""
+    _require_guardian_operator(current_user)
+    from app.services.guardian.memory import memory_metrics, memory_retrieval_stats
+
+    return {
+        "metrics": memory_metrics(),
+        "details": memory_retrieval_stats(),
+    }
+
+
 # ── Global guardian status ──────────────────────────────────────────────────────
 
 @router.get("/guardian/status")

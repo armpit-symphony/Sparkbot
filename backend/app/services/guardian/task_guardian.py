@@ -47,6 +47,14 @@ TASK_GUARDIAN_RETRY_MAX_SECONDS = max(
     TASK_GUARDIAN_RETRY_BASE_SECONDS,
     min(int(os.getenv("SPARKBOT_TASK_GUARDIAN_RETRY_MAX_SECONDS", "3600")), 172800),
 )
+TASK_GUARDIAN_MEMORY_NIGHTLY_ENABLED = os.getenv(
+    "SPARKBOT_TASK_GUARDIAN_MEMORY_NIGHTLY_ENABLED",
+    "true",
+).strip().lower() in {"1", "true", "yes", "on"}
+TASK_GUARDIAN_MEMORY_NIGHTLY_UTC = os.getenv(
+    "SPARKBOT_TASK_GUARDIAN_MEMORY_NIGHTLY_UTC",
+    "03:10",
+).strip()
 
 ALLOWED_TASK_TOOLS = {
     "meeting_heartbeat",
@@ -68,6 +76,8 @@ ALLOWED_TASK_TOOLS = {
     "memory_recall",         # diagnostics: hybrid recall against Guardian memory
     "memory_retrieval_stats",# nightly memory telemetry digest
     "memory_reindex",        # rebuild FTS + embedding indexes from the ledger
+    "retrieval_eval",        # compare BM25 vs hybrid precision/latency
+    "memory_guardian_nightly",# verify recent memory events + export metrics
 }
 
 # Write tools allowed in scheduled context when SPARKBOT_TASK_GUARDIAN_WRITE_ENABLED=true.
@@ -617,6 +627,22 @@ async def _execute_internal_tool(task: GuardianTask, session: Session) -> tuple[
         )
         return "success", json.dumps(payload, ensure_ascii=False)
 
+    if task.tool_name == "memory_guardian_nightly":
+        from app.services.guardian.memory import run_nightly_memory_guardian_job
+
+        payload = run_nightly_memory_guardian_job(session=session)
+        return "success", json.dumps(payload, ensure_ascii=False)
+
+    if task.tool_name == "retrieval_eval":
+        from app.services.guardian.retrieval_eval import run_retrieval_eval
+
+        payload = run_retrieval_eval(
+            session=session,
+            user_id=task.user_id,
+            room_id=task.room_id,
+        )
+        return "success", json.dumps(payload, ensure_ascii=False)
+
     room = session.get(ChatRoom, uuid.UUID(task.room_id))
     execution_allowed = bool(room.execution_allowed) if room else False
     tool_args = json.loads(task.tool_args_json or "{}")
@@ -873,3 +899,38 @@ async def task_guardian_scheduler(get_db_session: Callable[[], Any]) -> None:
             return
         except Exception:
             await asyncio.sleep(5)
+
+
+def _seconds_until_memory_nightly(base: datetime | None = None) -> float:
+    base = base or _now()
+    if base.tzinfo is None:
+        base = base.replace(tzinfo=timezone.utc)
+    base = base.astimezone(timezone.utc)
+    try:
+        hour, minute = _parse_daily_time(TASK_GUARDIAN_MEMORY_NIGHTLY_UTC)
+    except ValueError:
+        hour, minute = 3, 10
+    candidate = base.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if candidate <= base:
+        candidate += timedelta(days=1)
+    return max(1.0, (candidate - base).total_seconds())
+
+
+async def memory_guardian_nightly_scheduler(get_db_session: Callable[[], Any]) -> None:
+    """Task Guardian managed nightly memory verification/evaluation loop."""
+    if not TASK_GUARDIAN_ENABLED or not TASK_GUARDIAN_MEMORY_NIGHTLY_ENABLED:
+        return
+    while True:
+        try:
+            await asyncio.sleep(_seconds_until_memory_nightly())
+            db = next(get_db_session())
+            try:
+                from app.services.guardian.memory import run_nightly_memory_guardian_job
+
+                run_nightly_memory_guardian_job(session=db)
+            finally:
+                db.close()
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            await asyncio.sleep(300)

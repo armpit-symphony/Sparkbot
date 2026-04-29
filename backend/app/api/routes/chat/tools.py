@@ -4945,7 +4945,11 @@ async def _memory_retrieval_stats() -> str:
         f"- writes: {snap.get('writes')} (failures {snap.get('write_failures')})",
         f"- recalls: {snap.get('recalls')} (empty {snap.get('empty_recalls')})",
         f"- memory_hit_rate: {snap.get('memory_hit_rate')}",
+        f"- recall_precision@5: {snap.get('recall_precision@5')}",
+        f"- guardian_job_success_rate: {snap.get('guardian_job_success_rate')}",
+        f"- pending_approvals_rate: {snap.get('pending_approvals_rate')}",
         f"- avg_latency_ms: {snap.get('avg_latency_ms')}",
+        f"- avg_retrieval_latency: {snap.get('avg_retrieval_latency')}",
         f"- last_latency_ms: {snap.get('last_latency_ms')}",
         f"- recalls_by_mode: {snap.get('recalls_by_mode')}",
     ]

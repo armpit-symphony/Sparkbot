@@ -1,0 +1,26 @@
+Sparkbot v1.6.40
+=================
+
+Guardian Memory retrieval governance and metrics.
+
+- Add a Sparkbot-level retriever interface for Guardian Memory.
+- Default fresh installs to BM25/SQLite FTS recall.
+- Keep hybrid embedding rerank opt-in behind:
+  `SPARKBOT_MEMORY_GUARDIAN_ENABLE_EMBEDDINGS=true`.
+- Extend memory write metadata with source, confidence, verification state,
+  and redaction status.
+- Run `verify_fact()` before durable fact promotion.
+- Route low-confidence or uncertain fact writes into `pending_approvals`
+  instead of promoting them directly into long-term memory.
+- Add a nightly Task Guardian memory job that verifies recent memory events,
+  logs verified promotion and pending-approval stats, and records memory
+  digest metrics.
+- Add `retrieval_eval.py` to compare BM25 and hybrid retrieval precision@5
+  and average latency using Guardian suite inventory plus meeting-recorder
+  artifacts.
+- Expose authenticated Guardian memory metrics at
+  `/api/v1/chat/guardian/metrics`:
+  `memory_hit_rate`, `recall_precision@5`, `avg_retrieval_latency`,
+  `guardian_job_success_rate`, and `pending_approvals_rate`.
+- Refresh README, capabilities docs, release note, and public downloader
+  version markers for 1.6.40.

@@ -6,7 +6,7 @@ Use it to chat, search, summarize documents, control a browser, run shell comman
 
 **Download:** [armpit-symphony.github.io/Sparkbot](https://armpit-symphony.github.io/Sparkbot/)
 
-**Current release line:** v1.6.39
+**Current release line:** v1.6.40
 
 > Sparkbot stores its app data locally. If you connect a cloud LLM provider or an external service, the text and actions needed for that provider or service are sent to that provider. Local models can run without an LLM cloud account.
 
@@ -72,8 +72,9 @@ The desktop app is the easiest path for one person. Docker and systemd deploymen
 - **Spawn agents** — create named agents with custom system prompts and first-class identity metadata from 11 specialty templates
 - **Agent identity + kill switches** — each agent exposes owner, purpose, scopes, allowed tools, expiration, risk tier, and kill-switch state; disabled agents do not route from `@mention`
 - **Persistent memory** — Sparkbot stores facts about you and injects them into every conversation
-- **Hybrid recall** — Guardian Memory blends BM25 full-text search with an in-process embedding rerank, so Sparkbot finds relevant prior context even when you paraphrase. Provenance + confidence are tagged on every memory and surfaced to the model
-- **Self-introspection** — built-in `memory_recall`, `memory_retrieval_stats`, and `memory_reindex` tools let Sparkbot search its own ledger, report hit rate / latency, and rebuild indexes (schedulable as a nightly Task Guardian job)
+- **Memory retrieval controls** — Guardian Memory now defaults to BM25 full-text recall, with optional hybrid embedding rerank gated behind `SPARKBOT_MEMORY_GUARDIAN_ENABLE_EMBEDDINGS=true`
+- **Verified memory writes** — durable facts carry source, confidence, verification state, and redaction metadata; low-confidence facts go to pending approvals instead of being promoted automatically
+- **Self-introspection** — built-in `memory_recall`, `memory_retrieval_stats`, and `memory_reindex` tools let Sparkbot search its ledger, report hit rate / precision@5 / latency, and rebuild indexes; Task Guardian runs nightly verification/evaluation metrics
 - **Knowledge base** — ingest any document or URL; Sparkbot searches it with BM25 full-text ranking when relevant
 - **Skill plugins** — drop a `.py` file into `backend/skills/` to add a new tool; auto-discovered on restart
 
@@ -527,7 +528,7 @@ User message → Token Guardian → Memory Guardian → LLM
 
 | Version | Date | Highlights |
 |---------|------|-----------|
-| v1.6.39 | Apr 2026 | Unified Sparkbot + LIMA Robotics OS positioning; Workstation Robo OS button; MCP control-plane registry with typed manifests, policy metadata, dry-run posture, live Sparkbot health, run timeline, and no-hardware LIMA replay/simulation demos |
+| v1.6.40 | Apr 2026 | Guardian Memory retrieval governance: BM25 default retriever interface, optional hybrid embedding flag, verified fact promotion with pending approvals, nightly Task Guardian memory evaluation, precision/latency metrics, and authenticated Guardian metrics endpoint |
 | v1.6.38 | Apr 2026 | Governance roadmap baseline: first-class agent identity/kill switches, run timeline API with audit hashes, connector health/scopes, workflow templates, PWA manifest, per-tool input/output guardrails, deterministic eval harness, privacy/data-retention docs, and aligned downloader versioning |
 | v1.6.37 | Apr 2026 | Self-learning memory + governed orchestration: hybrid Guardian recall with provenance/confidence, memory self-introspection tools, truth/confidence guardrails, approval-first improvement proposals, policy simulator, orchestrator docs, Telegram token-safe error handling, and write-like shell confirmation in policy mode |
 | v1.6.36 | Apr 2026 | Computer Control replaces the room execution gate; Workstation status now reflects the Controls checkbox; first-run 6-digit PIN setup/change flow for Break-glass, Vault, commands, browser writes, and comms sends |
