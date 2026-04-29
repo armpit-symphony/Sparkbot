@@ -700,7 +700,7 @@ exit 0
     assert result.returncode == 0
     combined = result.stdout + result.stderr
     assert "Create Sparkbot server passphrase:" in combined
-    assert "Confirm passphrase:" in combined
+    assert "Confirm server passphrase:" in combined
     assert "server-passphrase-123" not in result.stdout
     assert "server-passphrase-123" not in result.stderr
     assert "SPARKBOT_PASSPHRASE=server-passphrase-123" in env_file.read_text()
@@ -734,6 +734,7 @@ def test_start_script_server_mode_show_passphrase_input_prompts_visibly(tmp_path
     assert "Your passphrase will be visible while typing in this terminal session." in result.stderr
     assert "Hidden input did not work" not in combined
     assert "Dry-run setup complete. Docker was not started." in result.stdout
+    assert "Server passphrase saved." in result.stderr
     assert "SPARKBOT_PASSPHRASE=visible-server-passphrase" in env_file.read_text()
     assert "visible-server-passphrase" not in result.stdout
     assert "visible-server-passphrase" not in result.stderr
@@ -758,6 +759,7 @@ def test_start_script_server_mode_ssh_passphrase_uses_visible_fallback(tmp_path:
     assert result.returncode == 0
     assert "Hidden input did not work in this terminal. Switching to visible input." in result.stderr
     assert "Your passphrase will be visible while typing in this terminal session." in result.stderr
+    assert "Server passphrase saved." in result.stderr
     assert "SPARKBOT_PASSPHRASE=ssh-server-passphrase" in env_file.read_text()
     assert "ssh-server-passphrase" not in result.stdout
     assert "ssh-server-passphrase" not in result.stderr
@@ -843,7 +845,7 @@ def test_start_script_server_mode_passphrase_mismatch_retries(tmp_path: Path) ->
     )
 
     assert result.returncode == 0
-    assert "Passphrases did not match. Try again." in result.stderr
+    assert "Passphrases did not match." in result.stderr
     assert "first-server-passphrase" not in env_file.read_text()
     assert "SPARKBOT_PASSPHRASE=matched-server-passphrase" in env_file.read_text()
     assert "matched-server-passphrase" not in result.stdout
@@ -892,7 +894,7 @@ exit 0
     )
 
     assert result.returncode == 0
-    assert "Passphrase must be at least 12 characters" in result.stderr
+    assert "Passphrase cannot be a default or placeholder." in result.stderr
     assert "replace-with-a-long-private-passphrase" not in env_file.read_text()
     assert "SPARKBOT_PASSPHRASE=valid-server-passphrase" in env_file.read_text()
     assert compose_log.exists()
@@ -920,8 +922,97 @@ def test_start_script_rejects_weak_direct_passphrase_without_logging_value(tmp_p
     )
 
     assert result.returncode != 0
-    assert "Passphrase must be at least 12 characters" in result.stderr
+    assert "Passphrase cannot be a default or placeholder." in result.stderr
     assert "SPARKBOT_PASSPHRASE=sparkbot" not in env_file.read_text().splitlines()
+
+
+def test_start_script_server_mode_rejects_short_prompted_passphrase(tmp_path: Path) -> None:
+    template = tmp_path / ".env.local.example"
+    env_file = tmp_path / ".env.local"
+    _template(template)
+
+    result = _run_start(
+        [
+            "--server",
+            "--dry-run-setup",
+            "--show-passphrase-input",
+            "--openai-key",
+            "sk-short-passphrase",
+        ],
+        env={
+            "SPARKBOT_ENV_FILE": str(env_file),
+            "SPARKBOT_ENV_TEMPLATE": str(template),
+            "SPARKBOT_PUBLIC_HOST": "203.0.113.38",
+        },
+        input_text=(
+            "short\n"
+            "short\n"
+            "valid-after-short-passphrase\n"
+            "valid-after-short-passphrase\n"
+        ),
+    )
+
+    assert result.returncode == 0
+    assert "Passphrase is too short. Use at least 12 characters." in result.stderr
+    assert "SPARKBOT_PASSPHRASE=valid-after-short-passphrase" in env_file.read_text()
+
+
+def test_start_script_server_mode_rejects_empty_prompted_passphrase(tmp_path: Path) -> None:
+    template = tmp_path / ".env.local.example"
+    env_file = tmp_path / ".env.local"
+    _template(template)
+
+    result = _run_start(
+        [
+            "--server",
+            "--dry-run-setup",
+            "--show-passphrase-input",
+            "--openai-key",
+            "sk-empty-passphrase",
+        ],
+        env={
+            "SPARKBOT_ENV_FILE": str(env_file),
+            "SPARKBOT_ENV_TEMPLATE": str(template),
+            "SPARKBOT_PUBLIC_HOST": "203.0.113.39",
+        },
+        input_text=(
+            "\n"
+            "\n"
+            "valid-after-empty-passphrase\n"
+            "valid-after-empty-passphrase\n"
+        ),
+    )
+
+    assert result.returncode == 0
+    assert "Passphrase cannot be empty." in result.stderr
+    assert "SPARKBOT_PASSPHRASE=valid-after-empty-passphrase" in env_file.read_text()
+
+
+def test_start_script_server_mode_max_passphrase_retries_exits_cleanly(tmp_path: Path) -> None:
+    template = tmp_path / ".env.local.example"
+    env_file = tmp_path / ".env.local"
+    _template(template)
+
+    result = _run_start(
+        [
+            "--server",
+            "--dry-run-setup",
+            "--show-passphrase-input",
+            "--openai-key",
+            "sk-max-retry-passphrase",
+        ],
+        env={
+            "SPARKBOT_ENV_FILE": str(env_file),
+            "SPARKBOT_ENV_TEMPLATE": str(template),
+            "SPARKBOT_PUBLIC_HOST": "203.0.113.41",
+        },
+        input_text=("short\nshort\n" * 5),
+    )
+
+    assert result.returncode != 0
+    assert result.stderr.count("Passphrase is too short. Use at least 12 characters.") == 5
+    assert "Too many invalid passphrase attempts. Rerun setup to try again." in result.stderr
+    assert "SPARKBOT_PASSPHRASE=short" not in env_file.read_text().splitlines()
 
 
 def test_start_script_server_mode_refuses_disabled_auth(tmp_path: Path) -> None:

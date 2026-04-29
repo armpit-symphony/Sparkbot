@@ -138,16 +138,26 @@ truthy() {
 }
 
 weak_passphrase() {
+  [ -n "$(passphrase_validation_message "${1:-}")" ]
+}
+
+passphrase_validation_message() {
   local value="${1:-}"
   local normalized
-  [ -n "${value}" ] || return 0
+  if [ -z "${value}" ]; then
+    echo "Passphrase cannot be empty."
+    return 0
+  fi
   normalized="$(printf '%s' "${value}" | tr '[:upper:]' '[:lower:]')"
   case "${normalized}" in
     sparkbot|sparkbot-local|changeme|changeme-in-production|changethis|password|admin|admin123|your-passphrase|replace-with-a-long-private-passphrase|replace-with-*|please-change*|replace_with_*)
+      echo "Passphrase cannot be a default or placeholder."
       return 0
       ;;
   esac
-  [ "${#value}" -lt 12 ]
+  if [ "${#value}" -lt 12 ]; then
+    echo "Passphrase is too short. Use at least 12 characters."
+  fi
 }
 
 ssh_session() {
@@ -334,21 +344,28 @@ read_server_passphrase_value() {
 }
 
 prompt_server_passphrase() {
-  local first second
-  while true; do
+  local first second validation_error attempt max_attempts
+  attempt=1
+  max_attempts=5
+  while [ "${attempt}" -le "${max_attempts}" ]; do
     first="$(read_server_passphrase_value "Create Sparkbot server passphrase: ")" || return 1
-    second="$(read_server_passphrase_value "Confirm passphrase: ")" || return 1
+    second="$(read_server_passphrase_value "Confirm server passphrase: ")" || return 1
     if [ "${first}" != "${second}" ]; then
-      echo "Passphrases did not match. Try again." >&2
+      echo "Passphrases did not match." >&2
+      attempt=$((attempt + 1))
       continue
     fi
-    if weak_passphrase "${first}"; then
-      echo "Passphrase must be at least 12 characters and cannot use Sparkbot defaults or placeholders." >&2
+    validation_error="$(passphrase_validation_message "${first}")"
+    if [ -n "${validation_error}" ]; then
+      echo "${validation_error}" >&2
+      attempt=$((attempt + 1))
       continue
     fi
     printf '%s' "${first}"
     return 0
   done
+  echo "Too many invalid passphrase attempts. Rerun setup to try again." >&2
+  return 1
 }
 
 ensure_server_auth() {
@@ -365,12 +382,15 @@ EOF
     exit 1
   fi
 
-  if [ -n "${START_PASSPHRASE}" ] && weak_passphrase "${START_PASSPHRASE}"; then
-    echo "Passphrase must be at least 12 characters and cannot use Sparkbot defaults or placeholders." >&2
+  local validation_error
+  validation_error="$(passphrase_validation_message "${START_PASSPHRASE}")"
+  if [ -n "${START_PASSPHRASE}" ] && [ -n "${validation_error}" ]; then
+    echo "${validation_error}" >&2
     exit 1
   fi
 
-  if ! weak_passphrase "${configured}"; then
+  validation_error="$(passphrase_validation_message "${configured}")"
+  if [ -z "${validation_error}" ]; then
     env_set "SPARKBOT_PASSPHRASE" "${configured}"
     return 0
   fi
@@ -381,6 +401,7 @@ Create a new Sparkbot passphrase before startup.
 EOF
   if configured="$(prompt_server_passphrase)"; then
     env_set "SPARKBOT_PASSPHRASE" "${configured}"
+    echo "Server passphrase saved." >&2
     return 0
   fi
 
