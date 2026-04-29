@@ -180,7 +180,7 @@ bash scripts/sparkbot-start.sh --server
 
 The start script supports both Docker Compose v2 (`docker compose`) and legacy Docker Compose v1.29.x (`docker-compose`), creates `.env.local` when needed, opens the setup wizard if no provider is configured, writes the non-secret Compose interpolation values to root `.env`, and starts Sparkbot detached in the background. Local mode binds to `127.0.0.1`. Server mode binds the web UI to `0.0.0.0`, disables local auto-login, prompts you to create a private passphrase before startup, detects the public IP, prints the real browser URL, and warns you to use firewall rules or a reverse proxy with auth.
 
-Server mode rejects blank, placeholder, too-short, and local-default passphrases. Passphrase prompts stay hidden by default; add `--show-input` only if passphrase entry troubleshooting requires visible input. The passphrase is saved to `.env.local` and is not printed by the launcher.
+Server mode rejects blank, placeholder, too-short, and local-default passphrases. Passphrase prompts try the secure hidden path when it is reliable, then automatically switch to visible input with a warning if the SSH terminal cannot accept hidden input. Add `--show-passphrase-input` to make passphrase creation visible from the start for troubleshooting. The passphrase is saved to `.env.local` and is not printed by the launcher.
 
 On a fresh Ubuntu server, install the Docker Compose v2 and buildx plugins first:
 
@@ -206,6 +206,23 @@ For SSH servers, the most reliable no-prompt path is exporting a provider key fi
 ```bash
 export OPENAI_API_KEY="sk-..."
 bash scripts/sparkbot-start.sh --server --from-env
+```
+
+You can also seed the server passphrase without an interactive prompt:
+
+```bash
+export OPENAI_API_KEY="sk-..."
+export SPARKBOT_PASSPHRASE="long-private-passphrase"
+bash scripts/sparkbot-start.sh --server --from-env
+
+# or
+bash scripts/sparkbot-start.sh --server --openai-key "sk-..." --passphrase "long-private-passphrase"
+```
+
+To validate the first-run prompts without starting Docker:
+
+```bash
+bash scripts/sparkbot-start.sh --server --dry-run-setup
 ```
 
 If another app already uses port 3000, Sparkbot auto-selects the next open port and prints the actual URL. You can also choose one:

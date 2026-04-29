@@ -47,6 +47,11 @@ Product truth and MCP control-plane cleanup.
   starts, saves the accepted passphrase to `.env.local`, never prints it, and
   builds the frontend with local auto-login off so the login/passphrase screen
   gates workspace access.
+- Make server passphrase onboarding SSH-safe: hidden input falls back to
+  visible input when the terminal cannot accept hidden typing or paste,
+  `--show-passphrase-input` makes troubleshooting explicit, `--passphrase`
+  supports direct setup, and `--dry-run-setup` validates first-run prompts
+  without starting Docker.
 - Start Docker Compose detached by default and mirror only non-secret frontend
   bind/port values into root `.env` so Compose interpolation works even though
   provider secrets stay in `.env.local`.

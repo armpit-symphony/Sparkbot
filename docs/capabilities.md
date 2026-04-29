@@ -1039,7 +1039,9 @@ auto-selects a free frontend port when 3000 is busy, and prints the real URL.
 Server mode disables local auto-login and prompts for a private
 `SPARKBOT_PASSPHRASE` when needed; defaults, blanks, placeholders, and short
 values are rejected, the accepted passphrase is saved to `.env.local`, and the
-launcher does not print it.
+launcher does not print it. Hidden passphrase input is used only when the
+terminal can handle it; SSH sessions fall back to visible passphrase input with
+a warning so setup can continue.
 Provider key prompts are visible by default so SSH paste works reliably; the
 wizard warns before visible key entry and does not print stored secrets itself.
 Advanced operators can still edit env files or run Compose directly.
@@ -1050,7 +1052,11 @@ SSH setup helpers:
 bash scripts/sparkbot-start.sh --install-docker-plugins
 bash scripts/sparkbot-start.sh --server --hide-input  # optional hidden provider-key entry
 export OPENAI_API_KEY="sk-..."
+export SPARKBOT_PASSPHRASE="long-private-passphrase"
 bash scripts/sparkbot-start.sh --server --from-env  # import exported provider keys
+bash scripts/sparkbot-start.sh --server --show-passphrase-input
+bash scripts/sparkbot-start.sh --server --dry-run-setup
+bash scripts/sparkbot-start.sh --server --openai-key "sk-..." --passphrase "long-private-passphrase"
 SPARKBOT_FRONTEND_PORT=3001 bash scripts/sparkbot-start.sh --server
 ```
 

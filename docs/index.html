@@ -1442,6 +1442,9 @@
                 <code>bash scripts/sparkbot-start.sh --install-docker-plugins</code> if Ubuntu is missing buildx/Compose plugins<br>
                 <code>SPARKBOT_FRONTEND_PORT=3001 bash scripts/sparkbot-start.sh --server</code> if you want a specific port<br>
                 <code>export OPENAI_API_KEY="sk-..." && bash scripts/sparkbot-start.sh --server --from-env</code> for no-prompt SSH key import<br>
+                <code>export SPARKBOT_PASSPHRASE="long-private-passphrase"</code> can seed server auth for <code>--from-env</code><br>
+                <code>bash scripts/sparkbot-start.sh --server --show-passphrase-input</code> for visible passphrase troubleshooting<br>
+                <code>bash scripts/sparkbot-start.sh --server --dry-run-setup</code> to validate prompts without starting Docker<br>
                 <code>bash scripts/sparkbot-start.sh --server --hide-input</code> if you prefer hidden provider-key entry<br>
                 The launcher starts detached, prompts for a server passphrase, prints the actual URL, and is the normal install path. Raw Docker Compose is advanced only.
               </p>

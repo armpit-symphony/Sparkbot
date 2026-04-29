@@ -41,8 +41,10 @@ bash scripts/sparkbot-start.sh --server
 ```
 
 Server mode prompts for a private passphrase before startup, disables local
-auto-login, saves the passphrase to `.env.local`, and will not print it. Do not
-expose Sparkbot without that passphrase gate or reverse proxy authentication.
+auto-login, saves the passphrase to `.env.local`, and will not print it. Hidden
+passphrase input falls back to visible input when an SSH terminal cannot accept
+hidden typing or paste. Do not expose Sparkbot without that passphrase gate or
+reverse proxy authentication.
 
 Fresh Ubuntu with missing Docker plugins:
 
@@ -64,7 +66,16 @@ Paste-free env import for SSH servers:
 
 ```bash
 export OPENAI_API_KEY="sk-..."
+export SPARKBOT_PASSPHRASE="long-private-passphrase"
 bash scripts/sparkbot-start.sh --server --from-env
+```
+
+Passphrase and dry-run helpers:
+
+```bash
+bash scripts/sparkbot-start.sh --server --show-passphrase-input
+bash scripts/sparkbot-start.sh --server --dry-run-setup
+bash scripts/sparkbot-start.sh --server --openai-key "sk-..." --passphrase "long-private-passphrase"
 ```
 
 Custom frontend port:

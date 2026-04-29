@@ -708,6 +708,148 @@ exit 0
     assert compose_log.exists()
 
 
+def test_start_script_server_mode_show_passphrase_input_prompts_visibly(tmp_path: Path) -> None:
+    template = tmp_path / ".env.local.example"
+    env_file = tmp_path / ".env.local"
+    _template(template)
+
+    result = _run_start(
+        [
+            "--server",
+            "--dry-run-setup",
+            "--show-passphrase-input",
+            "--openai-key",
+            "sk-server-visible-passphrase",
+        ],
+        env={
+            "SPARKBOT_ENV_FILE": str(env_file),
+            "SPARKBOT_ENV_TEMPLATE": str(template),
+            "SPARKBOT_PUBLIC_HOST": "203.0.113.32",
+        },
+        input_text="visible-server-passphrase\nvisible-server-passphrase\n",
+    )
+
+    combined = result.stdout + result.stderr
+    assert result.returncode == 0
+    assert "Your passphrase will be visible while typing in this terminal session." in result.stderr
+    assert "Hidden input did not work" not in combined
+    assert "Dry-run setup complete. Docker was not started." in result.stdout
+    assert "SPARKBOT_PASSPHRASE=visible-server-passphrase" in env_file.read_text()
+    assert "visible-server-passphrase" not in result.stdout
+    assert "visible-server-passphrase" not in result.stderr
+
+
+def test_start_script_server_mode_ssh_passphrase_uses_visible_fallback(tmp_path: Path) -> None:
+    template = tmp_path / ".env.local.example"
+    env_file = tmp_path / ".env.local"
+    _template(template)
+
+    result = _run_start(
+        ["--server", "--dry-run-setup", "--openai-key", "sk-server-ssh-passphrase"],
+        env={
+            "SPARKBOT_ENV_FILE": str(env_file),
+            "SPARKBOT_ENV_TEMPLATE": str(template),
+            "SPARKBOT_PUBLIC_HOST": "203.0.113.33",
+            "SSH_CONNECTION": "203.0.113.5 55555 203.0.113.10 22",
+        },
+        input_text="ssh-server-passphrase\nssh-server-passphrase\n",
+    )
+
+    assert result.returncode == 0
+    assert "Hidden input did not work in this terminal. Switching to visible input." in result.stderr
+    assert "Your passphrase will be visible while typing in this terminal session." in result.stderr
+    assert "SPARKBOT_PASSPHRASE=ssh-server-passphrase" in env_file.read_text()
+    assert "ssh-server-passphrase" not in result.stdout
+    assert "ssh-server-passphrase" not in result.stderr
+
+
+def test_start_script_server_mode_from_env_accepts_passphrase(tmp_path: Path) -> None:
+    template = tmp_path / ".env.local.example"
+    env_file = tmp_path / ".env.local"
+    _template(template)
+
+    result = _run_start(
+        ["--server", "--dry-run-setup", "--from-env"],
+        env={
+            "SPARKBOT_ENV_FILE": str(env_file),
+            "SPARKBOT_ENV_TEMPLATE": str(template),
+            "SPARKBOT_PUBLIC_HOST": "203.0.113.34",
+            "OPENAI_API_KEY": "sk-from-env-server",
+            "SPARKBOT_PASSPHRASE": "from-env-server-passphrase",
+        },
+    )
+
+    assert result.returncode == 0
+    assert "Create Sparkbot server passphrase" not in result.stderr
+    content = env_file.read_text()
+    assert "OPENAI_API_KEY=sk-from-env-server" in content
+    assert "SPARKBOT_PASSPHRASE=from-env-server-passphrase" in content
+    assert "from-env-server-passphrase" not in result.stdout
+    assert "from-env-server-passphrase" not in result.stderr
+
+
+def test_start_script_server_mode_direct_passphrase_argument(tmp_path: Path) -> None:
+    template = tmp_path / ".env.local.example"
+    env_file = tmp_path / ".env.local"
+    _template(template)
+
+    result = _run_start(
+        [
+            "--server",
+            "--dry-run-setup",
+            "--openai-key",
+            "sk-direct-passphrase",
+            "--passphrase",
+            "direct-server-passphrase",
+        ],
+        env={
+            "SPARKBOT_ENV_FILE": str(env_file),
+            "SPARKBOT_ENV_TEMPLATE": str(template),
+            "SPARKBOT_PUBLIC_HOST": "203.0.113.35",
+        },
+    )
+
+    assert result.returncode == 0
+    assert "Create Sparkbot server passphrase" not in result.stderr
+    assert "SPARKBOT_PASSPHRASE=direct-server-passphrase" in env_file.read_text()
+    assert "direct-server-passphrase" not in result.stdout
+    assert "direct-server-passphrase" not in result.stderr
+
+
+def test_start_script_server_mode_passphrase_mismatch_retries(tmp_path: Path) -> None:
+    template = tmp_path / ".env.local.example"
+    env_file = tmp_path / ".env.local"
+    _template(template)
+
+    result = _run_start(
+        [
+            "--server",
+            "--dry-run-setup",
+            "--show-passphrase-input",
+            "--openai-key",
+            "sk-mismatch-passphrase",
+        ],
+        env={
+            "SPARKBOT_ENV_FILE": str(env_file),
+            "SPARKBOT_ENV_TEMPLATE": str(template),
+            "SPARKBOT_PUBLIC_HOST": "203.0.113.36",
+        },
+        input_text=(
+            "first-server-passphrase\n"
+            "second-server-passphrase\n"
+            "matched-server-passphrase\n"
+            "matched-server-passphrase\n"
+        ),
+    )
+
+    assert result.returncode == 0
+    assert "Passphrases did not match. Try again." in result.stderr
+    assert "first-server-passphrase" not in env_file.read_text()
+    assert "SPARKBOT_PASSPHRASE=matched-server-passphrase" in env_file.read_text()
+    assert "matched-server-passphrase" not in result.stdout
+    assert "matched-server-passphrase" not in result.stderr
+
+
 def test_start_script_server_mode_rejects_weak_prompted_passphrase_then_accepts_valid(tmp_path: Path) -> None:
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
@@ -754,6 +896,32 @@ exit 0
     assert "replace-with-a-long-private-passphrase" not in env_file.read_text()
     assert "SPARKBOT_PASSPHRASE=valid-server-passphrase" in env_file.read_text()
     assert compose_log.exists()
+
+
+def test_start_script_rejects_weak_direct_passphrase_without_logging_value(tmp_path: Path) -> None:
+    template = tmp_path / ".env.local.example"
+    env_file = tmp_path / ".env.local"
+    _template(template)
+
+    result = _run_start(
+        [
+            "--server",
+            "--dry-run-setup",
+            "--openai-key",
+            "sk-weak-direct-passphrase",
+            "--passphrase",
+            "sparkbot",
+        ],
+        env={
+            "SPARKBOT_ENV_FILE": str(env_file),
+            "SPARKBOT_ENV_TEMPLATE": str(template),
+            "SPARKBOT_PUBLIC_HOST": "203.0.113.37",
+        },
+    )
+
+    assert result.returncode != 0
+    assert "Passphrase must be at least 12 characters" in result.stderr
+    assert "SPARKBOT_PASSPHRASE=sparkbot" not in env_file.read_text().splitlines()
 
 
 def test_start_script_server_mode_refuses_disabled_auth(tmp_path: Path) -> None:
@@ -905,6 +1073,71 @@ exit 0
     assert "SPARKBOT_FRONTEND_BIND_HOST=0.0.0.0" in compose_log.read_text()
 
 
+def test_complete_server_first_run_reaches_docker_startup_without_manual_env_edits(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    compose_log = tmp_path / "compose.log"
+    _write_executable(
+        fake_bin / "docker",
+        f"""#!/usr/bin/env sh
+if [ "$1" = "info" ]; then exit 0; fi
+if [ "$1" = "buildx" ] && [ "$2" = "version" ]; then exit 0; fi
+if [ "$1" = "compose" ] && [ "$2" = "version" ]; then exit 0; fi
+if [ "$1" = "compose" ]; then echo "$@" >> "{compose_log}"; exit 0; fi
+exit 1
+""",
+    )
+    _write_executable(
+        fake_bin / "ss",
+        """#!/usr/bin/env sh
+echo "State Recv-Q Send-Q Local Address:Port Peer Address:Port"
+exit 0
+""",
+    )
+    template = tmp_path / ".env.local.example"
+    env_file = tmp_path / ".env.local"
+    compose_env = tmp_path / ".env"
+    _template(template)
+
+    result = _run_start(
+        ["--server"],
+        env={
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "SPARKBOT_ENV_FILE": str(env_file),
+            "SPARKBOT_ENV_TEMPLATE": str(template),
+            "SPARKBOT_COMPOSE_ENV_FILE": str(compose_env),
+            "SPARKBOT_PUBLIC_HOST": "203.0.113.40",
+            "SSH_CONNECTION": "203.0.113.5 55555 203.0.113.10 22",
+        },
+        input_text=(
+            "sk-full-first-run\n"
+            "\n"
+            "\n"
+            "\n"
+            "\n"
+            "\n"
+            "n\n"
+            "\n"
+            "full-server-passphrase\n"
+            "full-server-passphrase\n"
+        ),
+    )
+
+    assert result.returncode == 0
+    assert "Sparkbot setup" in result.stdout
+    assert "Hidden input did not work in this terminal. Switching to visible input." in result.stderr
+    assert "Starting Sparkbot in the background" in result.stdout
+    assert "Open Sparkbot:\nhttp://203.0.113.40:3000" in result.stdout
+    assert "compose.local.yml up --build -d" in compose_log.read_text()
+    content = env_file.read_text()
+    assert "OPENAI_API_KEY=sk-full-first-run" in content
+    assert "SPARKBOT_PASSPHRASE=full-server-passphrase" in content
+    assert "SPARKBOT_FRONTEND_BIND_HOST=0.0.0.0" in content
+    assert "V1_LOCAL_MODE=false" in content
+    assert "full-server-passphrase" not in result.stdout
+    assert "full-server-passphrase" not in result.stderr
+
+
 def test_compose_local_uses_legacy_compatible_env_file_syntax() -> None:
     content = LOCAL_COMPOSE.read_text()
 
@@ -915,6 +1148,15 @@ def test_compose_local_uses_legacy_compatible_env_file_syntax() -> None:
     assert "VITE_V1_LOCAL_MODE=${VITE_V1_LOCAL_MODE:-false}" in content
     assert "OPENAI_API_KEY=${OPENAI_API_KEY:-}" not in content
     assert "SPARKBOT_PASSPHRASE=${SPARKBOT_PASSPHRASE:-sparkbot-local}" not in content
+
+
+def test_start_script_has_no_hidden_only_passphrase_prompt() -> None:
+    content = START_SCRIPT.read_text()
+
+    assert "--show-passphrase-input" in content
+    assert "Hidden input did not work in this terminal. Switching to visible input." in content
+    assert "read -r -s value" in content
+    assert "read_passphrase_visible" in content
 
 
 def test_compose_local_prestart_waits_for_database_health() -> None:

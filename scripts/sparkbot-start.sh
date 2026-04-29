@@ -10,29 +10,50 @@ ENV_FILE="${SPARKBOT_ENV_FILE:-${ROOT_DIR}/.env.local}"
 COMPOSE_ENV_FILE="${SPARKBOT_COMPOSE_ENV_FILE:-${ROOT_DIR}/.env}"
 INSTALL_DOCKER_PLUGINS=0
 START_MODE=""
-START_SHOW_INPUT=0
+START_SHOW_PASSPHRASE_INPUT=0
+START_DRY_RUN_SETUP=0
+START_PASSPHRASE=""
 SETUP_ARGS=()
 
-for arg in "$@"; do
-  case "${arg}" in
+while [ "$#" -gt 0 ]; do
+  case "$1" in
     --install-docker-plugins)
       INSTALL_DOCKER_PLUGINS=1
+      shift
       ;;
     --local)
       START_MODE="local"
+      shift
       ;;
     --server)
       START_MODE="server"
+      shift
       ;;
     --show-input)
-      START_SHOW_INPUT=1
-      SETUP_ARGS+=("${arg}")
+      START_SHOW_PASSPHRASE_INPUT=1
+      SETUP_ARGS+=("$1")
+      shift
+      ;;
+    --show-passphrase-input)
+      START_SHOW_PASSPHRASE_INPUT=1
+      shift
+      ;;
+    --dry-run-setup)
+      START_DRY_RUN_SETUP=1
+      shift
+      ;;
+    --passphrase)
+      [ "$#" -ge 2 ] || { echo "--passphrase requires a value." >&2; exit 2; }
+      START_PASSPHRASE="$2"
+      shift 2
       ;;
     --hide-input)
-      SETUP_ARGS+=("${arg}")
+      SETUP_ARGS+=("$1")
+      shift
       ;;
     *)
-      SETUP_ARGS+=("${arg}")
+      SETUP_ARGS+=("$1")
+      shift
       ;;
   esac
 done
@@ -118,13 +139,27 @@ truthy() {
 
 weak_passphrase() {
   local value="${1:-}"
+  local normalized
   [ -n "${value}" ] || return 0
-  case "${value}" in
-    sparkbot-local|changeme|changeme-in-production|changethis|password|admin123|REPLACE_WITH_*|replace-with-*|please-change*)
+  normalized="$(printf '%s' "${value}" | tr '[:upper:]' '[:lower:]')"
+  case "${normalized}" in
+    sparkbot|sparkbot-local|changeme|changeme-in-production|changethis|password|admin|admin123|your-passphrase|replace-with-a-long-private-passphrase|replace-with-*|please-change*|replace_with_*)
       return 0
       ;;
   esac
   [ "${#value}" -lt 12 ]
+}
+
+ssh_session() {
+  [ -n "${SSH_CONNECTION:-}" ] || [ -n "${SSH_TTY:-}" ] || [ -n "${SSH_CLIENT:-}" ]
+}
+
+prompt_line() {
+  local prompt="$1"
+  local value
+  printf '%s' "${prompt}" >&2
+  read -r value
+  printf '%s' "${value}"
 }
 
 port_available() {
@@ -211,7 +246,7 @@ Where are you running Sparkbot?
 2) Cloud server / VPS / DigitalOcean
    Binds the web UI to 0.0.0.0 so your laptop or phone can reach it.
 EOF
-        read -r -p "Choose install mode [1]: " mode_choice
+        mode_choice="$(prompt_line "Choose install mode [1]: ")"
         case "${mode_choice}" in
           2) selected="0.0.0.0" ;;
           *) selected="127.0.0.1" ;;
@@ -253,24 +288,56 @@ detect_public_ip() {
   fi
 }
 
+read_passphrase_visible() {
+  local prompt="$1"
+  local value
+  echo "Your passphrase will be visible while typing in this terminal session." >&2
+  printf '%s' "${prompt}" >&2
+  if ! read -r value; then
+    return 1
+  fi
+  printf '%s' "${value}"
+}
+
+read_passphrase_hidden() {
+  local prompt="$1"
+  local value
+  echo "Input will be hidden. Paste/type the new server passphrase, then press Enter." >&2
+  printf '%s' "${prompt}" >&2
+  if ! read -r -s value; then
+    printf '\n' >&2
+    return 1
+  fi
+  printf '\n' >&2
+  printf '%s' "${value}"
+}
+
+read_server_passphrase_value() {
+  local prompt="$1"
+  local value
+  if [ "${START_SHOW_PASSPHRASE_INPUT}" = "1" ]; then
+    read_passphrase_visible "${prompt}"
+    return $?
+  fi
+  if ssh_session || [ ! -t 0 ]; then
+    echo "Hidden input did not work in this terminal. Switching to visible input." >&2
+    read_passphrase_visible "${prompt}"
+    return $?
+  fi
+  value="$(read_passphrase_hidden "${prompt}")" || return 1
+  if [ -z "${value}" ]; then
+    echo "Hidden input did not work in this terminal. Switching to visible input." >&2
+    read_passphrase_visible "${prompt}"
+    return $?
+  fi
+  printf '%s' "${value}"
+}
+
 prompt_server_passphrase() {
   local first second
   while true; do
-    if [ "${START_SHOW_INPUT}" = "1" ]; then
-      printf 'Create Sparkbot server passphrase: ' >&2
-      read -r first
-      printf 'Confirm passphrase: ' >&2
-      read -r second
-    else
-      echo "Input will be hidden. Paste/type the new server passphrase, then press Enter." >&2
-      printf 'Create Sparkbot server passphrase: ' >&2
-      read -r -s first
-      printf '\n' >&2
-      echo "Input will be hidden. Paste/type it again, then press Enter." >&2
-      printf 'Confirm passphrase: ' >&2
-      read -r -s second
-      printf '\n' >&2
-    fi
+    first="$(read_server_passphrase_value "Create Sparkbot server passphrase: ")" || return 1
+    second="$(read_server_passphrase_value "Confirm passphrase: ")" || return 1
     if [ "${first}" != "${second}" ]; then
       echo "Passphrases did not match. Try again." >&2
       continue
@@ -285,7 +352,7 @@ prompt_server_passphrase() {
 }
 
 ensure_server_auth() {
-  local configured="${SPARKBOT_PASSPHRASE:-}"
+  local configured="${START_PASSPHRASE:-${SPARKBOT_PASSPHRASE:-}}"
   if [ -z "${configured}" ]; then
     configured="$(env_get "SPARKBOT_PASSPHRASE")"
   fi
@@ -298,17 +365,21 @@ EOF
     exit 1
   fi
 
+  if [ -n "${START_PASSPHRASE}" ] && weak_passphrase "${START_PASSPHRASE}"; then
+    echo "Passphrase must be at least 12 characters and cannot use Sparkbot defaults or placeholders." >&2
+    exit 1
+  fi
+
   if ! weak_passphrase "${configured}"; then
     env_set "SPARKBOT_PASSPHRASE" "${configured}"
     return 0
   fi
 
-  if [ -t 0 ] || [ "${START_SHOW_INPUT}" = "1" ]; then
-    cat >&2 <<'EOF'
+  cat >&2 <<'EOF'
 Server mode requires authentication. Do not expose Sparkbot without a passphrase or reverse proxy auth.
 Create a new Sparkbot passphrase before startup.
 EOF
-    configured="$(prompt_server_passphrase)"
+  if configured="$(prompt_server_passphrase)"; then
     env_set "SPARKBOT_PASSPHRASE" "${configured}"
     return 0
   fi
@@ -316,9 +387,9 @@ EOF
   cat >&2 <<'EOF'
 Server mode requires authentication. Do not expose Sparkbot without a passphrase or reverse proxy auth.
 SPARKBOT_PASSPHRASE is missing, blank, too short, a placeholder, or a default value.
-Set a strong passphrase, then rerun:
+Run this command in an interactive terminal or set a strong passphrase, then rerun:
   export SPARKBOT_PASSPHRASE="replace-with-a-long-private-passphrase"
-  bash scripts/sparkbot-start.sh --server
+  bash scripts/sparkbot-start.sh --server --from-env
 EOF
   exit 1
 }
@@ -351,7 +422,14 @@ Or let Sparkbot try that install step:
 EOF
 }
 
-if ! command -v docker >/dev/null 2>&1; then
+if [ "${START_DRY_RUN_SETUP}" = "1" ]; then
+  cat <<'EOF'
+Dry-run setup mode: validating first-run prompts and configuration.
+Docker preflight and Compose startup will be skipped.
+EOF
+fi
+
+if [ "${START_DRY_RUN_SETUP}" != "1" ] && ! command -v docker >/dev/null 2>&1; then
   cat >&2 <<'EOF'
 Docker was not found.
 
@@ -363,7 +441,7 @@ EOF
   exit 1
 fi
 
-if ! docker info >/dev/null 2>&1; then
+if [ "${START_DRY_RUN_SETUP}" != "1" ] && ! docker info >/dev/null 2>&1; then
   cat >&2 <<'EOF'
 Docker is installed but the Docker daemon is not running.
 
@@ -373,7 +451,7 @@ EOF
   exit 1
 fi
 
-if [ "${INSTALL_DOCKER_PLUGINS}" = "1" ]; then
+if [ "${INSTALL_DOCKER_PLUGINS}" = "1" ] && [ "${START_DRY_RUN_SETUP}" != "1" ]; then
   install_docker_plugins
 fi
 
@@ -382,15 +460,20 @@ if bind_host_configured_at_start; then
   BIND_HOST_CONFIGURED_AT_START=1
 fi
 
-compose_cmd="$(bash "${SETUP_SCRIPT}" --print-compose-command)"
-read -r -a compose_parts <<< "${compose_cmd}"
-if [ "${compose_cmd}" = "docker-compose" ]; then
-  echo "Using legacy docker-compose compatibility mode"
-fi
+if [ "${START_DRY_RUN_SETUP}" = "1" ]; then
+  compose_cmd="docker compose"
+  read -r -a compose_parts <<< "${compose_cmd}"
+else
+  compose_cmd="$(bash "${SETUP_SCRIPT}" --print-compose-command)"
+  read -r -a compose_parts <<< "${compose_cmd}"
+  if [ "${compose_cmd}" = "docker-compose" ]; then
+    echo "Using legacy docker-compose compatibility mode"
+  fi
 
-if ! buildx_available; then
-  print_buildx_fix
-  exit 1
+  if ! buildx_available; then
+    print_buildx_fix
+    exit 1
+  fi
 fi
 
 if [ "${#SETUP_ARGS[@]}" -gt 0 ] || [ ! -f "${ENV_FILE}" ] || ! SPARKBOT_ENV_FILE="${ENV_FILE}" bash "${SETUP_SCRIPT}" --check-config; then
@@ -401,7 +484,11 @@ if [ "${#SETUP_ARGS[@]}" -gt 0 ] || [ ! -f "${ENV_FILE}" ] || ! SPARKBOT_ENV_FIL
     echo "Sparkbot has not been configured yet. Starting first-run setup."
   fi
   echo ""
-  SPARKBOT_ENV_FILE="${ENV_FILE}" bash "${SETUP_SCRIPT}" "${SETUP_ARGS[@]}"
+  if [ "${START_DRY_RUN_SETUP}" = "1" ]; then
+    SPARKBOT_SETUP_SKIP_COMPOSE_CHECK=1 SPARKBOT_ENV_FILE="${ENV_FILE}" bash "${SETUP_SCRIPT}" "${SETUP_ARGS[@]}"
+  else
+    SPARKBOT_ENV_FILE="${ENV_FILE}" bash "${SETUP_SCRIPT}" "${SETUP_ARGS[@]}"
+  fi
 fi
 
 frontend_port="$(choose_frontend_port)"
@@ -472,5 +559,12 @@ Backend logs:
   ${compose_cmd} -f compose.local.yml logs -f backend
 
 EOF
+
+if [ "${START_DRY_RUN_SETUP}" = "1" ]; then
+  cat <<'EOF'
+Dry-run setup complete. Docker was not started.
+EOF
+  exit 0
+fi
 
 "${compose_parts[@]}" -f compose.local.yml up --build -d

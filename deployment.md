@@ -55,6 +55,24 @@ export OPENAI_API_KEY="sk-..."
 bash scripts/sparkbot-start.sh --server --from-env
 ```
 
+Server passphrase setup is also guided. Hidden input is used only when the
+terminal can handle it; SSH sessions automatically fall back to visible input
+with a warning so paste works. For no-prompt installs:
+
+```bash
+export OPENAI_API_KEY="sk-..."
+export SPARKBOT_PASSPHRASE="long-private-passphrase"
+bash scripts/sparkbot-start.sh --server --from-env
+```
+
+Troubleshooting helpers:
+
+```bash
+bash scripts/sparkbot-start.sh --server --show-passphrase-input
+bash scripts/sparkbot-start.sh --server --dry-run-setup
+bash scripts/sparkbot-start.sh --server --openai-key "sk-..." --passphrase "long-private-passphrase"
+```
+
 If port 3000 is already used, Sparkbot chooses the next available frontend port
 and prints the actual URL. You can also set it explicitly:
 
@@ -72,6 +90,7 @@ The launcher:
 * prompts for OpenAI, Anthropic, Google, Groq, MiniMax, OpenRouter, or local Ollama setup
 * uses visible provider-key prompts by default so SSH paste works naturally
 * requires at least one provider key or an Ollama model
+* prompts for a strong server passphrase and falls back to visible input when hidden input fails
 * starts `compose.local.yml` detached in the background
 * prints the actual browser URL
 

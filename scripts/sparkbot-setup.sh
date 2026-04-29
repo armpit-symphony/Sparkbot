@@ -212,7 +212,8 @@ sparkbot_yes_no() {
     suffix="y/N"
   fi
   while true; do
-    read -r -p "${prompt} [${suffix}]: " raw
+    printf '%s [%s]: ' "${prompt}" "${suffix}" >&2
+    read -r raw
     raw="$(printf '%s' "${raw}" | tr '[:upper:]' '[:lower:]')"
     if [ -z "${raw}" ]; then
       [ "${default}" = "yes" ]
@@ -224,6 +225,14 @@ sparkbot_yes_no() {
       *) echo "Enter y or n." ;;
     esac
   done
+}
+
+sparkbot_prompt_line() {
+  local prompt="$1"
+  local value
+  printf '%s' "${prompt}" >&2
+  read -r value
+  printf '%s' "${value}"
 }
 
 sparkbot_ssh_session() {
@@ -323,7 +332,7 @@ sparkbot_pick_default_model() {
     idx=$((idx + 1))
   done
   while true; do
-    read -r -p "Default model [1]: " raw
+    raw="$(sparkbot_prompt_line "Default model [1]: ")"
     raw="${raw:-1}"
     if [[ "${raw}" =~ ^[0-9]+$ ]] && [ "${raw}" -ge 1 ] && [ "${raw}" -le "${#configured[@]}" ]; then
       IFS=: read -r provider model _label <<< "${configured[$((raw - 1))]}"
@@ -361,14 +370,14 @@ sparkbot_prompt_ollama() {
   if ! sparkbot_yes_no "Use a local Ollama model?" "${use_ollama}"; then
     return 0
   fi
-  read -r -p "Ollama model [${existing_model}]: " model
+  model="$(sparkbot_prompt_line "Ollama model [${existing_model}]: ")"
   model="${model:-${existing_model}}"
   if [[ "${model}" != ollama/* ]]; then
     model="ollama/${model}"
   fi
   base_url="$(sparkbot_env_get "OLLAMA_API_BASE")"
   base_url="${base_url:-http://host.docker.internal:11434}"
-  read -r -p "Ollama API URL visible from Docker [${base_url}]: " input_base_url
+  input_base_url="$(sparkbot_prompt_line "Ollama API URL visible from Docker [${base_url}]: ")"
   base_url="${input_base_url:-${base_url}}"
   sparkbot_env_set "OLLAMA_API_BASE" "${base_url}"
   sparkbot_env_set "SPARKBOT_LOCAL_MODEL" "${model}"
