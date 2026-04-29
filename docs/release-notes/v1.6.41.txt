@@ -1,0 +1,14 @@
+Sparkbot v1.6.41
+
+Highlights
+
+- Fixed full voice chat so room persona and execution settings are loaded before the voice route builds the LLM prompt.
+- Added voice-origin metadata to transcribed human chat messages.
+- Added a hands-free browser voice loop: Sparkbot listens, answers aloud, then starts listening again after TTS finishes.
+- Kept transcribe-only dictation and one-shot voice message modes available from the same chat input.
+- Updated the public downloader, README, capabilities guide, and release metadata for 1.6.41.
+
+Notes
+
+- Voice still requires OPENAI_API_KEY for Whisper transcription and TTS.
+- Hands-free mode is browser based. The user must grant microphone permission, and there is no wake-word service in this release.

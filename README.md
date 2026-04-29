@@ -6,7 +6,7 @@ Use it to chat, search, summarize documents, control a browser, run shell comman
 
 **Download:** [armpit-symphony.github.io/Sparkbot](https://armpit-symphony.github.io/Sparkbot/)
 
-**Current release line:** v1.6.40
+**Current release line:** v1.6.41
 
 > Sparkbot stores its app data locally. If you connect a cloud LLM provider or an external service, the text and actions needed for that provider or service are sent to that provider. Local models can run without an LLM cloud account.
 
@@ -79,6 +79,7 @@ The desktop app is the easiest path for one person. Docker and systemd deploymen
 - **Skill plugins** — drop a `.py` file into `backend/skills/` to add a new tool; auto-discovered on restart
 
 ### Media & Content
+- **Voice chat** — mic input can run as transcribe-only, one-shot voice message, or hands-free conversation loop with spoken replies
 - **YouTube summarization** — paste a YouTube URL and get a transcript + summary; no API key required
 - **Podcast/audio transcription** — upload or link an audio file; transcribed via OpenAI Whisper
 - **News headlines** — Hacker News top stories or BBC RSS (world, tech, business, science, sports, health)
@@ -529,6 +530,7 @@ User message → Token Guardian → Memory Guardian → LLM
 
 | Version | Date | Highlights |
 |---------|------|-----------|
+| v1.6.41 | Apr 2026 | Full browser voice loop: fixed voice-route persona loading, tagged voice-origin messages, added hands-free listen-again after spoken replies, refreshed downloader/docs, and kept Workstation phone access in the release line |
 | v1.6.40 | Apr 2026 | Guardian Memory retrieval governance: BM25 default retriever interface, optional hybrid embedding flag, verified fact promotion with pending approvals, nightly Task Guardian memory evaluation, precision/latency metrics, authenticated Guardian metrics endpoint, and defensive LiteLLM tool-manifest trimming for Telegram/background reliability |
 | v1.6.38 | Apr 2026 | Governance roadmap baseline: first-class agent identity/kill switches, run timeline API with audit hashes, connector health/scopes, workflow templates, PWA manifest, per-tool input/output guardrails, deterministic eval harness, privacy/data-retention docs, and aligned downloader versioning |
 | v1.6.37 | Apr 2026 | Self-learning memory + governed orchestration: hybrid Guardian recall with provenance/confidence, memory self-introspection tools, truth/confidence guardrails, approval-first improvement proposals, policy simulator, orchestrator docs, Telegram token-safe error handling, and write-like shell confirmation in policy mode |

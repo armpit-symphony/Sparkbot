@@ -83,6 +83,7 @@ References used for this roadmap framing: [Okta's 2026 agent governance framing]
 | Message edit | Hover own messages to edit inline; `· edited` timestamp badge shown |
 | Voice input | Click mic → record → Whisper transcribes → enters normal LLM pipeline |
 | Text-to-speech | Enable voice mode (speaker icon) to hear bot replies spoken aloud |
+| Hands-free voice loop | Enable the radio voice control to listen again automatically after Sparkbot finishes speaking |
 | Self-inspection | Sparkbot can report its own provider/model stack, routing, and guardian status from chat |
 
 ### Document Summarisation
@@ -946,13 +947,15 @@ SPARKBOT_TTS_MODEL=tts-1    # tts-1 (fast) or tts-1-hd (higher quality)
 | 🔴 `Ns` | recording | Stop + send to Whisper |
 | 🔇 VolumeX | voice mode off | Toggle on — replies spoken aloud |
 | 🔊 Volume2 | voice mode on | Toggle off |
+| Radio | hands-free off/on | Toggle automatic listen-again after TTS finishes |
 
-Voice mode preference is persisted in `localStorage`.
+Voice mode and hands-free loop preferences are persisted in `localStorage`.
 
 ### Voice quick-capture
 
 - **Voice mode OFF** — mic transcribes and pastes to input (no auto-send); edit before sending
 - **Voice mode ON** — full voice-message flow: mic → Whisper → LLM → TTS readback
+- **Hands-free ON** — after TTS readback finishes, Sparkbot starts recording again for the next turn
 
 ### SSE protocol (superset of `/messages/stream`)
 
@@ -968,6 +971,7 @@ data: {"type": "done",           "message_id": "..."}
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | `/api/v1/chat/rooms/{id}/voice` | Audio → Whisper → SSE stream (multipart, `audio` field ≤ 5 MB) |
+| `POST` | `/api/v1/chat/rooms/{id}/voice/transcribe` | Audio → Whisper transcript only; no LLM response |
 | `POST` | `/api/v1/chat/voice/tts` | Text → `audio/mpeg` stream |
 
 ---
@@ -1718,7 +1722,7 @@ curl -b cookies.txt http://localhost:8000/api/v1/chat/system/watcher | python -m
 
 Desktop release tags and app versions are aligned on the `1.6.x` release line.
 
-For `v1.6.40`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story.
+For `v1.6.41`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story.
 
 ### How to upgrade safely
 

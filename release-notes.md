@@ -1,5 +1,13 @@
 # Release Notes
 
+## Sparkbot v1.6.41
+
+- Fixed the full voice route so room persona and execution settings are loaded before the LLM prompt is built.
+- Tagged voice-origin human messages with metadata for future audit and analytics work.
+- Added a hands-free voice loop in chat: Sparkbot can listen, answer aloud, then automatically listen again after TTS finishes.
+- Kept transcribe-only and one-shot voice modes intact with separate mic, speaker, and hands-free controls.
+- Updated README, capabilities docs, release notes, and public downloader version markers for `1.6.41`.
+
 ## Sparkbot v1.6.40
 
 - Added a Sparkbot-level Guardian Memory retriever interface with BM25/FTS as the default path.

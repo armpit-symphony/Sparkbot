@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, type CSSProperties } from "react"
 import { useNavigate, useRouterState } from "@tanstack/react-router"
-import { Check, ChevronDown, CornerUpLeft, Copy, Loader2, Mic, Paperclip, Pencil, RefreshCw, Search, Send, Volume2, VolumeX, X } from "lucide-react"
+import { Check, ChevronDown, CornerUpLeft, Copy, Loader2, Mic, Paperclip, Pencil, Radio, RefreshCw, Search, Send, Volume2, VolumeX, X } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter"
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism"
@@ -2647,12 +2647,25 @@ function SparkbotDmPage() {
   const [voiceMode, setVoiceMode] = useState(
     () => localStorage.getItem("sparkbot_voice_mode") === "true"
   )
+  const [voiceConversation, setVoiceConversation] = useState(
+    () => localStorage.getItem("sparkbot_voice_conversation") === "true"
+  )
+  const [voiceStatus, setVoiceStatus] = useState<string | null>(null)
+  const [voiceError, setVoiceError] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const discardRecordingRef = useRef(false)
+  const isRecordingRef = useRef(false)
+  const voiceModeRef = useRef(voiceMode)
+  const voiceConversationRef = useRef(voiceConversation)
+  const startVoiceRecordingRef = useRef<((autoResume?: boolean) => Promise<void>) | null>(null)
+  const ttsAudioRef = useRef<HTMLAudioElement | null>(null)
+  const ttsUrlRef = useRef<string | null>(null)
+  const ttsStopRef = useRef<(() => void) | null>(null)
   const controlsRequested = isControlsSearchOpen(
     ((routerState.location as { searchStr?: string }).searchStr) ?? window.location.search
   )
@@ -2704,6 +2717,9 @@ function SparkbotDmPage() {
   }, [])
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }) }, [messages])
+  useEffect(() => { isRecordingRef.current = isRecording }, [isRecording])
+  useEffect(() => { voiceModeRef.current = voiceMode }, [voiceMode])
+  useEffect(() => { voiceConversationRef.current = voiceConversation }, [voiceConversation])
   useEffect(() => {
     const launchDraft = consumeSparkBudChatLaunchDraft()
     if (!launchDraft?.text) return
@@ -3959,29 +3975,101 @@ function SparkbotDmPage() {
 
   // ── Voice ────────────────────────────────────────────────────────────────────
 
-  const playTTS = useCallback(async (text: string) => {
+  const clearRecordingTimer = useCallback(() => {
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current)
+      recordingTimerRef.current = null
+    }
+  }, [])
+
+  const stopVoicePlayback = useCallback(() => {
+    ttsStopRef.current?.()
+    ttsStopRef.current = null
+    if (ttsAudioRef.current) {
+      ttsAudioRef.current.pause()
+      ttsAudioRef.current.src = ""
+      ttsAudioRef.current = null
+    }
+    if (ttsUrlRef.current) {
+      URL.revokeObjectURL(ttsUrlRef.current)
+      ttsUrlRef.current = null
+    }
+    setVoiceStatus(null)
+  }, [])
+
+  const stopVoiceRecording = useCallback((sendRecording = true) => {
+    discardRecordingRef.current = !sendRecording
+    clearRecordingTimer()
+    const recorder = mediaRecorderRef.current
+    if (recorder && recorder.state !== "inactive") {
+      recorder.stop()
+    }
+  }, [clearRecordingTimer])
+
+  const playTTS = useCallback(async (text: string): Promise<boolean> => {
     try {
+      stopVoicePlayback()
+      setVoiceStatus("Preparing speech")
+      setVoiceError(null)
       const res = await apiFetch("/api/v1/chat/voice/tts", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
       })
-      if (!res.ok) return
+      if (!res.ok) {
+        setVoiceStatus(null)
+        return false
+      }
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
       const audio = new Audio(url)
-      audio.onended = () => URL.revokeObjectURL(url)
-      audio.play()
-    } catch { /* ignore */ }
-  }, [])
+      ttsUrlRef.current = url
+      ttsAudioRef.current = audio
+      setVoiceStatus("Speaking")
+
+      return await new Promise<boolean>((resolve) => {
+        let settled = false
+        const cleanup = (played: boolean) => {
+          if (settled) return
+          settled = true
+          audio.onended = null
+          audio.onerror = null
+          if (ttsAudioRef.current === audio) ttsAudioRef.current = null
+          if (ttsUrlRef.current === url) {
+            URL.revokeObjectURL(url)
+            ttsUrlRef.current = null
+          }
+          if (ttsStopRef.current === stop) ttsStopRef.current = null
+          setVoiceStatus(null)
+          resolve(played)
+        }
+        const stop = () => {
+          audio.pause()
+          audio.src = ""
+          cleanup(false)
+        }
+        ttsStopRef.current = stop
+        audio.onended = () => cleanup(true)
+        audio.onerror = () => cleanup(false)
+        audio.play().catch(() => cleanup(false))
+      })
+    } catch {
+      setVoiceStatus(null)
+      return false
+    }
+  }, [stopVoicePlayback])
 
   const handleVoiceSend = useCallback(async (blob: Blob) => {
     if (!roomId) return
+    sendingRef.current = true
     setSending(true)
+    setVoiceStatus("Thinking")
+    setVoiceError(null)
 
     const tempHumanId = `temp-human-${Date.now()}`
     const tempBotId = `temp-bot-${Date.now()}`
+    let resumeListening = false
     setMessages(prev => [
       ...prev,
       { id: tempHumanId, content: "🎤 …", created_at: new Date().toISOString(), sender_type: "HUMAN" },
@@ -4000,7 +4088,6 @@ function SparkbotDmPage() {
 
       if (!res.ok || !res.body) {
         setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, content: "⚠️ Voice send failed.", isStreaming: false } : m))
-        setSending(false)
         return
       }
 
@@ -4037,7 +4124,6 @@ function SparkbotDmPage() {
               setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, content: "", isStreaming: false, toolActivity: undefined } : m))
               setPendingConfirm({ confirmId: ev.confirm_id, tool: ev.tool, input: ev.input ?? {} })
               setAwaitingBreakglassPin(false)
-              setSending(false)
               return
             } else if (ev.type === "privileged_required") {
               setMessages(prev => prev.map(m => m.id === tempBotId ? {
@@ -4047,13 +4133,13 @@ function SparkbotDmPage() {
                 toolActivity: undefined,
               } : m))
               setAwaitingBreakglassPin(false)
-              setSending(false)
               return
             } else if (ev.type === "done") {
               setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, id: ev.message_id, isStreaming: false, toolActivity: undefined } : m))
               syncBreakglassPinState(botFullText)
-              if (voiceMode && botFullText) {
-                playTTS(botFullText)
+              if (voiceModeRef.current && botFullText) {
+                const spoke = await playTTS(botFullText)
+                resumeListening = spoke && voiceConversationRef.current
               }
             } else if (ev.type === "error") {
               setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, content: `⚠️ ${ev.error}`, isStreaming: false, toolActivity: undefined } : m))
@@ -4064,15 +4150,27 @@ function SparkbotDmPage() {
     } catch {
       setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, content: "⚠️ Connection error.", isStreaming: false } : m))
     } finally {
+      sendingRef.current = false
       setSending(false)
+      setVoiceStatus(null)
+      if (resumeListening && voiceModeRef.current && voiceConversationRef.current) {
+        window.setTimeout(() => {
+          if (voiceModeRef.current && voiceConversationRef.current && !sendingRef.current) {
+            startVoiceRecordingRef.current?.(true)
+          }
+        }, 250)
+      }
     }
-  }, [roomId, voiceMode, playTTS, syncBreakglassPinState])
+  }, [roomId, playTTS, syncBreakglassPinState])
 
   // ── Voice quick-capture (transcribe-only — pastes text to input) ─────────────
 
   const handleVoiceTranscribe = useCallback(async (blob: Blob) => {
     if (!roomId || sending) return
+    sendingRef.current = true
     setSending(true)
+    setVoiceStatus("Transcribing")
+    setVoiceError(null)
     try {
       const form = new FormData()
       form.append("audio", blob, "recording.webm")
@@ -4086,30 +4184,44 @@ function SparkbotDmPage() {
         setInputValue(prev => (prev ? prev + " " : "") + (data.text ?? ""))
         inputRef.current?.focus()
       }
-    } catch { /* ignore */ } finally {
+    } catch {
+      setVoiceError("Voice transcription failed.")
+    } finally {
+      sendingRef.current = false
       setSending(false)
+      setVoiceStatus(null)
     }
   }, [roomId, sending])
 
-  const handleVoiceToggle = useCallback(async () => {
-    if (isRecording) {
-      mediaRecorderRef.current?.stop()
-      clearInterval(recordingTimerRef.current!)
+  const startVoiceRecording = useCallback(async (autoResume = false) => {
+    if (isRecordingRef.current || sendingRef.current || uploading) return
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setVoiceError("Voice recording is not available in this browser.")
       return
     }
     try {
+      stopVoicePlayback()
+      setVoiceError(null)
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const mr = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" })
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "audio/webm"
+      const mr = new MediaRecorder(stream, { mimeType })
       audioChunksRef.current = []
       mr.ondataavailable = e => { if (e.data.size > 0) audioChunksRef.current.push(e.data) }
       mr.onstop = async () => {
         stream.getTracks().forEach(t => t.stop())
         setIsRecording(false)
         setRecordingSeconds(0)
+        clearRecordingTimer()
+        const discard = discardRecordingRef.current
+        discardRecordingRef.current = false
         const blob = new Blob(audioChunksRef.current, { type: "audio/webm" })
+        if (discard || blob.size === 0) {
+          setVoiceStatus(null)
+          return
+        }
         // voiceMode ON  → full voice message (transcribe + LLM + TTS)
         // voiceMode OFF → transcribe only, paste text to input for editing
-        if (voiceMode) {
+        if (voiceModeRef.current) {
           await handleVoiceSend(blob)
         } else {
           await handleVoiceTranscribe(blob)
@@ -4118,9 +4230,25 @@ function SparkbotDmPage() {
       mr.start()
       mediaRecorderRef.current = mr
       setIsRecording(true)
+      setVoiceStatus(autoResume ? "Listening again" : "Listening")
       recordingTimerRef.current = setInterval(() => setRecordingSeconds(s => s + 1), 1000)
-    } catch { /* mic permission denied — no crash */ }
-  }, [isRecording, voiceMode, handleVoiceSend, handleVoiceTranscribe])
+    } catch {
+      setVoiceError("Microphone permission is needed for voice.")
+      setVoiceStatus(null)
+    }
+  }, [clearRecordingTimer, handleVoiceSend, handleVoiceTranscribe, stopVoicePlayback, uploading])
+
+  useEffect(() => {
+    startVoiceRecordingRef.current = startVoiceRecording
+  }, [startVoiceRecording])
+
+  const handleVoiceToggle = useCallback(async () => {
+    if (isRecordingRef.current) {
+      stopVoiceRecording(true)
+      return
+    }
+    await startVoiceRecording(false)
+  }, [startVoiceRecording, stopVoiceRecording])
 
   // ── Send ─────────────────────────────────────────────────────────────────────
 
@@ -4705,7 +4833,13 @@ function SparkbotDmPage() {
           {/* Stop button — shown when responding with no typed text */}
           {sending && !inputValue.trim() && (
             <button
-              onClick={() => abortRef.current?.abort()}
+              onClick={() => {
+                abortRef.current?.abort()
+                stopVoicePlayback()
+                voiceConversationRef.current = false
+                setVoiceConversation(false)
+                localStorage.setItem("sparkbot_voice_conversation", "false")
+              }}
               className="flex h-9 w-9 items-center justify-center rounded-full bg-destructive/90 text-white hover:bg-destructive"
               title="Stop response"
             >
@@ -4732,8 +4866,15 @@ function SparkbotDmPage() {
           <button
             onClick={() => {
               const next = !voiceMode
+              voiceModeRef.current = next
               setVoiceMode(next)
               localStorage.setItem("sparkbot_voice_mode", String(next))
+              if (!next) {
+                voiceConversationRef.current = false
+                setVoiceConversation(false)
+                localStorage.setItem("sparkbot_voice_conversation", "false")
+                stopVoicePlayback()
+              }
             }}
             title={voiceMode ? "Voice mode on — mic sends message, replies spoken aloud. Click to switch to transcribe-only." : "Voice mode off — mic transcribes to text only. Click to enable full voice mode."}
             className={`flex h-9 w-9 items-center justify-center rounded-full ${
@@ -4742,9 +4883,47 @@ function SparkbotDmPage() {
           >
             {voiceMode ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
           </button>
+
+          {/* Hands-free voice loop */}
+          <button
+            onClick={() => {
+              const next = !voiceConversation
+              voiceConversationRef.current = next
+              setVoiceConversation(next)
+              localStorage.setItem("sparkbot_voice_conversation", String(next))
+              if (next) {
+                voiceModeRef.current = true
+                setVoiceMode(true)
+                localStorage.setItem("sparkbot_voice_mode", "true")
+                setVoiceError(null)
+                if (!isRecordingRef.current && !sendingRef.current) {
+                  startVoiceRecordingRef.current?.(false)
+                }
+              } else {
+                stopVoicePlayback()
+                if (isRecordingRef.current) stopVoiceRecording(false)
+              }
+            }}
+            disabled={uploading}
+            title={voiceConversation ? "Hands-free voice loop on. Click to stop." : "Hands-free voice loop. Sparkbot listens again after speaking."}
+            className={`flex h-9 w-9 items-center justify-center rounded-full disabled:opacity-40 ${
+              voiceConversation ? "bg-emerald-500/15 text-emerald-200" : "text-muted-foreground hover:bg-muted"
+            }`}
+          >
+            <Radio className="h-4 w-4" />
+          </button>
+        </div>
+        {(voiceMode || voiceConversation || voiceStatus || voiceError) && (
+          <div className={`mt-2 text-[11px] ${voiceError ? "text-destructive" : "text-muted-foreground"}`}>
+            {voiceError
+              ? voiceError
+              : isRecording
+                ? `Voice listening ${recordingSeconds}s`
+                : voiceStatus ?? (voiceConversation ? "Hands-free voice ready" : voiceMode ? "Voice replies on" : "")}
+          </div>
+        )}
         </div>
       </div>
-    </div>
   )
 }
 

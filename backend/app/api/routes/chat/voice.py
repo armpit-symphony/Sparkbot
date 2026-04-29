@@ -21,7 +21,12 @@ from pydantic import BaseModel
 from sqlalchemy import select
 
 from app.api.deps import CurrentChatUser, SessionDep, get_db
-from app.crud import create_chat_message, get_chat_messages, get_chat_room_member
+from app.crud import (
+    create_chat_message,
+    get_chat_messages,
+    get_chat_room_by_id,
+    get_chat_room_member,
+)
 from app.models import ChatUser, RoomRole, UserType
 
 router = APIRouter(tags=["chat-voice"])
@@ -90,6 +95,9 @@ async def voice_message(
     if not transcript.strip():
         raise HTTPException(status_code=422, detail="No speech detected in audio")
 
+    room = get_chat_room_by_id(session, room_id)
+    room_execution_allowed = room.execution_allowed if room else None
+
     # Save human message with transcription as content
     human_msg = create_chat_message(
         session=session,
@@ -97,6 +105,7 @@ async def voice_message(
         sender_id=current_user.id,
         content=transcript.strip(),
         sender_type=current_user.type.value if hasattr(current_user.type, "value") else "HUMAN",
+        meta_json={"source": "voice", "transcription": True},
     )
     human_msg_id = str(human_msg.id)
     human_msg_uuid = human_msg.id
@@ -126,11 +135,6 @@ async def voice_message(
         system_prompt = base_prompt
 
     user_id_str = str(current_user.id)
-
-    # Capture room execution_allowed before closing the route session
-    from app.crud import get_chat_room_by_id
-    room = get_chat_room_by_id(session, room_id)
-    room_execution_allowed = room.execution_allowed if room else None
 
     async def event_stream():
         # Immediately tell the client what was heard
