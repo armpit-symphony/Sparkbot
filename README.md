@@ -87,6 +87,7 @@ The desktop app is the easiest path for one person. Docker and systemd deploymen
 
 ### Workstation
 - **Office floor** — visual grid of all your AI desks: Sparkbot, model stack companions, agents, invite seats, terminal
+- **Phone access** — the full workstation now opens on phone-sized screens as a horizontally scrollable operations map instead of blocking mobile users
 - **Robo OS** — Workstation button for the unified MCP control plane, LIMA Robotics OS manifests, policy tags, no-hardware replay/simulation commands, and robot-skill safety posture
 - **Invite Wing** — seat any model with its own API key and model ID; routes directly to that provider. The **Claude** and **ChatGPT** desks now use a matching `API Key / Subscription` setup pattern for Anthropic and OpenAI subscription-linked credentials, and the third desk is preset for **xAI Grok**
 - **Round Table** — autonomous multi-agent meeting room; all agents contribute without you typing between turns

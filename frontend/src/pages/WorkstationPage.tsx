@@ -35,7 +35,6 @@ import {
 } from "lucide-react"
 import SparkbotSurfaceTabs from "@/components/Common/SparkbotSurfaceTabs"
 import SparkbotSurfaceInfoDialog from "@/components/Common/SparkbotSurfaceInfoDialog"
-import { Button } from "@/components/ui/button"
 import {
   type Station,
   type StationStatus,
@@ -406,6 +405,7 @@ const SCANLINE_BG =
 const PLASMA_PRIMARY = "#8b93ff"
 const PLASMA_SECONDARY = "#7dd3fc"
 const PLASMA_BORDER = "rgba(99, 102, 241, 0.22)"
+const WORKSTATION_MAP_MIN_WIDTH = 980
 
 // ─── StatusLight sub-component ────────────────────────────────────────────────
 
@@ -1107,6 +1107,7 @@ function StationDetailPanel({
         right: 0,
         bottom: 0,
         width: 320,
+        maxWidth: "100vw",
         backgroundColor: "#07101e",
         borderLeft: `1px solid ${accentHex}`,
         boxShadow: `-4px 0 32px ${accentHex}22`,
@@ -1869,6 +1870,7 @@ function RoundTablePanel({
         right: 0,
         bottom: 0,
         width: 320,
+        maxWidth: "100vw",
         backgroundColor: "#07101e",
         borderLeft: `1px solid ${accentHex}`,
         boxShadow: `-4px 0 32px ${accentHex}22`,
@@ -2537,6 +2539,7 @@ function ComputerControlPanel({ onClose, onOpenTerminal, status }: ComputerContr
         right: 0,
         bottom: 0,
         width: 380,
+        maxWidth: "100vw",
         backgroundColor: "#07101e",
         borderLeft: `1px solid ${ACCENT}`,
         boxShadow: `-4px 0 32px ${ACCENT}22`,
@@ -2850,6 +2853,7 @@ function McpControlPlanePanel({ onClose }: { onClose: () => void }) {
         right: 0,
         bottom: 0,
         width: 560,
+        maxWidth: "100vw",
         backgroundColor: "#07101e",
         borderLeft: `1px solid ${ACCENT}`,
         boxShadow: `-4px 0 32px ${ACCENT}22`,
@@ -3212,6 +3216,7 @@ function TerminalDetailPanel({ station, onClose }: TerminalDetailPanelProps) {
         right: 0,
         bottom: 0,
         width: panelWidth,
+        maxWidth: "100vw",
         backgroundColor: "#07101e",
         borderLeft: `1px solid ${accentHex}`,
         boxShadow: `-4px 0 32px ${accentHex}22`,
@@ -4152,7 +4157,6 @@ export default function WorkstationPage() {
     [configuredInvites],
   )
 
-  const handleBackToDm = useCallback(() => navigate({ to: "/dm" }), [navigate])
   const handleOpenInfo = useCallback(() => {
     setPanel(null)
     setSeatPicker(null)
@@ -4272,42 +4276,9 @@ export default function WorkstationPage() {
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <>
-      {/* Mobile fallback */}
+      {/* Full workstation */}
       <div
-        className="flex flex-col items-center justify-center gap-6 sm:hidden"
-        style={{
-          minHeight: "100dvh",
-          backgroundColor: "#060a13",
-          padding: 24,
-          fontFamily: "monospace",
-        }}
-      >
-        <Layers size={40} style={{ color: PLASMA_PRIMARY, filter: "drop-shadow(0 0 12px rgba(129,140,248,0.28))" }} />
-        <div style={{ textAlign: "center" }}>
-          <div
-            style={{
-              fontSize: 13,
-              fontWeight: 700,
-              color: PLASMA_PRIMARY,
-              letterSpacing: "0.1em",
-              textTransform: "uppercase",
-              marginBottom: 8,
-            }}
-          >
-            Workstation
-          </div>
-          <p style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.6, maxWidth: 280, margin: 0 }}>
-            Workstation view requires a larger screen. Please open Sparkbot on a desktop or tablet.
-          </p>
-        </div>
-        <Button variant="outline" onClick={handleBackToDm}>
-          Back to Sparkbot
-        </Button>
-      </div>
-
-      {/* Full workstation — hidden at sm and below */}
-      <div
-        className="hidden sm:flex"
+        className="flex"
         style={{
           flexDirection: "column",
           minHeight: "100dvh",
@@ -4318,7 +4289,9 @@ export default function WorkstationPage() {
           `,
           fontFamily: "monospace",
           position: "relative",
-          overflow: panelOpen ? "hidden" : undefined,
+          overflowX: "auto",
+          overflowY: panelOpen ? "hidden" : undefined,
+          WebkitOverflowScrolling: "touch",
         }}
       >
         {/* Scanlines overlay */}
@@ -4336,6 +4309,7 @@ export default function WorkstationPage() {
         <header
           style={{
             height: 56,
+            minWidth: WORKSTATION_MAP_MIN_WIDTH,
             borderBottom: `1px solid ${PLASMA_BORDER}`,
             display: "flex",
             alignItems: "center",
@@ -4415,6 +4389,7 @@ export default function WorkstationPage() {
         <main
           style={{
             flex: 1,
+            minWidth: WORKSTATION_MAP_MIN_WIDTH,
             padding: "10px 16px 16px",
             display: "flex",
             flexDirection: "column",

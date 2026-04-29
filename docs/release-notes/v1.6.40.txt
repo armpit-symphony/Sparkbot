@@ -25,5 +25,8 @@ Guardian Memory retrieval governance and metrics.
 - Defensively trim the LiteLLM tool manifest to provider limits at the final
   provider-call boundary so Telegram, web chat, and scheduled jobs keep working
   even when dynamic skills expand the registered tool list.
+- Let Workstation render on phone-sized screens as a horizontally scrollable
+  operations map, with side panels capped to the viewport instead of showing a
+  "larger screen required" blocker.
 - Refresh README, capabilities docs, release note, and public downloader
   version markers for 1.6.40.

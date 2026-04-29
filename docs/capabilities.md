@@ -569,6 +569,8 @@ SPARKBOT_AGENT_IDENTITY_JSON={"devops":{"owner":"platform","scopes":["ci","diagn
 
 The Workstation is the visual operations hub. Access it from the main navigation.
 
+On phone-sized screens, Workstation keeps the full office map available as a horizontally scrollable workspace instead of replacing it with a screen-size blocker. Side panels are capped to the viewport width so station details, Robo OS, Computer Control, and terminal controls remain reachable from mobile browsers and remote-browser sessions.
+
 ### Office Floor
 
 A visual grid showing all active desks:
