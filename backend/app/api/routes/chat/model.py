@@ -26,6 +26,7 @@ from app.services.guardian import get_guardian_suite
 from app.api.routes.chat.llm import (
     AGENT_MODEL_OVERRIDES_ENV,
     AVAILABLE_MODELS,
+    VALID_AGENT_ROUTES,
     BACKUP_MODEL_1_ENV,
     BACKUP_MODEL_2_ENV,
     DEFAULT_CROSS_PROVIDER_FALLBACK_ENV,
@@ -904,17 +905,18 @@ async def update_models_config(body: ControlsConfigUpdate, current_user: Current
 
     if body.agent_overrides is not None:
         cleaned: dict[str, dict[str, str]] = {}
+        _route_to_provider = {"openrouter": "openrouter", "local": "ollama", "openai": "openai", "anthropic": "anthropic", "google": "google", "groq": "groq", "minimax": "minimax", "xai": "xai"}
         for agent_name, value in body.agent_overrides.items():
             route = str((value or {}).get("route") or "default").strip().lower()
             model = str((value or {}).get("model") or "").strip()
-            if route not in {"default", "openrouter", "local"}:
+            if route not in VALID_AGENT_ROUTES:
                 raise HTTPException(status_code=400, detail=f"Invalid route for agent '{agent_name}'.")
             if model and not is_valid_model(model):
                 raise HTTPException(status_code=400, detail=f"Unknown model '{model}' for agent '{agent_name}'.")
-            if route == "openrouter" and model and model_provider(model) != "openrouter":
-                raise HTTPException(status_code=400, detail=f"Agent '{agent_name}' must use an OpenRouter model.")
-            if route == "local" and model and model_provider(model) != "ollama":
-                raise HTTPException(status_code=400, detail=f"Agent '{agent_name}' must use a local Ollama model.")
+            if route in _route_to_provider and model:
+                expected_provider = _route_to_provider[route]
+                if model_provider(model) != expected_provider:
+                    raise HTTPException(status_code=400, detail=f"Agent '{agent_name}' route '{route}' requires a {expected_provider} model.")
             cleaned[agent_name.strip().lower()] = {"route": route, "model": model}
         env_updates[AGENT_MODEL_OVERRIDES_ENV] = json.dumps(cleaned, separators=(",", ":"))
         notices.append("Agent routing overrides updated.")

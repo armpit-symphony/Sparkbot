@@ -651,6 +651,9 @@ def get_invite_agent_config(agent_name: str) -> dict[str, str]:
     return _invite_agent_configs.get(agent_name.strip().lower(), {})
 
 
+VALID_AGENT_ROUTES = {"default", "openrouter", "local", "openai", "anthropic", "google", "groq", "minimax", "xai"}
+
+
 def get_agent_model_overrides() -> dict[str, dict[str, str]]:
     raw = os.getenv(AGENT_MODEL_OVERRIDES_ENV, "").strip()
     if not raw:
@@ -667,7 +670,7 @@ def get_agent_model_overrides() -> dict[str, dict[str, str]]:
             continue
         route = str(value.get("route") or "default").strip().lower()
         model = str(value.get("model") or "").strip()
-        if route not in {"default", "openrouter", "local"}:
+        if route not in VALID_AGENT_ROUTES:
             continue
         cleaned[str(key).strip().lower()] = {"route": route, "model": model}
     return cleaned
@@ -704,7 +707,7 @@ def get_agent_route_context(
     invite_auth_mode = invite_conf.get("auth_mode", "api_key").strip().lower() or "api_key"
 
     route = str((override or {}).get("route") or "default").strip().lower()
-    if route not in {"default", "openrouter", "local"}:
+    if route not in VALID_AGENT_ROUTES:
         route = "default"
 
     override_model = invite_model or str((override or {}).get("model") or "").strip()
@@ -713,10 +716,17 @@ def get_agent_route_context(
         chosen_model = override_model or get_openrouter_default_model()
     elif route == "local":
         chosen_model = override_model or get_local_default_model()
+    elif route in {"openai", "anthropic", "google", "groq", "minimax", "xai"}:
+        # Provider-specific route: use the override model or find first model for that provider
+        if override_model:
+            chosen_model = override_model
+        else:
+            provider_models = [m for m in AVAILABLE_MODELS if model_provider(m) == route]
+            chosen_model = provider_models[0] if provider_models else default_model
     elif override_model:
         chosen_model = override_model
 
-    provider_locked = route in {"openrouter", "local"} or bool(override_model)
+    provider_locked = route not in {"default"} or bool(override_model)
 
     ctx: dict[str, Any] = {
         "agent_name": effective_agent,

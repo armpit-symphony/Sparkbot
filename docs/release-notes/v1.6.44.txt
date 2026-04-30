@@ -1,0 +1,31 @@
+v1.6.44 — Break-glass everywhere & wider agent models
+
+Release date: 2026-04-30
+
+Changes:
+
+1. Break-glass in Workstation
+   - Workstation Computer Control panel now shows live break-glass status
+   - Green checkmark and "Unlocked" badge when break-glass session is active
+   - TTL countdown displayed in the status card
+   - Shell, Terminal, and Browser capability badges reflect break-glass state
+   - "How to activate" section guides users to /breakglass when needed
+
+2. Auto PIN prompt on privileged_required
+   - When a tool requires break-glass authorization, Sparkbot now auto-sends
+     /breakglass and prompts directly for the 6-digit PIN
+   - Eliminates the manual step of typing /breakglass before entering PIN
+   - Works in both regular chat and voice/hands-free mode
+
+3. Wider agent model selection
+   - Agent model overrides now support all configured providers:
+     OpenAI, Anthropic, Google, Groq, MiniMax, xAI, OpenRouter, Local (Ollama)
+   - Previously limited to default/openrouter/local routes only
+   - Controls UI shows full provider list with per-provider model picker
+   - Backend validates model-provider match on save
+
+4. Version bump to 1.6.44
+   - tauri.conf.json, package.json, pyproject.toml, download page, README
+   - Download page "What's New" section updated
+   - Release history table updated in README
+   - capabilities.md updated with per-agent model routing docs

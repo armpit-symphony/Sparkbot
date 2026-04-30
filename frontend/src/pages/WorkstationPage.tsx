@@ -139,6 +139,8 @@ interface WorkstationOverview {
 interface ComputerControlRoomStatus {
   enabled: boolean | null
   pinConfigured: boolean | null
+  breakglassActive: boolean
+  breakglassTtl: number | null
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -2444,8 +2446,10 @@ interface ComputerControlPanelProps {
 function ComputerControlPanel({ onClose, onOpenTerminal, status }: ComputerControlPanelProps) {
   const ACCENT = "#38bdf8"
   const enabled = status.enabled === true
-  const badgeText = enabled ? "Always on" : "PIN gated"
-  const badgeColor = enabled ? "#4ade80" : "#fbbf24"
+  const bgActive = status.breakglassActive === true
+  const effectivelyUnlocked = enabled || bgActive
+  const badgeText = enabled ? "Always on" : bgActive ? "Break-glass active" : "PIN gated"
+  const badgeColor = effectivelyUnlocked ? "#4ade80" : "#fbbf24"
 
   const cap = (
     icon: React.ReactNode,
@@ -2617,10 +2621,20 @@ function ComputerControlPanel({ onClose, onOpenTerminal, status }: ComputerContr
           <p style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.6, margin: "8px 0 0" }}>
             {enabled
               ? "Computer Control is on. Sparkbot can run shell, terminal, browser, and comms actions without PIN prompts in its DM room."
-              : status.pinConfigured === false
-                ? "Computer Control is off and no PIN is configured yet. Open Controls to set the 6-digit PIN before privileged actions."
-                : "Computer Control is off. Sparkbot will ask for the break-glass PIN before commands, edits, browser writes, vault access, or comms sends."}
+              : bgActive
+                ? `Break-glass is active — all tools are unlocked except vault writes/reveals. ${status.breakglassTtl != null ? `Expires in ${Math.ceil(status.breakglassTtl / 60)} min.` : ""}`
+                : status.pinConfigured === false
+                  ? "Computer Control is off and no PIN is configured yet. Open Controls to set the 6-digit PIN before privileged actions."
+                  : "Computer Control is off. Sparkbot will ask for the break-glass PIN before commands, edits, browser writes, vault access, or comms sends."}
           </p>
+          {bgActive && (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
+              <span style={{ color: "#4ade80", fontSize: 14 }}>&#x2713;</span>
+              <span style={{ fontSize: 10, color: "#4ade80", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                Privileged session active
+              </span>
+            </div>
+          )}
         </div>
 
         {cap(
@@ -2677,6 +2691,7 @@ function ComputerControlPanel({ onClose, onOpenTerminal, status }: ComputerContr
             <li>Open Sparkbot chat (click Sparkbot's desk)</li>
             <li>Tell Sparkbot what you want it to do</li>
             <li>For terminal control, connect the terminal panel first</li>
+            {!enabled && !bgActive && <li>Type <code style={{ color: "#7dd3fc", fontSize: 10 }}>/breakglass</code> + your PIN to unlock privileged tools</li>}
           </ol>
         </div>
       </div>
@@ -3920,6 +3935,8 @@ export default function WorkstationPage() {
   const [computerControlStatus, setComputerControlStatus] = useState<ComputerControlRoomStatus>({
     enabled: null,
     pinConfigured: null,
+    breakglassActive: false,
+    breakglassTtl: null,
   })
 
   const fetchOverview = useCallback(async () => {
@@ -3946,9 +3963,13 @@ export default function WorkstationPage() {
           roomEnabled = typeof room?.execution_allowed === "boolean" ? room.execution_allowed : null
         }
       }
+      const bgActive = guardianStatusRes?.breakglass?.active === true
+      const bgTtl = typeof guardianStatusRes?.breakglass?.ttl_remaining === "number" ? guardianStatusRes.breakglass.ttl_remaining : null
       setComputerControlStatus({
         enabled: roomEnabled,
         pinConfigured: typeof guardianStatusRes?.pin_configured === "boolean" ? guardianStatusRes.pin_configured : null,
+        breakglassActive: bgActive,
+        breakglassTtl: bgTtl,
       })
     } catch {
       // ignore
@@ -4527,8 +4548,13 @@ export default function WorkstationPage() {
                       Shell · Terminal · Browser
                     </div>
                   </div>
-                  <span style={{ fontSize: 9, color: computerControlStatus.enabled ? "#4ade80" : "#fbbf24", border: `1px solid ${computerControlStatus.enabled ? "#4ade80" : "#fbbf24"}44`, borderRadius: 3, padding: "1px 6px", letterSpacing: "0.08em", textTransform: "uppercase" }}>
-                    {computerControlStatus.enabled ? "Always on" : "PIN gated"}
+                  {computerControlStatus.breakglassActive && !computerControlStatus.enabled && (
+                    <span style={{ fontSize: 9, color: "#4ade80", border: "1px solid #4ade8044", borderRadius: 3, padding: "1px 6px", letterSpacing: "0.08em", textTransform: "uppercase", display: "inline-flex", alignItems: "center", gap: 3 }}>
+                      &#x2713; Unlocked
+                    </span>
+                  )}
+                  <span style={{ fontSize: 9, color: computerControlStatus.enabled || computerControlStatus.breakglassActive ? "#4ade80" : "#fbbf24", border: `1px solid ${computerControlStatus.enabled || computerControlStatus.breakglassActive ? "#4ade80" : "#fbbf24"}44`, borderRadius: 3, padding: "1px 6px", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                    {computerControlStatus.enabled ? "Always on" : computerControlStatus.breakglassActive ? "Break-glass" : "PIN gated"}
                   </span>
                 </button>
                 <button

@@ -560,6 +560,24 @@ Every agent now exposes first-class identity metadata:
 
 Operators can set `SPARKBOT_DISABLED_AGENTS=researcher,coder` as a coarse kill switch, or use `SPARKBOT_AGENT_IDENTITY_JSON` for structured identity overrides.
 
+### Per-Agent Model Routing
+
+Each agent can be routed to a specific provider and model using **Controls > Agents > Model overrides**.
+
+| Route | Behavior |
+|-------|----------|
+| `default` | Uses the primary model from the model stack |
+| `openai` | Locked to OpenAI; pick a specific model or use the default |
+| `anthropic` | Locked to Anthropic (Claude) |
+| `google` | Locked to Google (Gemini) |
+| `groq` | Locked to Groq |
+| `minimax` | Locked to MiniMax |
+| `xai` | Locked to xAI (Grok) |
+| `openrouter` | Locked to OpenRouter |
+| `local` | Locked to local Ollama models |
+
+Env var: `SPARKBOT_AGENT_MODEL_OVERRIDES_JSON='{"researcher":{"route":"anthropic","model":"claude-sonnet-4-6"},"coder":{"route":"openai","model":"gpt-4.1"}}'`
+
 Custom agents via env var:
 ```env
 SPARKBOT_AGENTS_JSON=[{"name":"devops","emoji":"🛠","description":"DevOps specialist","system_prompt":"You are..."}]

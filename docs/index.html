@@ -979,7 +979,7 @@
         <span class="logo-name">Sparkbot</span>
       </div>
 
-      <div class="hero-badge">Free &amp; Open Source &nbsp;·&nbsp; <span id="version-badge">v1.6.43</span></div>
+      <div class="hero-badge">Free &amp; Open Source &nbsp;·&nbsp; <span id="version-badge">v1.6.44</span></div>
       <h1>Your own AI,<br>on your computer</h1>
 
       <p class="hero-tagline">
@@ -1001,7 +1001,7 @@
       <div class="download-primary-wrap">
         <a
           id="download-windows-primary"
-          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.43/Sparkbot.Local_1.6.43_x64-setup.exe"
+          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.44/Sparkbot.Local_1.6.44_x64-setup.exe"
           class="btn-download-windows"
           aria-label="Download Sparkbot for Windows, latest stable version"
         >
@@ -1013,7 +1013,7 @@
         </a>
       </div>
 
-      <p class="download-meta"><span id="download-version-label">Version 1.6.43</span> &nbsp;·&nbsp; Windows 10 &amp; 11 &nbsp;·&nbsp; 64-bit &nbsp;·&nbsp; Free forever</p>
+      <p class="download-meta"><span id="download-version-label">Version 1.6.44</span> &nbsp;·&nbsp; Windows 10 &amp; 11 &nbsp;·&nbsp; 64-bit &nbsp;·&nbsp; Free forever</p>
       <p class="download-meta" style="margin-top:12px; font-size:0.95rem;">
         This page checks GitHub for the latest stable desktop release automatically. If the button does not start a download, open
         <a href="https://github.com/armpit-symphony/Sparkbot/releases" target="_blank" rel="noopener noreferrer">All Releases</a>
@@ -1023,7 +1023,7 @@
       <div class="other-os">
         <a
           id="download-macos-link"
-          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.43/Sparkbot.Local_1.6.43_aarch64.dmg"
+          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.44/Sparkbot.Local_1.6.44_aarch64.dmg"
           class="btn-os-small"
           aria-label="Download Sparkbot for macOS"
         >
@@ -1031,7 +1031,7 @@
         </a>
         <a
           id="download-linux-link"
-          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.43/Sparkbot.Local_1.6.43_amd64.AppImage"
+          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.44/Sparkbot.Local_1.6.44_amd64.AppImage"
           class="btn-os-small"
           aria-label="Download Sparkbot for Linux AppImage"
         >
@@ -1121,33 +1121,34 @@
     =========================== -->
     <section class="section" aria-labelledby="new-heading">
       <div class="container">
-        <h2 class="section-title" id="new-heading">New in v1.6.43: reliability, error handling, and live telemetry</h2>
+        <h2 class="section-title" id="new-heading">New in v1.6.44: Break-glass everywhere &amp; wider agent models</h2>
         <p class="section-subtitle">
-          A focused reliability release. Windows-installed builds were hitting OpenAI's 128-tool limit; the chat router now hard-caps and auto-shrinks. Errors that used to surface as raw <code>litellm.BadRequestError</code> stack traces are rewritten in plain language, and a new <code>/perf</code> command shows live model and tool performance.
+          Break-glass privileged mode now works across the entire app, and agents can be routed to any configured provider.
         </p>
 
         <div class="features-grid">
           <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">🛡️</span>
-            <h3 class="feature-title">Tool catalogue trim &amp; auto-shrink retry</h3>
-            <p class="feature-desc">Fixes <strong>“Invalid 'tools': array too long”</strong> on Windows builds. The router caps the catalogue at 128, dedupes overlapping skills, and if a provider still rejects the call it shrinks and retries automatically.</p>
+            <span class="feature-icon" role="img" aria-hidden="true">🔓</span>
+            <h3 class="feature-title">Break-glass in Workstation</h3>
+            <p class="feature-desc">The Workstation page now shows live break-glass status with a green checkmark when active. All tools are unlocked app-wide (except vault writes).</p>
           </div>
 
           <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">💬</span>
-            <h3 class="feature-title">Friendly chat error messages</h3>
-            <p class="feature-desc">Rate-limit, quota, auth, context-length, model-not-found, and timeout failures now show a one-line, actionable message instead of the raw provider exception. Full details still go to the backend log.</p>
+            <span class="feature-icon" role="img" aria-hidden="true">🤖</span>
+            <h3 class="feature-title">Wider agent model selection</h3>
+            <p class="feature-desc">Agents can now be routed to any configured provider: OpenAI, Anthropic, Google, Groq, MiniMax, xAI, OpenRouter, or local Ollama models.</p>
           </div>
 
           <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">📊</span>
-            <h3 class="feature-title">/perf command and performance API</h3>
-            <p class="feature-desc">The new <code>/perf</code> slash command and <code>/api/v1/chat/performance</code> endpoint surface model + tool latency, call counts, error rates, and the last error so you can spot a slow or flaking model without devtools.</p>
+            <span class="feature-icon" role="img" aria-hidden="true">⚡</span>
+            <h3 class="feature-title">Auto PIN prompt</h3>
+            <p class="feature-desc">When a tool requires break-glass authorization, Sparkbot now auto-triggers the PIN prompt instead of making you type /breakglass manually.</p>
           </div>
         </div>
 
         <p class="download-meta" style="margin-top:24px;">
-          New documentation: <a href="https://github.com/armpit-symphony/Sparkbot/blob/main/docs/error-handling.md" target="_blank" rel="noopener noreferrer">how Sparkbot handles errors</a> and <a href="https://github.com/armpit-symphony/Sparkbot/blob/main/docs/guardian-spine.md" target="_blank" rel="noopener noreferrer">how the Guardian suite and Spine ledger interact in the background</a>.
+          All actions still run through the guarded chat pipeline with tool confirmations and room membership checks. Read the capability guide:
+          <a href="https://github.com/armpit-symphony/Sparkbot/blob/main/docs/capabilities.md" target="_blank" rel="noopener noreferrer">Sparkbot Capabilities</a>
         </p>
       </div>
     </section>
@@ -1168,7 +1169,7 @@
             <div class="step-num" aria-hidden="true">1</div>
             <div class="step-body">
               <h3 class="step-title">Click the big purple "Download for Windows" button above</h3>
-              <p class="step-desc">Your browser will download a file called <strong id="windows-filename-step-1">Sparkbot.Local_1.6.43_x64-setup.exe</strong>. This is the installer. It usually arrives in less than a minute.</p>
+              <p class="step-desc">Your browser will download a file called <strong id="windows-filename-step-1">Sparkbot.Local_1.6.44_x64-setup.exe</strong>. This is the installer. It usually arrives in less than a minute.</p>
             </div>
           </div>
 
@@ -1176,7 +1177,7 @@
             <div class="step-num" aria-hidden="true">2</div>
             <div class="step-body">
               <h3 class="step-title">Find the downloaded file and open it</h3>
-              <p class="step-desc">Look at the bottom of your browser for the downloaded file, or check your <strong>Downloads folder</strong>. Double-click the file named <strong id="windows-filename-step-2">Sparkbot.Local_1.6.43_x64-setup.exe</strong> to start installing.</p>
+              <p class="step-desc">Look at the bottom of your browser for the downloaded file, or check your <strong>Downloads folder</strong>. Double-click the file named <strong id="windows-filename-step-2">Sparkbot.Local_1.6.44_x64-setup.exe</strong> to start installing.</p>
             </div>
           </div>
 
@@ -1246,7 +1247,7 @@
               </div>
 
               <div class="win-info-row">
-                <strong>App:</strong> <span id="windows-filename-dialog">Sparkbot.Local_1.6.43_x64-setup.exe</span>
+                <strong>App:</strong> <span id="windows-filename-dialog">Sparkbot.Local_1.6.44_x64-setup.exe</span>
               </div>
               <div class="win-info-row">
                 <strong>Publisher:</strong> <span>Unknown publisher</span>
@@ -1480,7 +1481,7 @@
       <p>Free. Private. Yours. Download takes less than a minute.</p>
       <a
         id="download-windows-bottom"
-        href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.43/Sparkbot.Local_1.6.43_x64-setup.exe"
+        href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.44/Sparkbot.Local_1.6.44_x64-setup.exe"
         class="btn-download-windows"
         style="display:inline-flex;"
         aria-label="Download Sparkbot for Windows"
@@ -1500,7 +1501,7 @@
   =========================== -->
   <footer>
     <p>
-      <span role="img" aria-hidden="true">⚡</span> <strong>Sparkbot</strong> &nbsp;·&nbsp; <span id="footer-version-label">Version 1.6.43</span> &nbsp;·&nbsp; Free &amp; Open Source
+      <span role="img" aria-hidden="true">⚡</span> <strong>Sparkbot</strong> &nbsp;·&nbsp; <span id="footer-version-label">Version 1.6.44</span> &nbsp;·&nbsp; Free &amp; Open Source
     </p>
     <p style="margin-top:10px;">
       <a href="https://github.com/armpit-symphony/Sparkbot" target="_blank" rel="noopener noreferrer">GitHub</a>
@@ -1511,9 +1512,9 @@
     </p>
     <p style="margin-top:12px; font-size:0.8rem;">
       Other platforms:
-      <a id="footer-macos-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.43/Sparkbot.Local_1.6.43_aarch64.dmg">macOS (all Macs)</a>
+      <a id="footer-macos-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.44/Sparkbot.Local_1.6.44_aarch64.dmg">macOS (all Macs)</a>
       &nbsp;·&nbsp;
-      <a id="footer-linux-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.43/Sparkbot.Local_1.6.43_amd64.AppImage">Linux (AppImage)</a>
+      <a id="footer-linux-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.44/Sparkbot.Local_1.6.44_amd64.AppImage">Linux (AppImage)</a>
     </p>
   </footer>
 
@@ -1522,11 +1523,11 @@
   =========================== -->
   <script>
     var fallbackRelease = {
-      version: "1.6.43",
-      windowsFilename: "Sparkbot.Local_1.6.43_x64-setup.exe",
-      windowsUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.43/Sparkbot.Local_1.6.43_x64-setup.exe",
-      macosUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.43/Sparkbot.Local_1.6.43_aarch64.dmg",
-      linuxUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.43/Sparkbot.Local_1.6.43_amd64.AppImage"
+      version: "1.6.44",
+      windowsFilename: "Sparkbot.Local_1.6.44_x64-setup.exe",
+      windowsUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.44/Sparkbot.Local_1.6.44_x64-setup.exe",
+      macosUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.44/Sparkbot.Local_1.6.44_aarch64.dmg",
+      linuxUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.44/Sparkbot.Local_1.6.44_amd64.AppImage"
     };
 
     function setText(id, value) {

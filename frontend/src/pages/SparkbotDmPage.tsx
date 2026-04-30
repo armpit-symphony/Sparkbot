@@ -223,7 +223,7 @@ interface ModelsControlsConfig {
     default_provider_authoritative: boolean
     cross_provider_fallback: boolean
   }
-  agent_overrides: Record<string, { route: "default" | "openrouter" | "local"; model?: string }>
+  agent_overrides: Record<string, { route: string; model?: string }>
   available_agents: Array<{
     name: string
     emoji: string
@@ -305,7 +305,7 @@ interface RoutingPolicyForm {
 }
 
 interface AgentRoutingOverride {
-  route: "default" | "openrouter" | "local"
+  route: string
   model: string
 }
 
@@ -2159,7 +2159,7 @@ function SparkbotSettingsDialog({
               <div className="mb-3">
                 <h3 className="text-sm font-semibold">Model overrides</h3>
                 <p className="text-xs text-muted-foreground">
-                  Keep agents on the default path, or force selected agents to use OpenRouter or a local model.
+                  Keep agents on the default path, or force them to a specific provider and model.
                 </p>
               </div>
               <div className="space-y-3">
@@ -2167,11 +2167,25 @@ function SparkbotSettingsDialog({
                   const override = agentOverrides[agent.name] ?? { route: "default", model: "" }
                   const route = override.route
                   const modelValue = override.model ?? ""
-                  const selectedModel = route === "openrouter"
-                    ? modelValue || modelsConfig?.default_selection.model || ""
+                  const routeProviderMap: Record<string, string> = {
+                    openrouter: "openrouter", local: "ollama", openai: "openai",
+                    anthropic: "anthropic", google: "google", groq: "groq",
+                    minimax: "minimax", xai: "xai",
+                  }
+                  const routeLabels: Record<string, string> = {
+                    openrouter: "OpenRouter", local: "Local (Ollama)", openai: "OpenAI",
+                    anthropic: "Anthropic", google: "Google", groq: "Groq",
+                    minimax: "MiniMax", xai: "xAI",
+                  }
+                  const providerForRoute = routeProviderMap[route] ?? ""
+                  const modelsForRoute = route === "openrouter"
+                    ? openRouterModels.map((m) => m.id)
                     : route === "local"
-                      ? modelValue || localDefaultModel
-                      : modelsConfig?.default_selection.model || ""
+                      ? localModelOptions
+                      : providerForRoute
+                        ? directProviderModels(providerForRoute)
+                        : []
+                  const selectedModel = modelValue || ""
 
                   return (
                     <div key={agent.name} className="rounded-lg border bg-muted/30 px-3 py-3">
@@ -2189,24 +2203,30 @@ function SparkbotSettingsDialog({
                           className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
                         >
                           <option value="default">Use default</option>
-                          <option value="openrouter">Force OpenRouter</option>
-                          <option value="local">Force local</option>
+                          <option value="openai">OpenAI</option>
+                          <option value="anthropic">Anthropic</option>
+                          <option value="google">Google</option>
+                          <option value="groq">Groq</option>
+                          <option value="minimax">MiniMax</option>
+                          <option value="xai">xAI</option>
+                          <option value="openrouter">OpenRouter</option>
+                          <option value="local">Local (Ollama)</option>
                         </select>
 
-                        {route !== "default" && (
+                        {route !== "default" && modelsForRoute.length > 0 && (
                           <select
                             value={selectedModel}
                             onChange={(e) => onAgentOverrideChange(agent.name, "model", e.target.value)}
                             className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
                           >
                             <option value="">
-                              {route === "openrouter" ? "Use default OpenRouter model" : "Use preferred local model"}
+                              {`Use default ${routeLabels[route] ?? route} model`}
                             </option>
-                            {(route === "openrouter" ? openRouterModels.map((model) => model.id) : localModelOptions).map((modelId) => (
+                            {modelsForRoute.map((modelId) => (
                               <option key={modelId} value={modelId}>
                                 {route === "openrouter"
-                                  ? openRouterModels.find((model) => model.id === modelId)?.label ?? modelId
-                                  : modelsConfig?.model_labels?.[modelId] ?? modelId.replace("ollama/", "")}
+                                  ? openRouterModels.find((m) => m.id === modelId)?.label ?? modelId
+                                  : modelsConfig?.model_labels?.[modelId] ?? modelId}
                               </option>
                             ))}
                           </select>
@@ -3210,21 +3230,20 @@ function SparkbotDmPage() {
     field: keyof AgentRoutingOverride,
     value: string,
   ) => {
+    const routeToProviderPrefix: Record<string, string> = {
+      openrouter: "openrouter/", local: "ollama/", openai: "gpt-", anthropic: "claude",
+      google: "gemini/", groq: "groq/", minimax: "minimax/", xai: "xai/",
+    }
     setAgentOverrides((prev) => {
       const current = prev[agentName] ?? { route: "default", model: "" }
       if (field === "route") {
-        const nextRoute = value as AgentRoutingOverride["route"]
-        return {
-          ...prev,
-          [agentName]: {
-            route: nextRoute,
-            model: nextRoute === "default"
-              ? ""
-              : nextRoute === "local"
-                ? current.model.startsWith("ollama/") ? current.model : ""
-                : current.model.startsWith("openrouter/") ? current.model : "",
-          },
+        const nextRoute = value
+        if (nextRoute === "default") {
+          return { ...prev, [agentName]: { route: "default", model: "" } }
         }
+        const prefix = routeToProviderPrefix[nextRoute] ?? ""
+        const modelFits = prefix && current.model.startsWith(prefix)
+        return { ...prev, [agentName]: { route: nextRoute, model: modelFits ? current.model : "" } }
       }
       return {
         ...prev,
@@ -3429,21 +3448,10 @@ function SparkbotDmPage() {
     const payload = Object.fromEntries(
       routingAgents.map((agent) => {
         const override = agentOverrides[agent.name] ?? { route: "default", model: "" }
-        if (override.route === "openrouter") {
-          const overrideModel = override.model.trim()
-          return [agent.name, {
-            route: "openrouter",
-            model: overrideModel && overrideModel !== defaultSelection.model ? overrideModel : "",
-          }]
+        if (override.route === "default") {
+          return [agent.name, { route: "default", model: "" }]
         }
-        if (override.route === "local") {
-          const overrideModel = override.model.trim()
-          return [agent.name, {
-            route: "local",
-            model: overrideModel && overrideModel !== localDefaultModel ? overrideModel : "",
-          }]
-        }
-        return [agent.name, { route: "default", model: "" }]
+        return [agent.name, { route: override.route, model: override.model.trim() }]
       }),
     )
 
@@ -4159,13 +4167,23 @@ function SparkbotDmPage() {
               setAwaitingBreakglassPin(false)
               return
             } else if (ev.type === "privileged_required") {
+              // Auto-trigger breakglass flow: send /breakglass silently and prompt for PIN
               setMessages(prev => prev.map(m => m.id === tempBotId ? {
                 ...m,
-                content: "Computer Control is off for this room. Type `/breakglass` to continue, then enter your PIN.",
+                content: "This action requires break-glass authorization. Enter your 6-digit PIN to unlock:",
                 isStreaming: false,
                 toolActivity: undefined,
               } : m))
-              setAwaitingBreakglassPin(false)
+              // Auto-send /breakglass to backend so user just needs to enter PIN next
+              try {
+                await apiFetch(`/api/v1/chat/rooms/${roomId}/messages`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  credentials: "include",
+                  body: JSON.stringify({ content: "/breakglass" }),
+                })
+              } catch { /* ignore */ }
+              setAwaitingBreakglassPin(true)
               return
             } else if (ev.type === "done") {
               setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, id: ev.message_id, isStreaming: false, toolActivity: undefined } : m))
@@ -4352,13 +4370,22 @@ function SparkbotDmPage() {
               drainQueue = false
               return
             } else if (ev.type === "privileged_required") {
+              // Auto-trigger breakglass flow: send /breakglass silently and prompt for PIN
               setMessages(prev => prev.map(m => m.id === tempBotId ? {
                 ...m,
-                content: "Computer Control is off for this room. Type `/breakglass` to continue, then enter your PIN.",
+                content: "This action requires break-glass authorization. Enter your 6-digit PIN to unlock:",
                 isStreaming: false,
                 toolActivity: undefined,
               } : m))
-              setAwaitingBreakglassPin(false)
+              try {
+                await apiFetch(`/api/v1/chat/rooms/${roomId}/messages`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  credentials: "include",
+                  body: JSON.stringify({ content: "/breakglass" }),
+                })
+              } catch { /* ignore */ }
+              setAwaitingBreakglassPin(true)
               drainQueue = false
               return
             } else if (ev.type === "done") {
