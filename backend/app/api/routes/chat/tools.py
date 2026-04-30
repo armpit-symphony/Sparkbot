@@ -5003,7 +5003,10 @@ async def _remember_fact(fact: str, user_id: Optional[str], session) -> str:
     if not user_id or session is None:
         return "Memory unavailable (no session context)."
     from app.crud import add_user_memory
-    mem = add_user_memory(session, uuid.UUID(user_id), fact)
+    try:
+        mem = add_user_memory(session, uuid.UUID(user_id), fact)
+    except ValueError:
+        return "Memory blocked: that text looks like a secret or low-value memory candidate."
     try:
         get_guardian_suite().memory.remember_fact(user_id=user_id, fact=mem.fact, memory_id=str(mem.id))
     except Exception:

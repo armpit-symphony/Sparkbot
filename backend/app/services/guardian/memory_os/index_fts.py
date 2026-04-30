@@ -2,11 +2,10 @@
 
 import re
 import sqlite3
-from datetime import datetime
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 
-from .schemas import Event, EventType
+from .schemas import Event
 
 
 class FTSIndex:
@@ -119,16 +118,19 @@ class FTSIndex:
 
     def rebuild_from_ledger(self, ledger_path: Path) -> None:
         """Rebuild the entire FTS index from the ledger."""
-        # Clear existing index
+        self.clear()
+
+        # Re-index all events
+        with open(ledger_path) as f:
+            for line in f:
+                if line.strip():
+                    event = Event.model_validate_json(line)
+                    self.index_event(event)
+
+    def clear(self) -> None:
+        """Clear the FTS index without touching the append-only ledger."""
         conn = sqlite3.connect(str(self.db_path))
         cursor = conn.cursor()
         cursor.execute("DELETE FROM events_fts")
         conn.commit()
         conn.close()
-        
-        # Re-index all events
-        with open(ledger_path, "r") as f:
-            for line in f:
-                if line.strip():
-                    event = Event.model_validate_json(line)
-                    self.index_event(event)

@@ -1,5 +1,12 @@
 # Release Notes
 
+## Sparkbot v1.6.45
+
+- Added governed Guardian Memory lifecycle states, typed candidate classification, and low-clutter index gating.
+- Added operator-approved soft deletion, deletion proposals, restore support, and audit logging for memory lifecycle decisions.
+- Added weekly/monthly memory hygiene entry points, snapshot rebuild throttling, and safe ledger archive manifest helpers.
+- Updated README, capabilities docs, release note, and public downloader version markers for `1.6.45`.
+
 ## Sparkbot v1.6.41
 
 - Fixed the full voice route so room persona and execution settings are loaded before the LLM prompt is built.

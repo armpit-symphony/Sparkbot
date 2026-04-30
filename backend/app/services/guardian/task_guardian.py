@@ -78,6 +78,8 @@ ALLOWED_TASK_TOOLS = {
     "memory_reindex",        # rebuild FTS + embedding indexes from the ledger
     "retrieval_eval",        # compare BM25 vs hybrid precision/latency
     "memory_guardian_nightly",# verify recent memory events + export metrics
+    "memory_hygiene_weekly", # mark stale/archive/proposals without hard deletion
+    "memory_cleanup_monthly",# monthly deletion proposal lane; operator approval required
 }
 
 # Write tools allowed in scheduled context when SPARKBOT_TASK_GUARDIAN_WRITE_ENABLED=true.
@@ -631,6 +633,18 @@ async def _execute_internal_tool(task: GuardianTask, session: Session) -> tuple[
         from app.services.guardian.memory import run_nightly_memory_guardian_job
 
         payload = run_nightly_memory_guardian_job(session=session)
+        return "success", json.dumps(payload, ensure_ascii=False)
+
+    if task.tool_name == "memory_hygiene_weekly":
+        from app.services.guardian.memory_hygiene import run_weekly_memory_hygiene_job
+
+        payload = run_weekly_memory_hygiene_job(session=session)
+        return "success", json.dumps(payload, ensure_ascii=False)
+
+    if task.tool_name == "memory_cleanup_monthly":
+        from app.services.guardian.memory_hygiene import run_monthly_memory_cleanup_proposal_job
+
+        payload = run_monthly_memory_cleanup_proposal_job(session=session)
         return "success", json.dumps(payload, ensure_ascii=False)
 
     if task.tool_name == "retrieval_eval":

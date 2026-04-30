@@ -1,0 +1,14 @@
+Sparkbot v1.6.45
+
+Guardian Memory lifecycle governance.
+
+- Added memory candidate taxonomy and local heuristic classification for identity, preference, project context/decision, active task, tool pattern, meeting action, relationship note, debug state, temporary context, do-not-store, secret-blocked, and unknown memory.
+- Kept raw Guardian ledger evidence append-only while preventing low-value acknowledgements, assistant filler, tool-error noise, and secret-like content from entering normal retrieval indexes.
+- Added durable `user_memories` lifecycle fields for active/stale/archived/delete-proposed/soft-deleted/deprecated/rejected states, retention metadata, pinning, use counters, expiration, and deletion approval audit data.
+- Added governed hygiene lanes: weekly stale/archive processing and monthly delete-proposal processing. Pinned and protected memory types are skipped by default; no hard deletion is performed.
+- Added operator approval helpers for propose, approve, reject, soft-delete, and restore flows. Approval soft-deletes by default and all lifecycle decisions are audit logged.
+- Excluded stale, archived, delete-proposed, soft-deleted, deprecated, rejected, expired, and secret-blocked memory from normal prompt context.
+- Throttled profile snapshot rebuilds with `SPARKBOT_MEMORY_SNAPSHOT_REBUILD_EVERY_N` and `SPARKBOT_MEMORY_SNAPSHOT_REBUILD_MIN_SECONDS`.
+- Added safe ledger archive manifest scaffolding and rotation helper without automatic archive purge.
+- Added memory inspector backend support for listing lifecycle states and deletion proposals.
+- Added focused Guardian Memory tests for candidate filtering, lifecycle hygiene, soft deletion approval, retrieval exclusion, snapshot throttling, and usage accounting.

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import gzip
 import json
 import os
 import re
+import shutil
 import threading
 import time
 import uuid
@@ -16,6 +18,11 @@ from typing import Any
 from .memory_os.api import MemoryGuardian
 from .memory_os.config import Config
 from .memory_os.schemas import Event, EventType
+from .memory_taxonomy import (
+    classify_memory_type,
+    is_secret_like,
+    should_index_memory_candidate,
+)
 from .retrievers import build_retriever
 from .verifier import verify_fact
 
@@ -26,6 +33,8 @@ _MAX_LEARNED_FACTS = 8
 _MAX_RECENT_FOCUS = 3
 _MAX_ACTIVE_TOOLS = 4
 _VALID_RETRIEVER_MODES = {"fts", "embed", "hybrid"}
+_SNAPSHOT_STATE_LOCK = threading.Lock()
+_SNAPSHOT_STATE: dict[str, dict[str, Any]] = {}
 
 _SECRET_KEY_RE = re.compile(
     r"(password|passwd|secret|token|api_key|apikey|access_key|credential|auth_token|passphrase|private_key)",
@@ -89,6 +98,22 @@ def _retrieve_limit() -> int:
         return 6
 
 
+def _snapshot_rebuild_every_n() -> int:
+    raw = os.getenv("SPARKBOT_MEMORY_SNAPSHOT_REBUILD_EVERY_N", "10").strip()
+    try:
+        return max(1, min(int(raw), 500))
+    except ValueError:
+        return 10
+
+
+def _snapshot_rebuild_min_seconds() -> int:
+    raw = os.getenv("SPARKBOT_MEMORY_SNAPSHOT_REBUILD_MIN_SECONDS", "300").strip()
+    try:
+        return max(0, min(int(raw), 86400))
+    except ValueError:
+        return 300
+
+
 def _embeddings_enabled() -> bool:
     """Embedding writes are opt-in. Default retrieval is BM25/FTS only."""
     raw = os.getenv("SPARKBOT_MEMORY_GUARDIAN_ENABLE_EMBEDDINGS", "false").strip().lower()
@@ -120,6 +145,10 @@ def _snapshot_dir() -> Path:
 
 def _snapshot_path(user_id: str, room_id: str) -> Path:
     return _snapshot_dir() / f"user_{user_id}__room_{room_id}.json"
+
+
+def _snapshot_state_key(user_id: str, room_id: str) -> str:
+    return f"{user_id}:{room_id}"
 
 
 @lru_cache(maxsize=1)
@@ -382,6 +411,102 @@ def _extract_fact_candidates(text: str) -> list[tuple[str, str, float]]:
     return candidates
 
 
+def _parse_iso_datetime(value: Any) -> datetime | None:
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        dt = value
+    else:
+        try:
+            dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _is_event_expired(event: Event) -> bool:
+    expires_at = _parse_iso_datetime((event.metadata or {}).get("expires_at"))
+    return bool(expires_at and expires_at <= datetime.now(timezone.utc))
+
+
+def _ledger_inactive_refs() -> tuple[set[str], set[str], set[str]]:
+    deleted_memory_ids: set[str] = set()
+    cleared_user_ids: set[str] = set()
+    cleared_session_ids: set[str] = set()
+    try:
+        for event in _guardian().ledger.iter_events():
+            meta = dict(event.metadata or {})
+            action = str(meta.get("lifecycle_action") or "")
+            if action in {"soft_delete", "approve_delete"}:
+                target = str(meta.get("target_memory_id") or "")
+                if target:
+                    deleted_memory_ids.add(target)
+            elif action == "clear_user_memory":
+                target_user = str(meta.get("target_user_id") or "")
+                if target_user:
+                    cleared_user_ids.add(target_user)
+                    cleared_session_ids.add(_user_session(target_user))
+    except Exception:
+        pass
+    return deleted_memory_ids, cleared_user_ids, cleared_session_ids
+
+
+def _is_event_active_for_prompt(
+    event: Event,
+    *,
+    include_archived: bool = False,
+    deep_recall: bool = False,
+    inactive_refs: tuple[set[str], set[str], set[str]] | None = None,
+) -> bool:
+    meta = dict(event.metadata or {})
+    deleted_memory_ids, cleared_user_ids, cleared_session_ids = inactive_refs or _ledger_inactive_refs()
+    memory_id = str(meta.get("memory_id") or "")
+    user_id = str(meta.get("user_id") or "")
+    session_id = str(event.session_id or "")
+    if memory_id and memory_id in deleted_memory_ids:
+        return False
+    if user_id and user_id in cleared_user_ids:
+        return False
+    if session_id in cleared_session_ids or any(session_id.endswith(f":user:{uid}") for uid in cleared_user_ids):
+        return False
+    memory_type = str(meta.get("memory_type") or "unknown")
+    if memory_type == "secret_blocked":
+        return False
+    state = str(meta.get("lifecycle_state") or "active")
+    if state == "archived" and (include_archived or deep_recall):
+        return not _is_event_expired(event)
+    if state != "active":
+        return False
+    if bool(meta.get("soft_deleted")) or meta.get("soft_deleted_at"):
+        return False
+    if bool(meta.get("deprecated")) or meta.get("deprecated_by"):
+        return False
+    if str(meta.get("verification_state") or "recorded") in {"blocked", "failed", "rejected"}:
+        return False
+    return not _is_event_expired(event)
+
+
+def _filter_prompt_events(
+    events: list[Event],
+    *,
+    include_archived: bool = False,
+    deep_recall: bool = False,
+) -> list[Event]:
+    inactive_refs = _ledger_inactive_refs()
+    return [
+        event
+        for event in events
+        if _is_event_active_for_prompt(
+            event,
+            include_archived=include_archived,
+            deep_recall=deep_recall,
+            inactive_refs=inactive_refs,
+        )
+    ]
+
+
 def _score_fact(*, mentions: int, weight: float, last_seen: datetime) -> float:
     now = datetime.now(timezone.utc)
     if last_seen.tzinfo is None:
@@ -393,8 +518,8 @@ def _score_fact(*, mentions: int, weight: float, last_seen: datetime) -> float:
 
 def _build_profile_snapshot(*, user_id: str, room_id: str) -> dict[str, Any]:
     guardian = _guardian()
-    user_events = list(guardian.ledger.iter_events(session_id=_user_session(user_id)))
-    room_events = list(guardian.ledger.iter_events(session_id=_room_session(user_id, room_id)))
+    user_events = _filter_prompt_events(list(guardian.ledger.iter_events(session_id=_user_session(user_id))))
+    room_events = _filter_prompt_events(list(guardian.ledger.iter_events(session_id=_room_session(user_id, room_id))))
 
     fact_state: dict[str, dict[str, Any]] = {}
     for event in user_events:
@@ -483,6 +608,94 @@ def _persist_profile_snapshot(*, user_id: str, room_id: str, snapshot: dict[str,
     _snapshot_path(user_id, room_id).write_text(json.dumps(snapshot, indent=2), encoding="utf-8")
 
 
+def _load_profile_snapshot(*, user_id: str, room_id: str) -> dict[str, Any]:
+    try:
+        path = _snapshot_path(user_id, room_id)
+        if not path.exists():
+            return {}
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _remember_snapshot_candidate(*, user_id: str, room_id: str, indexed: bool) -> None:
+    if not indexed:
+        return
+    key = _snapshot_state_key(user_id, room_id)
+    with _SNAPSHOT_STATE_LOCK:
+        state = _SNAPSHOT_STATE.setdefault(
+            key,
+            {"candidate_count": 0, "last_rebuild_monotonic": time.monotonic()},
+        )
+        state["candidate_count"] = int(state.get("candidate_count") or 0) + 1
+
+
+def _snapshot_rebuild_due(*, user_id: str, room_id: str, force: bool = False) -> bool:
+    if force:
+        return True
+    path = _snapshot_path(user_id, room_id)
+    if not path.exists():
+        return True
+    key = _snapshot_state_key(user_id, room_id)
+    with _SNAPSHOT_STATE_LOCK:
+        state = _SNAPSHOT_STATE.setdefault(
+            key,
+            {"candidate_count": 0, "last_rebuild_monotonic": time.monotonic()},
+        )
+        candidate_count = int(state.get("candidate_count") or 0)
+        elapsed = time.monotonic() - float(state.get("last_rebuild_monotonic") or 0.0)
+    return candidate_count >= _snapshot_rebuild_every_n() or elapsed >= _snapshot_rebuild_min_seconds()
+
+
+def _build_and_persist_profile_snapshot(
+    *,
+    user_id: str,
+    room_id: str,
+    force: bool = False,
+) -> dict[str, Any]:
+    if not _snapshot_rebuild_due(user_id=user_id, room_id=room_id, force=force):
+        return _load_profile_snapshot(user_id=user_id, room_id=room_id)
+    snapshot = _build_profile_snapshot(user_id=user_id, room_id=room_id)
+    _persist_profile_snapshot(user_id=user_id, room_id=room_id, snapshot=snapshot)
+    key = _snapshot_state_key(user_id, room_id)
+    with _SNAPSHOT_STATE_LOCK:
+        _SNAPSHOT_STATE[key] = {"candidate_count": 0, "last_rebuild_monotonic": time.monotonic()}
+    return snapshot
+
+
+def _maybe_persist_profile_snapshot(*, user_id: str, room_id: str) -> None:
+    key = _snapshot_state_key(user_id, room_id)
+    with _SNAPSHOT_STATE_LOCK:
+        state = _SNAPSHOT_STATE.setdefault(
+            key,
+            {"candidate_count": 0, "last_rebuild_monotonic": time.monotonic()},
+        )
+        candidate_count = int(state.get("candidate_count") or 0)
+        elapsed = time.monotonic() - float(state.get("last_rebuild_monotonic") or time.monotonic())
+    if candidate_count < _snapshot_rebuild_every_n() and elapsed < _snapshot_rebuild_min_seconds():
+        return
+    _build_and_persist_profile_snapshot(user_id=user_id, room_id=room_id, force=True)
+
+
+def force_profile_snapshot_refresh(*, user_id: str, room_id: str) -> dict[str, Any]:
+    """Explicit memory refresh hook for commands/API callers."""
+    return _build_and_persist_profile_snapshot(user_id=user_id, room_id=room_id, force=True)
+
+
+def mark_profile_snapshot_dirty(*, user_id: str | None = None, room_id: str | None = None) -> None:
+    """Force the next profile snapshot read to rebuild after lifecycle changes."""
+    with _SNAPSHOT_STATE_LOCK:
+        if user_id and room_id:
+            _SNAPSHOT_STATE[_snapshot_state_key(user_id, room_id)] = {
+                "candidate_count": _snapshot_rebuild_every_n(),
+                "last_rebuild_monotonic": 0.0,
+            }
+        else:
+            for key in list(_SNAPSHOT_STATE):
+                _SNAPSHOT_STATE[key]["candidate_count"] = _snapshot_rebuild_every_n()
+                _SNAPSHOT_STATE[key]["last_rebuild_monotonic"] = 0.0
+
+
 def _append_event(
     *,
     event_type: EventType,
@@ -506,6 +719,9 @@ def _append_event(
 
     sanitized = _sanitize_metadata(metadata or {})
     sanitized.setdefault("source", source)
+    memory_type = classify_memory_type(raw_text, sanitized)
+    sanitized.setdefault("memory_type", memory_type)
+    sanitized.setdefault("lifecycle_state", "active")
     if confidence is not None:
         sanitized["confidence"] = round(float(confidence), 4)
     sanitized.setdefault("verification_state", verification_state or "recorded")
@@ -519,16 +735,27 @@ def _append_event(
         session_id=session_id,
         metadata=sanitized,
     )
+    should_index, index_reason = should_index_memory_candidate(
+        {
+            "type": event_type.value if hasattr(event_type, "value") else str(event_type),
+            "role": role,
+            "content": raw_text,
+            "metadata": sanitized,
+        }
+    )
+    event.metadata["candidate_indexed"] = should_index
+    event.metadata["candidate_reason"] = index_reason
     guardian = _guardian()
     try:
         guardian.ledger.append(event)
-        guardian.fts.index_event(event)
-        if _embeddings_enabled():
-            try:
-                guardian.embed.index_event(event)
-            except Exception:
-                # Hybrid retrieval is best-effort; never block on it.
-                pass
+        if should_index:
+            guardian.fts.index_event(event)
+            if _embeddings_enabled():
+                try:
+                    guardian.embed.index_event(event)
+                except Exception:
+                    # Hybrid retrieval is best-effort; never block on it.
+                    pass
         _STATS.record_write(ok=True)
         return True
     except Exception:
@@ -548,11 +775,13 @@ def remember_chat_message(*, user_id: str, room_id: str, role: str, content: str
     )
     if stored:
         try:
-            _persist_profile_snapshot(
+            last_event = _guardian().ledger.get_recent(n=1, session_id=_room_session(user_id, room_id))[0]
+            _remember_snapshot_candidate(
                 user_id=user_id,
                 room_id=room_id,
-                snapshot=_build_profile_snapshot(user_id=user_id, room_id=room_id),
+                indexed=bool(last_event.metadata.get("candidate_indexed")),
             )
+            _maybe_persist_profile_snapshot(user_id=user_id, room_id=room_id)
         except Exception:
             pass
     return stored
@@ -582,11 +811,13 @@ def remember_tool_event(
     )
     if stored:
         try:
-            _persist_profile_snapshot(
+            last_event = _guardian().ledger.get_recent(n=1, session_id=_room_session(user_id, room_id))[0]
+            _remember_snapshot_candidate(
                 user_id=user_id,
                 room_id=room_id,
-                snapshot=_build_profile_snapshot(user_id=user_id, room_id=room_id),
+                indexed=bool(last_event.metadata.get("candidate_indexed")),
             )
+            _maybe_persist_profile_snapshot(user_id=user_id, room_id=room_id)
         except Exception:
             pass
     return stored
@@ -656,6 +887,19 @@ def remember_fact(
     confidence: float = 0.95,
 ) -> bool:
     safe_fact = _safe_text(fact, limit=500)
+    memory_type = classify_memory_type(safe_fact, {"source": source})
+    if memory_type == "secret_blocked" or is_secret_like(safe_fact):
+        _emit_memory_event(
+            "memory.fact_blocked",
+            "Secret-like fact promotion blocked",
+            {
+                "user_id": user_id,
+                "memory_id": memory_id,
+                "memory_type": "secret_blocked",
+                "source": source,
+            },
+        )
+        return False
     verification = verify_fact(fact=safe_fact, source=source, confidence=confidence)
     if verification.status != "verified":
         confirm_id = _store_pending_memory_approval(
@@ -684,6 +928,8 @@ def remember_fact(
         "user_id": user_id,
         "verification_state": verification.status,
         "verification_summary": verification.summary,
+        "memory_type": memory_type,
+        "scope_type": "user",
     }
     if memory_id:
         metadata["memory_id"] = memory_id
@@ -721,8 +967,7 @@ def build_memory_context(*, user_id: str, room_id: str, query: str) -> str:
 
     blocks: list[str] = []
     try:
-        snapshot = _build_profile_snapshot(user_id=user_id, room_id=room_id)
-        _persist_profile_snapshot(user_id=user_id, room_id=room_id, snapshot=snapshot)
+        snapshot = _build_and_persist_profile_snapshot(user_id=user_id, room_id=room_id)
     except Exception:
         snapshot = {}
 
@@ -774,9 +1019,14 @@ def build_memory_context(*, user_id: str, room_id: str, query: str) -> str:
             requested_mode=mode,
             embeddings_enabled=_embeddings_enabled(),
         )
+        inactive_refs = _ledger_inactive_refs()
         user_hits = retriever.retrieve_scored(
             prompt_query, limit=limit, session_id=_user_session(user_id)
         )
+        user_hits = [
+            hit for hit in user_hits
+            if _is_event_active_for_prompt(hit.event, inactive_refs=inactive_refs)
+        ]
         user_count = len(user_hits)
         user_top = user_hits[0].score if user_hits else 0.0
         if user_hits:
@@ -785,18 +1035,36 @@ def build_memory_context(*, user_id: str, room_id: str, query: str) -> str:
         room_hits = retriever.retrieve_scored(
             prompt_query, limit=limit, session_id=_room_session(user_id, room_id)
         )
+        room_hits = [
+            hit for hit in room_hits
+            if _is_event_active_for_prompt(hit.event, inactive_refs=inactive_refs)
+        ]
         room_count = len(room_hits)
         room_top = room_hits[0].score if room_hits else 0.0
         if room_hits:
             room_block = guardian.packer.pack([hit.event for hit in room_hits]).strip()
     except Exception:
         # Fall back to the legacy packer path if the scored API fails for any reason.
-        user_block = guardian.get_context(
-            prompt_query, limit=limit, session_id=_user_session(user_id), mode="fts"
-        ).strip()
-        room_block = guardian.get_context(
-            prompt_query, limit=limit, session_id=_room_session(user_id, room_id), mode="fts"
-        ).strip()
+        user_events = _filter_prompt_events(
+            guardian.retriever.retrieve(
+                prompt_query,
+                limit=limit,
+                session_id=_user_session(user_id),
+                mode="fts",
+            )
+        )
+        room_events = _filter_prompt_events(
+            guardian.retriever.retrieve(
+                prompt_query,
+                limit=limit,
+                session_id=_room_session(user_id, room_id),
+                mode="fts",
+            )
+        )
+        user_count = len(user_events)
+        room_count = len(room_events)
+        user_block = guardian.packer.pack(user_events).strip()
+        room_block = guardian.packer.pack(room_events).strip()
     finally:
         latency_ms = (time.perf_counter() - started) * 1000.0
         _STATS.record_recall(
@@ -821,6 +1089,8 @@ def recall_relevant_events(
     query: str,
     limit: int | None = None,
     mode: str | None = None,
+    include_archived: bool = False,
+    deep_recall: bool = False,
 ) -> list[dict[str, Any]]:
     """Hybrid recall returning structured event records with provenance + score.
 
@@ -849,6 +1119,7 @@ def recall_relevant_events(
     started = time.perf_counter()
     aggregated: list[tuple[Event, float, str]] = []
     try:
+        inactive_refs = _ledger_inactive_refs()
         retriever = build_retriever(
             guardian,
             requested_mode=effective_mode,
@@ -857,6 +1128,13 @@ def recall_relevant_events(
         for sess in sessions:
             hits = retriever.retrieve_scored(prompt_query, limit=effective_limit, session_id=sess)
             for hit in hits:
+                if not _is_event_active_for_prompt(
+                    hit.event,
+                    include_archived=include_archived,
+                    deep_recall=deep_recall,
+                    inactive_refs=inactive_refs,
+                ):
+                    continue
                 aggregated.append((hit.event, float(hit.score), sess))
     finally:
         latency_ms = (time.perf_counter() - started) * 1000.0
@@ -886,6 +1164,15 @@ def recall_relevant_events(
                 "score": round(score, 4),
                 "source": meta.get("source"),
                 "confidence": meta.get("confidence"),
+                "memory_type": meta.get("memory_type"),
+                "lifecycle_state": meta.get("lifecycle_state", "active"),
+                "why_selected": {
+                    "lexical_score": round(score, 4) if effective_mode == "fts" else None,
+                    "semantic_score": round(score, 4) if effective_mode in {"embed", "hybrid"} else None,
+                    "scope_match": sess,
+                    "confidence": meta.get("confidence"),
+                    "lifecycle_state": meta.get("lifecycle_state", "active"),
+                },
             }
         )
     return out
@@ -900,13 +1187,41 @@ def reindex_memory_indexes() -> dict[str, Any]:
     fts_count = 0
     embed_count = 0
     try:
-        guardian.fts.rebuild_from_ledger(guardian.ledger.ledger_path)
-        fts_count = sum(1 for _ in guardian.ledger.iter_events())
+        guardian.fts.clear()
+        inactive_refs = _ledger_inactive_refs()
+        for event in guardian.ledger.iter_events():
+            meta = dict(event.metadata or {})
+            should_index, _reason = should_index_memory_candidate(
+                {
+                    "type": event.type.value if hasattr(event.type, "value") else str(event.type),
+                    "role": event.role,
+                    "content": event.content,
+                    "metadata": meta,
+                }
+            )
+            if should_index and _is_event_active_for_prompt(event, inactive_refs=inactive_refs):
+                guardian.fts.index_event(event)
+                fts_count += 1
     except Exception:
         pass
     if _embeddings_enabled():
         try:
-            embed_count = guardian.embed.rebuild_from_ledger(guardian.ledger.ledger_path)
+            guardian.embed.clear()
+            embed_count = 0
+            inactive_refs = _ledger_inactive_refs()
+            for event in guardian.ledger.iter_events():
+                meta = dict(event.metadata or {})
+                should_index, _reason = should_index_memory_candidate(
+                    {
+                        "type": event.type.value if hasattr(event.type, "value") else str(event.type),
+                        "role": event.role,
+                        "content": event.content,
+                        "metadata": meta,
+                    }
+                )
+                if should_index and _is_event_active_for_prompt(event, inactive_refs=inactive_refs):
+                    guardian.embed.index_event(event)
+                    embed_count += 1
         except Exception:
             embed_count = 0
     return {
@@ -929,6 +1244,118 @@ def _append_guardian_job_log(payload: dict[str, Any]) -> None:
             fh.write(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n")
     except Exception:
         pass
+
+
+def _env_int(name: str, default: int, *, minimum: int = 1, maximum: int = 100000) -> int:
+    try:
+        return max(minimum, min(int(os.getenv(name, str(default))), maximum))
+    except ValueError:
+        return default
+
+
+def _ledger_compression_enabled() -> bool:
+    return os.getenv("SPARKBOT_MEMORY_LEDGER_COMPRESSION", "true").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
+
+
+def _archive_manifest_path() -> Path:
+    archive_dir = _data_dir() / "archive"
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    return archive_dir / "manifest.json"
+
+
+def _read_archive_manifest() -> list[dict[str, Any]]:
+    path = _archive_manifest_path()
+    if not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return list(data if isinstance(data, list) else data.get("archives", []))
+    except Exception:
+        return []
+
+
+def _write_archive_manifest(entries: list[dict[str, Any]]) -> None:
+    _archive_manifest_path().write_text(
+        json.dumps({"archives": entries}, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+
+
+def rotate_memory_ledger_if_needed(*, now: datetime | None = None, dry_run: bool = False) -> dict[str, Any]:
+    """Rotate the active ledger into an archive without deleting audit history."""
+    now = now or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    guardian = _guardian()
+    ledger_path = guardian.ledger.ledger_path
+    if not ledger_path.exists():
+        return {"rotated": False, "reason": "missing_ledger"}
+
+    max_active_mb = _env_int("SPARKBOT_MEMORY_MAX_ACTIVE_MB", 256, minimum=1, maximum=102400)
+    hot_ledger_days = _env_int("SPARKBOT_MEMORY_HOT_LEDGER_DAYS", 30, minimum=1, maximum=3650)
+    archive_after_days = _env_int(
+        "SPARKBOT_MEMORY_ARCHIVE_AFTER_DAYS",
+        hot_ledger_days,
+        minimum=1,
+        maximum=3650,
+    )
+    stat = ledger_path.stat()
+    size_mb = stat.st_size / (1024 * 1024)
+    age_days = max(0, (now - datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)).days)
+    if size_mb < max_active_mb and age_days < archive_after_days:
+        return {"rotated": False, "reason": "below_threshold", "size_mb": round(size_mb, 3), "age_days": age_days}
+
+    events = list(guardian.ledger.iter_events())
+    oldest = min((event.timestamp for event in events), default=None)
+    newest = max((event.timestamp for event in events), default=None)
+    archive_id = f"ledger-{now.strftime('%Y-%m')}-{uuid.uuid4().hex[:8]}"
+    archive_dir = _data_dir() / "archive"
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    archive_path = archive_dir / f"{archive_id}.jsonl"
+    final_path = archive_path.with_suffix(".jsonl.gz") if _ledger_compression_enabled() else archive_path
+    entry = {
+        "archive_id": archive_id,
+        "path": str(final_path.relative_to(_data_dir())),
+        "event_count": len(events),
+        "oldest_event": oldest.isoformat() if oldest else None,
+        "newest_event": newest.isoformat() if newest else None,
+        "contains_approved_memory_sources": any(
+            str((event.metadata or {}).get("verification_state")) == "verified" for event in events
+        ),
+        "contains_tool_approvals": any(event.type == EventType.TOOL_CALL for event in events),
+        "lifecycle_state": "archived",
+        "delete_proposed_at": None,
+        "delete_approved_at": None,
+    }
+    if dry_run:
+        return {"rotated": False, "dry_run": True, "manifest_entry": entry}
+
+    if _ledger_compression_enabled():
+        with ledger_path.open("rb") as src, gzip.open(final_path, "wb") as dst:
+            shutil.copyfileobj(src, dst)
+    else:
+        shutil.copy2(ledger_path, final_path)
+    ledger_path.write_text("", encoding="utf-8")
+    manifest = _read_archive_manifest()
+    manifest.append(entry)
+    _write_archive_manifest(manifest)
+    _append_event(
+        event_type=EventType.SYSTEM,
+        role="system",
+        content=f"MEMORY_LEDGER_ARCHIVED: {archive_id}",
+        session_id=None,
+        metadata={"archive_id": archive_id, "lifecycle_action": "ledger_archived", "manifest_entry": entry},
+        source="memory.ledger",
+        confidence=1.0,
+        verification_state="verified",
+    )
+    reindex_memory_indexes()
+    return {"rotated": True, "manifest_entry": entry}
 
 
 def verify_recent_memory_events(
@@ -996,6 +1423,8 @@ def run_nightly_memory_guardian_job(*, session: Any | None = None) -> dict[str, 
     error = ""
     verification_summary: dict[str, Any] = {}
     eval_summary: dict[str, Any] = {}
+    hygiene_summary: dict[str, Any] = {}
+    cleanup_summary: dict[str, Any] = {}
     try:
         verification_summary = verify_recent_memory_events()
         try:
@@ -1004,6 +1433,19 @@ def run_nightly_memory_guardian_job(*, session: Any | None = None) -> dict[str, 
             eval_summary = run_retrieval_eval(session=session)
         except Exception as exc:
             eval_summary = {"error": str(exc), "cases": 0}
+        if session is not None:
+            now = datetime.now(timezone.utc)
+            try:
+                if now.weekday() == 0:
+                    from .memory_hygiene import run_weekly_memory_hygiene_job
+
+                    hygiene_summary = run_weekly_memory_hygiene_job(session=session, now=now)
+                if now.day == 1:
+                    from .memory_hygiene import run_monthly_memory_cleanup_proposal_job
+
+                    cleanup_summary = run_monthly_memory_cleanup_proposal_job(session=session, now=now)
+            except Exception as exc:
+                hygiene_summary = {"error": str(exc)}
     except Exception as exc:
         ok = False
         error = str(exc)
@@ -1025,6 +1467,8 @@ def run_nightly_memory_guardian_job(*, session: Any | None = None) -> dict[str, 
         "error": error,
         "verification": verification_summary,
         "retrieval_eval": eval_summary,
+        "weekly_hygiene": hygiene_summary,
+        "monthly_cleanup": cleanup_summary,
         "metrics": memory_metrics(),
     }
     _STATS.record_guardian_job(
@@ -1045,19 +1489,33 @@ def delete_fact_memory(*, user_id: str, memory_id: str) -> int:
 
     target_user_session = _user_session(user_id)
     guardian = _guardian()
-    kept: list[Event] = []
-    removed = 0
+    matched = 0
     for event in guardian.ledger.iter_events():
         if (
             event.session_id == target_user_session
             and str(event.metadata.get("memory_id", "")) == memory_id
         ):
-            removed += 1
-            continue
-        kept.append(event)
-    if removed:
-        _rewrite_events(kept)
-    return removed
+            matched += 1
+    if matched:
+        _append_event(
+            event_type=EventType.SYSTEM,
+            role="system",
+            content=f"MEMORY_LIFECYCLE: soft_deleted memory {memory_id}",
+            session_id=target_user_session,
+            metadata={
+                "user_id": user_id,
+                "target_memory_id": memory_id,
+                "lifecycle_action": "soft_delete",
+                "lifecycle_state": "soft_deleted",
+                "soft_delete_reason": "explicit user memory delete",
+            },
+            source="memory.lifecycle",
+            confidence=1.0,
+            verification_state="verified",
+        )
+        reindex_memory_indexes()
+        mark_profile_snapshot_dirty()
+    return matched
 
 
 def clear_user_memory_events(*, user_id: str) -> int:
@@ -1067,17 +1525,30 @@ def clear_user_memory_events(*, user_id: str) -> int:
     suffix = f":user:{user_id}"
     target_user_session = _user_session(user_id)
     guardian = _guardian()
-    kept: list[Event] = []
-    removed = 0
+    matched = 0
     for event in guardian.ledger.iter_events():
         session_id = event.session_id or ""
         if session_id == target_user_session or session_id.endswith(suffix):
-            removed += 1
-            continue
-        kept.append(event)
-    if removed:
-        _rewrite_events(kept)
-    return removed
+            matched += 1
+    if matched:
+        _append_event(
+            event_type=EventType.SYSTEM,
+            role="system",
+            content=f"MEMORY_LIFECYCLE: cleared user memory for {user_id}",
+            session_id=target_user_session,
+            metadata={
+                "target_user_id": user_id,
+                "lifecycle_action": "clear_user_memory",
+                "lifecycle_state": "soft_deleted",
+                "soft_delete_reason": "explicit user memory clear",
+            },
+            source="memory.lifecycle",
+            confidence=1.0,
+            verification_state="verified",
+        )
+        reindex_memory_indexes()
+        mark_profile_snapshot_dirty()
+    return matched
 
 
 def _rewrite_events(events: list[Event]) -> None:

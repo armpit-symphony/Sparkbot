@@ -42,6 +42,29 @@ _ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("chat_rooms", "meeting_mode_bots_mention_only", "BOOLEAN NOT NULL DEFAULT 1"),
     ("chat_rooms", "meeting_mode_max_bot_msgs_per_min", "INTEGER NOT NULL DEFAULT 3"),
     ("chat_rooms", "meeting_mode_note_taker_bot_slug", "VARCHAR(50)"),
+    ("user_memories", "updated_at", "DATETIME"),
+    ("user_memories", "memory_type", "VARCHAR(50) NOT NULL DEFAULT 'unknown'"),
+    ("user_memories", "scope_type", "VARCHAR(50) NOT NULL DEFAULT 'user'"),
+    ("user_memories", "scope_id", "VARCHAR(120)"),
+    ("user_memories", "lifecycle_state", "VARCHAR(50) NOT NULL DEFAULT 'active'"),
+    ("user_memories", "stale_reason", "TEXT"),
+    ("user_memories", "archived_at", "DATETIME"),
+    ("user_memories", "delete_proposed_at", "DATETIME"),
+    ("user_memories", "delete_proposed_reason", "TEXT"),
+    ("user_memories", "delete_approved_by", "VARCHAR(120)"),
+    ("user_memories", "delete_approved_at", "DATETIME"),
+    ("user_memories", "retention_policy", "VARCHAR(120)"),
+    ("user_memories", "deprecated_by", "VARCHAR(120)"),
+    ("user_memories", "deprecated_reason", "TEXT"),
+    ("user_memories", "expires_at", "DATETIME"),
+    ("user_memories", "pinned", "BOOLEAN NOT NULL DEFAULT 0"),
+    ("user_memories", "last_used_at", "DATETIME"),
+    ("user_memories", "last_retrieved_at", "DATETIME"),
+    ("user_memories", "last_injected_at", "DATETIME"),
+    ("user_memories", "use_count", "INTEGER NOT NULL DEFAULT 0"),
+    ("user_memories", "mention_count", "INTEGER NOT NULL DEFAULT 0"),
+    ("user_memories", "soft_deleted_at", "DATETIME"),
+    ("user_memories", "soft_delete_reason", "TEXT"),
 ]
 
 
@@ -67,6 +90,7 @@ def init_sqlite_schema() -> None:
     # Apply additive column migrations for in-place upgrades.
     with engine.begin() as conn:
         _ensure_columns(conn)
+        conn.execute(text("UPDATE user_memories SET updated_at = created_at WHERE updated_at IS NULL"))
     logger.info("Additive column migrations applied.")
 
     # Stamp the alembic_version table to the current head revision.

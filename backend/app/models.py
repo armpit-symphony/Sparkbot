@@ -366,6 +366,29 @@ class UserMemory(SQLModel, table=True):
     user_id: uuid.UUID = Field(index=True, nullable=False)
     fact: str = Field(max_length=500)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    memory_type: str = Field(default="unknown", max_length=50, index=True)
+    scope_type: str = Field(default="user", max_length=50)
+    scope_id: Optional[str] = Field(default=None, max_length=120)
+    lifecycle_state: str = Field(default="active", max_length=50, index=True)
+    stale_reason: Optional[str] = Field(default=None, sa_column=Column(Text))
+    archived_at: Optional[datetime] = Field(default=None, sa_type=DateTime(timezone=True))  # type: ignore
+    delete_proposed_at: Optional[datetime] = Field(default=None, sa_type=DateTime(timezone=True))  # type: ignore
+    delete_proposed_reason: Optional[str] = Field(default=None, sa_column=Column(Text))
+    delete_approved_by: Optional[str] = Field(default=None, max_length=120)
+    delete_approved_at: Optional[datetime] = Field(default=None, sa_type=DateTime(timezone=True))  # type: ignore
+    retention_policy: Optional[str] = Field(default=None, max_length=120)
+    deprecated_by: Optional[str] = Field(default=None, max_length=120)
+    deprecated_reason: Optional[str] = Field(default=None, sa_column=Column(Text))
+    expires_at: Optional[datetime] = Field(default=None, sa_type=DateTime(timezone=True))  # type: ignore
+    pinned: bool = Field(default=False)
+    last_used_at: Optional[datetime] = Field(default=None, sa_type=DateTime(timezone=True))  # type: ignore
+    last_retrieved_at: Optional[datetime] = Field(default=None, sa_type=DateTime(timezone=True))  # type: ignore
+    last_injected_at: Optional[datetime] = Field(default=None, sa_type=DateTime(timezone=True))  # type: ignore
+    use_count: int = Field(default=0)
+    mention_count: int = Field(default=0)
+    soft_deleted_at: Optional[datetime] = Field(default=None, sa_type=DateTime(timezone=True))  # type: ignore
+    soft_delete_reason: Optional[str] = Field(default=None, sa_column=Column(Text))
 
 
 class AuditLog(SQLModel, table=True):

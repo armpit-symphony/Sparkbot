@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, or_, select
 from sqlmodel import Session, delete
 
 from app.core.security import get_password_hash, verify_password
@@ -35,6 +35,7 @@ from app.models import (
     UserUpdate,
     UserType,
 )
+from app.services.guardian.memory_taxonomy import classify_memory_type, is_secret_like
 
 
 # ============== Base Template CRUD ==============
@@ -534,17 +535,41 @@ def get_chat_meeting_artifacts(
 # ─── User Memory CRUD ─────────────────────────────────────────────────────────
 
 def get_user_memories(session: Session, user_id: uuid.UUID) -> list[UserMemory]:
+    now = datetime.now(timezone.utc)
     return list(
         session.execute(
             select(UserMemory)
             .where(UserMemory.user_id == user_id)
+            .where(UserMemory.lifecycle_state == "active")
+            .where(UserMemory.soft_deleted_at.is_(None))
+            .where(UserMemory.deprecated_by.is_(None))
+            .where(or_(UserMemory.expires_at.is_(None), UserMemory.expires_at > now))
             .order_by(UserMemory.created_at.asc())
         ).scalars().all()
     )
 
 
-def add_user_memory(session: Session, user_id: uuid.UUID, fact: str) -> UserMemory:
-    mem = UserMemory(user_id=user_id, fact=fact.strip())
+def add_user_memory(
+    session: Session,
+    user_id: uuid.UUID,
+    fact: str,
+    *,
+    memory_type: str | None = None,
+    scope_type: str = "user",
+    scope_id: str | None = None,
+) -> UserMemory:
+    clean_fact = " ".join((fact or "").split()).strip()
+    inferred_type = memory_type or classify_memory_type(clean_fact, {"source": "fact.user_authored"})
+    if inferred_type in {"secret_blocked", "do_not_store"} or is_secret_like(clean_fact):
+        raise ValueError("Unsafe or low-value fact was not stored as durable memory")
+    mem = UserMemory(
+        user_id=user_id,
+        fact=clean_fact,
+        memory_type=inferred_type,
+        scope_type=scope_type,
+        scope_id=scope_id,
+        lifecycle_state="active",
+    )
     session.add(mem)
     session.commit()
     session.refresh(mem)
@@ -555,7 +580,251 @@ def delete_user_memory(session: Session, memory_id: uuid.UUID, user_id: uuid.UUI
     mem = session.get(UserMemory, memory_id)
     if not mem or mem.user_id != user_id:
         return False
-    session.delete(mem)
+    soft_delete_memory(
+        session,
+        memory_id,
+        reason="explicit user memory delete",
+        approved_by=str(user_id),
+        user_id=user_id,
+    )
+    return True
+
+
+def _audit_memory_lifecycle(
+    session: Session,
+    *,
+    action: str,
+    memory: UserMemory,
+    reason: str | None = None,
+    operator_id: str | None = None,
+) -> None:
+    try:
+        create_audit_log(
+            session=session,
+            tool_name=f"memory_{action}",
+            tool_input=f'{{"memory_id":"{memory.id}","lifecycle_state":"{memory.lifecycle_state}"}}',
+            tool_result=(reason or "")[:1000],
+            user_id=memory.user_id,
+            agent_name="guardian_memory",
+            model=operator_id,
+        )
+    except Exception:
+        pass
+
+
+def is_memory_active_for_prompt(memory: UserMemory) -> bool:
+    now = datetime.now(timezone.utc)
+    if memory.lifecycle_state != "active":
+        return False
+    if memory.soft_deleted_at is not None:
+        return False
+    if memory.deprecated_by or memory.lifecycle_state in {"deprecated", "rejected"}:
+        return False
+    if memory.expires_at and memory.expires_at <= now:
+        return False
+    if memory.memory_type == "secret_blocked":
+        return False
+    return True
+
+
+def list_memories(
+    session: Session,
+    *,
+    user_id: uuid.UUID | None = None,
+    state: str | None = None,
+    memory_type: str | None = None,
+    include_archived: bool = False,
+    include_deleted: bool = False,
+    limit: int = 100,
+) -> list[UserMemory]:
+    stmt = select(UserMemory)
+    if user_id:
+        stmt = stmt.where(UserMemory.user_id == user_id)
+    if state:
+        stmt = stmt.where(UserMemory.lifecycle_state == state)
+    elif not include_archived:
+        stmt = stmt.where(UserMemory.lifecycle_state != "archived")
+    if memory_type:
+        stmt = stmt.where(UserMemory.memory_type == memory_type)
+    if not include_deleted:
+        stmt = stmt.where(UserMemory.soft_deleted_at.is_(None))
+        stmt = stmt.where(UserMemory.lifecycle_state != "soft_deleted")
+    stmt = stmt.order_by(UserMemory.updated_at.desc()).limit(max(1, min(int(limit), 500)))
+    return list(session.execute(stmt).scalars().all())
+
+
+def list_delete_proposals(session: Session, *, user_id: uuid.UUID | None = None, limit: int = 100) -> list[UserMemory]:
+    return list_memories(
+        session,
+        user_id=user_id,
+        state="delete_proposed",
+        include_archived=True,
+        include_deleted=False,
+        limit=limit,
+    )
+
+
+def list_pending_conflicts(session: Session, *, user_id: uuid.UUID | None = None, limit: int = 100) -> list[UserMemory]:
+    stmt = select(UserMemory).where(UserMemory.deprecated_reason.ilike("%conflict%"))
+    if user_id:
+        stmt = stmt.where(UserMemory.user_id == user_id)
+    stmt = stmt.order_by(UserMemory.updated_at.desc()).limit(max(1, min(int(limit), 500)))
+    return list(session.execute(stmt).scalars().all())
+
+
+def propose_delete_memory(
+    session: Session,
+    memory_id: uuid.UUID,
+    reason: str,
+    *,
+    operator_id: str = "operator",
+    user_id: uuid.UUID | None = None,
+) -> bool:
+    mem = session.get(UserMemory, memory_id)
+    if not mem or (user_id and mem.user_id != user_id):
+        return False
+    now = datetime.now(timezone.utc)
+    if mem.lifecycle_state == "soft_deleted":
+        return True
+    mem.lifecycle_state = "delete_proposed"
+    mem.delete_proposed_at = now
+    mem.delete_proposed_reason = reason
+    mem.updated_at = now
+    session.add(mem)
+    session.commit()
+    session.refresh(mem)
+    _audit_memory_lifecycle(session, action="delete_proposed", memory=mem, reason=reason, operator_id=operator_id)
+    return True
+
+
+def soft_delete_memory(
+    session: Session,
+    memory_id: uuid.UUID,
+    reason: str,
+    *,
+    approved_by: str | None = None,
+    user_id: uuid.UUID | None = None,
+) -> bool:
+    mem = session.get(UserMemory, memory_id)
+    if not mem or (user_id and mem.user_id != user_id):
+        return False
+    now = datetime.now(timezone.utc)
+    prior_state = mem.lifecycle_state
+    mem.lifecycle_state = "soft_deleted"
+    mem.soft_deleted_at = now
+    mem.soft_delete_reason = reason
+    mem.delete_approved_by = approved_by
+    mem.delete_approved_at = now if approved_by else mem.delete_approved_at
+    mem.retention_policy = mem.retention_policy or f"prior_state:{prior_state}"
+    mem.updated_at = now
+    session.add(mem)
+    session.commit()
+    session.refresh(mem)
+    _audit_memory_lifecycle(session, action="soft_delete", memory=mem, reason=reason, operator_id=approved_by)
+    try:
+        from app.services.guardian.memory import mark_profile_snapshot_dirty
+
+        mark_profile_snapshot_dirty()
+    except Exception:
+        pass
+    return True
+
+
+def approve_delete_memory(
+    session: Session,
+    memory_id: uuid.UUID,
+    *,
+    operator_id: str = "operator",
+    user_id: uuid.UUID | None = None,
+) -> bool:
+    mem = session.get(UserMemory, memory_id)
+    if not mem or (user_id and mem.user_id != user_id):
+        return False
+    return soft_delete_memory(
+        session,
+        memory_id,
+        reason=mem.delete_proposed_reason or "operator approved deletion proposal",
+        approved_by=operator_id,
+        user_id=user_id,
+    )
+
+
+def reject_delete_memory(
+    session: Session,
+    memory_id: uuid.UUID,
+    *,
+    operator_id: str = "operator",
+    reason: str | None = None,
+    user_id: uuid.UUID | None = None,
+) -> bool:
+    mem = session.get(UserMemory, memory_id)
+    if not mem or (user_id and mem.user_id != user_id):
+        return False
+    now = datetime.now(timezone.utc)
+    mem.lifecycle_state = "archived"
+    mem.delete_proposed_reason = reason or mem.delete_proposed_reason
+    mem.updated_at = now
+    session.add(mem)
+    session.commit()
+    session.refresh(mem)
+    _audit_memory_lifecycle(session, action="delete_rejected", memory=mem, reason=reason, operator_id=operator_id)
+    return True
+
+
+def restore_soft_deleted_memory(
+    session: Session,
+    memory_id: uuid.UUID,
+    *,
+    operator_id: str = "operator",
+    user_id: uuid.UUID | None = None,
+) -> bool:
+    mem = session.get(UserMemory, memory_id)
+    if not mem or (user_id and mem.user_id != user_id):
+        return False
+    prior_state = "archived"
+    if mem.retention_policy and mem.retention_policy.startswith("prior_state:"):
+        candidate = mem.retention_policy.split(":", 1)[1].strip()
+        if candidate in {"active", "stale", "archived"}:
+            prior_state = candidate
+    now = datetime.now(timezone.utc)
+    mem.lifecycle_state = prior_state
+    mem.soft_deleted_at = None
+    mem.soft_delete_reason = None
+    mem.updated_at = now
+    session.add(mem)
+    session.commit()
+    session.refresh(mem)
+    _audit_memory_lifecycle(session, action="restore", memory=mem, reason="soft-deleted memory restored", operator_id=operator_id)
+    try:
+        from app.services.guardian.memory import mark_profile_snapshot_dirty
+
+        mark_profile_snapshot_dirty()
+    except Exception:
+        pass
+    return True
+
+
+def mark_memory_retrieved(session: Session, memory_id: uuid.UUID, *, user_id: uuid.UUID | None = None) -> bool:
+    mem = session.get(UserMemory, memory_id)
+    if not mem or (user_id and mem.user_id != user_id):
+        return False
+    mem.last_retrieved_at = datetime.now(timezone.utc)
+    mem.updated_at = mem.last_retrieved_at
+    session.add(mem)
+    session.commit()
+    return True
+
+
+def mark_memory_injected(session: Session, memory_id: uuid.UUID, *, user_id: uuid.UUID | None = None) -> bool:
+    mem = session.get(UserMemory, memory_id)
+    if not mem or (user_id and mem.user_id != user_id):
+        return False
+    now = datetime.now(timezone.utc)
+    mem.last_injected_at = now
+    mem.last_used_at = now
+    mem.use_count = int(mem.use_count or 0) + 1
+    mem.updated_at = now
+    session.add(mem)
     session.commit()
     return True
 
@@ -564,8 +833,13 @@ def clear_user_memories(session: Session, user_id: uuid.UUID) -> int:
     mems = get_user_memories(session, user_id)
     count = len(mems)
     for m in mems:
-        session.delete(m)
-    session.commit()
+        soft_delete_memory(
+            session,
+            m.id,
+            reason="explicit user memory clear",
+            approved_by=str(user_id),
+            user_id=user_id,
+        )
     return count
 
 

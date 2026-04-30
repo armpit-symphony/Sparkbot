@@ -846,6 +846,21 @@ SPARKBOT_MEMORY_GUARDIAN_MAX_TOKENS=1200
 SPARKBOT_MEMORY_GUARDIAN_RETRIEVE_LIMIT=6
 SPARKBOT_MEMORY_GUARDIAN_RETRIEVER=fts             # fts | hybrid (default fts)
 SPARKBOT_MEMORY_GUARDIAN_ENABLE_EMBEDDINGS=false   # set true to enable hybrid embedding rerank
+SPARKBOT_MEMORY_SNAPSHOT_REBUILD_EVERY_N=10
+SPARKBOT_MEMORY_SNAPSHOT_REBUILD_MIN_SECONDS=300
+SPARKBOT_MEMORY_STALE_DEBUG_DAYS=7
+SPARKBOT_MEMORY_ARCHIVE_DEBUG_DAYS=14
+SPARKBOT_MEMORY_PROPOSE_DELETE_DEBUG_DAYS=45
+SPARKBOT_MEMORY_STALE_TEMP_DAYS=14
+SPARKBOT_MEMORY_ARCHIVE_TEMP_DAYS=30
+SPARKBOT_MEMORY_PROPOSE_DELETE_TEMP_DAYS=90
+SPARKBOT_MEMORY_STALE_UNKNOWN_DAYS=90
+SPARKBOT_MEMORY_ARCHIVE_UNKNOWN_DAYS=180
+SPARKBOT_MEMORY_PROPOSE_DELETE_UNKNOWN_DAYS=365
+SPARKBOT_MEMORY_HOT_LEDGER_DAYS=30
+SPARKBOT_MEMORY_ARCHIVE_AFTER_DAYS=30
+SPARKBOT_MEMORY_MAX_ACTIVE_MB=256
+SPARKBOT_MEMORY_LEDGER_COMPRESSION=true
 ```
 
 Guardian Memory uses a Sparkbot-level retriever interface. The default implementation is
@@ -858,6 +873,21 @@ Every memory write is tagged with provenance (`source`, e.g. `fact.user_authored
 `tool.gmail_search`, `chat.user`), confidence, verification state, and whether redaction
 was applied. Durable fact promotion calls `verify_fact()` first; low-confidence or
 uncertain facts create `pending_approvals` records instead of entering the long-term KB.
+Guardian Memory now classifies candidates as `identity`, `preference`,
+`project_context`, `project_decision`, `active_task`, `tool_pattern`,
+`meeting_action`, `relationship_note`, `debug_state`, `temporary_context`,
+`do_not_store`, `secret_blocked`, or `unknown`. Low-value acknowledgements and
+secret-like content remain in the redacted append-only ledger where appropriate, but
+they do not enter normal retrieval indexes or durable memory.
+
+Durable user memories carry lifecycle state: `active`, `stale`, `archived`,
+`delete_proposed`, `soft_deleted`, `deprecated`, or `rejected`. Normal prompt
+assembly excludes stale, archived, delete-proposed, soft-deleted, deprecated,
+rejected, expired, and secret-blocked memories. Pinned memories are protected from
+automatic stale/archive/delete-proposal rules, but never bypass secret/safety
+filters. Deletion is proposal-based: approval soft-deletes by default, restore moves
+the memory back to an archived or tracked prior state, and hard purge is not part of
+the default flow.
 
 Task Guardian also runs a nightly memory verification/evaluation pass. It verifies recent
 memory events, records promotion and pending-approval stats, evaluates BM25 vs hybrid
@@ -865,6 +895,13 @@ retrieval with `retrieval_eval.py`, and exports the five digest metrics:
 `memory_hit_rate`, `recall_precision@5`, `avg_retrieval_latency`,
 `guardian_job_success_rate`, and `pending_approvals_rate`. Operators can read the same
 data from `/api/v1/chat/guardian/metrics`.
+
+Memory hygiene entry points are available as callable services and Task Guardian tools:
+`memory_hygiene_weekly` marks stale memory and archives low-risk temporary/debug
+memory; `memory_cleanup_monthly` proposes deletion for archived low-risk memory. Both
+lanes audit their decisions and never hard-delete archives or memories. Ledger rotation
+helpers can move the active `ledger.jsonl` into dated compressed archives and write an
+archive manifest, but archive purge is only a proposal lane.
 
 Built-in memory tools (read-only by default; whitelisted for Task Guardian scheduling):
 
@@ -1047,14 +1084,19 @@ The Roundtable UI includes a meetings manager to open, end, or delete ongoing me
 Sparkbot proactively calls `remember_fact` when you reveal your name, role, timezone, preferences, or ongoing projects.
 
 - `/memory` — list stored facts (with short IDs)
-- `/memory clear` — wipe all stored facts
-- API: `GET /api/v1/chat/memory/`, `DELETE /api/v1/chat/memory/{id}`, `DELETE /api/v1/chat/memory/`
+- `/memory clear` — remove stored facts from normal recall using governed soft-delete
+- API: `GET /api/v1/chat/memory/`, `GET /api/v1/chat/memory/inspect`, `GET /api/v1/chat/memory/proposals/delete`, `POST /api/v1/chat/memory/{id}/restore`, `DELETE /api/v1/chat/memory/{id}`, `DELETE /api/v1/chat/memory/`
 
-Memory Guardian layer retains redacted message/tool context and injects relevant packed memory into every prompt.
+Memory Guardian keeps raw audit evidence append-only in the redacted ledger, while durable user memories move through active/stale/archive/delete-proposal/soft-delete states. Normal prompt context only uses active, non-expired, non-deprecated, non-secret memory.
 
 Memory sessions:
 - `user:{user_id}` — durable user profile
 - `room:{room_id}:user:{user_id}` — room-context memory
+
+Operator review helpers:
+- `GET /api/v1/chat/memory/proposals/delete` lists pending deletion proposals.
+- `POST /api/v1/chat/memory/{id}/restore` restores a soft-deleted memory to its prior safe lane.
+- Service functions `propose_delete_memory`, `approve_delete_memory`, `reject_delete_memory`, `soft_delete_memory`, and `restore_soft_deleted_memory` audit every lifecycle decision.
 
 ---
 
@@ -1779,7 +1821,7 @@ curl -b cookies.txt http://localhost:8000/api/v1/chat/system/watcher | python -m
 
 Desktop release tags and app versions are aligned on the `1.6.x` release line.
 
-For `v1.6.43`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story.
+For `v1.6.45`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story.
 
 ### How to upgrade safely
 
