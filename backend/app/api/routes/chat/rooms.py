@@ -4,9 +4,12 @@ API routes for chat rooms.
 Handles room CRUD and membership management.
 """
 import json
+import logging
 import os
 import re
 import time
+
+log = logging.getLogger(__name__)
 from datetime import datetime, timezone
 from typing import Any, Optional
 from uuid import UUID
@@ -1422,7 +1425,9 @@ async def stream_room_message(
                     privileged_event = event
                     break
         except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+            from app.api.routes.chat.llm import humanise_chat_error
+            log.exception("stream_room_message LLM error")
+            yield f"data: {json.dumps({'type': 'error', 'error': humanise_chat_error(e), 'detail': str(e)[:400]})}\n\n"
             return
 
         if confirm_event:
@@ -1609,8 +1614,10 @@ async def stream_room_message(
             except Exception as e:
                 if db2:
                     db2.close()
+                from app.api.routes.chat.llm import humanise_chat_error
+                log.exception("autonomous meeting turn failed for %s", participant_handle)
                 emitted_events.append(
-                    f"data: {json.dumps({'type': 'error', 'error': str(e), 'agent': participant_handle, 'fatal': False})}\n\n"
+                    f"data: {json.dumps({'type': 'error', 'error': humanise_chat_error(e), 'detail': str(e)[:400], 'agent': participant_handle, 'fatal': False})}\n\n"
                 )
                 return {"content": "", "status": "blocked", "halted": False, "failed": True, "events": emitted_events}
 

@@ -1,0 +1,39 @@
+Sparkbot v1.6.43
+=================
+
+Reliability, error handling, and performance telemetry.
+
+Bug fixes:
+- Fix "litellm.BadRequestError: Invalid 'tools': array too long" that hit Windows-installed
+  builds. The chat router now hard-caps the tool manifest at 128 entries (OpenAI's published
+  limit) and, if a provider still rejects the call, automatically shrinks and retries instead
+  of bubbling a stack trace to the user.
+- Deduplicate the tool catalogue at registration. Previously the calendar_create_event and
+  calendar_list_events skills shadowed identically-named native tools, pushing the count
+  to 134 even after the trim was applied.
+- Fix the system_diagnostics skill failing to load with `'function'` KeyError. The skill
+  loader now accepts both wrapped (`{type:function,function:{...}}`) and flat
+  (`{name:...,description:...}`) DEFINITION shapes.
+- Replace raw `litellm.BadRequestError ...` strings emitted in chat error events with
+  short, user-actionable messages (rate limit, quota exhausted, auth failed,
+  context length exceeded, model not found, timeout). Full details still go to the
+  backend log for diagnostics.
+- The same friendly formatter wraps tool execution failures so a broken skill prints
+  "TOOL ERROR: <reason>" in the chat instead of crashing the round.
+
+Observability:
+- New `/api/v1/chat/performance` endpoint returns a snapshot of model + tool latency,
+  call counts, error counts, error rate, and the last error per model.
+- New `/api/v1/chat/performance/reset` (operator-only) clears the in-memory counters.
+- New `/perf` slash command in the desktop chat shows the same data inline so you don't
+  need devtools to spot a slow model or a flapping tool.
+- Tool execution latency and error counts are now recorded automatically alongside the
+  existing per-model latency window.
+
+Docs:
+- New docs/error-handling.md page documenting how each layer (chat, tools, guardian
+  scheduler, comms bridges) reports and recovers from errors.
+- New docs/guardian-spine.md page mapping how the Guardian suite and the Spine
+  background loops talk to each other (scheduler ticks, policy gating, audit chain,
+  telemetry surface).
+- README and capabilities.md updated to point at the new pages and the /perf command.

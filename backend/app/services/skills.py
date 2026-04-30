@@ -41,6 +41,24 @@ class _SkillRegistry:
 _registry = _SkillRegistry()
 
 
+def _normalise_definition(raw: dict) -> dict | None:
+    """Accept either OpenAI-wrapped or flat tool definitions.
+
+    Wrapped: {"type": "function", "function": {"name": ..., ...}}
+    Flat:    {"name": ..., "description": ..., "parameters": ...}
+    Returns the wrapped form, or None if the shape is unrecognisable.
+    """
+    if not isinstance(raw, dict):
+        return None
+    if isinstance(raw.get("function"), dict) and raw["function"].get("name"):
+        wrapped = dict(raw)
+        wrapped.setdefault("type", "function")
+        return wrapped
+    if raw.get("name"):
+        return {"type": "function", "function": dict(raw)}
+    return None
+
+
 def _load() -> None:
     raw = os.getenv("SPARKBOT_SKILLS_DIR", "skills").strip()
     skills_dir = Path(raw) if Path(raw).is_absolute() else Path(__file__).parents[2] / raw
@@ -57,8 +75,12 @@ def _load() -> None:
             if not hasattr(mod, "DEFINITION") or not hasattr(mod, "execute"):
                 log.warning("Skill %s missing DEFINITION or execute — skipped", path.name)
                 continue
-            name = mod.DEFINITION["function"]["name"]
-            _registry.definitions.append(mod.DEFINITION)
+            definition = _normalise_definition(mod.DEFINITION)
+            if not definition:
+                log.warning("Skill %s DEFINITION shape unrecognised — skipped", path.name)
+                continue
+            name = definition["function"]["name"]
+            _registry.definitions.append(definition)
             _registry.executors[name] = mod.execute
             _registry.policies[name] = getattr(mod, "POLICY", _DEFAULT_POLICY)
             log.info("Loaded skill: %s", name)

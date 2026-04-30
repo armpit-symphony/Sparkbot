@@ -305,19 +305,45 @@ def discard_pending(confirm_id: str) -> None:
         pass
 
 
-# ── Per-model latency tracking ────────────────────────────────────────────────
-# Stores the last 10 successful response times (seconds) per model string.
-# Written by _acompletion_with_fallback; read by the /models endpoint.
-from collections import deque
+# ── Per-model latency + error tracking ────────────────────────────────────────
+# Stores the last 10 successful response times (seconds) per model string and
+# rolling success/error counters. Read by /models and /performance endpoints.
+from collections import deque, defaultdict
 
 _MODEL_LATENCIES: dict[str, deque[float]] = {}
 _LATENCY_WINDOW = 10  # keep last N samples per model
+_MODEL_CALL_COUNTS: dict[str, int] = defaultdict(int)
+_MODEL_ERROR_COUNTS: dict[str, int] = defaultdict(int)
+_MODEL_LAST_ERROR: dict[str, str] = {}
+_TOOL_CALL_COUNTS: dict[str, int] = defaultdict(int)
+_TOOL_ERROR_COUNTS: dict[str, int] = defaultdict(int)
+_TOOL_LATENCIES: dict[str, deque[float]] = {}
 
 
 def record_latency(model: str, elapsed: float) -> None:
     if model not in _MODEL_LATENCIES:
         _MODEL_LATENCIES[model] = deque(maxlen=_LATENCY_WINDOW)
     _MODEL_LATENCIES[model].append(round(elapsed, 2))
+    _MODEL_CALL_COUNTS[model] += 1
+
+
+def record_model_error(model: str, error: Exception) -> None:
+    if not model:
+        return
+    _MODEL_CALL_COUNTS[model] += 1
+    _MODEL_ERROR_COUNTS[model] += 1
+    _MODEL_LAST_ERROR[model] = f"{type(error).__name__}: {str(error)[:200]}"
+
+
+def record_tool_call(tool_name: str, elapsed: float, *, error: bool = False) -> None:
+    if not tool_name:
+        return
+    if tool_name not in _TOOL_LATENCIES:
+        _TOOL_LATENCIES[tool_name] = deque(maxlen=_LATENCY_WINDOW)
+    _TOOL_LATENCIES[tool_name].append(round(elapsed, 3))
+    _TOOL_CALL_COUNTS[tool_name] += 1
+    if error:
+        _TOOL_ERROR_COUNTS[tool_name] += 1
 
 
 def get_latency_stats(model: str) -> dict:
@@ -331,6 +357,62 @@ def get_latency_stats(model: str) -> dict:
         "max_s": round(max(samples), 2),
         "last_s": samples[-1],
     }
+
+
+def get_performance_snapshot() -> dict:
+    """Aggregate model + tool telemetry for the /performance endpoint."""
+    models: list[dict] = []
+    for model, count in sorted(_MODEL_CALL_COUNTS.items()):
+        errors = _MODEL_ERROR_COUNTS.get(model, 0)
+        latency = get_latency_stats(model)
+        models.append(
+            {
+                "model": model,
+                "calls": count,
+                "errors": errors,
+                "error_rate": round(errors / count, 3) if count else 0.0,
+                "latency_s": latency,
+                "last_error": _MODEL_LAST_ERROR.get(model),
+            }
+        )
+    tools: list[dict] = []
+    for tool_name, count in sorted(_TOOL_CALL_COUNTS.items()):
+        errors = _TOOL_ERROR_COUNTS.get(tool_name, 0)
+        samples = list(_TOOL_LATENCIES.get(tool_name, []))
+        avg = round(sum(samples) / len(samples), 3) if samples else None
+        tools.append(
+            {
+                "tool": tool_name,
+                "calls": count,
+                "errors": errors,
+                "error_rate": round(errors / count, 3) if count else 0.0,
+                "avg_latency_s": avg,
+                "last_latency_s": samples[-1] if samples else None,
+            }
+        )
+    total_calls = sum(_MODEL_CALL_COUNTS.values())
+    total_errors = sum(_MODEL_ERROR_COUNTS.values())
+    return {
+        "models": models,
+        "tools": tools,
+        "totals": {
+            "model_calls": total_calls,
+            "model_errors": total_errors,
+            "model_error_rate": round(total_errors / total_calls, 3) if total_calls else 0.0,
+            "tool_calls": sum(_TOOL_CALL_COUNTS.values()),
+            "tool_errors": sum(_TOOL_ERROR_COUNTS.values()),
+        },
+    }
+
+
+def reset_performance_snapshot() -> None:
+    _MODEL_LATENCIES.clear()
+    _MODEL_CALL_COUNTS.clear()
+    _MODEL_ERROR_COUNTS.clear()
+    _MODEL_LAST_ERROR.clear()
+    _TOOL_CALL_COUNTS.clear()
+    _TOOL_ERROR_COUNTS.clear()
+    _TOOL_LATENCIES.clear()
 
 
 # ── Audit log redaction ───────────────────────────────────────────────────────
@@ -893,6 +975,42 @@ async def _ensure_locked_route_ready(route_context: dict[str, Any]) -> None:
             )
 
 
+def humanise_chat_error(error: Exception) -> str:
+    """Convert a litellm/provider exception into a short user-facing string.
+
+    Keeps the original message available for logs but trims the noisy
+    'litellm.BadRequestError: OpenAIException - ...' framing so the in-room
+    error event reads naturally.
+    """
+    raw = str(error).strip()
+    lowered = raw.lower()
+    if "tools': array too long" in lowered or "tools array too long" in lowered:
+        return "The tool catalogue is larger than this provider allows. The router is shrinking it and retrying — try the message again."
+    if "rate limit" in lowered or "rate_limit" in lowered or " 429" in lowered:
+        return "The model provider is rate-limiting us right now. Wait a few seconds and retry, or switch the active model in Controls."
+    if "insufficient_quota" in lowered or "quota" in lowered and "exceed" in lowered:
+        return "The model provider's quota is exhausted on this API key. Add credits or rotate the key in Controls → Comms/API keys."
+    if "authentication" in lowered or "invalid api key" in lowered or "401" in lowered or "403" in lowered:
+        return "The provider rejected our credentials. Re-enter the API key for this model in Controls and try again."
+    if "context length" in lowered or "context_window" in lowered or "max_tokens" in lowered and "exceed" in lowered:
+        return "The conversation is too long for this model's context window. Start a new room or switch to a larger model."
+    if "model_not_found" in lowered or "model not found" in lowered or "no such model" in lowered:
+        return "The selected model is not available to this account. Pick a different model in Controls → Stack."
+    if "timed out" in lowered or "timeout" in lowered:
+        return "The model timed out. Retry, or pick a faster model in Controls → Stack."
+    if "ssl" in lowered or "connection" in lowered:
+        return "Network error reaching the model provider. Check connectivity and retry."
+    # Fallback — strip the leading 'litellm.<Cls>:' framing so the message reads cleanly.
+    cleaned = raw
+    for prefix in ("litellm.", "openai.", "anthropic."):
+        if cleaned.lower().startswith(prefix):
+            colon = cleaned.find(":")
+            if colon != -1:
+                cleaned = cleaned[colon + 1:].strip()
+                break
+    return cleaned[:500] or "Model call failed."
+
+
 def _format_locked_route_error(route_context: dict[str, Any], error: Exception) -> str:
     model_name = str(route_context.get("model") or "").strip()
     locked_provider = model_provider(model_name) if route_context.get("provider_locked") else ""
@@ -1184,6 +1302,29 @@ def _should_retry_without_tools(error: Exception, candidate: str, kwargs: dict[s
     return False
 
 
+_TOOLS_TOO_LONG_MARKERS = (
+    "tools': array too long",
+    "tools array too long",
+    "maximum length",
+    "too many tools",
+    "tool list too large",
+)
+
+
+def _looks_like_tools_too_long(error: Exception) -> bool:
+    text = str(error).lower()
+    return any(marker in text for marker in _TOOLS_TOO_LONG_MARKERS)
+
+
+def _trim_tools_in_kwargs(kwargs: dict[str, Any], max_tools: int) -> dict[str, Any]:
+    tools = kwargs.get("tools") or []
+    if not isinstance(tools, list) or len(tools) <= max_tools:
+        return kwargs
+    trimmed = dict(kwargs)
+    trimmed["tools"] = tools[:max_tools]
+    return trimmed
+
+
 def _should_retry_minimax_safe(error: Exception, candidate: str) -> bool:
     if model_provider(candidate) != "minimax":
         return False
@@ -1280,6 +1421,10 @@ async def _acompletion_with_fallback(
         except Exception as exc:
             last_error = exc
             errors.append(f"{candidate}: {type(exc).__name__}: {exc}")
+            try:
+                record_model_error(candidate, exc)
+            except Exception:
+                pass
             # OpenRouter returns 404 "No endpoints found that support the provided
             # 'tool_choice' value" when the selected model/provider doesn't support
             # function calling.  litellm.drop_params=True only strips params that
@@ -1302,6 +1447,25 @@ async def _acompletion_with_fallback(
                     last_error = exc2
                     errors.append(f"{candidate}(no-tools): {type(exc2).__name__}: {exc2}")
                     exc = exc2
+            if _looks_like_tools_too_long(exc) and isinstance(call_kwargs.get("tools"), list):
+                shrink_target = max(8, min(_LLM_TOOL_LIMIT - 8, len(call_kwargs["tools"]) - 16))
+                if shrink_target < len(call_kwargs["tools"]):
+                    try:
+                        shrink_kwargs = _trim_tools_in_kwargs(call_kwargs, shrink_target)
+                        _t0 = time.perf_counter()
+                        response = await litellm.acompletion(model=candidate, **shrink_kwargs)
+                        record_latency(candidate, time.perf_counter() - _t0)
+                        log.warning(
+                            "tool list rejected as too long by %s — retried with %s tools (was %s)",
+                            candidate,
+                            shrink_target,
+                            len(call_kwargs["tools"]),
+                        )
+                        return chosen_candidate, response
+                    except Exception as exc_trim:
+                        last_error = exc_trim
+                        errors.append(f"{candidate}(trim={shrink_target}): {type(exc_trim).__name__}: {exc_trim}")
+                        exc = exc_trim
             if _should_retry_minimax_safe(exc, candidate):
                 try:
                     safe_kwargs = _minimax_safe_kwargs(call_kwargs)
@@ -1910,24 +2074,36 @@ async def stream_chat_with_tools(
 
                     yield {"type": "tool_start", "tool": tool_name, "input": tool_args}
 
-                    result = await guardian_suite.executive.exec_with_guard(
-                        tool_name=tool_name,
-                        action_type=decision.action_type,
-                        expected_outcome=f"Successful tool execution for {tool_name}",
-                        perform_fn=lambda: execute_tool(
-                            tool_name,
-                            tool_args,
-                            user_id=user_id,
-                            session=db_session,
-                            room_id=room_id,
-                        ),
-                        metadata={
-                            "room_id": room_id,
-                            "user_id": user_id,
-                            "scope": decision.scope,
-                            "resource": decision.resource,
-                        },
-                    )
+                    _tool_t0 = time.perf_counter()
+                    _tool_errored = False
+                    try:
+                        result = await guardian_suite.executive.exec_with_guard(
+                            tool_name=tool_name,
+                            action_type=decision.action_type,
+                            expected_outcome=f"Successful tool execution for {tool_name}",
+                            perform_fn=lambda: execute_tool(
+                                tool_name,
+                                tool_args,
+                                user_id=user_id,
+                                session=db_session,
+                                room_id=room_id,
+                            ),
+                            metadata={
+                                "room_id": room_id,
+                                "user_id": user_id,
+                                "scope": decision.scope,
+                                "resource": decision.resource,
+                            },
+                        )
+                    except Exception as _tool_exc:
+                        _tool_errored = True
+                        result = f"TOOL ERROR: {humanise_chat_error(_tool_exc)}"
+                        log.exception("execute_tool failed for %s", tool_name)
+                    finally:
+                        try:
+                            record_tool_call(tool_name, time.perf_counter() - _tool_t0, error=_tool_errored)
+                        except Exception:
+                            pass
                     output_guardrail = guardian_suite.tool_guardrails.validate_tool_output(
                         tool_name,
                         str(result),

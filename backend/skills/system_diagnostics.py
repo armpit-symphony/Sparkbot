@@ -37,26 +37,29 @@ log = logging.getLogger(__name__)
 # ── Tool definition ────────────────────────────────────────────────────────────
 
 DEFINITION = {
-    "name": "system_diagnostics",
-    "description": (
-        "Run a full system health check on the local machine. "
-        "Reports CPU usage, RAM, disk space, top processes by CPU, "
-        "model endpoint reachability, and recent backend log lines. "
-        "Use this to diagnose slow responses, high CPU, or connectivity issues."
-    ),
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "include_log_tail": {
-                "type": "boolean",
-                "description": "Include the last 20 lines of the backend log (default true)",
+    "type": "function",
+    "function": {
+        "name": "system_diagnostics",
+        "description": (
+            "Run a full system health check on the local machine. "
+            "Reports CPU usage, RAM, disk space, top processes by CPU, "
+            "model endpoint reachability, and recent backend log lines. "
+            "Use this to diagnose slow responses, high CPU, or connectivity issues."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "include_log_tail": {
+                    "type": "boolean",
+                    "description": "Include the last 20 lines of the backend log (default true)",
+                },
+                "top_processes": {
+                    "type": "integer",
+                    "description": "Number of top CPU processes to list (default 10, max 20)",
+                },
             },
-            "top_processes": {
-                "type": "integer",
-                "description": "Number of top CPU processes to list (default 10, max 20)",
-            },
+            "required": [],
         },
-        "required": [],
     },
 }
 

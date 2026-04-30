@@ -763,6 +763,22 @@ def models_latency(current_user: CurrentChatUser) -> dict:
     }
 
 
+@router.get("/performance")
+def performance_snapshot(current_user: CurrentChatUser) -> dict:
+    """Return aggregated chat performance metrics — model + tool latency, error rates, last error."""
+    from app.api.routes.chat.llm import get_performance_snapshot
+    return get_performance_snapshot()
+
+
+@router.post("/performance/reset")
+def performance_reset(current_user: CurrentChatUser) -> dict:
+    """Clear in-memory performance counters. Operator-only."""
+    _require_operator(current_user)
+    from app.api.routes.chat.llm import reset_performance_snapshot
+    reset_performance_snapshot()
+    return {"ok": True}
+
+
 @router.get("/system/watcher")
 def system_watcher_status(current_user: CurrentChatUser) -> dict:
     """Return process watcher state: enabled, thresholds, currently throttled processes."""

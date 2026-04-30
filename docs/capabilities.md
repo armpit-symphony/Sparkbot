@@ -125,6 +125,8 @@ Type `/` in the chat input to get autocomplete.
 | `/tasks all` | List all tasks regardless of status |
 | `/remind` | List pending reminders for this room |
 | `/agents` | List available named agents |
+| `/audit` | Show recent bot tool actions |
+| `/perf` | Model + tool latency, call counts, error rate, last error this session |
 
 ---
 
@@ -1487,9 +1489,46 @@ systemctl set-property ollama.service CPUQuota=400%  # 400% = 4 cores
 
 ---
 
+## Performance Telemetry
+
+Sparkbot tracks both LLM call latency and tool execution latency in-process. The data backs the `/perf` slash command and a dedicated performance endpoint.
+
+### `/api/v1/chat/performance`
+
+Returns model + tool stats and aggregate counts in one call:
+
+```json
+{
+  "models": [
+    {
+      "model": "gpt-4o-mini",
+      "calls": 14,
+      "errors": 1,
+      "error_rate": 0.071,
+      "latency_s": {"samples": 10, "avg_s": 1.43, "min_s": 0.91, "max_s": 3.12, "last_s": 1.21},
+      "last_error": "BadRequestError: Invalid 'tools': array too long..."
+    }
+  ],
+  "tools": [
+    {"tool": "shell_run", "calls": 3, "errors": 0, "error_rate": 0.0, "avg_latency_s": 0.218, "last_latency_s": 0.187}
+  ],
+  "totals": {
+    "model_calls": 14,
+    "model_errors": 1,
+    "model_error_rate": 0.071,
+    "tool_calls": 3,
+    "tool_errors": 0
+  }
+}
+```
+
+`POST /api/v1/chat/performance/reset` (operator-only) clears in-memory counters.
+
+The `/perf` slash command in chat renders the same data inline.
+
 ## Model Latency Tracking
 
-Sparkbot records the wall-clock response time for every successful LLM call per model. Latency is surfaced in the `/models` endpoint and a dedicated `/models/latency` endpoint.
+Sparkbot also records the wall-clock response time for every successful LLM call per model. Latency is surfaced in the `/models` endpoint and a dedicated `/models/latency` endpoint.
 
 ### How it works
 
@@ -1722,7 +1761,7 @@ curl -b cookies.txt http://localhost:8000/api/v1/chat/system/watcher | python -m
 
 Desktop release tags and app versions are aligned on the `1.6.x` release line.
 
-For `v1.6.41`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story.
+For `v1.6.43`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story.
 
 ### How to upgrade safely
 

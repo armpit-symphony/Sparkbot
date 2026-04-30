@@ -6,7 +6,7 @@ Use it to chat, search, summarize documents, control a browser, run shell comman
 
 **Download:** [armpit-symphony.github.io/Sparkbot](https://armpit-symphony.github.io/Sparkbot/)
 
-**Current release line:** v1.6.42
+**Current release line:** v1.6.43
 
 > Sparkbot stores its app data locally. If you connect a cloud LLM provider or an external service, the text and actions needed for that provider or service are sent to that provider. Local models can run without an LLM cloud account.
 
@@ -286,6 +286,8 @@ Type `/` in the input to open the command menu.
 | `/export` | Download conversation as Markdown |
 | `/meeting start` | Begin meeting mode |
 | `/meeting stop` | End meeting and export notes |
+| `/audit` | Show recent bot tool actions |
+| `/perf` | Model + tool latency, call counts, and last error this session |
 | `/clear` | Clear view (history preserved on server) |
 
 ### Computer Control
@@ -515,6 +517,8 @@ User message → Token Guardian → Memory Guardian → LLM
 - **[docs/skill-author-guide.md](./docs/skill-author-guide.md)** — how to write, test, and ship a skill plugin
 - **[docs/guardian-job-examples.md](./docs/guardian-job-examples.md)** — copy-paste Task Guardian job templates
 - **[docs/jarvis-demo-kit.md](./docs/jarvis-demo-kit.md)** — 9am presentation, demo script, security notes, roadmap, and pasteable Task Guardian payloads
+- **[docs/error-handling.md](./docs/error-handling.md)** — where every layer catches failures, what the user sees, and where the full traceback goes
+- **[docs/guardian-spine.md](./docs/guardian-spine.md)** — how the Guardian suite and the Spine task ledger interact in the background (loops, ingest functions, observability)
 - **[docs/privacy-data-retention.md](./docs/privacy-data-retention.md)** — plain-language privacy and local data retention note
 - **[Troubleshooting.md](./Troubleshooting.md)** — Playwright, Ollama CPU, terminal, SmartScreen, first-run checklist
 - **[SECURITY.md](./SECURITY.md)** — security architecture
@@ -530,9 +534,11 @@ User message → Token Guardian → Memory Guardian → LLM
 
 | Version | Date | Highlights |
 |---------|------|-----------|
+| v1.6.43 | Apr 2026 | Reliability + observability: hard-cap chat tool catalogue at 128 (with auto-shrink retry) to fix `Invalid 'tools': array too long` on Windows builds; tool-catalogue dedup; skill loader accepts both wrapped and flat DEFINITION shapes (system_diagnostics now loads); user-friendly error messages for rate-limit / quota / auth / context / model-not-found / timeout failures; new `/perf` slash command and `/api/v1/chat/performance` endpoint surfacing model + tool latency, error counts, and last error; new docs/error-handling.md and docs/guardian-spine.md |
 | v1.6.42 | Apr 2026 | Controls persistence fixes: Computer Control checkbox now stays enabled across page loads (bootstrap no longer resets execution_allowed), model stack persists correctly in multi-worker deployments (cross-worker env reload from data/.env), and startup env loading ensures saved settings survive container restarts |
 | v1.6.41 | Apr 2026 | Full browser voice loop: fixed voice-route persona loading, tagged voice-origin messages, added hands-free listen-again after spoken replies, refreshed downloader/docs, and kept Workstation phone access in the release line |
 | v1.6.40 | Apr 2026 | Guardian Memory retrieval governance: BM25 default retriever interface, optional hybrid embedding flag, verified fact promotion with pending approvals, nightly Task Guardian memory evaluation, precision/latency metrics, authenticated Guardian metrics endpoint, and defensive LiteLLM tool-manifest trimming for Telegram/background reliability |
+| v1.6.39 | Apr 2026 | Unified Sparkbot + LIMA Robotics OS positioning; Workstation Robo OS button; MCP control-plane registry with typed manifests, policy metadata, dry-run posture, live Sparkbot health, run timeline, and no-hardware LIMA replay/simulation demos |
 | v1.6.38 | Apr 2026 | Governance roadmap baseline: first-class agent identity/kill switches, run timeline API with audit hashes, connector health/scopes, workflow templates, PWA manifest, per-tool input/output guardrails, deterministic eval harness, privacy/data-retention docs, and aligned downloader versioning |
 | v1.6.37 | Apr 2026 | Self-learning memory + governed orchestration: hybrid Guardian recall with provenance/confidence, memory self-introspection tools, truth/confidence guardrails, approval-first improvement proposals, policy simulator, orchestrator docs, Telegram token-safe error handling, and write-like shell confirmation in policy mode |
 | v1.6.36 | Apr 2026 | Computer Control replaces the room execution gate; Workstation status now reflects the Controls checkbox; first-run 6-digit PIN setup/change flow for Break-glass, Vault, commands, browser writes, and comms sends |

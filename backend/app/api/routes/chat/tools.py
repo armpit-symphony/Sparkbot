@@ -1881,8 +1881,32 @@ _VAULT_TOOL_DEFINITIONS = [
     },
 ]
 
-# Extend with dynamically loaded skills
-TOOL_DEFINITIONS = list(TOOL_DEFINITIONS) + _VAULT_TOOL_DEFINITIONS + _skill_registry.definitions
+# Extend with dynamically loaded skills, deduping by tool name. Native definitions
+# in this file always win over a same-named skill so behaviour is predictable.
+def _dedupe_tool_definitions(*sources: list[dict]) -> list[dict]:
+    seen: set[str] = set()
+    merged: list[dict] = []
+    for source in sources:
+        for tool in source:
+            fn = tool.get("function") if isinstance(tool, dict) else None
+            name = (fn or {}).get("name") if isinstance(fn, dict) else None
+            if not name or name in seen:
+                if name:
+                    import logging as _logging
+                    _logging.getLogger(__name__).warning(
+                        "Duplicate tool definition '%s' ignored", name
+                    )
+                continue
+            seen.add(name)
+            merged.append(tool)
+    return merged
+
+
+TOOL_DEFINITIONS = _dedupe_tool_definitions(
+    list(TOOL_DEFINITIONS),
+    _VAULT_TOOL_DEFINITIONS,
+    _skill_registry.definitions,
+)
 
 
 # ─── Executors ────────────────────────────────────────────────────────────────

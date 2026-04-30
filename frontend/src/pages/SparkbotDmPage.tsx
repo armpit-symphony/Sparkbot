@@ -412,6 +412,7 @@ const COMMANDS: SlashCommand[] = [
   { name: "/remind",  description: "List pending reminders for this room" },
   { name: "/agents",  description: "List available named agents (@researcher, @coder, etc.)" },
   { name: "/audit",   description: "Show recent bot tool actions" },
+  { name: "/perf",    description: "Show model + tool latency / error rates this session" },
 ]
 
 function systemMsg(content: string): Message {
@@ -3695,6 +3696,38 @@ function SparkbotDmPage() {
           setMessages(prev => [...prev, systemMsg(lines.join("\n"))])
         })
         .catch(() => setMessages(prev => [...prev, systemMsg("Failed to load audit log.")]))
+      return true
+    }
+
+    if (cmd === "/perf") {
+      apiFetch("/api/v1/chat/performance", { credentials: "include" })
+        .then(r => r.json())
+        .then((data: any) => {
+          const lines: string[] = []
+          const totals = data.totals || {}
+          lines.push(`**Performance** — ${totals.model_calls || 0} model calls (${totals.model_errors || 0} errors, ${((totals.model_error_rate || 0) * 100).toFixed(1)}%) · ${totals.tool_calls || 0} tool calls (${totals.tool_errors || 0} errors)`)
+          const models: any[] = data.models || []
+          if (models.length) {
+            lines.push("\n**Models:**")
+            models.slice(0, 8).forEach(m => {
+              const lat = m.latency_s || {}
+              const err = m.errors > 0 ? ` · **${m.errors} err**` : ""
+              lines.push(`- \`${m.model}\` — ${m.calls} calls, avg ${lat.avg_s ?? "—"}s (last ${lat.last_s ?? "—"}s)${err}`)
+              if (m.last_error) lines.push(`  ↳ ${m.last_error.slice(0, 140)}`)
+            })
+          }
+          const tools: any[] = data.tools || []
+          if (tools.length) {
+            lines.push("\n**Tools (top by calls):**")
+            tools.sort((a, b) => (b.calls || 0) - (a.calls || 0)).slice(0, 8).forEach(t => {
+              const err = t.errors > 0 ? ` · **${t.errors} err**` : ""
+              lines.push(`- \`${t.tool}\` — ${t.calls} calls, avg ${t.avg_latency_s ?? "—"}s${err}`)
+            })
+          }
+          if (lines.length === 1) lines.push("\n_(no calls recorded yet — send a message and try /perf again)_")
+          setMessages(prev => [...prev, systemMsg(lines.join("\n"))])
+        })
+        .catch(() => setMessages(prev => [...prev, systemMsg("Failed to load performance metrics.")]))
       return true
     }
 
