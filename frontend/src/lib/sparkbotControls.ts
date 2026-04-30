@@ -28,7 +28,7 @@ export interface SparkbotControlsConfig {
   agent_overrides: Record<
     string,
     {
-      route: "default" | "openrouter" | "local"
+      route: string
       model?: string
     }
   >
