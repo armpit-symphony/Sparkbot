@@ -6,7 +6,7 @@ Use it to chat, search, summarize documents, control a browser, run shell comman
 
 **Download:** [armpit-symphony.github.io/Sparkbot](https://armpit-symphony.github.io/Sparkbot/)
 
-**Current release line:** v1.6.45
+**Current release line:** v1.6.46
 
 > Sparkbot stores its app data locally. If you connect a cloud LLM provider or an external service, the text and actions needed for that provider or service are sent to that provider. Local models can run without an LLM cloud account.
 
@@ -534,6 +534,7 @@ User message → Token Guardian → Memory Guardian → LLM
 
 | Version | Date | Highlights |
 |---------|------|-----------|
+| v1.6.46 | Apr 2026 | Breakglass/Computer Control reliability: redesigned global ON/OFF control with a 24-hour expiry, Vault remains PIN-protected, diagnostics/tests can run while destructive edits/deletes/sends still require yes/no confirmation; fixed custom agent spawning on upgraded local SQLite installs; spawned agents now update the active registry immediately; Workstation Specialty Wing lists created agents for meeting seating; Roundtable chairs can be reassigned in-room; generated meeting notes now post into the meeting transcript and surface errors. |
 | v1.6.45 | Apr 2026 | Governed Guardian Memory lifecycle: typed memory candidates, low-clutter indexing, active/stale/archive/delete-proposal states, operator-approved soft deletion, snapshot rebuild throttling, ledger archive manifests, and memory hygiene jobs |
 | v1.6.43 | Apr 2026 | Reliability + observability: hard-cap chat tool catalogue at 128 (with auto-shrink retry) to fix `Invalid 'tools': array too long` on Windows builds; tool-catalogue dedup; skill loader accepts both wrapped and flat DEFINITION shapes (system_diagnostics now loads); user-friendly error messages for rate-limit / quota / auth / context / model-not-found / timeout failures; new `/perf` slash command and `/api/v1/chat/performance` endpoint surfacing model + tool latency, error counts, and last error; new docs/error-handling.md and docs/guardian-spine.md |
 | v1.6.42 | Apr 2026 | Controls persistence fixes: Computer Control checkbox now stays enabled across page loads (bootstrap no longer resets execution_allowed), model stack persists correctly in multi-worker deployments (cross-worker env reload from data/.env), and startup env loading ensures saved settings survive container restarts |

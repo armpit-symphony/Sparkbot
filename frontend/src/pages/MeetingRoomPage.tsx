@@ -45,6 +45,13 @@ interface MeetingListItem {
   meta: WorkstationMeetingRoomMeta | null
 }
 
+interface MeetingAgentOption {
+  name: string
+  emoji?: string
+  description?: string
+  is_builtin?: boolean
+}
+
 export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
   const navigate = useNavigate()
   const [room, setRoom] = useState<RoomDetail | null>(null)
@@ -67,6 +74,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
   const [sidebarTab, setSidebarTab] = useState<"current" | "meetings" | "tasks">("current")
   const [meetingRooms, setMeetingRooms] = useState<MeetingListItem[]>([])
   const [meetingActionId, setMeetingActionId] = useState<string | null>(null)
+  const [agentOptions, setAgentOptions] = useState<MeetingAgentOption[]>([])
   const [roomTasks, setRoomTasks] = useState<Array<{
     id: string; name: string; tool_name: string; schedule: string;
     enabled: boolean; last_status: string | null; last_run_at: string | null;
@@ -79,6 +87,19 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
   useEffect(() => {
     setMeetingMeta(loadMeetingRoomMeta(roomId))
   }, [roomId])
+
+  useEffect(() => {
+    apiFetch("/api/v1/chat/agents", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : { agents: [] }))
+      .then((data) => {
+        const fetched = Array.isArray(data.agents) ? data.agents : []
+        setAgentOptions([
+          { name: "sparkbot", emoji: "S", description: "Main Sparkbot chair", is_builtin: true },
+          ...fetched.filter((agent: MeetingAgentOption) => agent.name !== "sparkbot"),
+        ])
+      })
+      .catch(() => setAgentOptions([]))
+  }, [])
 
   useEffect(() => {
     if (!roomId) return
@@ -135,6 +156,30 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
     () => meetingMeta?.seats ?? [],
     [meetingMeta],
   )
+  const meetingAgentOptions = useMemo(
+    () => agentOptions.filter((agent) => agent.name !== "sparkbot"),
+    [agentOptions],
+  )
+
+  function handleSeatAgentChange(seatIndex: number, agentName: string) {
+    if (!meetingMeta || !agentName) return
+    const agent = agentOptions.find((candidate) => candidate.name === agentName)
+    if (!agent) return
+    const nextSeats = meetingMeta.seats.map((seat) => {
+      if (seat.seatIndex !== seatIndex) return seat
+      return {
+        ...seat,
+        stationId: agent.name === "sparkbot" ? "sparkbot" : `agent-${agent.name}`,
+        label: `${agent.emoji ? `${agent.emoji} ` : ""}${agent.name.replace(/_/g, " ")}`.trim(),
+        agentHandle: agent.name,
+        agentProvisioning: agent.is_builtin === false ? "custom" as const : "builtin" as const,
+        agentDescription: agent.description || seat.agentDescription,
+      }
+    })
+    const nextMeta = { ...meetingMeta, seats: nextSeats }
+    setMeetingMeta(nextMeta)
+    saveMeetingRoomMeta(nextMeta)
+  }
 
   const reloadRoomTasks = async () => {
     try {
@@ -257,7 +302,10 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
         method: "DELETE",
         credentials: "include",
       })
-      if (!res.ok) throw new Error("Could not delete meeting.")
+      if (!res.ok) {
+        const detail = await res.json().catch(() => ({ detail: "Could not delete meeting." }))
+        throw new Error(String(detail.detail ?? "Could not delete meeting."))
+      }
       deleteMeetingRoomMeta(targetRoomId)
       await reloadMeetingRooms()
       if (targetRoomId === roomId) {
@@ -402,16 +450,22 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
   async function handleGenerateNotes() {
     if (generatingNotes) return
     setGeneratingNotes(true)
+    setStreamError("")
     try {
       const res = await apiFetch(`/api/v1/chat/rooms/${roomId}/artifacts/generate`, {
         method: "POST",
         credentials: "include",
       })
-      if (!res.ok) throw new Error("Could not generate notes")
+      if (!res.ok) {
+        const detail = await res.json().catch(() => ({ detail: "Could not generate notes" }))
+        throw new Error(String(detail.detail ?? "Could not generate notes"))
+      }
       const artifact = await res.json()
       setLatestArtifact(artifact)
+      await reloadMessages()
     } catch (err) {
       console.error("Generate notes error:", err)
+      setStreamError((err as Error).message || "Could not generate meeting notes.")
     } finally {
       setGeneratingNotes(false)
     }
@@ -426,6 +480,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
       if (!res.ok) return
       const artifact = await res.json()
       setLatestArtifact(artifact)
+      await reloadMessages()
     } catch {
       // Best effort only; do not interrupt the room.
     }
@@ -692,7 +747,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {seatedParticipants.map((seat) => (
                       <div
-                        key={seat.stationId}
+                        key={`${seat.seatIndex}-${seat.stationId}`}
                         style={{
                           display: "flex",
                           alignItems: "center",
@@ -713,7 +768,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                             flexShrink: 0,
                           }}
                         />
-                        <div style={{ minWidth: 0 }}>
+                        <div style={{ minWidth: 0, flex: 1 }}>
                           <div
                             style={{
                               fontSize: 11,
@@ -725,6 +780,28 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                           >
                             Chair {seat.seatIndex + 1}: {seat.label}
                           </div>
+                          <select
+                            value={seat.agentHandle ?? ""}
+                            onChange={(event) => handleSeatAgentChange(seat.seatIndex, event.target.value)}
+                            style={{
+                              marginTop: 6,
+                              width: "100%",
+                              border: "1px solid rgba(125,211,252,0.18)",
+                              borderRadius: 6,
+                              backgroundColor: "rgba(7,13,28,0.72)",
+                              color: "#cbd5e1",
+                              fontSize: 10,
+                              padding: "5px 7px",
+                            }}
+                          >
+                            <option value="">Select agent</option>
+                            <option value="sparkbot">Sparkbot</option>
+                            {meetingAgentOptions.map((agent) => (
+                              <option key={agent.name} value={agent.name}>
+                                @{agent.name}
+                              </option>
+                            ))}
+                          </select>
                         </div>
                       </div>
                     ))}

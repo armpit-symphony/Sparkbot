@@ -1675,6 +1675,10 @@ async def stream_chat_with_tools(
         _google_configured,
     )
     guardian_suite = get_guardian_suite()
+    try:
+        effective_execution_allowed = bool(room_execution_allowed) or bool(guardian_suite.policy.global_bypass_enabled())
+    except Exception:
+        effective_execution_allowed = bool(room_execution_allowed)
 
     base_model = model or get_model(user_id)
     route_context = get_agent_route_context(default_model=base_model, agent_name=agent_name)
@@ -1793,7 +1797,7 @@ async def stream_chat_with_tools(
                 },
             )
         if _should_nudge_server_read(latest_user_message):
-            if room_execution_allowed:
+            if effective_execution_allowed:
                 msgs.insert(
                     1,
                     {
@@ -1952,7 +1956,7 @@ async def stream_chat_with_tools(
                     decision = guardian_suite.policy.decide_tool_use(
                         tool_name,
                         tool_args if isinstance(tool_args, dict) else {},
-                        room_execution_allowed=room_execution_allowed,
+                        room_execution_allowed=effective_execution_allowed,
                         is_operator=is_operator,
                         is_privileged=is_privileged,
                     )

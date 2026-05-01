@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -10,6 +11,33 @@ from typing import Any, Literal
 def _policy_enabled() -> bool:
     """Return True when Computer Control / PIN policy restrictions are enabled."""
     return os.getenv("SPARKBOT_GUARDIAN_POLICY_ENABLED", "true").lower() not in ("false", "0", "no", "off")
+
+
+GLOBAL_COMPUTER_CONTROL_TTL_SECONDS = 24 * 60 * 60
+
+
+def global_bypass_status() -> dict[str, Any]:
+    """Return the app-wide Computer Control state with expiry metadata."""
+    enabled = os.getenv("SPARKBOT_GLOBAL_COMPUTER_CONTROL", "false").lower() in ("1", "true", "yes", "on")
+    raw_expires = os.getenv("SPARKBOT_GLOBAL_COMPUTER_CONTROL_EXPIRES_AT", "").strip()
+    expires_at = 0.0
+    if raw_expires:
+        try:
+            expires_at = float(raw_expires)
+        except ValueError:
+            expires_at = 0.0
+    ttl_remaining = max(0, int(expires_at - time.time())) if expires_at else 0
+    active = bool(enabled and ttl_remaining > 0)
+    return {
+        "active": active,
+        "expires_at": expires_at if active else None,
+        "ttl_remaining": ttl_remaining if active else 0,
+    }
+
+
+def global_bypass_enabled() -> bool:
+    """True when app-wide Computer Control is active and unexpired."""
+    return bool(global_bypass_status()["active"])
 
 
 PolicyAction = Literal["allow", "confirm", "deny", "privileged", "privileged_reveal"]
@@ -412,6 +440,24 @@ def decide_tool_use(
             reason="Vault tools are restricted to configured Sparkbot operators.",
         )
 
+    # Global Computer Control bypass: routine non-vault diagnostics and actions
+    # run across all rooms. High-risk edits/deletes/sends still require the
+    # standard yes/no confirmation, and vault remains governed below.
+    if global_bypass_enabled() and not tool_name.startswith("vault_"):
+        action: PolicyAction = "confirm" if policy.default_action == "confirm" else "allow"
+        return PolicyDecision(
+            tool_name=tool_name,
+            scope=policy.scope,
+            resource=policy.resource,
+            action=action,
+            action_type=policy.action_type,
+            high_risk=policy.high_risk,
+            reason=(
+                "Global Computer Control is on for all rooms; routine non-vault actions are allowed. "
+                "Edits, deletes, sends, and critical changes still require yes/no confirmation."
+            ),
+        )
+
     # Personal mode (default): no gates, no confirms, no denials — everything runs freely.
     # Switch to office mode by setting SPARKBOT_GUARDIAN_POLICY_ENABLED=true.
     if not _policy_enabled():
@@ -437,14 +483,18 @@ def decide_tool_use(
         )
 
     if room_execution_allowed and not tool_name.startswith("vault_"):
+        action: PolicyAction = "confirm" if policy.default_action == "confirm" else "allow"
         return PolicyDecision(
             tool_name=tool_name,
             scope=policy.scope,
             resource=policy.resource,
-            action="allow",
+            action=action,
             action_type=policy.action_type,
             high_risk=policy.high_risk,
-            reason="Computer Control is on for this room; local machine, browser, and comms actions are allowed.",
+            reason=(
+                "Computer Control is on for this room; routine non-vault actions are allowed. "
+                "Edits, deletes, sends, and critical changes still require yes/no confirmation."
+            ),
         )
 
     if policy.default_action == "deny":

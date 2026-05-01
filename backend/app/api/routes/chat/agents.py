@@ -255,6 +255,7 @@ def load_db_agents_into_registry(session) -> None:
     from sqlmodel import select
     from app.models import CustomAgent
     try:
+        CustomAgent.__table__.create(session.get_bind(), checkfirst=True)
         for a in session.exec(select(CustomAgent)).all():
             register_agent(a.name, a.emoji, a.description, a.system_prompt)
     except Exception:

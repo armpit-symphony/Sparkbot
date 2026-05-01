@@ -13,6 +13,7 @@ from __future__ import annotations
 import os
 import re
 import json
+import time
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,10 @@ from app.api.deps import CurrentChatUser, SessionDep
 from app.api.routes.chat.agents import BUILT_IN_AGENTS, get_all_agents, register_agent, unregister_agent
 from app.core.config import settings
 from app.services.guardian import get_guardian_suite
+from app.services.guardian.policy import (
+    GLOBAL_COMPUTER_CONTROL_TTL_SECONDS,
+    global_bypass_status,
+)
 from app.api.routes.chat.llm import (
     AGENT_MODEL_OVERRIDES_ENV,
     AVAILABLE_MODELS,
@@ -385,6 +390,7 @@ async def _build_controls_config(current_user: CurrentChatUser, notices: list[st
     _configured_primary = os.getenv(PRIMARY_MODEL_ENV, "").strip()
     _display_model = _configured_primary or ""
     _configured_local = os.getenv(LOCAL_DEFAULT_MODEL_ENV, "").strip()
+    global_control = global_bypass_status()
     return {
         "active_model": get_model(str(current_user.id)),
         "stack": get_model_stack_display(),
@@ -401,6 +407,9 @@ async def _build_controls_config(current_user: CurrentChatUser, notices: list[st
             "default_provider_authoritative": True,
             "cross_provider_fallback": default_cross_provider_fallback_enabled(),
         },
+        "global_computer_control": global_control["active"],
+        "global_computer_control_expires_at": global_control["expires_at"],
+        "global_computer_control_ttl_remaining": global_control["ttl_remaining"],
         "agent_overrides": get_agent_model_overrides(),
         "available_agents": [
             {
@@ -482,6 +491,11 @@ async def build_safe_runtime_state(current_user: CurrentChatUser) -> dict[str, A
             "active": active_session is not None,
             "ttl_remaining": active_session.ttl_remaining() if active_session else 0,
             "scopes": list(active_session.scopes) if active_session else [],
+        },
+        "global_computer_control": {
+            "active": bool(config.get("global_computer_control")),
+            "ttl_remaining": int(config.get("global_computer_control_ttl_remaining") or 0),
+            "expires_at": config.get("global_computer_control_expires_at"),
         },
     }
 
@@ -571,6 +585,11 @@ class ControlsConfigUpdate(BaseModel):
     providers: ProviderSecretsInput | None = None
     comms: CommsConfigInput | None = None
     token_guardian_mode: str | None = Field(default=None, pattern="^(off|shadow|live)$")
+    global_computer_control: bool | None = None
+
+
+def _global_computer_control_enabled() -> bool:
+    return bool(global_bypass_status()["active"])
 
 
 @router.get("/models")
@@ -644,6 +663,11 @@ def create_agent(body: AgentCreate, current_user: CurrentChatUser, session: Sess
     if name in BUILT_IN_AGENTS:
         raise HTTPException(status_code=409, detail=f"'{name}' is a built-in agent name.")
 
+    try:
+        CustomAgent.__table__.create(session.get_bind(), checkfirst=True)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Could not prepare custom agent storage: {exc}")
+
     existing = session.exec(select(CustomAgent).where(CustomAgent.name == name)).first()
     if existing:
         raise HTTPException(status_code=409, detail=f"Agent '{name}' already exists.")
@@ -689,6 +713,11 @@ def delete_agent(name: str, current_user: CurrentChatUser, session: SessionDep) 
     name = name.lower().strip()
     if name in BUILT_IN_AGENTS:
         raise HTTPException(status_code=403, detail=f"Cannot delete built-in agent '{name}'.")
+
+    try:
+        CustomAgent.__table__.create(session.get_bind(), checkfirst=True)
+    except Exception:
+        pass
 
     agent = session.exec(select(CustomAgent).where(CustomAgent.name == name)).first()
     if not agent:
@@ -830,7 +859,11 @@ async def openrouter_models(current_user: CurrentChatUser) -> dict[str, Any]:
 
 
 @router.post("/models/config")
-async def update_models_config(body: ControlsConfigUpdate, current_user: CurrentChatUser) -> dict[str, Any]:
+async def update_models_config(
+    body: ControlsConfigUpdate,
+    current_user: CurrentChatUser,
+    session: SessionDep,
+) -> dict[str, Any]:
     _require_operator(current_user)
 
     env_updates: dict[str, str] = {}
@@ -902,6 +935,31 @@ async def update_models_config(body: ControlsConfigUpdate, current_user: Current
             notices.append("Cross-provider fallback enabled for the default route.")
         else:
             notices.append("Default provider is now authoritative for everyday chat.")
+
+    if body.global_computer_control is not None:
+        new_state = bool(body.global_computer_control)
+        prior_state = _global_computer_control_enabled()
+        expires_at = time.time() + GLOBAL_COMPUTER_CONTROL_TTL_SECONDS if new_state else 0
+        env_updates["SPARKBOT_GLOBAL_COMPUTER_CONTROL"] = "true" if new_state else "false"
+        env_updates["SPARKBOT_GLOBAL_COMPUTER_CONTROL_EXPIRES_AT"] = str(expires_at) if new_state else ""
+        if new_state != prior_state:
+            try:
+                from app.crud import create_audit_log
+                create_audit_log(
+                    session=session,
+                    tool_name="policy_bypass_global_on" if new_state else "policy_bypass_global_off",
+                    tool_input=json.dumps({"operator": str(current_user.username or current_user.id)}),
+                    tool_result="enabled" if new_state else "disabled",
+                    user_id=current_user.id,
+                    room_id=None,
+                    model=None,
+                )
+            except Exception:
+                pass
+        if new_state:
+            notices.append("Global Computer Control is ON for 24 hours. Vault tools remain PIN-protected; edits/deletes/critical changes still ask yes/no.")
+        else:
+            notices.append("Global Computer Control is OFF. Agents ask for PIN authorization before gated actions.")
 
     if body.agent_overrides is not None:
         cleaned: dict[str, dict[str, str]] = {}

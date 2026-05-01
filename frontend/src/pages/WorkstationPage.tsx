@@ -190,6 +190,9 @@ function deriveMeetingAgentHandle(station: Station): string | null {
   if (station.isInviteSlot || station.id.startsWith("stack-")) {
     return slugifyMeetingHandleLabel(station.label, station.id)
   }
+  if (station.id.startsWith("agent-")) {
+    return station.id.replace(/^agent-/, "")
+  }
 
   return null
 }
@@ -207,7 +210,7 @@ function buildMeetingSeatMeta(
     accentHex: station.accentHex,
     ...(modelId ? { modelId, route: "default" as const } : {}),
     ...(agentHandle ? { agentHandle } : {}),
-    ...((station.isInviteSlot || Boolean(modelId)) && agentHandle
+    ...((station.isInviteSlot || station.id.startsWith("agent-") || Boolean(modelId)) && agentHandle
       ? {
           agentProvisioning: "custom" as const,
           agentProvider: station.subtitle,
@@ -354,6 +357,28 @@ const SPECIALTY_PLACEHOLDERS: Station[] = [
     capabilities: ["Custom role", "Editable prompt", "Named specialist"],
   },
 ]
+
+const STATIC_SPECIALTY_AGENT_NAMES = new Set(["researcher", "coder", "analyst"])
+const SPECIALTY_AGENT_ACCENTS = ["#7dd3fc", "#a78bfa", "#34d399", "#f472b6", "#fbbf24", "#60a5fa"]
+
+function buildCustomSpecialtyStations(controlsConfig: SparkbotControlsConfig | null): Station[] {
+  return (controlsConfig?.available_agents ?? [])
+    .filter((agent) => agent.name !== "sparkbot")
+    .filter((agent) => !STATIC_SPECIALTY_AGENT_NAMES.has(agent.name))
+    .filter((agent) => agent.is_builtin === false)
+    .map((agent, index) => ({
+      id: `agent-${agent.name}`,
+      label: agent.name.replace(/_/g, " "),
+      subtitle: "Created specialty agent",
+      type: "sparkbud" as const,
+      status: "idle" as StationStatus,
+      icon: UserPlus,
+      route: "/dm",
+      accentHex: SPECIALTY_AGENT_ACCENTS[index % SPECIALTY_AGENT_ACCENTS.length],
+      description: agent.description || `@${agent.name} is available in chat and roundtable meetings.`,
+      capabilities: [`@${agent.name}`, "Created in Controls", "Meeting-ready"],
+    }))
+}
 
 function getAssignedStationIds(projectRoom: ProjectRoom): string[] {
   return Array.from(new Set(projectRoom.seats.filter((seatId): seatId is string => Boolean(seatId))))
@@ -1080,7 +1105,7 @@ function StationDetailPanel({
   let actionDisabled = true
   let actionHandler: (() => void) | undefined
 
-  if (isSparkBud) {
+  if (isSparkBud && sparkBudLaunchConfig) {
     actionLabel = "Launch"
     actionDisabled = false
     actionHandler = handleLaunchSparkBud
@@ -2620,7 +2645,7 @@ function ComputerControlPanel({ onClose, onOpenTerminal, status }: ComputerContr
           </div>
           <p style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.6, margin: "8px 0 0" }}>
             {enabled
-              ? "Computer Control is on. Sparkbot can run shell, terminal, browser, and comms actions without PIN prompts in its DM room."
+              ? "Computer Control is on across chats and meetings. Diagnostics and routine actions can run; edits, deletes, sends, and critical changes still ask yes/no."
               : bgActive
                 ? `Break-glass is active — all tools are unlocked except vault writes/reveals. ${status.breakglassTtl != null ? `Expires in ${Math.ceil(status.breakglassTtl / 60)} min.` : ""}`
                 : status.pinConfigured === false
@@ -3955,12 +3980,15 @@ export default function WorkstationPage() {
       const bootRes = await apiFetch("/api/v1/chat/users/bootstrap", { method: "POST", credentials: "include" }).catch(() => null)
       const boot = bootRes?.ok ? await bootRes.json().catch(() => null) : null
       const roomId = typeof boot?.room_id === "string" ? boot.room_id : null
-      let roomEnabled: boolean | null = null
+      let roomEnabled: boolean | null =
+        typeof configRes?.global_computer_control === "boolean" ? configRes.global_computer_control : null
       if (roomId) {
         const roomRes = await apiFetch(`/api/v1/chat/rooms/${roomId}`, { credentials: "include" }).catch(() => null)
         if (roomRes?.ok) {
           const room = await roomRes.json().catch(() => null)
-          roomEnabled = typeof room?.execution_allowed === "boolean" ? room.execution_allowed : null
+          if (roomEnabled !== true) {
+            roomEnabled = typeof room?.execution_allowed === "boolean" ? room.execution_allowed : roomEnabled
+          }
         }
       }
       const bgActive = guardianStatusRes?.breakglass?.active === true
@@ -3993,6 +4021,8 @@ export default function WorkstationPage() {
 
   // ── Derived from config ────────────────────────────────────────────────────
   const companionModelStations = buildCompanionModelStations(controlsConfig)
+  const customSpecialtyStations = buildCustomSpecialtyStations(controlsConfig)
+  const specialtyStations = [...SPECIALTY_PLACEHOLDERS, ...customSpecialtyStations]
   const resolvedInviteStations = INVITE_DESKS.map((station) =>
     resolveInviteStation(station, configuredInvites),
   )
@@ -4001,7 +4031,7 @@ export default function WorkstationPage() {
     MAIN_DESK,
     ...companionModelStations.filter((station) => station.status !== "empty"),
     ...resolvedInviteStations.filter((station) => station.status !== "empty"),
-    ...SPECIALTY_PLACEHOLDERS.filter((station) => station.status !== "empty"),
+    ...specialtyStations.filter((station) => station.status !== "empty"),
   ]
   const stackModelByStationId = {
     "stack-backup_1": controlsConfig?.stack.backup_1 ?? "",
@@ -4626,9 +4656,12 @@ export default function WorkstationPage() {
                     display: "grid",
                     gridTemplateColumns: "1fr",
                     gap: 12,
+                    maxHeight: 420,
+                    overflowY: "auto",
+                    paddingRight: 2,
                   }}
                 >
-                  {SPECIALTY_PLACEHOLDERS.map((station) => (
+                  {specialtyStations.map((station) => (
                     <DeskCard
                       key={station.id}
                       station={station}
@@ -4658,9 +4691,8 @@ export default function WorkstationPage() {
                     Public-safe posture
                   </div>
                   <p style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.65, margin: "8px 0 0" }}>
-                    These SparkBud desks are shown as available specialists, but deeper internal
-                    tooling remains hidden until it has clearer permissions and a cleaner product
-                    story.
+                    Use the scrollable Specialty Wing to seat built-in SparkBuds or agents created in
+                    Controls. Seated specialists are available in meetings and by @mention in chat.
                   </p>
                 </div>
               </div>

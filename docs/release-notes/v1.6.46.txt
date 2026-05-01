@@ -1,0 +1,15 @@
+Sparkbot v1.6.46
+
+Focus: Breakglass/Computer Control, custom agents, and Roundtable meeting reliability.
+
+- Redesigned the Sparkbot Controls Computer Control state as a clear global ON/OFF control.
+- Global Computer Control now expires after 24 hours instead of staying enabled indefinitely.
+- Routine diagnostics, tests, reads, and safe tool runs can proceed across all chats and meetings while Computer Control is on.
+- Edits, deletes, outbound sends, write-like shell commands, service changes, and other critical actions still require explicit yes/no confirmation.
+- Vault remains PIN-protected for adding secrets and copying/printing credentials regardless of Computer Control state.
+- Fixed custom agent spawning for upgraded local SQLite installs by ensuring the custom agent table exists before create/delete/list operations.
+- Spawned agents now update the active frontend registry immediately and remain available by @mention without restarting.
+- Workstation Specialty Wing now shows created custom agents in a scrollable selector so they can be added to Roundtable seats.
+- Roundtable meeting chairs can be reassigned in-room to any available agent, including custom agents.
+- Generated meeting notes now post into the meeting transcript for participants to see, and generation errors are visible in the room.
+- Advanced backend, frontend, Tauri shell, README, public downloader, capabilities docs, and packaging notes to v1.6.46.

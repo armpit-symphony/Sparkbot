@@ -223,6 +223,11 @@ interface ModelsControlsConfig {
     default_provider_authoritative: boolean
     cross_provider_fallback: boolean
   }
+  /** App-wide Computer Control. Routine actions run across all rooms for 24h;
+   * edits/deletes/critical changes still confirm, and vault stays PIN-protected. */
+  global_computer_control?: boolean
+  global_computer_control_expires_at?: number | null
+  global_computer_control_ttl_remaining?: number | null
   agent_overrides: Record<string, { route: string; model?: string }>
   available_agents: Array<{
     name: string
@@ -801,7 +806,6 @@ const TASK_TOOL_OPTIONS = [
 function SparkbotSettingsDialog({
   open,
   onOpenChange,
-  room,
   loading,
   savingExecution,
   executionSaved,
@@ -958,6 +962,13 @@ function SparkbotSettingsDialog({
   const [pinConfirmDraft, setPinConfirmDraft] = useState("")
   const pinConfigured = Boolean(guardianStatus?.pin_configured)
   const pinReady = /^\d{6}$/.test(pinDraft) && pinDraft === pinConfirmDraft && (!pinConfigured || currentPinDraft.length > 0)
+  const globalControlActive = Boolean(modelsConfig?.global_computer_control)
+  const globalControlTtl = Number(modelsConfig?.global_computer_control_ttl_remaining ?? 0)
+  const globalControlHours = Math.floor(globalControlTtl / 3600)
+  const globalControlMinutes = Math.floor((globalControlTtl % 3600) / 60)
+  const globalControlTimeLabel = globalControlActive
+    ? `${globalControlHours}h ${globalControlMinutes}m left`
+    : "Off"
 
   useEffect(() => {
     if (!pinSaved) return
@@ -1001,9 +1012,9 @@ function SparkbotSettingsDialog({
         {
           title: "Choose Computer Control mode",
           done: Boolean(guardianStatus?.pin_configured),
-          detail: room?.execution_allowed
-            ? "Computer Control is on: Sparkbot can operate this device without PIN prompts."
-            : "Computer Control is off: PIN is required for commands, edits, vault, and comms sends.",
+          detail: globalControlActive
+            ? `Computer Control is on across all chats for 24 hours (${globalControlTimeLabel}).`
+            : "Computer Control is off: PIN is required before gated actions; vault always stays PIN-protected.",
         },
       ]
     : [
@@ -1100,22 +1111,33 @@ function SparkbotSettingsDialog({
                     <span className="inline-flex items-center gap-1"><RefreshCw className="size-3" /> Refresh</span>
                   </button>
                 </div>
-                <div className="mt-2 text-xs text-muted-foreground">
-                  Tied to Sparkbot's Break-glass guardrail. On means always-on device control; off means PIN is required for risky actions.
-                </div>
-                <label className="mt-2 flex items-start gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    className="mt-0.5 h-4 w-4 shrink-0"
-                    checked={Boolean(room?.execution_allowed)}
-                    disabled={savingExecution || !room}
-                    onChange={(e) => onToggleExecution(e.target.checked)}
-                  />
-                  <div>
-                    <div className="text-xs font-medium">Always allow Sparkbot to control this computer</div>
-                    <div className="text-[10px] text-muted-foreground">Shell, terminal, browser writes, service actions, and comms sends can run without a PIN while this is on.</div>
+                <div className={`mt-3 rounded-lg border px-3 py-3 ${globalControlActive ? "border-emerald-500/30 bg-emerald-500/10" : "border-amber-500/30 bg-amber-500/10"}`}>
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-xs font-semibold">
+                        {globalControlActive ? "Computer Control ON" : "Computer Control OFF"}
+                      </div>
+                      <div className="mt-1 text-[10px] text-muted-foreground">
+                        {globalControlActive
+                          ? `Active in every chat and meeting. Auto-resets in ${globalControlTimeLabel}.`
+                          : "Agents ask yes + PIN before gated local actions."}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={savingExecution}
+                      onClick={() => onToggleExecution(!globalControlActive)}
+                      className={`min-w-24 rounded-md border px-3 py-2 text-xs font-semibold transition-colors ${globalControlActive ? "border-emerald-500/40 bg-emerald-600 text-white" : "border-amber-500/40 bg-background text-amber-700 hover:bg-amber-500/10"}`}
+                    >
+                      {savingExecution ? "Saving..." : globalControlActive ? "Turn Off" : "Turn On"}
+                    </button>
                   </div>
-                </label>
+                  <div className="mt-3 grid gap-2 text-[10px] text-muted-foreground">
+                    <div>Routine diagnostics, tests, reads, and safe tool runs can proceed in all rooms while on.</div>
+                    <div>Deletes, edits, outbound sends, and other critical changes still ask for explicit yes/no confirmation.</div>
+                    <div>Vault never bypasses PIN requirements for adding secrets or copying/printing credentials.</div>
+                  </div>
+                </div>
                 <div className="mt-3 rounded-md border bg-muted/30 p-2">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -3061,26 +3083,48 @@ function SparkbotDmPage() {
   }, [openRouterModels])
 
   const toggleExecutionGate = useCallback(async (enabled: boolean) => {
-    if (!roomId) return
     setSavingExecution(true)
     setExecutionError("")
     setExecutionSaved(false)
     try {
-      const res = await apiFetch(`/api/v1/chat/rooms/${roomId}`, {
-        method: "PATCH",
+      // Global app-wide Computer Control: routine actions run everywhere for
+      // 24 hours; critical writes still confirm and vault remains PIN-protected.
+      const globalRes = await apiFetch("/api/v1/chat/models/config", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ execution_allowed: enabled }),
+        body: JSON.stringify({ global_computer_control: enabled }),
       })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({ detail: "Could not update Computer Control." }))
+      if (!globalRes.ok) {
+        const data = await globalRes.json().catch(() => ({ detail: "Could not update Computer Control." }))
         setExecutionError(data.detail ?? "Could not update Computer Control.")
-      } else {
-        const data = await res.json()
-        setRoomInfo(data)
-        setExecutionSaved(true)
-        setTimeout(() => setExecutionSaved(false), 3000)
+        return
       }
+      const globalData = await globalRes.json().catch(() => null)
+      if (globalData) {
+        setModelsConfig((prev) => prev ? {
+          ...prev,
+          global_computer_control: Boolean(globalData.global_computer_control ?? enabled),
+          global_computer_control_expires_at: globalData.global_computer_control_expires_at ?? null,
+          global_computer_control_ttl_remaining: globalData.global_computer_control_ttl_remaining ?? null,
+        } : prev)
+      }
+      // Also flip the per-room flag when a room is open, so the room-context
+      // injection in the system prompt matches what the user sees.
+      if (roomId) {
+        const res = await apiFetch(`/api/v1/chat/rooms/${roomId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ execution_allowed: enabled }),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          setRoomInfo(data)
+        }
+      }
+      setExecutionSaved(true)
+      setTimeout(() => setExecutionSaved(false), 3000)
     } catch {
       setExecutionError("Could not update Computer Control.")
     } finally {
@@ -3164,7 +3208,16 @@ function SparkbotDmPage() {
         setSettingsError(data.detail ?? "Could not spawn agent.")
       } else {
         const data = await res.json()
-        setAgents(prev => [...prev.filter(a => a.name !== name), { name: data.name, emoji: data.emoji, description: data.description, is_builtin: false }])
+        const nextAgent = { name: data.name, emoji: data.emoji, description: data.description, is_builtin: false }
+        setAgents(prev => [...prev.filter(a => a.name !== name), nextAgent])
+        setModelsConfig(prev => prev ? {
+          ...prev,
+          available_agents: [...(prev.available_agents ?? []).filter(a => a.name !== name), nextAgent],
+          agent_overrides: {
+            ...(prev.agent_overrides ?? {}),
+            [name]: prev.agent_overrides?.[name] ?? { route: "default" },
+          },
+        } : prev)
         setSpawnName(""); setSpawnEmoji("🤖"); setSpawnDescription(""); setSpawnPrompt(""); setSpawnTemplate("custom")
       }
     } catch { setSettingsError("Could not spawn agent.") } finally { setSpawning(false) }
@@ -3180,6 +3233,11 @@ function SparkbotDmPage() {
         setSettingsError(data.detail ?? "Could not delete agent.")
       } else {
         setAgents(prev => prev.filter(a => a.name !== name))
+        setModelsConfig(prev => prev ? {
+          ...prev,
+          available_agents: (prev.available_agents ?? []).filter(a => a.name !== name),
+          agent_overrides: Object.fromEntries(Object.entries(prev.agent_overrides ?? {}).filter(([agentName]) => agentName !== name)),
+        } : prev)
       }
     } catch { setSettingsError("Could not delete agent.") } finally { setDeletingAgent(null) }
   }, [])

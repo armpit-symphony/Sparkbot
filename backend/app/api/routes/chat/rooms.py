@@ -281,6 +281,7 @@ def _render_runtime_state_markdown(runtime_state: dict[str, Any]) -> str:
     routing_policy = runtime_state.get("routing_policy") or {}
     agent_overrides = runtime_state.get("agent_overrides") or {}
     breakglass = runtime_state.get("breakglass") or {}
+    global_control = runtime_state.get("global_computer_control") or {}
     ollama_status = runtime_state.get("ollama_status") or {}
     providers = runtime_state.get("providers") or {}
 
@@ -328,9 +329,12 @@ def _render_runtime_state_markdown(runtime_state: dict[str, Any]) -> str:
         f"- Ollama base URL: `{ollama_status.get('base_url') or runtime_state.get('local_runtime', {}).get('base_url') or 'unknown'}`",
         f"- OpenRouter configured: `{_bool_label(runtime_state.get('openrouter_configured'), yes='yes', no='no')}`",
         f"- breakglass active: `{_bool_label(breakglass.get('active'), yes='yes', no='no')}`",
+        f"- global Computer Control: `{_bool_label(global_control.get('active'), yes='on', no='off')}`",
     ]
     if breakglass.get("active"):
         lines.append(f"- breakglass TTL remaining: `{int(breakglass.get('ttl_remaining') or 0)}` seconds")
+    if global_control.get("active"):
+        lines.append(f"- global Computer Control TTL remaining: `{int(global_control.get('ttl_remaining') or 0)}` seconds")
 
     lines.extend(["", "## Agent Overrides", *override_lines, "", "## Provider Status", *(provider_lines or ["- none"])])
     return "\n".join(lines)
@@ -1272,11 +1276,18 @@ async def stream_room_message(
     _room_ctx_parts = [f"Room: {room.name}"]
     if room.description and room.description.strip():
         _room_ctx_parts.append(f"Purpose: {room.description.strip()}")
-    _room_ctx_parts.append(
-        "Computer Control: ON — local machine, browser, terminal, and comms tools are enabled"
-        if room.execution_allowed
-        else "Computer Control: OFF — privileged commands, edits, browser writes, vault access, and comms sends require operator PIN"
-    )
+    try:
+        from app.services.guardian.policy import global_bypass_status as _global_bypass_status
+        global_control_active = bool(_global_bypass_status().get("active"))
+    except Exception:
+        global_control_active = False
+    if global_control_active:
+        control_context = "Computer Control: ON globally - local machine, browser, terminal, and comms tools are enabled across all rooms; edits, deletes, sends, and critical changes still ask yes/no"
+    elif room.execution_allowed:
+        control_context = "Computer Control: ON - local machine, browser, terminal, and comms tools are enabled; edits, deletes, sends, and critical changes still ask yes/no"
+    else:
+        control_context = "Computer Control: OFF - privileged commands, edits, browser writes, vault access, and comms sends require operator PIN"
+    _room_ctx_parts.append(control_context)
     system_prompt += "\n\n## Room Context\n" + "\n".join(_room_ctx_parts)
 
     # Check for /breakglass slash command before routing to LLM
@@ -2059,4 +2070,16 @@ async def generate_meeting_notes_endpoint(
         model=model,
         window_end_ts=datetime.now(_tz.utc),
     )
+    try:
+        bot_user = _get_or_create_agent_bot_user(session, "sparkbot")
+        create_chat_message(
+            session=session,
+            room_id=room_id,
+            sender_id=bot_user.id,
+            content="## Meeting Notes\n\n" + str(result.get("content_markdown") or "").strip(),
+            sender_type="BOT",
+            meta_json={"meeting_notes_artifact_id": result.get("id"), "artifact_type": "notes"},
+        )
+    except Exception:
+        pass
     return result

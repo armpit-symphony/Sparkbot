@@ -135,6 +135,24 @@ class TestGuardianPolicy:
         assert "operators" in denied.reason.lower()
         assert allowed.action == "allow"
 
+    def test_global_computer_control_expires_and_keeps_writes_confirmed(self, monkeypatch):
+        from app.services.guardian.policy import decide_tool_use, global_bypass_status
+
+        monkeypatch.setenv("SPARKBOT_GLOBAL_COMPUTER_CONTROL", "true")
+        monkeypatch.setenv("SPARKBOT_GLOBAL_COMPUTER_CONTROL_EXPIRES_AT", str(time.time() + 3600))
+
+        read_decision = decide_tool_use("shell_run", {"command": "Get-ChildItem"}, is_operator=True)
+        write_decision = decide_tool_use("shell_run", {"command": "Remove-Item old.txt"}, is_operator=True)
+        vault_decision = decide_tool_use("vault_add_secret", {"alias": "a"}, is_operator=True)
+
+        assert global_bypass_status()["active"] is True
+        assert read_decision.action == "allow"
+        assert write_decision.action == "confirm"
+        assert vault_decision.action == "privileged"
+
+        monkeypatch.setenv("SPARKBOT_GLOBAL_COMPUTER_CONTROL_EXPIRES_AT", str(time.time() - 1))
+        assert global_bypass_status()["active"] is False
+
 
 class TestFailedAttempts:
     def setup_method(self):

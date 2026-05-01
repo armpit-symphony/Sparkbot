@@ -25,6 +25,9 @@ export interface SparkbotControlsConfig {
     default_provider_authoritative: boolean
     cross_provider_fallback: boolean
   }
+  global_computer_control?: boolean
+  global_computer_control_expires_at?: number | null
+  global_computer_control_ttl_remaining?: number | null
   agent_overrides: Record<
     string,
     {
@@ -37,6 +40,7 @@ export interface SparkbotControlsConfig {
     emoji: string
     description: string
     is_builtin?: boolean
+    identity?: Record<string, unknown>
   }>
   providers: Array<{
     id: string
