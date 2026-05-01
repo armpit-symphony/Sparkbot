@@ -84,6 +84,13 @@ def _cosine(a: list[float], b: list[float]) -> float:
     return sum(x * y for x, y in zip(a, b))
 
 
+def text_similarity(left: str, right: str) -> float:
+    """Return hashing-trick cosine similarity for two short text values."""
+    if not left or not right:
+        return 0.0
+    return float(_cosine(_compute_vector(left), _compute_vector(right)))
+
+
 def _serialize(vec: list[float]) -> bytes:
     # 4-byte little-endian floats — compact and faster than JSON.
     import struct

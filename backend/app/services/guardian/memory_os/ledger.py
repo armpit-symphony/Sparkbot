@@ -1,8 +1,6 @@
-"""Append-only event ledger - stores every message and tool action as an event."""
+"""Append-only event ledger - stores hot events and searchable cold archives."""
 
-import json
-import os
-from datetime import datetime
+import gzip
 from pathlib import Path
 from typing import Iterator
 
@@ -22,6 +20,12 @@ class Ledger:
         
         if not self.ledger_path.exists():
             self.ledger_path.touch()
+
+    @property
+    def archive_dir(self) -> Path:
+        path = self.data_dir / "archive"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
 
     def append(self, event: Event) -> None:
         """Append an event to the ledger."""
@@ -62,20 +66,61 @@ class Ledger:
         self.append(event)
         return event
 
-    def iter_events(self, limit: int | None = None, session_id: str | None = None) -> Iterator[Event]:
-        """Iterate over events, optionally filtered by session."""
-        count = 0
-        with open(self.ledger_path, "r", encoding="utf-8") as f:
+    def _iter_jsonl_path(self, path: Path) -> Iterator[Event]:
+        opener = gzip.open if path.suffix == ".gz" else open
+        mode = "rt" if path.suffix == ".gz" else "r"
+        with opener(path, mode, encoding="utf-8") as f:  # type: ignore[arg-type]
             for line in f:
-                if limit and count >= limit:
-                    break
                 if line.strip():
-                    event = Event.model_validate_json(line)
-                    if session_id is None or event.session_id == session_id:
-                        yield event
-                        count += 1
+                    yield Event.model_validate_json(line)
 
-    def get_recent(self, n: int = 10, session_id: str | None = None) -> list[Event]:
+    def iter_archived_events(
+        self,
+        *,
+        limit: int | None = None,
+        session_id: str | None = None,
+    ) -> Iterator[Event]:
+        """Iterate cold archived events, newest archive file first."""
+        count = 0
+        paths = sorted(
+            [*self.archive_dir.glob("ledger-*.jsonl"), *self.archive_dir.glob("ledger-*.jsonl.gz")],
+            reverse=True,
+        )
+        for path in paths:
+            for event in self._iter_jsonl_path(path):
+                if session_id is not None and event.session_id != session_id:
+                    continue
+                yield event
+                count += 1
+                if limit and count >= limit:
+                    return
+
+    def iter_events(
+        self,
+        limit: int | None = None,
+        session_id: str | None = None,
+        *,
+        include_archives: bool = False,
+    ) -> Iterator[Event]:
+        """Iterate over hot events, optionally followed by cold archives."""
+        count = 0
+        for event in self._iter_jsonl_path(self.ledger_path):
+            if limit and count >= limit:
+                break
+            if session_id is None or event.session_id == session_id:
+                yield event
+                count += 1
+        if include_archives and (not limit or count < limit):
+            remaining = None if limit is None else limit - count
+            yield from self.iter_archived_events(limit=remaining, session_id=session_id)
+
+    def get_recent(
+        self,
+        n: int = 10,
+        session_id: str | None = None,
+        *,
+        include_archives: bool = False,
+    ) -> list[Event]:
         """Get the N most recent events."""
-        events = list(self.iter_events(session_id=session_id))
+        events = list(self.iter_events(session_id=session_id, include_archives=include_archives))
         return events[-n:] if len(events) > n else events

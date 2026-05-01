@@ -61,6 +61,10 @@ def _env_days(name: str, default: int) -> int:
         return default
 
 
+def _fact_ttl_days() -> int:
+    return _env_days("SPARKBOT_MEMORY_FACT_TTL_DAYS", 90)
+
+
 def _policy_days(memory_type: str) -> tuple[int | None, int | None, int | None]:
     if memory_type == "debug_state":
         return (
@@ -116,8 +120,29 @@ def _change(report: HygieneReport, memory: UserMemory, old: str, new: str, reaso
     )
 
 
+def _queue_conflict_approval(*, older: UserMemory, newer: UserMemory) -> None:
+    try:
+        from app.services.guardian.pending_approvals import store_pending_approval
+
+        store_pending_approval(
+            confirm_id=f"memory_conflict:{older.id}:{newer.id}",
+            tool_name="memory_conflict_resolution",
+            tool_args={
+                "older_memory_id": str(older.id),
+                "newer_memory_id": str(newer.id),
+                "older_fact": older.fact,
+                "newer_fact": newer.fact,
+                "prompt": "You said the older fact before and the newer fact now. Which is current?",
+            },
+            user_id=str(newer.user_id),
+            room_id=newer.scope_id if newer.scope_type == "room" else None,
+        )
+    except Exception:
+        pass
+
+
 _SUBJECT_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("work_at", re.compile(r"(?i)\b(?:i work at|my company is|i work for)\s+([A-Za-z0-9 ._-]{2,80})")),
+    ("work_at", re.compile(r"(?i)\b(?:i work at|my company is|i work for|user works at)\s+([A-Za-z0-9 ._-]{2,80}?)(?=\s+(?:and|but)\b|[.;,\n]|$)")),
     ("prefer", re.compile(r"(?i)\b(?:i prefer|user prefers|my preference is)\s+([^.;,\n]{2,100})")),
     ("role", re.compile(r"(?i)\b(?:my role is|i am a|i'm a)\s+([^.;,\n]{2,100})")),
     ("use", re.compile(r"(?i)\b(?:i use|user uses)\s+([^.;,\n]{2,100})")),
@@ -155,6 +180,7 @@ def _detect_conflicts(memories: list[UserMemory], report: HygieneReport) -> None
                 older.deprecated_reason = "Potential conflict detected by conservative memory hygiene"
                 older.updated_at = datetime.now(timezone.utc)
                 _change(report, older, "active", "stale", older.stale_reason)
+                _queue_conflict_approval(older=older, newer=memory)
             continue
         seen[key] = memory
 
@@ -200,12 +226,28 @@ def run_memory_hygiene(
             if memory.pinned:
                 report.skipped_pinned_count += 1
                 continue
+            last_activity = _last_activity(memory)
+            unused_days = (now - last_activity).days
+            if (
+                memory.lifecycle_state == "active"
+                and not memory.deprecated_by
+                and memory.memory_type not in _PROTECTED_TYPES
+                and int(memory.mention_count or 0) <= 0
+                and int(memory.use_count or 0) <= 0
+                and unused_days >= _fact_ttl_days()
+            ):
+                old = memory.lifecycle_state
+                memory.lifecycle_state = "archived"
+                memory.archived_at = now
+                memory.stale_reason = f"Low-weight fact unused for {unused_days} days"
+                memory.updated_at = now
+                report.archived_count += 1
+                _change(report, memory, old, "archived", memory.stale_reason)
+                continue
             if memory.memory_type in _PROTECTED_TYPES and not memory.deprecated_by:
                 report.skipped_protected_count += 1
                 continue
             stale_days, archive_days, propose_days = _policy_days(memory.memory_type or "unknown")
-            last_activity = _last_activity(memory)
-            unused_days = (now - last_activity).days
             if memory.lifecycle_state == "active" and stale_days is not None and unused_days >= stale_days:
                 old = memory.lifecycle_state
                 memory.lifecycle_state = "stale"

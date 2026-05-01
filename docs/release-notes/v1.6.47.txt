@@ -1,0 +1,17 @@
+Sparkbot v1.6.47
+
+Memory growth controls
+- Hot Guardian ledger now keeps the last 30 days and rotates older events into month-named cold archives.
+- Cold archives remain searchable through deep memory recall without staying in the normal hot retrieval path.
+- Short acknowledgements and system/noise messages are filtered before ledger writes.
+
+Fact lifecycle
+- Nightly consolidation extracts durable facts from recent chat windows, semantically deduplicates them, and writes daily summaries.
+- Durable memory conflicts mark older facts with deprecated_by and queue a conflict approval.
+- Low-weight facts with zero mentions/use auto-archive after 90 days by default.
+
+Improvement loop
+- Model outcome routing now uses a 90-day sliding window instead of unbounded historical aggregates.
+
+Versioning
+- Advanced backend docs, frontend, Tauri shell, README, public downloader, capabilities docs, and release notes to v1.6.47.

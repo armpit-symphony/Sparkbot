@@ -891,7 +891,9 @@ the default flow.
 
 Task Guardian also runs a nightly memory verification/evaluation pass. It verifies recent
 memory events, records promotion and pending-approval stats, evaluates BM25 vs hybrid
-retrieval with `retrieval_eval.py`, and exports the five digest metrics:
+retrieval with `retrieval_eval.py`, consolidates the last 24 hours into durable facts
+and `daily/YYYY-MM-DD.md`, rotates events older than the 30-day hot window into
+month-named `archive/ledger-YYYY-MM.jsonl` files, and exports the five digest metrics:
 `memory_hit_rate`, `recall_precision@5`, `avg_retrieval_latency`,
 `guardian_job_success_rate`, and `pending_approvals_rate`. Operators can read the same
 data from `/api/v1/chat/guardian/metrics`.
@@ -899,15 +901,17 @@ data from `/api/v1/chat/guardian/metrics`.
 Memory hygiene entry points are available as callable services and Task Guardian tools:
 `memory_hygiene_weekly` marks stale memory and archives low-risk temporary/debug
 memory; `memory_cleanup_monthly` proposes deletion for archived low-risk memory. Both
-lanes audit their decisions and never hard-delete archives or memories. Ledger rotation
-helpers can move the active `ledger.jsonl` into dated compressed archives and write an
-archive manifest, but archive purge is only a proposal lane.
+lanes audit their decisions and never hard-delete archives or memories. Low-weight facts
+with zero mentions/use auto-archive after 90 days by default, and contradictory durable
+facts mark the older fact with `deprecated_by` while queuing a pending approval for the
+operator/user to confirm the current version. Ledger rotation keeps recent memory in the
+hot path while archived JSONL files remain searchable through deep recall.
 
 Built-in memory tools (read-only by default; whitelisted for Task Guardian scheduling):
 
 | Tool | Purpose |
 |------|---------|
-| `memory_recall` | BM25 recall by default, optional hybrid recall when embeddings are enabled; returns ranked items with provenance + score |
+| `memory_recall` | BM25 recall by default, optional hybrid recall when embeddings are enabled; returns ranked items with provenance + score; `include_archived`/`deep_recall` search cold ledger archives |
 | `memory_retrieval_stats` | In-process telemetry: writes, recalls, hit rate, precision@5, latency, retriever mode, Guardian job success, pending approval rate, embed index size |
 | `memory_reindex` | Rebuild FTS + embedding indexes from the on-disk ledger (idempotent; safe to schedule nightly) |
 
@@ -1821,7 +1825,7 @@ curl -b cookies.txt http://localhost:8000/api/v1/chat/system/watcher | python -m
 
 Desktop release tags and app versions are aligned on the `1.6.x` release line.
 
-For `v1.6.46`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story.
+For `v1.6.47`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story.
 
 ### How to upgrade safely
 

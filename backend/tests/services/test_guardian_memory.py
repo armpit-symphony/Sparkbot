@@ -216,21 +216,75 @@ def test_low_confidence_fact_creates_pending_approval(monkeypatch, tmp_path: Pat
     assert calls[0]["tool_args"]["verification_state"] == "unverified"
 
 
-def test_memory_candidate_filtering_keeps_ack_out_of_indexes(monkeypatch, tmp_path: Path) -> None:
+def test_memory_candidate_filtering_keeps_ack_out_of_ledger(monkeypatch, tmp_path: Path) -> None:
     _reset_memory_guardian(monkeypatch, tmp_path)
 
-    assert memory.remember_chat_message(user_id="user-1", room_id="room-1", role="user", content="ok")
+    assert not memory.remember_chat_message(user_id="user-1", room_id="room-1", role="user", content="ok")
     guardian = memory._guardian()
     events = list(guardian.ledger.iter_events(session_id=memory._room_session("user-1", "room-1")))
 
-    assert events
-    assert events[-1].content == "ok"
-    assert events[-1].metadata["candidate_indexed"] is False
+    assert events == []
     assert guardian.fts.search("ok", session_id=memory._room_session("user-1", "room-1")) == []
     assert should_index_memory_candidate({"role": "user", "content": "thanks", "metadata": {}}) == (
         False,
         "do_not_store",
     )
+
+    assert memory.remember_chat_message(user_id="user-1", room_id="room-1", role="user", content="I work at Google")
+    events = list(guardian.ledger.iter_events(session_id=memory._room_session("user-1", "room-1")))
+    assert events[-1].content == "I work at Google"
+
+
+def test_ledger_rotation_keeps_hot_events_and_archives_cold_months(monkeypatch, tmp_path: Path) -> None:
+    _reset_memory_guardian(monkeypatch, tmp_path)
+    guardian = memory._guardian()
+    old = memory.Event(
+        type=memory.EventType.MESSAGE,
+        role="user",
+        content="I prefer old archived project details.",
+        session_id=memory._room_session("user-1", "room-1"),
+        metadata={"user_id": "user-1", "room_id": "room-1", "source": "test"},
+        timestamp=datetime(2026, 3, 15, tzinfo=timezone.utc),
+    )
+    hot = memory.Event(
+        type=memory.EventType.MESSAGE,
+        role="user",
+        content="I prefer current hot project details.",
+        session_id=memory._room_session("user-1", "room-1"),
+        metadata={"user_id": "user-1", "room_id": "room-1", "source": "test"},
+        timestamp=datetime(2026, 4, 25, tzinfo=timezone.utc),
+    )
+    guardian.ledger.append(old)
+    guardian.ledger.append(hot)
+
+    result = memory.rotate_memory_ledger_if_needed(now=datetime(2026, 5, 1, tzinfo=timezone.utc))
+
+    assert result["rotated"] is True
+    assert (Path(memory._data_dir()) / "archive" / "ledger-2026-03.jsonl").exists()
+    active_contents = guardian.ledger.ledger_path.read_text(encoding="utf-8")
+    assert "current hot project" in active_contents
+    assert "old archived project" not in active_contents
+    archived = list(guardian.ledger.iter_archived_events(session_id=memory._room_session("user-1", "room-1")))
+    assert any("old archived project" in event.content for event in archived)
+
+
+def test_consolidation_extracts_daily_facts_and_dedups(monkeypatch, tmp_path: Path) -> None:
+    _reset_memory_guardian(monkeypatch, tmp_path)
+
+    assert memory.remember_chat_message(
+        user_id="user-1",
+        room_id="room-1",
+        role="user",
+        content="I work at Google and I prefer Python for automation.",
+    )
+    result = memory._guardian().consolidator.consolidate_recent(memory._guardian().ledger)
+    duplicate = memory._guardian().consolidator.consolidate_recent(memory._guardian().ledger)
+
+    assert result["facts_extracted"] >= 1
+    assert duplicate["facts_extracted"] == 0
+    facts = [event.content for event in memory._guardian().ledger.iter_events() if event.content.startswith("FACT:")]
+    assert any("User works at Google" in fact for fact in facts)
+    assert Path(result["daily_file"]).exists()
 
 
 def test_memory_type_classifier_core_cases() -> None:
@@ -342,6 +396,41 @@ def test_hygiene_lifecycle_and_pinned_protection(db: Session) -> None:
     assert identity.lifecycle_state == "active"
     assert report.skipped_pinned_count == 1
     assert report.skipped_protected_count == 1
+
+
+def test_add_user_memory_supersedes_conflicting_fact(db: Session) -> None:
+    db.exec(delete(UserMemory))
+    db.commit()
+    user_id = uuid.uuid4()
+    old = crud.add_user_memory(db, user_id, "I work at Google")
+    new = crud.add_user_memory(db, user_id, "I work at Meta")
+    db.refresh(old)
+    db.refresh(new)
+
+    assert old.lifecycle_state == "deprecated"
+    assert old.deprecated_by == str(new.id)
+    assert new.lifecycle_state == "active"
+
+
+def test_hygiene_archives_low_weight_old_facts(db: Session) -> None:
+    db.exec(delete(UserMemory))
+    db.commit()
+    user_id = uuid.uuid4()
+    now = datetime.now(timezone.utc)
+    mem = crud.add_user_memory(db, user_id, "Temporary context for one-off testing")
+    mem.memory_type = "temporary_context"
+    mem.created_at = now - timedelta(days=120)
+    mem.updated_at = now - timedelta(days=120)
+    mem.mention_count = 0
+    mem.use_count = 0
+    db.add(mem)
+    db.commit()
+
+    report = run_memory_hygiene(db, now=now)
+    db.refresh(mem)
+
+    assert mem.lifecycle_state == "archived"
+    assert report.archived_count >= 1
 
 
 def test_deletion_approval_is_soft_delete_and_audited(db: Session) -> None:

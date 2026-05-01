@@ -1,5 +1,14 @@
 # Release Notes
 
+## Sparkbot v1.6.47
+
+- Added age-based Guardian ledger rotation: hot `ledger.jsonl` keeps the last 30 days while older events move into month-named cold archives.
+- Filtered short acknowledgements and system/noise messages before they enter the memory ledger.
+- Wired nightly consolidation into Task Guardian to extract durable facts, deduplicate semantically, and write `daily/YYYY-MM-DD.md` summaries.
+- Added fact superseding/TTL behavior for durable memories, with conflict approvals and low-weight archival.
+- Added a 90-day sliding window for improvement-loop model outcomes so routing reflects current performance.
+- Updated README, capabilities docs, release notes, and public downloader version markers for `1.6.47`.
+
 ## Sparkbot v1.6.45
 
 - Added governed Guardian Memory lifecycle states, typed candidate classification, and low-clutter index gating.

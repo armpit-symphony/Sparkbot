@@ -1,3 +1,5 @@
+import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from app.services.guardian import improvement
@@ -84,6 +86,46 @@ def test_improvement_prefers_higher_scoring_model(monkeypatch, tmp_path: Path) -
     assert chosen == "claude-sonnet-4-5"
     assert reason is not None
     assert ranking[0]["model"] == "claude-sonnet-4-5"
+
+
+def test_improvement_model_routing_uses_sliding_window(monkeypatch, tmp_path: Path) -> None:
+    _reset_improvement(monkeypatch, tmp_path)
+    old = (datetime.now(timezone.utc) - timedelta(days=120)).isoformat()
+    store = {
+        "model_outcomes": {
+            "coding": {
+                "stale-model": {
+                    "recent_outcomes": [
+                        {"created_at": old, "score": 4.0, "success": True, "tool_usage_counts": {}, "agent_name": ""}
+                        for _ in range(5)
+                    ]
+                }
+            }
+        },
+        "workflow_patterns": {},
+        "improvement_proposals": [],
+    }
+    path = improvement._store_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(store), encoding="utf-8")
+
+    improvement.record_outcome(
+        user_id="user-1",
+        room_id="room-1",
+        route_payload={"classification": "coding", "applied_model": "fresh-model"},
+        output_text="Implemented with tests.",
+        tool_usage_counts={},
+        success=True,
+    )
+    chosen, _, ranking = improvement.choose_best_model(
+        classification="coding",
+        current_model="fresh-model",
+        candidates=["fresh-model", "stale-model"],
+    )
+
+    stale = next(item for item in ranking if item["model"] == "stale-model")
+    assert chosen == "fresh-model"
+    assert stale["attempts"] == 0
 
 
 def test_improvement_proposals_are_recorded_for_approval(monkeypatch, tmp_path: Path) -> None:

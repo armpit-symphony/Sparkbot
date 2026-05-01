@@ -285,6 +285,14 @@ TOOL_DEFINITIONS = [
                         "enum": ["fts", "embed", "hybrid"],
                         "description": "Retrieval mode. Default: hybrid (FTS + embedding rerank).",
                     },
+                    "include_archived": {
+                        "type": "boolean",
+                        "description": "Also search cold ledger archives. Slower; use only for deep/history recall.",
+                    },
+                    "deep_recall": {
+                        "type": "boolean",
+                        "description": "Search hot memory plus cold archives for long-range history.",
+                    },
                 },
                 "required": ["query"],
             },
@@ -4916,6 +4924,8 @@ async def _memory_recall(
     room_id: Optional[str],
     limit: int = 6,
     mode: str = "",
+    include_archived: bool = False,
+    deep_recall: bool = False,
 ) -> str:
     """Hybrid Guardian recall — surfaces relevant durable + room memory with scores."""
     if not user_id:
@@ -4931,6 +4941,8 @@ async def _memory_recall(
             query=query,
             limit=int(limit) if limit else 6,
             mode=(mode or None),
+            include_archived=include_archived,
+            deep_recall=deep_recall,
         )
     except Exception as exc:
         return f"Memory recall failed: {exc}"
@@ -5051,6 +5063,8 @@ async def execute_tool(
             room_id,
             int(args.get("limit") or 6),
             str(args.get("mode") or ""),
+            bool(args.get("include_archived") or False),
+            bool(args.get("deep_recall") or False),
         )
     if name == "memory_retrieval_stats":
         return await _memory_retrieval_stats()

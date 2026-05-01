@@ -4,6 +4,7 @@ CRUD operations for the application.
 Includes base template CRUD and chat-specific operations.
 """
 import os
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -534,6 +535,59 @@ def get_chat_meeting_artifacts(
 
 # ─── User Memory CRUD ─────────────────────────────────────────────────────────
 
+_MEMORY_SUBJECT_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("employment", re.compile(r"(?i)\b(?:i work at|i work for|my company is|user works at)\s+([A-Za-z0-9 ._-]{2,80}?)(?=\s+(?:and|but)\b|[.;,\n]|$)")),
+    ("preference", re.compile(r"(?i)\b(?:i prefer|user prefers|my preference is)\s+([^.;,\n]{2,100})")),
+    ("role", re.compile(r"(?i)\b(?:my role is|i am a|i'm a|user is a)\s+([^.;,\n]{2,100})")),
+    ("workflow", re.compile(r"(?i)\b(?:i use|user uses)\s+([^.;,\n]{2,100})")),
+)
+
+
+def _memory_subject_slot(text: str) -> tuple[str, str] | None:
+    for key, pattern in _MEMORY_SUBJECT_PATTERNS:
+        match = pattern.search(text or "")
+        if match:
+            value = " ".join(match.group(1).lower().split()).strip(" .,:;")
+            return key, value
+    return None
+
+
+def _supersede_conflicting_memories(session: Session, new_memory: UserMemory) -> int:
+    subject = _memory_subject_slot(new_memory.fact)
+    if not subject:
+        return 0
+    subject_kind, value = subject
+    stmt = (
+        select(UserMemory)
+        .where(UserMemory.user_id == new_memory.user_id)
+        .where(UserMemory.scope_type == new_memory.scope_type)
+        .where(UserMemory.lifecycle_state == "active")
+        .where(UserMemory.soft_deleted_at.is_(None))
+        .where(UserMemory.deprecated_by.is_(None))
+    )
+    if new_memory.scope_id:
+        stmt = stmt.where(UserMemory.scope_id == new_memory.scope_id)
+    else:
+        stmt = stmt.where(UserMemory.scope_id.is_(None))
+    superseded = 0
+    now = datetime.now(timezone.utc)
+    for existing in session.execute(stmt).scalars().all():
+        if existing.id == new_memory.id:
+            continue
+        existing_subject = _memory_subject_slot(existing.fact)
+        if not existing_subject:
+            continue
+        existing_kind, existing_value = existing_subject
+        if existing_kind != subject_kind or existing_value == value:
+            continue
+        existing.lifecycle_state = "deprecated"
+        existing.deprecated_by = str(new_memory.id)
+        existing.deprecated_reason = f"Superseded by newer {subject_kind} memory"
+        existing.updated_at = now
+        session.add(existing)
+        superseded += 1
+    return superseded
+
 def get_user_memories(session: Session, user_id: uuid.UUID) -> list[UserMemory]:
     now = datetime.now(timezone.utc)
     return list(
@@ -563,6 +617,7 @@ def add_user_memory(
     if inferred_type in {"secret_blocked", "do_not_store"} or is_secret_like(clean_fact):
         raise ValueError("Unsafe or low-value fact was not stored as durable memory")
     mem = UserMemory(
+        id=uuid.uuid4(),
         user_id=user_id,
         fact=clean_fact,
         memory_type=inferred_type,
@@ -571,6 +626,7 @@ def add_user_memory(
         lifecycle_state="active",
     )
     session.add(mem)
+    _supersede_conflicting_memories(session, mem)
     session.commit()
     session.refresh(mem)
     return mem

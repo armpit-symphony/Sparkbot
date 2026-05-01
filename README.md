@@ -6,7 +6,7 @@ Use it to chat, search, summarize documents, control a browser, run shell comman
 
 **Download:** [armpit-symphony.github.io/Sparkbot](https://armpit-symphony.github.io/Sparkbot/)
 
-**Current release line:** v1.6.46
+**Current release line:** v1.6.47
 
 > Sparkbot stores its app data locally. If you connect a cloud LLM provider or an external service, the text and actions needed for that provider or service are sent to that provider. Local models can run without an LLM cloud account.
 
@@ -74,7 +74,8 @@ The desktop app is the easiest path for one person. Docker and systemd deploymen
 - **Persistent memory** — Sparkbot stores facts about you and injects them into every conversation
 - **Memory retrieval controls** — Guardian Memory now defaults to BM25 full-text recall, with optional hybrid embedding rerank gated behind `SPARKBOT_MEMORY_GUARDIAN_ENABLE_EMBEDDINGS=true`
 - **Verified memory writes** — durable facts carry source, confidence, verification state, and redaction metadata; low-confidence facts go to pending approvals instead of being promoted automatically
-- **Self-introspection** — built-in `memory_recall`, `memory_retrieval_stats`, and `memory_reindex` tools let Sparkbot search its ledger, report hit rate / precision@5 / latency, and rebuild indexes; Task Guardian runs nightly verification/evaluation metrics
+- **Memory lifecycle controls** — short chat noise is filtered before ledger writes, nightly consolidation promotes durable facts, old hot-ledger events rotate into month archives, and stale low-weight facts leave the prompt path
+- **Self-introspection** — built-in `memory_recall`, `memory_retrieval_stats`, and `memory_reindex` tools let Sparkbot search hot memory plus opt-in cold archives, report hit rate / precision@5 / latency, and rebuild indexes; Task Guardian runs nightly verification/evaluation metrics
 - **Knowledge base** — ingest any document or URL; Sparkbot searches it with BM25 full-text ranking when relevant
 - **Skill plugins** — drop a `.py` file into `backend/skills/` to add a new tool; auto-discovered on restart
 
@@ -534,6 +535,7 @@ User message → Token Guardian → Memory Guardian → LLM
 
 | Version | Date | Highlights |
 |---------|------|-----------|
+| v1.6.47 | May 2026 | Memory growth controls: 30-day hot ledger rotation into month-named cold archives, pre-ledger chat-noise filtering, nightly consolidation into daily summaries, semantic fact dedup/superseding, low-weight fact TTL archival, and a 90-day improvement-loop outcome window. |
 | v1.6.46 | Apr 2026 | Breakglass/Computer Control reliability: redesigned global ON/OFF control with a 24-hour expiry, Vault remains PIN-protected, diagnostics/tests can run while destructive edits/deletes/sends still require yes/no confirmation; fixed custom agent spawning on upgraded local SQLite installs; spawned agents now update the active registry immediately; Workstation Specialty Wing lists created agents for meeting seating; Roundtable chairs can be reassigned in-room; generated meeting notes now post into the meeting transcript and surface errors. |
 | v1.6.45 | Apr 2026 | Governed Guardian Memory lifecycle: typed memory candidates, low-clutter indexing, active/stale/archive/delete-proposal states, operator-approved soft deletion, snapshot rebuild throttling, ledger archive manifests, and memory hygiene jobs |
 | v1.6.43 | Apr 2026 | Reliability + observability: hard-cap chat tool catalogue at 128 (with auto-shrink retry) to fix `Invalid 'tools': array too long` on Windows builds; tool-catalogue dedup; skill loader accepts both wrapped and flat DEFINITION shapes (system_diagnostics now loads); user-friendly error messages for rate-limit / quota / auth / context / model-not-found / timeout failures; new `/perf` slash command and `/api/v1/chat/performance` endpoint surfacing model + tool latency, error counts, and last error; new docs/error-handling.md and docs/guardian-spine.md |

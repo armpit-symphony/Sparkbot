@@ -6,7 +6,6 @@ import gzip
 import json
 import os
 import re
-import shutil
 import threading
 import time
 import uuid
@@ -17,6 +16,7 @@ from typing import Any
 
 from .memory_os.api import MemoryGuardian
 from .memory_os.config import Config
+from .memory_os.index_embed import text_similarity
 from .memory_os.schemas import Event, EventType
 from .memory_taxonomy import (
     classify_memory_type,
@@ -54,6 +54,7 @@ _NAME_PATTERNS: tuple[tuple[str, float, re.Pattern[str]], ...] = (
 )
 _FACT_PATTERNS: tuple[tuple[str, float, re.Pattern[str], str], ...] = (
     ("preference", 1.8, re.compile(r"\bi prefer ([^.!,;\n]{2,90})", re.IGNORECASE), "User prefers {value}"),
+    ("employment", 1.8, re.compile(r"\b(?:i work at|i work for|my company is)\s+([A-Za-z0-9 ._-]{2,80}?)(?=\s+(?:and|but)\b|[.;,\n]|$)", re.IGNORECASE), "User works at {value}"),
     ("timezone", 1.7, re.compile(r"\bmy timezone is ([A-Za-z0-9_/\-+]{2,60})\b", re.IGNORECASE), "User timezone is {value}"),
     ("project", 1.6, re.compile(r"\bi(?: am|'m)? working on ([^.!,;\n]{2,100})", re.IGNORECASE), "User is working on {value}"),
     ("focus", 1.5, re.compile(r"\bi(?: am|'m)? focused on ([^.!,;\n]{2,100})", re.IGNORECASE), "User is focused on {value}"),
@@ -112,6 +113,14 @@ def _snapshot_rebuild_min_seconds() -> int:
         return max(0, min(int(raw), 86400))
     except ValueError:
         return 300
+
+
+def _chat_memory_min_chars() -> int:
+    raw = os.getenv("SPARKBOT_MEMORY_CHAT_MIN_CHARS", "20").strip()
+    try:
+        return max(1, min(int(raw), 500))
+    except ValueError:
+        return 20
 
 
 def _embeddings_enabled() -> bool:
@@ -334,6 +343,27 @@ def _safe_text(value: str, limit: int = 4000) -> str:
     return text[:limit] + "..."
 
 
+_CHAT_NOISE_RE = re.compile(
+    r"^(?:ok|okay|k|yes|no|yep|nope|thanks|thank you|thx|lol|haha|done|got it|sounds good|"
+    r"error|system error|internal server error|traceback|failed|retry)$",
+    re.IGNORECASE,
+)
+
+
+def _should_store_chat_message(*, role: str, content: str) -> tuple[bool, str]:
+    text = _safe_text(content, limit=4000)
+    normalized_role = str(role or "").strip().lower()
+    if normalized_role not in {"user", "assistant"}:
+        return False, "system_noise"
+    if normalized_role == "user" and _extract_fact_candidates(text):
+        return True, "durable_fact_candidate"
+    if len(text) < _chat_memory_min_chars():
+        return False, "too_short"
+    if _CHAT_NOISE_RE.match(text):
+        return False, "chat_noise"
+    return True, "stored"
+
+
 def _redact_sensitive_text(text: str) -> str:
     text = _TOKEN_RE.sub("[REDACTED_TOKEN]", text)
     text = _PRIVATE_KEY_RE.sub("[REDACTED_PRIVATE_KEY]", text)
@@ -516,6 +546,26 @@ def _score_fact(*, mentions: int, weight: float, last_seen: datetime) -> float:
     return round(weight + (mentions * 0.7) - recency_penalty, 2)
 
 
+def _merge_semantic_fact_state(fact_state: dict[str, dict[str, Any]], *, threshold: float = 0.85) -> list[dict[str, Any]]:
+    clusters: list[dict[str, Any]] = []
+    for state in fact_state.values():
+        target: dict[str, Any] | None = None
+        for cluster in clusters:
+            if text_similarity(str(state["fact"]), str(cluster["fact"])) >= threshold:
+                target = cluster
+                break
+        if target is None:
+            clusters.append(dict(state))
+            continue
+        target["mentions"] = int(target.get("mentions") or 0) + int(state.get("mentions") or 0)
+        target["weight"] = max(float(target.get("weight") or 0.0), float(state.get("weight") or 0.0))
+        target["last_seen"] = max(target["last_seen"], state["last_seen"])
+        target.setdefault("aliases", [])
+        if state["fact"] != target["fact"]:
+            target["aliases"].append(state["fact"])
+    return clusters
+
+
 def _build_profile_snapshot(*, user_id: str, room_id: str) -> dict[str, Any]:
     guardian = _guardian()
     user_events = _filter_prompt_events(list(guardian.ledger.iter_events(session_id=_user_session(user_id))))
@@ -548,7 +598,7 @@ def _build_profile_snapshot(*, user_id: str, room_id: str) -> dict[str, Any]:
                 state["last_seen"] = max(state["last_seen"], event.timestamp)
 
     learned_facts: list[dict[str, Any]] = []
-    for state in fact_state.values():
+    for state in _merge_semantic_fact_state(fact_state):
         score = _score_fact(
             mentions=state["mentions"],
             weight=state["weight"],
@@ -756,6 +806,11 @@ def _append_event(
                 except Exception:
                     # Hybrid retrieval is best-effort; never block on it.
                     pass
+        try:
+            if getattr(guardian.retriever, "_cache_loaded", False):
+                guardian.retriever._event_cache[event.id] = event
+        except Exception:
+            pass
         _STATS.record_write(ok=True)
         return True
     except Exception:
@@ -764,6 +819,9 @@ def _append_event(
 
 
 def remember_chat_message(*, user_id: str, room_id: str, role: str, content: str) -> bool:
+    should_store, _reason = _should_store_chat_message(role=role, content=content)
+    if not should_store:
+        return False
     stored = _append_event(
         event_type=EventType.MESSAGE,
         role=role,
@@ -1082,6 +1140,41 @@ def build_memory_context(*, user_id: str, room_id: str, query: str) -> str:
     return "\n\n".join(blocks)
 
 
+def _archive_recall_events(
+    *,
+    query: str,
+    sessions: list[str],
+    limit: int,
+    include_archived: bool,
+    deep_recall: bool,
+) -> list[tuple[Event, float, str]]:
+    if not (include_archived or deep_recall):
+        return []
+    terms = {term.lower() for term in re.findall(r"[A-Za-z0-9_]{3,}", query or "")}
+    if not terms:
+        return []
+    out: list[tuple[Event, float, str]] = []
+    inactive_refs = _ledger_inactive_refs()
+    for session_id in sessions:
+        for event in _guardian().ledger.iter_archived_events(session_id=session_id, limit=1000):
+            if not _is_event_active_for_prompt(
+                event,
+                include_archived=include_archived,
+                deep_recall=deep_recall,
+                inactive_refs=inactive_refs,
+            ):
+                continue
+            content = (event.content or "").lower()
+            overlap = sum(1 for term in terms if term in content)
+            if overlap <= 0:
+                continue
+            score = min(0.99, overlap / max(len(terms), 1))
+            out.append((event, float(score), session_id))
+            if len(out) >= limit:
+                return out
+    return out
+
+
 def recall_relevant_events(
     *,
     user_id: str,
@@ -1145,6 +1238,17 @@ def recall_relevant_events(
             event_count=len(aggregated),
             top_score=top,
             query=prompt_query,
+        )
+
+    if include_archived or deep_recall:
+        aggregated.extend(
+            _archive_recall_events(
+                query=prompt_query,
+                sessions=sessions,
+                limit=effective_limit,
+                include_archived=include_archived,
+                deep_recall=deep_recall,
+            )
         )
 
     aggregated.sort(key=lambda triple: triple[1], reverse=True)
@@ -1224,6 +1328,10 @@ def reindex_memory_indexes() -> dict[str, Any]:
                     embed_count += 1
         except Exception:
             embed_count = 0
+    try:
+        guardian.retriever._reload_cache()
+    except Exception:
+        pass
     return {
         "fts_indexed": fts_count,
         "embed_indexed": embed_count,
@@ -1254,7 +1362,7 @@ def _env_int(name: str, default: int, *, minimum: int = 1, maximum: int = 100000
 
 
 def _ledger_compression_enabled() -> bool:
-    return os.getenv("SPARKBOT_MEMORY_LEDGER_COMPRESSION", "true").strip().lower() not in {
+    return os.getenv("SPARKBOT_MEMORY_LEDGER_COMPRESSION", "false").strip().lower() not in {
         "0",
         "false",
         "no",
@@ -1286,8 +1394,14 @@ def _write_archive_manifest(entries: list[dict[str, Any]]) -> None:
     )
 
 
+def _event_timestamp_utc(event: Event) -> datetime:
+    if event.timestamp.tzinfo is None:
+        return event.timestamp.replace(tzinfo=timezone.utc)
+    return event.timestamp.astimezone(timezone.utc)
+
+
 def rotate_memory_ledger_if_needed(*, now: datetime | None = None, dry_run: bool = False) -> dict[str, Any]:
-    """Rotate the active ledger into an archive without deleting audit history."""
+    """Move events older than the hot window into month-named cold archives."""
     now = now or datetime.now(timezone.utc)
     if now.tzinfo is None:
         now = now.replace(tzinfo=timezone.utc)
@@ -1298,64 +1412,107 @@ def rotate_memory_ledger_if_needed(*, now: datetime | None = None, dry_run: bool
 
     max_active_mb = _env_int("SPARKBOT_MEMORY_MAX_ACTIVE_MB", 256, minimum=1, maximum=102400)
     hot_ledger_days = _env_int("SPARKBOT_MEMORY_HOT_LEDGER_DAYS", 30, minimum=1, maximum=3650)
-    archive_after_days = _env_int(
-        "SPARKBOT_MEMORY_ARCHIVE_AFTER_DAYS",
-        hot_ledger_days,
-        minimum=1,
-        maximum=3650,
-    )
     stat = ledger_path.stat()
     size_mb = stat.st_size / (1024 * 1024)
-    age_days = max(0, (now - datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)).days)
-    if size_mb < max_active_mb and age_days < archive_after_days:
-        return {"rotated": False, "reason": "below_threshold", "size_mb": round(size_mb, 3), "age_days": age_days}
-
+    cutoff = now - timedelta(days=hot_ledger_days)
     events = list(guardian.ledger.iter_events())
-    oldest = min((event.timestamp for event in events), default=None)
-    newest = max((event.timestamp for event in events), default=None)
-    archive_id = f"ledger-{now.strftime('%Y-%m')}-{uuid.uuid4().hex[:8]}"
+    hot_events: list[Event] = []
+    archive_groups: dict[str, list[Event]] = {}
+    for event in events:
+        event_ts = _event_timestamp_utc(event)
+        if event_ts < cutoff:
+            archive_groups.setdefault(event_ts.strftime("%Y-%m"), []).append(event)
+        else:
+            hot_events.append(event)
+    if not archive_groups:
+        return {
+            "rotated": False,
+            "reason": "no_cold_events",
+            "size_mb": round(size_mb, 3),
+            "hot_ledger_days": hot_ledger_days,
+            "active_events": len(events),
+        }
+    if size_mb < max_active_mb and len(hot_events) == len(events):
+        return {"rotated": False, "reason": "below_threshold", "size_mb": round(size_mb, 3)}
+
     archive_dir = _data_dir() / "archive"
     archive_dir.mkdir(parents=True, exist_ok=True)
-    archive_path = archive_dir / f"{archive_id}.jsonl"
-    final_path = archive_path.with_suffix(".jsonl.gz") if _ledger_compression_enabled() else archive_path
-    entry = {
-        "archive_id": archive_id,
-        "path": str(final_path.relative_to(_data_dir())),
-        "event_count": len(events),
-        "oldest_event": oldest.isoformat() if oldest else None,
-        "newest_event": newest.isoformat() if newest else None,
-        "contains_approved_memory_sources": any(
-            str((event.metadata or {}).get("verification_state")) == "verified" for event in events
-        ),
-        "contains_tool_approvals": any(event.type == EventType.TOOL_CALL for event in events),
-        "lifecycle_state": "archived",
-        "delete_proposed_at": None,
-        "delete_approved_at": None,
-    }
+    entries: list[dict[str, Any]] = []
+    for month, group in sorted(archive_groups.items()):
+        archive_path = archive_dir / f"ledger-{month}.jsonl"
+        final_path = archive_path.with_suffix(".jsonl.gz") if _ledger_compression_enabled() else archive_path
+        oldest = min((_event_timestamp_utc(event) for event in group), default=None)
+        newest = max((_event_timestamp_utc(event) for event in group), default=None)
+        entries.append(
+            {
+                "archive_id": f"ledger-{month}",
+                "path": str(final_path.relative_to(_data_dir())),
+                "event_count": len(group),
+                "oldest_event": oldest.isoformat() if oldest else None,
+                "newest_event": newest.isoformat() if newest else None,
+                "contains_approved_memory_sources": any(
+                    str((event.metadata or {}).get("verification_state")) == "verified" for event in group
+                ),
+                "contains_tool_approvals": any(event.type == EventType.TOOL_CALL for event in group),
+                "lifecycle_state": "archived",
+                "delete_proposed_at": None,
+                "delete_approved_at": None,
+                "updated_at": now.isoformat(),
+            }
+        )
     if dry_run:
-        return {"rotated": False, "dry_run": True, "manifest_entry": entry}
+        return {
+            "rotated": False,
+            "dry_run": True,
+            "archive_entries": entries,
+            "active_events_after": len(hot_events),
+        }
 
-    if _ledger_compression_enabled():
-        with ledger_path.open("rb") as src, gzip.open(final_path, "wb") as dst:
-            shutil.copyfileobj(src, dst)
-    else:
-        shutil.copy2(ledger_path, final_path)
+    for month, group in sorted(archive_groups.items()):
+        archive_path = archive_dir / f"ledger-{month}.jsonl"
+        final_path = archive_path.with_suffix(".jsonl.gz") if _ledger_compression_enabled() else archive_path
+        if _ledger_compression_enabled():
+            with gzip.open(final_path, "at", encoding="utf-8") as dst:
+                for event in group:
+                    dst.write(event.model_dump_json() + "\n")
+        else:
+            with final_path.open("a", encoding="utf-8") as dst:
+                for event in group:
+                    dst.write(event.model_dump_json() + "\n")
     ledger_path.write_text("", encoding="utf-8")
-    manifest = _read_archive_manifest()
-    manifest.append(entry)
+    for event in hot_events:
+        guardian.ledger.append(event)
+    manifest_by_path = {entry.get("path"): entry for entry in _read_archive_manifest()}
+    for entry in entries:
+        existing = manifest_by_path.get(entry["path"])
+        if existing:
+            existing["event_count"] = int(existing.get("event_count") or 0) + int(entry["event_count"])
+            existing["newest_event"] = max(str(existing.get("newest_event") or ""), str(entry.get("newest_event") or ""))
+            existing["oldest_event"] = min(str(existing.get("oldest_event") or entry["oldest_event"]), str(entry.get("oldest_event") or ""))
+            existing["updated_at"] = now.isoformat()
+            existing["contains_approved_memory_sources"] = bool(existing.get("contains_approved_memory_sources")) or bool(entry.get("contains_approved_memory_sources"))
+            existing["contains_tool_approvals"] = bool(existing.get("contains_tool_approvals")) or bool(entry.get("contains_tool_approvals"))
+        else:
+            manifest_by_path[entry["path"]] = entry
+    manifest = sorted(manifest_by_path.values(), key=lambda item: str(item.get("path") or ""))
     _write_archive_manifest(manifest)
     _append_event(
         event_type=EventType.SYSTEM,
         role="system",
-        content=f"MEMORY_LEDGER_ARCHIVED: {archive_id}",
+        content=f"MEMORY_LEDGER_ARCHIVED: {sum(len(group) for group in archive_groups.values())} events",
         session_id=None,
-        metadata={"archive_id": archive_id, "lifecycle_action": "ledger_archived", "manifest_entry": entry},
+        metadata={"lifecycle_action": "ledger_archived", "archive_entries": entries},
         source="memory.ledger",
         confidence=1.0,
         verification_state="verified",
     )
     reindex_memory_indexes()
-    return {"rotated": True, "manifest_entry": entry}
+    return {
+        "rotated": True,
+        "archive_entries": entries,
+        "archived_events": sum(len(group) for group in archive_groups.values()),
+        "active_events_after": len(hot_events),
+    }
 
 
 def verify_recent_memory_events(
@@ -1425,8 +1582,14 @@ def run_nightly_memory_guardian_job(*, session: Any | None = None) -> dict[str, 
     eval_summary: dict[str, Any] = {}
     hygiene_summary: dict[str, Any] = {}
     cleanup_summary: dict[str, Any] = {}
+    consolidation_summary: dict[str, Any] = {}
+    rotation_summary: dict[str, Any] = {}
     try:
         verification_summary = verify_recent_memory_events()
+        try:
+            consolidation_summary = _guardian().consolidator.consolidate_recent(_guardian().ledger)
+        except Exception as exc:
+            consolidation_summary = {"error": str(exc)}
         try:
             from .retrieval_eval import run_retrieval_eval
 
@@ -1446,6 +1609,14 @@ def run_nightly_memory_guardian_job(*, session: Any | None = None) -> dict[str, 
                     cleanup_summary = run_monthly_memory_cleanup_proposal_job(session=session, now=now)
             except Exception as exc:
                 hygiene_summary = {"error": str(exc)}
+        try:
+            rotation_summary = rotate_memory_ledger_if_needed()
+        except Exception as exc:
+            rotation_summary = {"error": str(exc)}
+        try:
+            reindex_memory_indexes()
+        except Exception:
+            pass
     except Exception as exc:
         ok = False
         error = str(exc)
@@ -1466,6 +1637,8 @@ def run_nightly_memory_guardian_job(*, session: Any | None = None) -> dict[str, 
         "ok": ok,
         "error": error,
         "verification": verification_summary,
+        "consolidation": consolidation_summary,
+        "ledger_rotation": rotation_summary,
         "retrieval_eval": eval_summary,
         "weekly_hygiene": hygiene_summary,
         "monthly_cleanup": cleanup_summary,

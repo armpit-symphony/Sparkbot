@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +42,84 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _outcome_window_days() -> int:
+    try:
+        return max(1, min(int(os.getenv("SPARKBOT_IMPROVEMENT_OUTCOME_WINDOW_DAYS", "90")), 3650))
+    except ValueError:
+        return 90
+
+
+def _parse_utc(value: Any) -> datetime | None:
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except Exception:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _outcome_cutoff() -> datetime:
+    return datetime.now(timezone.utc) - timedelta(days=_outcome_window_days())
+
+
+def _rebuild_bucket_from_recent(bucket: dict[str, Any]) -> None:
+    recent = bucket.get("recent_outcomes")
+    if not isinstance(recent, list):
+        return
+    cutoff = _outcome_cutoff()
+    kept = []
+    for item in recent:
+        if not isinstance(item, dict):
+            continue
+        created_at = _parse_utc(item.get("created_at"))
+        if created_at and created_at >= cutoff:
+            kept.append(item)
+    bucket["recent_outcomes"] = kept
+    bucket["attempts"] = len(kept)
+    bucket["successes"] = sum(1 for item in kept if bool(item.get("success")))
+    bucket["failures"] = bucket["attempts"] - bucket["successes"]
+    bucket["score_total"] = round(sum(float(item.get("score") or 0.0) for item in kept), 2)
+    bucket["last_score"] = float(kept[-1].get("score") or 0.0) if kept else 0.0
+    bucket["last_result_at"] = str(kept[-1].get("created_at") or "") if kept else ""
+    bucket["last_error"] = str(kept[-1].get("error") or "")[:400] if kept and not kept[-1].get("success") else ""
+    tool_totals: dict[str, int] = {}
+    agent_successes: dict[str, int] = {}
+    for item in kept:
+        for tool_name, count in (item.get("tool_usage_counts") or {}).items():
+            tool_totals[str(tool_name)] = int(tool_totals.get(str(tool_name)) or 0) + int(count or 0)
+        if item.get("success") and item.get("agent_name"):
+            agent_name = str(item.get("agent_name"))
+            agent_successes[agent_name] = int(agent_successes.get(agent_name) or 0) + 1
+    bucket["tool_totals"] = tool_totals
+    bucket["agent_successes"] = agent_successes
+
+
+def _prune_store_windows(store: dict[str, Any]) -> None:
+    for class_bucket in (store.get("model_outcomes") or {}).values():
+        if not isinstance(class_bucket, dict):
+            continue
+        for bucket in class_bucket.values():
+            if isinstance(bucket, dict):
+                _rebuild_bucket_from_recent(bucket)
+    cutoff = _outcome_cutoff()
+    workflow_root = store.get("workflow_patterns") or {}
+    if isinstance(workflow_root, dict):
+        for user_bucket in workflow_root.values():
+            if not isinstance(user_bucket, dict):
+                continue
+            for room_bucket in user_bucket.values():
+                patterns = room_bucket.get("patterns") if isinstance(room_bucket, dict) else None
+                if isinstance(patterns, list):
+                    room_bucket["patterns"] = [
+                        item for item in patterns
+                        if isinstance(item, dict)
+                        and (_parse_utc(item.get("last_seen")) or datetime.now(timezone.utc)) >= cutoff
+                    ]
+
+
 def _load_store() -> dict[str, Any]:
     path = _store_path()
     if not path.exists():
@@ -55,6 +133,7 @@ def _load_store() -> dict[str, Any]:
     payload.setdefault("model_outcomes", {})
     payload.setdefault("workflow_patterns", {})
     payload.setdefault("improvement_proposals", [])
+    _prune_store_windows(payload)
     return payload
 
 
@@ -217,21 +296,22 @@ def record_outcome(
             "agent_successes": {},
         },
     )
-    model_bucket["attempts"] = int(model_bucket.get("attempts") or 0) + 1
-    if success:
-        model_bucket["successes"] = int(model_bucket.get("successes") or 0) + 1
-    else:
-        model_bucket["failures"] = int(model_bucket.get("failures") or 0) + 1
-        model_bucket["last_error"] = str(error or "").strip()[:400]
-    model_bucket["score_total"] = round(float(model_bucket.get("score_total") or 0.0) + score, 2)
-    model_bucket["last_score"] = score
-    model_bucket["last_result_at"] = _utc_now_iso()
-    tool_totals = model_bucket.setdefault("tool_totals", {})
-    for tool_name, count in normalized_tools.items():
-        tool_totals[tool_name] = int(tool_totals.get(tool_name) or 0) + count
-    if success and agent_name:
-        agent_successes = model_bucket.setdefault("agent_successes", {})
-        agent_successes[agent_name] = int(agent_successes.get(agent_name) or 0) + 1
+    now_iso = _utc_now_iso()
+    recent = model_bucket.setdefault("recent_outcomes", [])
+    if not isinstance(recent, list):
+        recent = []
+        model_bucket["recent_outcomes"] = recent
+    recent.append(
+        {
+            "created_at": now_iso,
+            "score": score,
+            "success": bool(success),
+            "error": str(error or "").strip()[:400],
+            "tool_usage_counts": normalized_tools,
+            "agent_name": agent_name or "",
+        }
+    )
+    _rebuild_bucket_from_recent(model_bucket)
 
     if success and user_id and room_id:
         workflow_root = store.setdefault("workflow_patterns", {})
@@ -271,6 +351,7 @@ def record_outcome(
         )
         del room_patterns[_MAX_ROOM_PATTERNS:]
 
+    _prune_store_windows(store)
     _save_store(store)
     return {
         "classification": classification,
