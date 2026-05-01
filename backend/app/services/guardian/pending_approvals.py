@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
 import time
 from dataclasses import dataclass
@@ -10,6 +11,24 @@ from typing import Any, Optional
 
 
 _PENDING_TTL_SECONDS = 600
+
+_SECRET_KEY_RE = re.compile(
+    r"(?i)(password|passwd|secret|token|api[_-]?key|access[_-]?key|credential|"
+    r"auth[_-]?token|passphrase|private[_-]?key|vault[_-]?key)",
+)
+
+
+def _redact_tool_args_for_event(tool_args: dict[str, Any] | None) -> dict[str, Any]:
+    """Return a copy of tool_args with secret-like values replaced by [REDACTED]."""
+    if not tool_args:
+        return {}
+    safe = {}
+    for key, value in tool_args.items():
+        if _SECRET_KEY_RE.search(str(key)):
+            safe[key] = "[REDACTED]"
+        else:
+            safe[key] = value
+    return safe
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS pending_approvals (
@@ -97,7 +116,7 @@ def store_pending_approval(
             tool_name=tool_name,
             confirm_id=confirm_id,
             user_id=user_id,
-            payload={"expires_at": expires_at, "approval_state": "required", "tool_args": tool_args or {}},
+            payload={"expires_at": expires_at, "approval_state": "required", "tool_args": _redact_tool_args_for_event(tool_args)},
         )
     except Exception:
         pass
@@ -140,7 +159,7 @@ def consume_pending_approval(confirm_id: str) -> dict[str, Any] | None:
             tool_name=payload["tool"],
             confirm_id=confirm_id,
             user_id=payload["user_id"],
-            payload={"created_at": payload["created_at"], "tool_args": tool_args},
+            payload={"created_at": payload["created_at"], "tool_args": _redact_tool_args_for_event(tool_args)},
         )
     except Exception:
         pass
@@ -191,7 +210,7 @@ def discard_pending_approval(confirm_id: str) -> bool:
                 tool_name=str(row["tool_name"]),
                 confirm_id=confirm_id,
                 user_id=row["user_id"],
-                payload={"tool_args": tool_args},
+                payload={"tool_args": _redact_tool_args_for_event(tool_args)},
             )
         except Exception:
             pass

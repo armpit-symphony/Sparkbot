@@ -1,0 +1,30 @@
+Sparkbot v1.6.48 — Guardian/Spine Security Stabilization
+
+Security fixes:
+- Pending Approvals: secret-like tool_args (password, token, api_key, etc.)
+  are now redacted before being emitted as Spine approval events.
+  Stored approval DB still holds original args (needed for execution).
+- Executive Guardian: metadata dict and result_excerpt in decision JSONL are
+  now redacted — secret key=value pairs replaced with [REDACTED] before write.
+- Executive Guardian: exception messages in validation_note are redacted too.
+
+New security tests (21 total):
+- Pending approval Spine event redaction (5 tests)
+- Executive JSONL metadata/result redaction (2 tests)
+- Pending approval TTL expiry pruning (1 test)
+- Computer Control bypass TTL enforcement (3 tests)
+- Vault policy auth denial for non-operators (1 test)
+- Vault write requires privileged session (1 test)
+- Vault reveal requires privileged_reveal when not privileged (1 test)
+- Vault reveal still confirms when privileged (1 test)
+- Task Guardian write-mode gate blocks write tools (1 test)
+- Task Guardian write-mode gate allows write tools when enabled (1 test)
+- Task Guardian allows read tools without write mode (1 test)
+- Memory PII redaction at ledger persistence: phone, email, API key (3 tests)
+
+Audit & preservation:
+- Created docs/audits/sparkbot_guardian_spine_extraction_audit.md
+- Created docs/audits/guardian_spine_current_state.md
+- Created docs/audits/guardian_spine_security_fix_plan.md
+
+Test results: 181/181 green (21 new + 140 service + 41 breakglass route)

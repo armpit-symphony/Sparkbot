@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,6 +23,38 @@ HIGH_RISK_ACTIONS = {
     "ssh_exec",
     "scheduler_write",
 }
+
+_SECRET_PAIR_RE = re.compile(
+    r"(?i)\b(password|passwd|secret|token|api[_-]?key|access[_-]?key|credential|"
+    r"auth[_-]?token|passphrase|private[_-]?key|vault[_-]?key)\b(\s*[:=]\s*)([^\s,;]+)"
+)
+
+_SECRET_KEY_RE = re.compile(
+    r"(?i)(password|passwd|secret|token|api[_-]?key|access[_-]?key|credential|"
+    r"auth[_-]?token|passphrase|private[_-]?key|vault[_-]?key)",
+)
+
+
+def _redact_metadata(metadata: dict[str, Any] | None) -> dict[str, Any]:
+    """Return a copy of metadata with secret-like values replaced by [REDACTED]."""
+    if not metadata:
+        return {}
+    safe = {}
+    for key, value in metadata.items():
+        if _SECRET_KEY_RE.search(str(key)):
+            safe[key] = "[REDACTED]"
+        elif isinstance(value, str):
+            safe[key] = _SECRET_PAIR_RE.sub(r"\1\2[REDACTED]", value)
+        elif isinstance(value, dict):
+            safe[key] = _redact_metadata(value)
+        else:
+            safe[key] = value
+    return safe
+
+
+def _redact_text(text: str) -> str:
+    """Redact secret-like key=value pairs from free text."""
+    return _SECRET_PAIR_RE.sub(r"\1\2[REDACTED]", text)
 
 
 def _guardian_root() -> Path:
@@ -149,7 +182,7 @@ async def exec_with_guard(
         "action_type": action_type,
         "expected_outcome": expected_outcome,
         "started_at": started_at,
-        "metadata": metadata or {},
+        "metadata": _redact_metadata(metadata),
     }
 
     try:
@@ -161,7 +194,7 @@ async def exec_with_guard(
         payload["outcome"] = "fail" if failed else "success"
         payload["validation_tier"] = "FAIL" if failed else "SUCCESS"
         payload["validation_note"] = validation_note
-        payload["result_excerpt"] = str(result)[:500]
+        payload["result_excerpt"] = _redact_text(str(result)[:500])
         _append_jsonl(_decision_log_path(), payload)
         _emit_spine_decision(payload)
         return result
@@ -169,7 +202,7 @@ async def exec_with_guard(
         payload["finished_at"] = datetime.now(timezone.utc).isoformat()
         payload["outcome"] = "error"
         payload["validation_tier"] = "FAIL"
-        payload["validation_note"] = str(exc)
+        payload["validation_note"] = _redact_text(str(exc))
         _append_jsonl(_decision_log_path(), payload)
         _emit_spine_decision(payload)
         raise

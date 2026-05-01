@@ -1,5 +1,15 @@
 # Release Notes
 
+## Sparkbot v1.6.48
+
+- Redacted secret-like tool arguments (password, token, api_key, etc.) from Spine approval event payloads before persistence.
+- Redacted secret-like metadata keys and key=value pairs from executive decision JSONL logs and Spine events.
+- Added 21 security gate tests: pending approval redaction, executive JSONL redaction, approval TTL expiry, Computer Control bypass TTL enforcement, vault policy auth denial, Task Guardian write-mode gate, and memory PII redaction at the ledger persistence layer.
+- Created Guardian/Spine extraction audit (`docs/audits/sparkbot_guardian_spine_extraction_audit.md`): full inventory of 22 modules, 50+ routes, 10 tables, comparison with LIMA-Guardian-Suite, dependency map, phased extraction plan, and recommended first 3 PRs.
+- Created preservation record (`docs/audits/guardian_spine_current_state.md`): marks Sparkbot as source of truth, blocks extraction until security gates pass.
+- Created security fix plan (`docs/audits/guardian_spine_security_fix_plan.md`): 9 risks documented, all MEDIUM+ items resolved with tests.
+- Updated version markers across backend, frontend, Tauri, docs, and service worker for 1.6.48.
+
 ## Sparkbot v1.6.47
 
 - Added age-based Guardian ledger rotation: hot `ledger.jsonl` keeps the last 30 days while older events move into month-named cold archives.
