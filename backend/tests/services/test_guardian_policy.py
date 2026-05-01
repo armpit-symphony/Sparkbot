@@ -4,11 +4,14 @@ from app.services.guardian.policy import decide_tool_use, simulate_tool_policy
 
 # ── Personal mode (default, SPARKBOT_GUARDIAN_POLICY_ENABLED unset / false) ──
 
-def test_computer_control_on_allows_high_risk_tools_by_default() -> None:
-    """In personal mode all tools execute freely — no gates, no confirms."""
-    for tool in ("browser_click", "gmail_send", "server_read_command", "slack_send_message"):
+def test_computer_control_on_allows_reads_and_confirms_high_risk_tools_by_default() -> None:
+    """Computer Control allows routine work while high-risk writes still confirm."""
+    read_decision = decide_tool_use("server_read_command", {}, room_execution_allowed=True)
+    assert read_decision.action == "allow"
+
+    for tool in ("browser_click", "gmail_send", "slack_send_message"):
         decision = decide_tool_use(tool, {}, room_execution_allowed=True)
-        assert decision.action == "allow", f"{tool} should be allowed when Computer Control is on"
+        assert decision.action == "confirm", f"{tool} should still confirm when Computer Control is on"
 
 
 # ── Office mode (SPARKBOT_GUARDIAN_POLICY_ENABLED=true) ──
