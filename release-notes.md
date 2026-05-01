@@ -6,6 +6,8 @@
 - Filtered short acknowledgements and system/noise messages before they enter the memory ledger.
 - Wired nightly consolidation into Task Guardian to extract durable facts, deduplicate semantically, and write `daily/YYYY-MM-DD.md` summaries.
 - Added fact superseding/TTL behavior for durable memories, with conflict approvals and low-weight archival.
+- Added tombstone-based soft delete, incremental FTS/embedding index deletes, and weekly hot-ledger compaction.
+- Added a ranked memory inspector with correct/remove actions and semantic "forget that..." matching.
 - Added a 90-day sliding window for improvement-loop model outcomes so routing reflects current performance.
 - Updated README, capabilities docs, release notes, and public downloader version markers for `1.6.47`.
 

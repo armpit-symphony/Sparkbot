@@ -221,6 +221,14 @@ def _build_policy_registry() -> dict[str, ToolPolicy]:
         action_type="memory_write",
         high_risk=True,
     )
+    add(
+        "memory_compact",
+        scope="write",
+        resource="memory",
+        default_action="confirm",
+        action_type="memory_write",
+        high_risk=True,
+    )
 
     add(
         "lima.navigate",

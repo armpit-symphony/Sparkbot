@@ -9,6 +9,10 @@ Fact lifecycle
 - Nightly consolidation extracts durable facts from recent chat windows, semantically deduplicates them, and writes daily summaries.
 - Durable memory conflicts mark older facts with deprecated_by and queue a conflict approval.
 - Low-weight facts with zero mentions/use auto-archive after 90 days by default.
+- Single-fact deletion now writes tombstones and deletes only matching FTS/embedding rows.
+- Weekly compaction physically removes tombstoned hot-ledger events.
+- `/memory` now shows a ranked inspector with confidence plus correct/remove actions.
+- Natural requests like "forget that I work at Google" semantically retire the matching fact.
 
 Improvement loop
 - Model outcome routing now uses a 90-day sliding window instead of unbounded historical aggregates.

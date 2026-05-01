@@ -100,6 +100,13 @@ interface Message {
   agent?: string          // named agent that responded, e.g. "researcher"
   reply_to_id?: string    // threading: parent message id
   is_edited?: boolean     // true after inline edit saved
+  memoryActions?: MemoryAction[]
+}
+
+interface MemoryAction {
+  id: string
+  fact: string
+  confidence?: number
 }
 
 interface RoomInfo {
@@ -412,7 +419,7 @@ const COMMANDS: SlashCommand[] = [
   { name: "/search",  description: "Search messages — e.g. /search invoice" },
   { name: "/meeting", description: "Meeting mode — /meeting start | stop | notes" },
   { name: "/model",   description: "Switch AI model — e.g. /model gpt-4o" },
-  { name: "/memory",  description: "View or clear what Sparkbot remembers about you" },
+  { name: "/memory",  description: "Inspect, correct, or remove what Sparkbot remembers about you" },
   { name: "/tasks",   description: "List open tasks — /tasks | /tasks done | /tasks all" },
   { name: "/remind",  description: "List pending reminders for this room" },
   { name: "/agents",  description: "List available named agents (@researcher, @coder, etc.)" },
@@ -420,8 +427,8 @@ const COMMANDS: SlashCommand[] = [
   { name: "/perf",    description: "Show model + tool latency / error rates this session" },
 ]
 
-function systemMsg(content: string): Message {
-  return { id: `sys-${Date.now()}-${Math.random()}`, content, created_at: new Date().toISOString(), sender_type: "SYSTEM", isSystem: true }
+function systemMsg(content: string, extra: Partial<Message> = {}): Message {
+  return { id: `sys-${Date.now()}-${Math.random()}`, content, created_at: new Date().toISOString(), sender_type: "SYSTEM", isSystem: true, ...extra }
 }
 
 // ─── Code block ───────────────────────────────────────────────────────────────
@@ -3728,6 +3735,40 @@ function SparkbotDmPage() {
 
   // ── Slash command handlers ───────────────────────────────────────────────────
 
+  const formatMemoryInspector = useCallback((data: { memories?: Array<{ id: string; fact: string; confidence?: number; memory_type?: string; lifecycle_state?: string; use_count?: number; mention_count?: number }>; count?: number; total_available?: number }) => {
+    const memories = data.memories ?? []
+    if (!memories.length) {
+      return { text: "No memories stored yet. Sparkbot will remember durable preferences and facts as you chat.", actions: [] as MemoryAction[] }
+    }
+    const lines = memories.map((m, idx) => {
+      const conf = typeof m.confidence === "number" ? `${Math.round(m.confidence * 100)}%` : "n/a"
+      const kind = m.memory_type && m.memory_type !== "unknown" ? ` · ${m.memory_type}` : ""
+      return `${idx + 1}. **${m.fact}**\n   Confidence ${conf}${kind} · id \`${m.id.slice(0, 8)}\``
+    }).join("\n")
+    return {
+      text: `**Things Sparkbot knows about you (${data.count ?? memories.length}${data.total_available ? ` of ${data.total_available}` : ""}):**\n\n${lines}\n\nUse the buttons below to correct or remove a memory, or type **forget that ...** in chat.`,
+      actions: memories.map(m => ({ id: m.id, fact: m.fact, confidence: m.confidence })),
+    }
+  }, [])
+
+  const forgetMemoryByQuery = useCallback((query: string) => {
+    apiFetch("/api/v1/chat/memory/forget", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ query }),
+    })
+      .then(async r => {
+        if (!r.ok) {
+          const e = await r.json().catch(() => ({ detail: "No matching memory found." }))
+          throw new Error(String(e.detail ?? "No matching memory found."))
+        }
+        return r.json()
+      })
+      .then(d => setMessages(prev => [...prev, systemMsg(`Forgot: **${d.fact ?? query}**`)]))
+      .catch(err => setMessages(prev => [...prev, systemMsg(`Could not forget that memory: ${err.message}`)]))
+  }, [])
+
   const handleCommand = useCallback((raw: string): boolean => {
     const parts = raw.trim().split(/\s+/)
     const cmd = parts[0]
@@ -3872,20 +3913,18 @@ function SparkbotDmPage() {
     }
 
     if (cmd === "/memory") {
-      if (!args || args === "list") {
-        apiFetch("/api/v1/chat/memory/", { credentials: "include" })
+      if (!args || args === "list" || args === "inspect") {
+        apiFetch("/api/v1/chat/memory/inspect?limit=8", { credentials: "include" })
           .then(r => r.json())
           .then(data => {
-            if (!data.memories?.length) {
-              setMessages(prev => [...prev, systemMsg("No memories stored yet. Sparkbot will remember things as you chat.")])
-              return
-            }
-            const lines = data.memories.map((m: { id: string; fact: string; created_at: string }) =>
-              `- ${m.fact} *(id: \`${m.id.slice(0, 8)}\`)*`
-            ).join("\n")
-            setMessages(prev => [...prev, systemMsg(`**Sparkbot remembers (${data.count}):**\n\n${lines}\n\nTo forget one: tell Sparkbot "forget that I ..." or use **/memory clear** to wipe all.`)])
+            const view = formatMemoryInspector(data)
+            setMessages(prev => [...prev, systemMsg(view.text, { memoryActions: view.actions })])
           })
           .catch(() => setMessages(prev => [...prev, systemMsg("⚠️ Could not fetch memories.")]))
+        return true
+      }
+      if (args.startsWith("forget ")) {
+        forgetMemoryByQuery(args.slice("forget ".length))
         return true
       }
       if (args === "clear") {
@@ -3895,7 +3934,7 @@ function SparkbotDmPage() {
           .catch(() => setMessages(prev => [...prev, systemMsg("⚠️ Could not clear memories.")]))
         return true
       }
-      setMessages(prev => [...prev, systemMsg("**Memory commands:**\n- **/memory** — list what Sparkbot knows about you\n- **/memory clear** — wipe all memories")])
+      setMessages(prev => [...prev, systemMsg("**Memory commands:**\n- **/memory** — inspect the top memories Sparkbot knows about you\n- **/memory forget <fact>** — semantically forget one memory\n- **/memory clear** — wipe all memories")])
       return true
     }
 
@@ -4483,6 +4522,12 @@ function SparkbotDmPage() {
     setShowCommands(false)
     setShowAgentPicker(false)
 
+    const forgetMatch = content.match(/^forget\s+(?:that\s+)?(.{3,500})$/i)
+    if (forgetMatch) {
+      forgetMemoryByQuery(forgetMatch[1])
+      return
+    }
+
     const isBackendSlashCommand = /^\/breakglass(?:\s+close)?$/i.test(content)
     if (content.startsWith("/") && !isBackendSlashCommand) {
       if (handleCommand(content)) return
@@ -4502,7 +4547,7 @@ function SparkbotDmPage() {
     }
 
     await doSend(content, replyId)
-  }, [inputValue, roomId, handleCommand, captureMeetingItem, replyingTo, doSend])
+  }, [inputValue, roomId, handleCommand, captureMeetingItem, replyingTo, doSend, forgetMemoryByQuery])
 
   // ── Confirmation handlers ────────────────────────────────────────────────────
 
@@ -4570,6 +4615,35 @@ function SparkbotDmPage() {
     } catch { /* ignore — message stays as-is */ }
     setEditingId(null)
   }, [roomId, editContent])
+
+  const handleMemoryRemove = useCallback((memory: MemoryAction) => {
+    apiFetch(`/api/v1/chat/memory/${memory.id}`, { method: "DELETE", credentials: "include" })
+      .then(async r => {
+        if (!r.ok) throw new Error("Could not remove memory.")
+        setMessages(prev => [...prev, systemMsg(`Removed memory: **${memory.fact}**`)])
+      })
+      .catch(() => setMessages(prev => [...prev, systemMsg("Could not remove that memory.")]))
+  }, [])
+
+  const handleMemoryCorrect = useCallback((memory: MemoryAction) => {
+    const nextFact = window.prompt("Correct this memory", memory.fact)?.trim()
+    if (!nextFact || nextFact === memory.fact) return
+    apiFetch(`/api/v1/chat/memory/${memory.id}/correct`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ fact: nextFact }),
+    })
+      .then(async r => {
+        if (!r.ok) {
+          const e = await r.json().catch(() => ({ detail: "Could not correct memory." }))
+          throw new Error(String(e.detail ?? "Could not correct memory."))
+        }
+        return r.json()
+      })
+      .then(d => setMessages(prev => [...prev, systemMsg(`Updated memory: **${d.new_memory?.fact ?? nextFact}**`)]))
+      .catch(err => setMessages(prev => [...prev, systemMsg(err.message)]))
+  }, [])
 
   if (loading) {
     return <div className="flex h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
@@ -4789,6 +4863,31 @@ function SparkbotDmPage() {
                 <div key={msg.id} className="flex justify-center">
                   <div className="max-w-[80%] rounded-lg border border-dashed bg-muted/30 px-4 py-2">
                     <BotMessage content={msg.content} />
+                    {msg.memoryActions?.length ? (
+                      <div className="mt-3 grid gap-2">
+                        {msg.memoryActions.map(memory => (
+                          <div key={memory.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-background/70 px-3 py-2 text-xs">
+                            <span className="min-w-0 flex-1 truncate">{memory.fact}</span>
+                            <div className="flex shrink-0 gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleMemoryCorrect(memory)}
+                                className="rounded border px-2 py-1 hover:bg-muted"
+                              >
+                                Correct
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleMemoryRemove(memory)}
+                                className="rounded border border-destructive/40 px-2 py-1 text-destructive hover:bg-destructive/10"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               )

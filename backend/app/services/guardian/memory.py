@@ -461,14 +461,21 @@ def _is_event_expired(event: Event) -> bool:
     return bool(expires_at and expires_at <= datetime.now(timezone.utc))
 
 
-def _ledger_inactive_refs() -> tuple[set[str], set[str], set[str]]:
+def _ledger_inactive_refs() -> tuple[set[str], set[str], set[str], set[str]]:
     deleted_memory_ids: set[str] = set()
+    deleted_event_ids: set[str] = set()
     cleared_user_ids: set[str] = set()
     cleared_session_ids: set[str] = set()
     try:
         for event in _guardian().ledger.iter_events():
             meta = dict(event.metadata or {})
             action = str(meta.get("lifecycle_action") or "")
+            target_event = str(meta.get("target_event_id") or "")
+            if target_event:
+                deleted_event_ids.add(target_event)
+            for event_id in meta.get("target_event_ids") or []:
+                if event_id:
+                    deleted_event_ids.add(str(event_id))
             if action in {"soft_delete", "approve_delete"}:
                 target = str(meta.get("target_memory_id") or "")
                 if target:
@@ -480,7 +487,7 @@ def _ledger_inactive_refs() -> tuple[set[str], set[str], set[str]]:
                     cleared_session_ids.add(_user_session(target_user))
     except Exception:
         pass
-    return deleted_memory_ids, cleared_user_ids, cleared_session_ids
+    return deleted_memory_ids, deleted_event_ids, cleared_user_ids, cleared_session_ids
 
 
 def _is_event_active_for_prompt(
@@ -488,13 +495,17 @@ def _is_event_active_for_prompt(
     *,
     include_archived: bool = False,
     deep_recall: bool = False,
-    inactive_refs: tuple[set[str], set[str], set[str]] | None = None,
+    inactive_refs: tuple[set[str], set[str], set[str], set[str]] | None = None,
 ) -> bool:
     meta = dict(event.metadata or {})
-    deleted_memory_ids, cleared_user_ids, cleared_session_ids = inactive_refs or _ledger_inactive_refs()
+    deleted_memory_ids, deleted_event_ids, cleared_user_ids, cleared_session_ids = inactive_refs or _ledger_inactive_refs()
+    if event.id in deleted_event_ids:
+        return False
     memory_id = str(meta.get("memory_id") or "")
     user_id = str(meta.get("user_id") or "")
     session_id = str(event.session_id or "")
+    if bool(meta.get("deleted")):
+        return False
     if memory_id and memory_id in deleted_memory_ids:
         return False
     if user_id and user_id in cleared_user_ids:
@@ -1340,6 +1351,80 @@ def reindex_memory_indexes() -> dict[str, Any]:
     }
 
 
+def _delete_event_from_indexes(event_id: str) -> dict[str, int]:
+    guardian = _guardian()
+    fts_deleted = 0
+    embed_deleted = 0
+    try:
+        fts_deleted = int(guardian.fts.delete_event(event_id) or 0)
+    except Exception:
+        fts_deleted = 0
+    if _embeddings_enabled():
+        try:
+            embed_deleted = int(guardian.embed.delete_event(event_id) or 0)
+        except Exception:
+            embed_deleted = 0
+    try:
+        guardian.retriever._event_cache.pop(event_id, None)
+    except Exception:
+        pass
+    return {"fts_deleted": fts_deleted, "embed_deleted": embed_deleted}
+
+
+def _delete_events_from_indexes(event_ids: list[str]) -> dict[str, int]:
+    summary = {"events": 0, "fts_deleted": 0, "embed_deleted": 0}
+    for event_id in event_ids:
+        if not event_id:
+            continue
+        deleted = _delete_event_from_indexes(event_id)
+        summary["events"] += 1
+        summary["fts_deleted"] += deleted["fts_deleted"]
+        summary["embed_deleted"] += deleted["embed_deleted"]
+    return summary
+
+
+def compact_deleted_memory_events(*, dry_run: bool = False) -> dict[str, Any]:
+    """Physically remove tombstoned hot-ledger events; cold archives stay governed by tombstones."""
+    if not memory_guardian_enabled():
+        return {"compacted": False, "reason": "disabled"}
+    guardian = _guardian()
+    inactive_refs = _ledger_inactive_refs()
+    deleted_memory_ids, deleted_event_ids, cleared_user_ids, cleared_session_ids = inactive_refs
+    if not (deleted_memory_ids or deleted_event_ids or cleared_user_ids or cleared_session_ids):
+        return {"compacted": False, "reason": "no_tombstones"}
+    kept: list[Event] = []
+    removed = 0
+    for event in guardian.ledger.iter_events():
+        meta = dict(event.metadata or {})
+        session_id = str(event.session_id or "")
+        memory_id = str(meta.get("memory_id") or "")
+        user_id = str(meta.get("user_id") or "")
+        remove = (
+            event.id in deleted_event_ids
+            or (memory_id and memory_id in deleted_memory_ids)
+            or (user_id and user_id in cleared_user_ids and str(meta.get("lifecycle_action") or "") != "clear_user_memory")
+            or (
+                session_id
+                and session_id in cleared_session_ids
+                and str(meta.get("lifecycle_action") or "") != "clear_user_memory"
+            )
+            or (
+                session_id
+                and any(session_id.endswith(f":user:{uid}") for uid in cleared_user_ids)
+                and str(meta.get("lifecycle_action") or "") != "clear_user_memory"
+            )
+        )
+        if remove:
+            removed += 1
+            continue
+        kept.append(event)
+    if dry_run:
+        return {"compacted": False, "dry_run": True, "events_removed": removed, "events_kept": len(kept)}
+    if removed:
+        _rewrite_events(kept)
+    return {"compacted": bool(removed), "events_removed": removed, "events_kept": len(kept)}
+
+
 def _guardian_job_log_path() -> Path:
     path = _data_dir() / "memory_guardian_jobs.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -1584,6 +1669,7 @@ def run_nightly_memory_guardian_job(*, session: Any | None = None) -> dict[str, 
     cleanup_summary: dict[str, Any] = {}
     consolidation_summary: dict[str, Any] = {}
     rotation_summary: dict[str, Any] = {}
+    compaction_summary: dict[str, Any] = {}
     try:
         verification_summary = verify_recent_memory_events()
         try:
@@ -1603,6 +1689,7 @@ def run_nightly_memory_guardian_job(*, session: Any | None = None) -> dict[str, 
                     from .memory_hygiene import run_weekly_memory_hygiene_job
 
                     hygiene_summary = run_weekly_memory_hygiene_job(session=session, now=now)
+                    compaction_summary = compact_deleted_memory_events()
                 if now.day == 1:
                     from .memory_hygiene import run_monthly_memory_cleanup_proposal_job
 
@@ -1639,6 +1726,7 @@ def run_nightly_memory_guardian_job(*, session: Any | None = None) -> dict[str, 
         "verification": verification_summary,
         "consolidation": consolidation_summary,
         "ledger_rotation": rotation_summary,
+        "ledger_compaction": compaction_summary,
         "retrieval_eval": eval_summary,
         "weekly_hygiene": hygiene_summary,
         "monthly_cleanup": cleanup_summary,
@@ -1663,12 +1751,14 @@ def delete_fact_memory(*, user_id: str, memory_id: str) -> int:
     target_user_session = _user_session(user_id)
     guardian = _guardian()
     matched = 0
+    matched_event_ids: list[str] = []
     for event in guardian.ledger.iter_events():
         if (
             event.session_id == target_user_session
             and str(event.metadata.get("memory_id", "")) == memory_id
         ):
             matched += 1
+            matched_event_ids.append(event.id)
     if matched:
         _append_event(
             event_type=EventType.SYSTEM,
@@ -1678,17 +1768,80 @@ def delete_fact_memory(*, user_id: str, memory_id: str) -> int:
             metadata={
                 "user_id": user_id,
                 "target_memory_id": memory_id,
+                "target_event_ids": matched_event_ids,
                 "lifecycle_action": "soft_delete",
                 "lifecycle_state": "soft_deleted",
                 "soft_delete_reason": "explicit user memory delete",
+                "deleted": True,
             },
             source="memory.lifecycle",
             confidence=1.0,
             verification_state="verified",
         )
-        reindex_memory_indexes()
+        _delete_events_from_indexes(matched_event_ids)
         mark_profile_snapshot_dirty()
     return matched
+
+
+def forget_fact_by_query(*, user_id: str, query: str, threshold: float = 0.62) -> dict[str, Any]:
+    """Semantically match a user's durable fact and retire the best candidate."""
+    if not memory_guardian_enabled():
+        return {"deleted": False, "reason": "disabled"}
+    cleaned = _safe_text(query, limit=500)
+    if not cleaned:
+        return {"deleted": False, "reason": "empty_query"}
+    target_session = _user_session(user_id)
+    inactive_refs = _ledger_inactive_refs()
+    candidates: list[tuple[Event, str, float]] = []
+    for event in _guardian().ledger.iter_events(session_id=target_session, include_archives=True):
+        if not _is_event_active_for_prompt(event, include_archived=True, deep_recall=True, inactive_refs=inactive_refs):
+            continue
+        if event.type != EventType.SYSTEM or not event.content.startswith("FACT:"):
+            continue
+        fact = _normalize_fact_text(event.content.removeprefix("FACT:").strip())
+        score = max(text_similarity(cleaned, fact), text_similarity(f"User {cleaned}", fact))
+        candidates.append((event, fact, score))
+    candidates.sort(key=lambda item: item[2], reverse=True)
+    if not candidates or candidates[0][2] < threshold:
+        return {
+            "deleted": False,
+            "reason": "no_match",
+            "best_score": round(candidates[0][2], 4) if candidates else 0.0,
+        }
+    event, fact, score = candidates[0]
+    memory_id = str(event.metadata.get("memory_id") or "")
+    if memory_id:
+        matched = delete_fact_memory(user_id=user_id, memory_id=memory_id)
+    else:
+        matched = 0
+    if not memory_id or matched <= 0:
+        _append_event(
+            event_type=EventType.SYSTEM,
+            role="system",
+            content=f"MEMORY_LIFECYCLE: soft_deleted event {event.id}",
+            session_id=target_session,
+            metadata={
+                "user_id": user_id,
+                "target_event_id": event.id,
+                "lifecycle_action": "soft_delete",
+                "lifecycle_state": "soft_deleted",
+                "soft_delete_reason": f"semantic forget query: {cleaned[:160]}",
+                "deleted": True,
+            },
+            source="memory.lifecycle",
+            confidence=1.0,
+            verification_state="verified",
+        )
+        _delete_event_from_indexes(event.id)
+        mark_profile_snapshot_dirty()
+        matched = 1
+    return {
+        "deleted": bool(matched),
+        "memory_id": memory_id,
+        "fact": fact,
+        "score": round(score, 4),
+        "events_retired": matched,
+    }
 
 
 def clear_user_memory_events(*, user_id: str) -> int:
@@ -1699,10 +1852,12 @@ def clear_user_memory_events(*, user_id: str) -> int:
     target_user_session = _user_session(user_id)
     guardian = _guardian()
     matched = 0
+    matched_event_ids: list[str] = []
     for event in guardian.ledger.iter_events():
         session_id = event.session_id or ""
         if session_id == target_user_session or session_id.endswith(suffix):
             matched += 1
+            matched_event_ids.append(event.id)
     if matched:
         _append_event(
             event_type=EventType.SYSTEM,
@@ -1711,15 +1866,17 @@ def clear_user_memory_events(*, user_id: str) -> int:
             session_id=target_user_session,
             metadata={
                 "target_user_id": user_id,
+                "target_event_ids": matched_event_ids,
                 "lifecycle_action": "clear_user_memory",
                 "lifecycle_state": "soft_deleted",
                 "soft_delete_reason": "explicit user memory clear",
+                "deleted": True,
             },
             source="memory.lifecycle",
             confidence=1.0,
             verification_state="verified",
         )
-        reindex_memory_indexes()
+        _delete_events_from_indexes(matched_event_ids)
         mark_profile_snapshot_dirty()
     return matched
 
@@ -1729,9 +1886,4 @@ def _rewrite_events(events: list[Event]) -> None:
     guardian.ledger.ledger_path.write_text("", encoding="utf-8")
     for event in events:
         guardian.ledger.append(event)
-    guardian.fts.rebuild_from_ledger(guardian.ledger.ledger_path)
-    if _embeddings_enabled():
-        try:
-            guardian.embed.rebuild_from_ledger(guardian.ledger.ledger_path)
-        except Exception:
-            pass
+    reindex_memory_indexes()

@@ -324,6 +324,18 @@ TOOL_DEFINITIONS = [
     {
         "type": "function",
         "function": {
+            "name": "memory_compact",
+            "description": (
+                "Physically compact tombstoned Guardian memory events from the hot ledger. "
+                "Deletion itself is immediate via tombstones and incremental index deletes; "
+                "this maintenance tool removes retired hot-ledger rows later."
+            ),
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "web_search",
             "description": (
                 "Search the web for current information. Use this for recent events, "
@@ -5011,6 +5023,20 @@ async def _memory_reindex() -> str:
     )
 
 
+async def _memory_compact() -> str:
+    """Physically remove tombstoned hot-ledger memory events."""
+    try:
+        from app.services.guardian.memory import compact_deleted_memory_events
+    except Exception as exc:
+        return f"Memory compaction unavailable: {exc}"
+    summary = compact_deleted_memory_events()
+    return (
+        "Memory compaction complete -- "
+        f"compacted={summary.get('compacted')} removed={summary.get('events_removed', 0)} "
+        f"kept={summary.get('events_kept', 0)}"
+    )
+
+
 async def _remember_fact(fact: str, user_id: Optional[str], session) -> str:
     if not user_id or session is None:
         return "Memory unavailable (no session context)."
@@ -5070,6 +5096,8 @@ async def execute_tool(
         return await _memory_retrieval_stats()
     if name == "memory_reindex":
         return await _memory_reindex()
+    if name == "memory_compact":
+        return await _memory_compact()
     if name == "web_search":
         return await _web_search(args.get("query", ""))
     if name == "fetch_url":

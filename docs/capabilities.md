@@ -905,7 +905,15 @@ lanes audit their decisions and never hard-delete archives or memories. Low-weig
 with zero mentions/use auto-archive after 90 days by default, and contradictory durable
 facts mark the older fact with `deprecated_by` while queuing a pending approval for the
 operator/user to confirm the current version. Ledger rotation keeps recent memory in the
-hot path while archived JSONL files remain searchable through deep recall.
+hot path while archived JSONL files remain searchable through deep recall. Single-memory
+deletes now write tombstones and delete only matching FTS/embedding rows; weekly
+compaction physically removes tombstoned hot-ledger events without making interactive
+deletion pay the full rewrite cost.
+
+Users can inspect memory from chat with `/memory`, which returns the top ranked facts
+with confidence, type, and correction/removal actions. They can also type natural
+forget requests such as `forget that I work at Google`; Sparkbot matches the closest
+owned memory by semantic similarity and retires only that fact.
 
 Built-in memory tools (read-only by default; whitelisted for Task Guardian scheduling):
 
@@ -914,6 +922,7 @@ Built-in memory tools (read-only by default; whitelisted for Task Guardian sched
 | `memory_recall` | BM25 recall by default, optional hybrid recall when embeddings are enabled; returns ranked items with provenance + score; `include_archived`/`deep_recall` search cold ledger archives |
 | `memory_retrieval_stats` | In-process telemetry: writes, recalls, hit rate, precision@5, latency, retriever mode, Guardian job success, pending approval rate, embed index size |
 | `memory_reindex` | Rebuild FTS + embedding indexes from the on-disk ledger (idempotent; safe to schedule nightly) |
+| `memory_compact` | Physically remove tombstoned hot-ledger memory events after incremental soft deletes |
 
 ### Executive Guardian + Task Guardian
 ```env

@@ -5,11 +5,12 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
+from app import crud
 from app.api.routes.chat import users as chat_users_route
 from app.core.config import settings
 from app.core.db import engine
 from app.core.security import create_access_token, decode_token
-from app.models import AuditLog, ChatMessage, ChatRoom, ChatRoomMember, ChatUser, RoomRole, UserType
+from app.models import AuditLog, ChatMessage, ChatRoom, ChatRoomMember, ChatUser, RoomRole, UserMemory, UserType
 from tests.utils.utils import random_lower_string
 
 
@@ -149,6 +150,40 @@ def test_room_and_upload_read_endpoints_require_membership(
     client.cookies.clear()
     unauth_messages = client.get(f"{settings.API_V1_STR}/chat/rooms/{room_id}/messages")
     assert unauth_messages.status_code in {401, 403}
+
+
+def test_memory_inspector_and_semantic_forget_are_user_scoped(client: TestClient) -> None:
+    owner_id = _create_chat_user("memory-owner")
+    outsider_id = _create_chat_user("memory-outsider")
+    with Session(engine) as db:
+        own_memory = crud.add_user_memory(db, owner_id, "I work at Google")
+        other_memory = crud.add_user_memory(db, outsider_id, "I work at Meta")
+        own_memory_id = own_memory.id
+        other_memory_id = other_memory.id
+
+    owner_headers = _chat_headers_for_user(owner_id)
+    outsider_headers = _chat_headers_for_user(outsider_id)
+
+    inspected = client.get(f"{settings.API_V1_STR}/chat/memory/inspect?limit=8", headers=owner_headers)
+    assert inspected.status_code == 200
+    facts = [item["fact"] for item in inspected.json()["memories"]]
+    assert "I work at Google" in facts
+    assert "I work at Meta" not in facts
+    assert inspected.json()["memories"][0]["confidence"] is not None
+
+    blocked_delete = client.delete(f"{settings.API_V1_STR}/chat/memory/{own_memory_id}", headers=outsider_headers)
+    assert blocked_delete.status_code == 404
+
+    forgotten = client.post(
+        f"{settings.API_V1_STR}/chat/memory/forget",
+        headers=owner_headers,
+        json={"query": "forget that I work at Google"},
+    )
+    assert forgotten.status_code == 200
+    assert forgotten.json()["deleted"] == str(own_memory_id)
+
+    with Session(engine) as db:
+        assert db.get(UserMemory, other_memory_id).lifecycle_state == "active"
 
 
 def test_room_listing_and_message_lookup_require_auth_and_membership(

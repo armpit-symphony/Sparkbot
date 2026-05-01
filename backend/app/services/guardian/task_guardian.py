@@ -76,6 +76,7 @@ ALLOWED_TASK_TOOLS = {
     "memory_recall",         # diagnostics: hybrid recall against Guardian memory
     "memory_retrieval_stats",# nightly memory telemetry digest
     "memory_reindex",        # rebuild FTS + embedding indexes from the ledger
+    "memory_compact",        # physically remove tombstoned hot-ledger events
     "retrieval_eval",        # compare BM25 vs hybrid precision/latency
     "memory_guardian_nightly",# verify recent memory events + export metrics
     "memory_hygiene_weekly", # mark stale/archive/proposals without hard deletion
@@ -645,6 +646,12 @@ async def _execute_internal_tool(task: GuardianTask, session: Session) -> tuple[
         from app.services.guardian.memory_hygiene import run_monthly_memory_cleanup_proposal_job
 
         payload = run_monthly_memory_cleanup_proposal_job(session=session)
+        return "success", json.dumps(payload, ensure_ascii=False)
+
+    if task.tool_name == "memory_compact":
+        from app.services.guardian.memory import compact_deleted_memory_events
+
+        payload = compact_deleted_memory_events()
         return "success", json.dumps(payload, ensure_ascii=False)
 
     if task.tool_name == "retrieval_eval":

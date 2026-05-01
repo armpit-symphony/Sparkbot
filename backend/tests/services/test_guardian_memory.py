@@ -82,6 +82,55 @@ def test_delete_fact_memory_removes_only_matching_fact(monkeypatch, tmp_path: Pa
     assert "calm workflows" in context
 
 
+def test_delete_fact_memory_uses_tombstone_and_incremental_index_delete(monkeypatch, tmp_path: Path) -> None:
+    _reset_memory_guardian(monkeypatch, tmp_path)
+
+    memory.remember_fact(user_id="user-1", fact="User prefers Python.", memory_id="mem-1")
+    assert memory._guardian().fts.search("Python", session_id=memory._user_session("user-1"))
+
+    def _fail_reindex():
+        raise AssertionError("delete should not rebuild all indexes")
+
+    monkeypatch.setattr(memory, "reindex_memory_indexes", _fail_reindex)
+
+    removed = memory.delete_fact_memory(user_id="user-1", memory_id="mem-1")
+    assert removed == 1
+    assert memory._guardian().fts.search("Python", session_id=memory._user_session("user-1")) == []
+    tombstones = [
+        event for event in memory._guardian().ledger.iter_events()
+        if (event.metadata or {}).get("target_memory_id") == "mem-1"
+    ]
+    assert tombstones
+    assert tombstones[-1].metadata["deleted"] is True
+
+
+def test_compaction_removes_tombstoned_hot_events(monkeypatch, tmp_path: Path) -> None:
+    _reset_memory_guardian(monkeypatch, tmp_path)
+
+    memory.remember_fact(user_id="user-1", fact="User prefers compact ledgers.", memory_id="mem-1")
+    memory.delete_fact_memory(user_id="user-1", memory_id="mem-1")
+
+    dry_run = memory.compact_deleted_memory_events(dry_run=True)
+    result = memory.compact_deleted_memory_events()
+    contents = memory._guardian().ledger.ledger_path.read_text(encoding="utf-8")
+
+    assert dry_run["events_removed"] == 1
+    assert result["compacted"] is True
+    assert "User prefers compact ledgers" not in contents
+    assert "MEMORY_LIFECYCLE" in contents
+
+
+def test_forget_fact_by_query_matches_semantically(monkeypatch, tmp_path: Path) -> None:
+    _reset_memory_guardian(monkeypatch, tmp_path)
+
+    memory.remember_fact(user_id="user-1", fact="User works at Google.", memory_id="mem-work")
+    result = memory.forget_fact_by_query(user_id="user-1", query="I work at Google")
+    context = memory.build_memory_context(user_id="user-1", room_id="room-1", query="Where does the user work?")
+
+    assert result["deleted"] is True
+    assert "Google" not in context
+
+
 def test_memory_guardian_builds_learned_profile_and_workflow_summary(monkeypatch, tmp_path: Path) -> None:
     _reset_memory_guardian(monkeypatch, tmp_path)
 

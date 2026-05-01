@@ -80,6 +80,16 @@ class FTSIndex:
         conn.commit()
         conn.close()
 
+    def delete_event(self, event_id: str) -> int:
+        """Remove one event from the FTS index."""
+        conn = sqlite3.connect(str(self.db_path))
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM events_fts WHERE id = ?", (event_id,))
+        count = cursor.rowcount or 0
+        conn.commit()
+        conn.close()
+        return count
+
     def search(self, query: str, limit: int = 10, session_id: str | None = None) -> list[dict]:
         """Search the FTS index."""
         normalized = self._normalize_query(query)
