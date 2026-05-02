@@ -354,23 +354,23 @@ def _build_google_comms_status() -> dict[str, Any]:
 
 
 def _build_comms_status() -> dict[str, Any]:
-    """Return bridge comms status. Discord/WhatsApp/GitHub use heavy third-party
-    libraries not bundled in V1_LOCAL_MODE; Telegram uses only httpx so it is
-    always safe to import."""
+    """Return bridge comms status. Discord/WhatsApp use heavy third-party
+    libraries not bundled in V1_LOCAL_MODE; Telegram and GitHub use httpx/local
+    helpers and are safe to report in the desktop build."""
     google_status = _build_google_comms_status()
     # Telegram bridge uses plain httpx — always report real status so the UI
     # correctly shows configured/linked state in the desktop (V1_LOCAL_MODE) build.
     from app.services.telegram_bridge import get_status as get_telegram_status
+    from app.services.github_bridge import get_status as get_github_status
     if settings.V1_LOCAL_MODE:
         return {
             "telegram": get_telegram_status(),
             "discord": {"enabled": False, "dm_only": False},
             "whatsapp": {"enabled": False},
-            "github": {"enabled": False, "bot_login": "sparkbot", "default_repo": "", "allowed_repos": []},
+            "github": get_github_status(),
             "google": google_status,
         }
     from app.services.discord_bridge import get_status as get_discord_status
-    from app.services.github_bridge import get_status as get_github_status
     from app.services.whatsapp_bridge import get_status as get_whatsapp_status
     return {
         "telegram": get_telegram_status(),
@@ -555,6 +555,11 @@ class WhatsAppConfigInput(BaseModel):
 class GitHubConfigInput(BaseModel):
     token: str | None = None
     webhook_secret: str | None = None
+    ssh_private_key: str | None = None
+    ssh_key_path: str | None = None
+    app_id: str | None = None
+    app_installation_id: str | None = None
+    app_private_key: str | None = None
     bot_login: str | None = None
     default_repo: str | None = None
     allowed_repos: str | None = None
@@ -1088,6 +1093,38 @@ async def update_models_config(
                 else:
                     env_updates["GITHUB_TOKEN"] = body.comms.github.token
                     notices.append("GitHub token saved to env storage. Use break-glass access to persist it in Vault.")
+            if body.comms.github.ssh_private_key:
+                if _upsert_vault_secret(
+                    alias="github_ssh_private_key",
+                    value=body.comms.github.ssh_private_key,
+                    category="communications",
+                    notes="GitHub SSH private key for git access",
+                    current_user=current_user,
+                ):
+                    runtime_only_env_updates["GITHUB_SSH_PRIVATE_KEY"] = body.comms.github.ssh_private_key
+                    notices.append("GitHub SSH key saved to Vault.")
+                else:
+                    env_updates["GITHUB_SSH_PRIVATE_KEY"] = body.comms.github.ssh_private_key
+                    notices.append("GitHub SSH key saved to env storage. Use break-glass access to persist it in Vault.")
+            if body.comms.github.ssh_key_path is not None:
+                env_updates["GITHUB_SSH_KEY_PATH"] = body.comms.github.ssh_key_path.strip()
+            if body.comms.github.app_id is not None:
+                env_updates["GITHUB_APP_ID"] = body.comms.github.app_id.strip()
+            if body.comms.github.app_installation_id is not None:
+                env_updates["GITHUB_APP_INSTALLATION_ID"] = body.comms.github.app_installation_id.strip()
+            if body.comms.github.app_private_key:
+                if _upsert_vault_secret(
+                    alias="github_app_private_key",
+                    value=body.comms.github.app_private_key,
+                    category="communications",
+                    notes="GitHub App private key",
+                    current_user=current_user,
+                ):
+                    runtime_only_env_updates["GITHUB_APP_PRIVATE_KEY"] = body.comms.github.app_private_key
+                    notices.append("GitHub App private key saved to Vault.")
+                else:
+                    env_updates["GITHUB_APP_PRIVATE_KEY"] = body.comms.github.app_private_key
+                    notices.append("GitHub App private key saved to env storage. Use break-glass access to persist it in Vault.")
             if body.comms.github.webhook_secret:
                 if _upsert_vault_secret(
                     alias="github_webhook_secret",

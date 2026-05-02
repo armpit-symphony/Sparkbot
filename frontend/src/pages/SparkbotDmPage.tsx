@@ -272,12 +272,16 @@ interface ModelsControlsConfig {
     github: {
       configured: boolean
       enabled: boolean
+      token_configured?: boolean
+      ssh_configured?: boolean
+      app_configured?: boolean
       bot_login: string
       default_repo: string
       allowed_repos: string[]
       allowed_repos_count: number
       linked_threads: number
       webhook_path: string
+      webhook_configured?: boolean
     }
     google: {
       gmail_configured: boolean
@@ -351,6 +355,11 @@ interface CommsForm {
   github: {
     token: string
     webhook_secret: string
+    ssh_private_key: string
+    ssh_key_path: string
+    app_id: string
+    app_installation_id: string
+    app_private_key: string
     bot_login: string
     default_repo: string
     allowed_repos: string
@@ -386,6 +395,8 @@ const BUILTIN_AGENTS: Agent[] = [
   { name: "writer",     emoji: "✍️", description: "Professional writer — drafts, edits, structures content" },
   { name: "analyst",    emoji: "📊", description: "Data analyst — structured reasoning and actionable insights" },
 ]
+
+const LEGACY_COMMS_VISIBLE = false
 
 // ─── Specialty agent templates (shown in Spawn Agent picker) ──────────────────
 
@@ -988,10 +999,7 @@ function SparkbotSettingsDialog({
     (provider) => provider.configured || provider.models_available === true,
   ).length ?? 0
   const enabledChannelCount = [
-    Boolean(commsForm.telegram.enabled && modelsConfig?.comms?.telegram?.configured),
-    Boolean(commsForm.discord.enabled && modelsConfig?.comms?.discord?.configured),
-    Boolean(commsForm.whatsapp.enabled && modelsConfig?.comms?.whatsapp?.configured),
-    Boolean(commsForm.github.enabled && modelsConfig?.comms?.github?.configured),
+    Boolean(modelsConfig?.comms?.github?.configured),
   ].filter(Boolean).length
   const onboardingSteps = showAdvancedControls
     ? [
@@ -1010,11 +1018,11 @@ function SparkbotSettingsDialog({
             : "Choose OpenRouter cloud AI or a local Ollama model",
         },
         {
-          title: "Turn on one channel",
+          title: "Add GitHub access",
           done: enabledChannelCount > 0,
           detail: enabledChannelCount > 0
-            ? `${enabledChannelCount} channel${enabledChannelCount === 1 ? "" : "s"} enabled`
-            : "Enable Telegram, Discord, WhatsApp, GitHub, or Google after adding credentials",
+            ? "GitHub access is ready"
+            : "Add GitHub access with a token, SSH key, or GitHub App",
         },
         {
           title: "Choose Computer Control mode",
@@ -1107,7 +1115,7 @@ function SparkbotSettingsDialog({
                   <div className="flex gap-2"><span className="font-semibold text-primary shrink-0">2.</span> Pick which AI model Sparkbot will use when you chat.</div>
                   <div className="flex gap-2"><span className="font-semibold text-primary shrink-0">3.</span> Optionally give a specific assistant its own AI model.</div>
                   {showAdvancedControls ? (
-                    <div className="flex gap-2"><span className="font-semibold text-primary shrink-0">4.</span> Enable one comms channel so reminders reach you on Telegram, Discord, or WhatsApp.</div>
+                    <div className="flex gap-2"><span className="font-semibold text-primary shrink-0">4.</span> Add GitHub access so Sparkbot can work with your repos from chat.</div>
                   ) : null}
                 </div>
               </div>
@@ -1855,10 +1863,11 @@ function SparkbotSettingsDialog({
             <div className="mb-3">
               <h2 className="text-sm font-semibold">Comms</h2>
               <p className="text-xs text-muted-foreground">
-                Configure messaging and calendar connectors. Edit credentials and toggle bridges, then save.
+                Configure GitHub repo access. Choose token, SSH, or GitHub App credentials, then save.
               </p>
             </div>
             <div className="divide-y rounded-lg border">
+              {LEGACY_COMMS_VISIBLE ? <>
               {/* Telegram */}
               <div>
                 <button
@@ -1988,6 +1997,7 @@ function SparkbotSettingsDialog({
                   </div>
                 )}
               </div>
+              </> : null}
               {/* GitHub */}
               <div>
                 <button
@@ -2006,22 +2016,58 @@ function SparkbotSettingsDialog({
                 </button>
                 {commsOpenSection === "github" && (
                   <div className="border-t bg-muted/20 px-4 py-4 space-y-3">
-                    <p className="text-[10px] text-muted-foreground/70">Reads issues & PRs · Posts comments · Write actions require approval</p>
-                    <p className="text-[10px] text-muted-foreground/60">Webhook: {modelsConfig?.comms?.github?.webhook_path ?? "/api/v1/chat/github/events"}</p>
+                    <p className="text-[10px] text-muted-foreground/70">Token, SSH, or GitHub App access. No webhook setup required. Write actions still require approval.</p>
+                    <div className="grid gap-2 rounded-md border bg-background/70 p-3 text-[10px] text-muted-foreground sm:grid-cols-3">
+                      <span>Token: {modelsConfig?.comms?.github?.token_configured ? "ready" : "missing"}</span>
+                      <span>SSH: {modelsConfig?.comms?.github?.ssh_configured ? "ready" : "missing"}</span>
+                      <span>GitHub App: {modelsConfig?.comms?.github?.app_configured ? "ready" : "missing"}</span>
+                    </div>
                     <input
                       type="password"
                       value={commsForm.github.token}
                       onChange={(e) => onCommsTextChange("github", "token", e.target.value)}
-                      placeholder="GitHub token"
+                      placeholder="Token path: paste a fine-grained PAT. The token scopes control what Sparkbot can do."
                       className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
                     />
-                    <input
-                      type="password"
-                      value={commsForm.github.webhook_secret}
-                      onChange={(e) => onCommsTextChange("github", "webhook_secret", e.target.value)}
-                      placeholder="Webhook secret"
-                      className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
-                    />
+                    <div className="grid gap-2 md:grid-cols-2">
+                      <input
+                        type="text"
+                        value={commsForm.github.ssh_key_path}
+                        onChange={(e) => onCommsTextChange("github", "ssh_key_path", e.target.value)}
+                        placeholder="SSH path: C:\\Users\\you\\.ssh\\id_ed25519"
+                        className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                      />
+                      <input
+                        type="password"
+                        value={commsForm.github.ssh_private_key}
+                        onChange={(e) => onCommsTextChange("github", "ssh_private_key", e.target.value)}
+                        placeholder="Or paste SSH private key into Vault"
+                        className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                      />
+                    </div>
+                    <div className="grid gap-2 md:grid-cols-3">
+                      <input
+                        type="text"
+                        value={commsForm.github.app_id}
+                        onChange={(e) => onCommsTextChange("github", "app_id", e.target.value)}
+                        placeholder="GitHub App ID"
+                        className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                      />
+                      <input
+                        type="text"
+                        value={commsForm.github.app_installation_id}
+                        onChange={(e) => onCommsTextChange("github", "app_installation_id", e.target.value)}
+                        placeholder="Installation ID"
+                        className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                      />
+                      <input
+                        type="password"
+                        value={commsForm.github.app_private_key}
+                        onChange={(e) => onCommsTextChange("github", "app_private_key", e.target.value)}
+                        placeholder="App private key"
+                        className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                      />
+                    </div>
                     <input
                       type="text"
                       value={commsForm.github.bot_login}
@@ -2043,22 +2089,19 @@ function SparkbotSettingsDialog({
                       placeholder="Allowed repos (comma-separated)"
                       className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
                     />
-                    <label className="flex items-center justify-between gap-2 text-xs">
-                      <span>Enable bridge</span>
-                      <input type="checkbox" checked={commsForm.github.enabled} onChange={(e) => onCommsToggleChange("github", "enabled", e.target.checked)} />
-                    </label>
                     <div className="rounded-md bg-background/70 border px-3 py-3 text-xs text-muted-foreground space-y-1">
                       <div className="text-[11px] uppercase tracking-wide font-medium">Onboarding</div>
-                      <div>1. Paste token + webhook secret, then save.</div>
-                      <div>2. Add webhook to your repo pointing to <code className="rounded bg-muted px-1">{modelsConfig?.comms?.github?.webhook_path ?? "/api/v1/chat/github/events"}</code>.</div>
-                      <div>3. Select <span className="text-foreground">Issue comments</span> and <span className="text-foreground">PR review comments</span>.</div>
+                      <div>1. Fastest path: paste a fine-grained token with only the repo permissions you want Sparkbot to have.</div>
+                      <div>2. SSH path: point Sparkbot at an existing key, or paste one to store it in the local Vault.</div>
+                      <div>3. GitHub App path: paste App ID, Installation ID, and private key for install-scoped access.</div>
                       {!modelsConfig?.comms?.github?.allowed_repos_count && (
-                        <div className="text-amber-600">No repo allowlist set — bridge will accept any repo.</div>
+                        <div className="text-amber-600">No repo allowlist set. Add owner/repo entries to restrict assistant work to known repos.</div>
                       )}
                     </div>
                   </div>
                 )}
               </div>
+              {LEGACY_COMMS_VISIBLE ? <>
               {/* Gmail */}
               <div>
                 <button
@@ -2159,10 +2202,11 @@ function SparkbotSettingsDialog({
                   </div>
                 )}
               </div>
+              </> : null}
             </div>
             <div className="mt-3 flex items-center justify-between gap-3">
               <div className="text-xs text-muted-foreground">
-                Google credentials are available to skills immediately after saving. Telegram activates within 30 seconds of saving. Discord, WhatsApp, and GitHub require a restart.
+                GitHub settings are saved locally. Tokens define API permissions, SSH keys define git access, and GitHub Apps define installation-scoped access.
               </div>
               <button
                 type="button"
@@ -2671,6 +2715,11 @@ function SparkbotDmPage() {
     github: {
       token: "",
       webhook_secret: "",
+      ssh_private_key: "",
+      ssh_key_path: "",
+      app_id: "",
+      app_installation_id: "",
+      app_private_key: "",
       bot_login: "sparkbot",
       default_repo: "",
       allowed_repos: "",
@@ -2837,6 +2886,11 @@ function SparkbotDmPage() {
       github: {
         token: "",
         webhook_secret: "",
+        ssh_private_key: "",
+        ssh_key_path: "",
+        app_id: "",
+        app_installation_id: "",
+        app_private_key: "",
         bot_login: config.comms?.github?.bot_login || "sparkbot",
         default_repo: config.comms?.github?.default_repo || "",
         allowed_repos: (config.comms?.github?.allowed_repos ?? []).join(", "),
@@ -3552,7 +3606,7 @@ function SparkbotDmPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ comms: commsForm }),
+        body: JSON.stringify({ comms: { github: commsForm.github } }),
       })
       const data = await res.json().catch(() => ({ detail: "Could not save comms settings." }))
       if (!res.ok) {
@@ -3560,7 +3614,7 @@ function SparkbotDmPage() {
       } else {
         applyControlsConfig(data)
         await refreshControls()
-        setMessages(prev => [...prev, systemMsg("Communications settings saved. Restart sparkbot-v2 to apply bridge startup changes.")])
+        setMessages(prev => [...prev, systemMsg("GitHub access settings saved. Token scopes, SSH keys, and GitHub App installation permissions control what Sparkbot can do.")])
       }
     } catch {
       setSettingsError("Could not save comms settings.")

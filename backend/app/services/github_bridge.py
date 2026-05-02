@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 import httpx
+import jwt
 from sqlalchemy import select
 from sqlmodel import Session
 
@@ -56,6 +57,7 @@ def _env_or_vault_secret(env_var: str, vault_alias: str) -> str:
 _GITHUB_API = "https://api.github.com"
 _DELIVERY_TTL_SECONDS = 300.0
 _seen_deliveries: dict[str, float] = {}
+_GITHUB_APP_TOKEN_CACHE: dict[str, float | str] = {"access_token": "", "expires_at": 0.0}
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS github_links (
@@ -101,11 +103,69 @@ def _enabled() -> bool:
 
 
 def _github_token() -> str:
-    return _env_or_vault_secret("GITHUB_TOKEN", "github_token")
+    token = _env_or_vault_secret("GITHUB_TOKEN", "github_token")
+    if token:
+        return token
+    return _github_app_installation_token()
+
+
+def _github_pat_configured() -> bool:
+    return bool(_env_or_vault_secret("GITHUB_TOKEN", "github_token"))
+
+
+def _github_app_installation_token() -> str:
+    cached = str(_GITHUB_APP_TOKEN_CACHE.get("access_token") or "")
+    if cached and time.time() < float(_GITHUB_APP_TOKEN_CACHE.get("expires_at") or 0.0):
+        return cached
+    app_id = os.getenv("GITHUB_APP_ID", "").strip()
+    installation_id = os.getenv("GITHUB_APP_INSTALLATION_ID", "").strip()
+    private_key = _env_or_vault_secret("GITHUB_APP_PRIVATE_KEY", "github_app_private_key").replace("\\n", "\n")
+    if not (app_id and installation_id and private_key):
+        return ""
+    now = int(time.time())
+    app_jwt = jwt.encode(
+        {"iat": now - 60, "exp": now + 540, "iss": app_id},
+        private_key,
+        algorithm="RS256",
+    )
+    try:
+        with httpx.Client(timeout=15.0) as client:
+            response = client.post(
+                f"{_GITHUB_API}/app/installations/{installation_id}/access_tokens",
+                headers={
+                    "Accept": "application/vnd.github+json",
+                    "Authorization": f"Bearer {app_jwt}",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+    except Exception:
+        return ""
+    token = str(data.get("token") or "")
+    if token:
+        _GITHUB_APP_TOKEN_CACHE["access_token"] = token
+        _GITHUB_APP_TOKEN_CACHE["expires_at"] = time.time() + 3300
+    return token
 
 
 def _webhook_secret() -> str:
     return _env_or_vault_secret("GITHUB_WEBHOOK_SECRET", "github_webhook_secret")
+
+
+def _github_ssh_configured() -> bool:
+    return bool(
+        os.getenv("GITHUB_SSH_KEY_PATH", "").strip()
+        or _env_or_vault_secret("GITHUB_SSH_PRIVATE_KEY", "github_ssh_private_key")
+    )
+
+
+def _github_app_configured() -> bool:
+    return bool(
+        os.getenv("GITHUB_APP_ID", "").strip()
+        and os.getenv("GITHUB_APP_INSTALLATION_ID", "").strip()
+        and _env_or_vault_secret("GITHUB_APP_PRIVATE_KEY", "github_app_private_key")
+    )
 
 
 def _bot_login() -> str:
@@ -126,6 +186,10 @@ def _allowed_repos() -> set[str]:
 
 def _configured() -> bool:
     return bool(_github_token() and _webhook_secret())
+
+
+def _control_configured() -> bool:
+    return bool(_github_pat_configured() or _github_ssh_configured() or _github_app_configured())
 
 
 def _data_root() -> Path:
@@ -251,14 +315,18 @@ def get_status() -> dict[str, Any]:
         count_row = conn.execute("SELECT COUNT(*) FROM github_links").fetchone()
     allowed = sorted(_allowed_repos())
     return {
-        "configured": _configured(),
+        "configured": _control_configured(),
         "enabled": _enabled(),
+        "token_configured": _github_pat_configured(),
+        "ssh_configured": _github_ssh_configured(),
+        "app_configured": _github_app_configured(),
         "bot_login": _bot_login(),
         "default_repo": _default_repo(),
         "allowed_repos": allowed,
         "allowed_repos_count": len(allowed),
         "linked_threads": int(count_row[0]) if count_row else 0,
         "webhook_path": "/api/v1/chat/github/events",
+        "webhook_configured": bool((_github_pat_configured() or _github_app_configured()) and _webhook_secret()),
         "data_path": str(_db_path()),
     }
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import os
 import uuid
 from typing import Any, Optional
 
@@ -31,6 +33,31 @@ TERMINAL_MEETING_STATUSES = {
     "blocked",
     "looping",
 }
+MEETING_TURN_RETRY_ATTEMPTS = max(1, int(os.getenv("SPARKBOT_MEETING_TURN_RETRY_ATTEMPTS", "3")))
+MEETING_TURN_RETRY_DELAY_SECONDS = max(0.1, float(os.getenv("SPARKBOT_MEETING_TURN_RETRY_DELAY_SECONDS", "1.5")))
+
+
+def _is_retryable_meeting_error(exc: Exception) -> bool:
+    text = f"{type(exc).__name__}: {exc}".lower()
+    retry_markers = (
+        "network",
+        "connection",
+        "connect",
+        "timeout",
+        "timed out",
+        "temporarily",
+        "rate limit",
+        "overloaded",
+        "service unavailable",
+        "bad gateway",
+        "gateway timeout",
+        "http 429",
+        "http 500",
+        "http 502",
+        "http 503",
+        "http 504",
+    )
+    return any(marker in text for marker in retry_markers)
 
 
 def _chunk_text(text: str, size: int = 80) -> list[str]:
@@ -320,25 +347,34 @@ async def run_meeting_heartbeat(
                 ).strip(),
             }
         ]
-        try:
-            async for event in stream_chat_with_tools(
-                turn_messages,
-                user_id=str(current_user.id),
-                db_session=session,
-                room_id=str(room_uuid),
-                agent_name=participant_handle,
-                room_execution_allowed=room.execution_allowed,
-                is_operator=user_is_operator,
-                is_privileged=user_is_privileged,
-            ):
-                if event["type"] == "token":
-                    agent_full_text += event["token"]
-                elif event["type"] == "routing":
-                    agent_routing_payload = event.get("payload")
-                elif event["type"] in ("confirm_required", "privileged_required"):
-                    stop_event = event
+        last_error: Exception | None = None
+        for attempt in range(MEETING_TURN_RETRY_ATTEMPTS):
+            try:
+                async for event in stream_chat_with_tools(
+                    turn_messages,
+                    user_id=str(current_user.id),
+                    db_session=session,
+                    room_id=str(room_uuid),
+                    agent_name=participant_handle,
+                    room_execution_allowed=room.execution_allowed,
+                    is_operator=user_is_operator,
+                    is_privileged=user_is_privileged,
+                ):
+                    if event["type"] == "token":
+                        agent_full_text += event["token"]
+                    elif event["type"] == "routing":
+                        agent_routing_payload = event.get("payload")
+                    elif event["type"] in ("confirm_required", "privileged_required"):
+                        stop_event = event
+                        break
+                last_error = None
+                break
+            except Exception as exc:
+                last_error = exc
+                if agent_full_text or not _is_retryable_meeting_error(exc) or attempt >= MEETING_TURN_RETRY_ATTEMPTS - 1:
                     break
-        except Exception:
+                await asyncio.sleep(MEETING_TURN_RETRY_DELAY_SECONDS * (attempt + 1))
+        if last_error is not None:
             return {"content": "", "status": "blocked", "halted": False, "failed": True}
 
         if stop_event:
@@ -521,12 +557,16 @@ async def run_meeting_heartbeat(
             final_status = final_result.get("status") or "recommendation_ready"
             final_text = final_result.get("content") or final_text
 
-    notes = await generate_meeting_notes(
-        session=session,
-        room_id=room_uuid,
-        user_id=current_user.id,
-        model=get_model(str(current_user.id)),
-    )
+    notes: dict[str, Any] = {}
+    try:
+        notes = await generate_meeting_notes(
+            session=session,
+            room_id=room_uuid,
+            user_id=current_user.id,
+            model=get_model(str(current_user.id)),
+        )
+    except Exception:
+        notes = {}
     summary = (
         f"Hourly meeting heartbeat completed with status `{final_status}`.\n\n"
         f"{final_text.strip() or '(no summary produced)'}"

@@ -3,6 +3,7 @@ API routes for chat rooms.
 
 Handles room CRUD and membership management.
 """
+import asyncio
 import json
 import logging
 import os
@@ -88,6 +89,31 @@ _MEETING_STATUS_VALUES = {
 
 _BREAKGLASS_PIN_TTL_SECONDS = max(60, min(int(os.getenv("SPARKBOT_PIN_PROMPT_TTL_SECONDS", "300")), 1800))
 _AWAITING_BREAKGLASS_PIN: dict[str, dict[str, Any]] = {}
+_MEETING_TURN_RETRY_ATTEMPTS = max(1, int(os.getenv("SPARKBOT_MEETING_TURN_RETRY_ATTEMPTS", "3")))
+_MEETING_TURN_RETRY_DELAY_SECONDS = max(0.1, float(os.getenv("SPARKBOT_MEETING_TURN_RETRY_DELAY_SECONDS", "1.5")))
+
+
+def _is_retryable_meeting_error(exc: Exception) -> bool:
+    text = f"{type(exc).__name__}: {exc}".lower()
+    retry_markers = (
+        "network",
+        "connection",
+        "connect",
+        "timeout",
+        "timed out",
+        "temporarily",
+        "rate limit",
+        "overloaded",
+        "service unavailable",
+        "bad gateway",
+        "gateway timeout",
+        "http 429",
+        "http 500",
+        "http 502",
+        "http 503",
+        "http 504",
+    )
+    return any(marker in text for marker in retry_markers)
 
 
 def _agent_label(agent_name: str, agent_info: Optional[dict[str, Any]] = None) -> str:
@@ -1585,50 +1611,60 @@ async def stream_room_message(
             agent_routing_payload = None
             stop_event = None
             db2 = None
-            try:
-                from app.api.deps import get_db as _get_db2
+            last_error: Exception | None = None
+            for attempt in range(_MEETING_TURN_RETRY_ATTEMPTS):
+                try:
+                    from app.api.deps import get_db as _get_db2
 
-                db2 = next(_get_db2())
-                turn_messages = [{"role": "system", "content": p_system}] + discussion_history + [
-                    {
-                        "role": "user",
-                        "content": (
-                            f"Meeting objective from the owner:\n{objective.strip() or agent_content.strip()}\n\n"
-                            f"{phase_prompt}"
-                        ).strip(),
-                    }
-                ]
-                async for event in _sct(
-                    turn_messages,
-                    user_id=user_id_str,
-                    db_session=db2,
-                    room_id=str(room_id),
-                    agent_name=participant_handle,
-                    room_execution_allowed=room.execution_allowed,
-                    is_operator=_user_is_operator,
-                    is_privileged=_user_is_privileged,
-                ):
-                    if event["type"] == "token":
-                        agent_full_text += event["token"]
-                        if not parse_status:
-                            emitted_events.append(
-                                f"data: {json.dumps({'type': 'token', 'token': event['token'], 'agent': participant_handle})}\n\n"
-                            )
-                    elif event["type"] == "routing":
-                        agent_routing_payload = event.get("payload")
-                    elif event["type"] in ("tool_start", "tool_done"):
-                        emitted_events.append(f"data: {json.dumps(event)}\n\n")
-                    elif event["type"] in ("confirm_required", "privileged_required"):
-                        stop_event = event
-                        emitted_events.append(f"data: {json.dumps(event)}\n\n")
+                    db2 = next(_get_db2())
+                    turn_messages = [{"role": "system", "content": p_system}] + discussion_history + [
+                        {
+                            "role": "user",
+                            "content": (
+                                f"Meeting objective from the owner:\n{objective.strip() or agent_content.strip()}\n\n"
+                                f"{phase_prompt}"
+                            ).strip(),
+                        }
+                    ]
+                    async for event in _sct(
+                        turn_messages,
+                        user_id=user_id_str,
+                        db_session=db2,
+                        room_id=str(room_id),
+                        agent_name=participant_handle,
+                        room_execution_allowed=room.execution_allowed,
+                        is_operator=_user_is_operator,
+                        is_privileged=_user_is_privileged,
+                    ):
+                        if event["type"] == "token":
+                            agent_full_text += event["token"]
+                            if not parse_status:
+                                emitted_events.append(
+                                    f"data: {json.dumps({'type': 'token', 'token': event['token'], 'agent': participant_handle})}\n\n"
+                                )
+                        elif event["type"] == "routing":
+                            agent_routing_payload = event.get("payload")
+                        elif event["type"] in ("tool_start", "tool_done"):
+                            emitted_events.append(f"data: {json.dumps(event)}\n\n")
+                        elif event["type"] in ("confirm_required", "privileged_required"):
+                            stop_event = event
+                            emitted_events.append(f"data: {json.dumps(event)}\n\n")
+                            break
+                    last_error = None
+                    break
+                except Exception as e:
+                    last_error = e
+                    if db2:
+                        db2.close()
+                        db2 = None
+                    if agent_full_text or not _is_retryable_meeting_error(e) or attempt >= _MEETING_TURN_RETRY_ATTEMPTS - 1:
                         break
-            except Exception as e:
-                if db2:
-                    db2.close()
+                    await asyncio.sleep(_MEETING_TURN_RETRY_DELAY_SECONDS * (attempt + 1))
+            if last_error is not None:
                 from app.api.routes.chat.llm import humanise_chat_error
                 log.exception("autonomous meeting turn failed for %s", participant_handle)
                 emitted_events.append(
-                    f"data: {json.dumps({'type': 'error', 'error': humanise_chat_error(e), 'detail': str(e)[:400], 'agent': participant_handle, 'fatal': False})}\n\n"
+                    f"data: {json.dumps({'type': 'error', 'error': humanise_chat_error(last_error), 'detail': str(last_error)[:400], 'agent': participant_handle, 'fatal': False})}\n\n"
                 )
                 return {"content": "", "status": "blocked", "halted": False, "failed": True, "events": emitted_events}
 

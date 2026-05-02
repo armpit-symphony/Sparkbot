@@ -6,7 +6,7 @@ Use it to chat, search, summarize documents, control a browser, run shell comman
 
 **Download:** [armpit-symphony.github.io/Sparkbot](https://armpit-symphony.github.io/Sparkbot/)
 
-**Current release line:** v1.6.48
+**Current release line:** v1.6.49
 
 > Sparkbot stores its app data locally. If you connect a cloud LLM provider or an external service, the text and actions needed for that provider or service are sent to that provider. Local models can run without an LLM cloud account.
 
@@ -109,7 +109,7 @@ The desktop app is the easiest path for one person. Docker and systemd deploymen
 - **Telegram** — private chats map to Sparkbot rooms; `/approve` / `/deny` resolve confirmations; receives proactive push alerts
 - **Discord** — DMs and @mentions map to rooms; same approval flow; receives push alerts
 - **WhatsApp** — Meta Cloud API webhook; free-form replies in the 24-hour session window
-- **GitHub** — signed webhook for issue and PR comments; `approve` / `deny` resolves in-thread
+- **GitHub** — token, SSH, or GitHub App setup from Controls; token scopes and repo allowlists define what Sparkbot can access
 
 ### Platform Integrations
 - **Microsoft 365** — Outlook mail + calendar, OneDrive (requires Azure app registration)
@@ -535,6 +535,7 @@ User message → Token Guardian → Memory Guardian → LLM
 
 | Version | Date | Highlights |
 |---------|------|-----------|
+| v1.6.49 | May 2026 | GitHub onboarding now focuses on three local control paths: fine-grained token, SSH key, or GitHub App installation, with no webhook setup required in Controls; GitHub status works in local desktop mode; autonomous Roundtable meeting turns retry transient provider/network failures before surfacing errors; heartbeat notes are best-effort so note capture does not break the meeting loop; downloader/docs advanced to the v1.6.49 desktop line. |
 | v1.6.48 | May 2026 | Guardian/Spine security stabilization: redact secret-like tool args from Spine approval events, redact metadata and result excerpts in executive decision JSONL, 21 new security gate tests covering vault auth denial, write-mode enforcement, PII redaction at persistence, bypass TTL expiry, and approval pruning. Preservation docs and extraction audit for LIMA-Guardian-Suite. |
 | v1.6.47 | May 2026 | Memory growth controls: 30-day hot ledger rotation into month-named cold archives, pre-ledger chat-noise filtering, nightly consolidation into daily summaries, semantic fact dedup/superseding, incremental tombstone deletes with weekly compaction, ranked memory inspector/correct/remove actions, natural "forget that..." matching, low-weight fact TTL archival, and a 90-day improvement-loop outcome window. |
 | v1.6.46 | Apr 2026 | Breakglass/Computer Control reliability: redesigned global ON/OFF control with a 24-hour expiry, Vault remains PIN-protected, diagnostics/tests can run while destructive edits/deletes/sends still require yes/no confirmation; fixed custom agent spawning on upgraded local SQLite installs; spawned agents now update the active registry immediately; Workstation Specialty Wing lists created agents for meeting seating; Roundtable chairs can be reassigned in-room; generated meeting notes now post into the meeting transcript and surface errors. |

@@ -1,0 +1,13 @@
+Sparkbot v1.6.49
+
+Focus: GitHub onboarding, local repo control, and meeting retry stability.
+
+- Simplified Sparkbot Controls comms setup to GitHub access only.
+- Added three GitHub setup paths: fine-grained token, SSH key/path, and GitHub App installation credentials.
+- Removed webhook setup from the guided GitHub onboarding flow.
+- GitHub status now reports token, SSH, and GitHub App readiness in local desktop mode.
+- GitHub tokens remain permission-scoped by GitHub itself, and Sparkbot continues to support repo allowlists.
+- Autonomous Roundtable meeting turns now retry transient provider/network failures before surfacing a non-fatal participant error.
+- Hourly meeting heartbeat uses the same transient retry behavior.
+- Heartbeat note capture is now best-effort so notes cannot break the meeting loop.
+- Advanced backend, frontend, Tauri shell, README, public downloader, capabilities docs, and packaging notes to v1.6.49.

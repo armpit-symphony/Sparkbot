@@ -1,5 +1,14 @@
 # Release Notes
 
+## Sparkbot v1.6.49
+
+- Simplified Controls comms to GitHub access paths only: token, SSH, and GitHub App.
+- Removed webhook onboarding from the GitHub setup flow.
+- Added local desktop GitHub readiness reporting for token, SSH, and GitHub App credentials.
+- Added transient retry handling for autonomous Roundtable and meeting heartbeat model/network failures.
+- Made heartbeat note capture best-effort so notes cannot break the meeting loop.
+- Updated README, capabilities docs, release note, and public downloader version markers for `1.6.49`.
+
 ## Sparkbot v1.6.48
 
 - Redacted secret-like tool arguments (password, token, api_key, etc.) from Spine approval event payloads before persistence.

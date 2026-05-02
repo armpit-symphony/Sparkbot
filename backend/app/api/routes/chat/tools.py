@@ -23,6 +23,7 @@ from typing import Optional
 from urllib.parse import quote, urlparse, urlunparse
 
 import httpx
+import jwt
 
 from app.services.guardian import get_guardian_suite
 
@@ -50,6 +51,7 @@ _CONFLUENCE_DEFAULT_SPACE = os.getenv("CONFLUENCE_DEFAULT_SPACE", "").strip()
 _GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "").strip()
 _GITHUB_DEFAULT_REPO = os.getenv("GITHUB_DEFAULT_REPO", "").strip()  # "owner/repo"
 _GITHUB_API = "https://api.github.com"
+_GITHUB_APP_TOKEN_CACHE: dict[str, float | str] = {"access_token": "", "expires_at": 0.0}
 
 # ─── Google Workspace config ──────────────────────────────────────────────────
 
@@ -82,7 +84,46 @@ def _env_or_vault_value(env_var: str, vault_alias: str, default: str = "") -> st
 
 
 def _github_token() -> str:
-    return _env_or_vault_value("GITHUB_TOKEN", "github_token")
+    token = _env_or_vault_value("GITHUB_TOKEN", "github_token")
+    if token:
+        return token
+    return _github_app_installation_token()
+
+
+def _github_app_installation_token() -> str:
+    cached = str(_GITHUB_APP_TOKEN_CACHE.get("access_token") or "")
+    if cached and time.time() < float(_GITHUB_APP_TOKEN_CACHE.get("expires_at") or 0.0):
+        return cached
+    app_id = os.getenv("GITHUB_APP_ID", "").strip()
+    installation_id = os.getenv("GITHUB_APP_INSTALLATION_ID", "").strip()
+    private_key = _env_or_vault_value("GITHUB_APP_PRIVATE_KEY", "github_app_private_key").replace("\\n", "\n")
+    if not (app_id and installation_id and private_key):
+        return ""
+    now = int(time.time())
+    app_jwt = jwt.encode(
+        {"iat": now - 60, "exp": now + 540, "iss": app_id},
+        private_key,
+        algorithm="RS256",
+    )
+    try:
+        with httpx.Client(timeout=15.0) as client:
+            response = client.post(
+                f"{_GITHUB_API}/app/installations/{installation_id}/access_tokens",
+                headers={
+                    "Accept": "application/vnd.github+json",
+                    "Authorization": f"Bearer {app_jwt}",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+    except Exception:
+        return ""
+    token = str(data.get("token") or "")
+    if token:
+        _GITHUB_APP_TOKEN_CACHE["access_token"] = token
+        _GITHUB_APP_TOKEN_CACHE["expires_at"] = time.time() + 3300
+    return token
 
 
 def _github_default_repo() -> str:
