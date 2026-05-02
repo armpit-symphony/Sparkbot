@@ -1,5 +1,13 @@
 # Release Notes
 
+## Sparkbot v1.6.50
+
+- Unified the top surface navigation across Chat, Workstation, Controls, Robo OS, Spine Ops, and Info.
+- Added `/controls` as a full-page Controls route that reuses the existing model setup, Computer Control, PIN, provider, comms, agent, and Task Guardian controls.
+- Added the same surface tabs inside Controls so users can flow directly back to Chat, Workstation, Robo OS, Spine Ops, or Info.
+- Added a Robo OS tab handoff from Chat/Controls into the Workstation MCP control-plane panel.
+- Added Controls to the sidebar and refreshed README, capabilities docs, release notes, public downloader, service worker, frontend/backend/Tauri version markers, and packaging notes for `1.6.50`.
+
 ## Sparkbot v1.6.49
 
 - Simplified Controls comms to GitHub access paths only: token, SSH, and GitHub App.

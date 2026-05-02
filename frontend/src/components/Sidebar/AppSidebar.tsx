@@ -1,4 +1,4 @@
-import { Bot, Database, Home, LayoutGrid, MessageSquare, Settings, Users } from "lucide-react"
+import { Bot, Database, Home, LayoutGrid, MessageSquare, Settings, SlidersHorizontal, Users } from "lucide-react"
 
 import { SidebarAppearance } from "@/components/Common/Appearance"
 import { Logo } from "@/components/Common/Logo"
@@ -17,6 +17,7 @@ const baseItems: Item[] = [
   { icon: LayoutGrid, title: "Workstation", path: "/workstation" },
   { icon: Home, title: "Dashboard", path: "/" },
   { icon: Bot, title: "Sparkbot", path: "/dm" },
+  { icon: SlidersHorizontal, title: "Controls", path: "/controls" },
   { icon: MessageSquare, title: "Chat", path: "/chat" },
   { icon: Settings, title: "Settings", path: "/settings" },
 ]

@@ -1,4 +1,10 @@
-export type SparkbotSurfaceTab = "chat" | "workstation" | "controls" | "robo_os" | "info"
+export type SparkbotSurfaceTab =
+  | "chat"
+  | "workstation"
+  | "controls"
+  | "robo_os"
+  | "spine_ops"
+  | "info"
 
 interface SparkbotSurfaceTabsProps {
   active?: SparkbotSurfaceTab
@@ -6,6 +12,7 @@ interface SparkbotSurfaceTabsProps {
   onWorkstation: () => void
   onControls: () => void
   onRoboOs?: () => void
+  onSpineOps?: () => void
   onInfo?: () => void
 }
 
@@ -18,7 +25,7 @@ const TAB_ACTIVE_SHADOW = "0 10px 24px rgba(49, 46, 129, 0.24)"
 
 const TAB_CONFIG: Array<{
   id: SparkbotSurfaceTab
-  label: "Chat" | "Workstation" | "Controls" | "Robo OS" | "Info"
+  label: "Chat" | "Workstation" | "Controls" | "Robo OS" | "Spine Ops" | "Info"
   onClick: (props: SparkbotSurfaceTabsProps) => void
 }> = [
   {
@@ -48,6 +55,11 @@ const TAB_CONFIG: Array<{
     },
   },
   {
+    id: "spine_ops",
+    label: "Spine Ops",
+    onClick: (props) => props.onSpineOps?.(),
+  },
+  {
     id: "info",
     label: "Info",
     onClick: (props) => props.onInfo?.(),
@@ -59,6 +71,7 @@ export default function SparkbotSurfaceTabs(props: SparkbotSurfaceTabsProps) {
     <div className="flex flex-wrap items-center justify-end gap-2">
       {TAB_CONFIG.filter((tab) => {
         if (tab.id === "info" && !props.onInfo) return false
+        if (tab.id === "spine_ops" && !props.onSpineOps) return false
         return true
       }).map((tab) => {
         const isActive = props.active === tab.id

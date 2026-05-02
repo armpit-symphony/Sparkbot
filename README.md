@@ -6,7 +6,7 @@ Use it to chat, search, summarize documents, control a browser, run shell comman
 
 **Download:** [armpit-symphony.github.io/Sparkbot](https://armpit-symphony.github.io/Sparkbot/)
 
-**Current release line:** v1.6.49
+**Current release line:** v1.6.50
 
 > Sparkbot stores its app data locally. If you connect a cloud LLM provider or an external service, the text and actions needed for that provider or service are sent to that provider. Local models can run without an LLM cloud account.
 
@@ -89,6 +89,8 @@ The desktop app is the easiest path for one person. Docker and systemd deploymen
 
 ### Workstation
 - **Office floor** — visual grid of all your AI desks: Sparkbot, model stack companions, agents, invite seats, terminal
+- **Unified top tabs** — Chat, Workstation, Controls, Robo OS, Spine Ops, and Info stay visible from the main app surfaces
+- **Full-page Controls** — model setup, Computer Control, PIN, providers, comms, agents, and Task Guardian now open as a connected app page instead of a chat-only panel
 - **Phone access** — the full workstation now opens on phone-sized screens as a horizontally scrollable operations map instead of blocking mobile users
 - **Robo OS** — Workstation button for the unified MCP control plane, LIMA Robotics OS manifests, policy tags, no-hardware replay/simulation commands, and robot-skill safety posture
 - **Invite Wing** — seat any model with its own API key and model ID; routes directly to that provider. The **Claude** and **ChatGPT** desks now use a matching `API Key / Subscription` setup pattern for Anthropic and OpenAI subscription-linked credentials, and the third desk is preset for **xAI Grok**
@@ -535,6 +537,7 @@ User message → Token Guardian → Memory Guardian → LLM
 
 | Version | Date | Highlights |
 |---------|------|-----------|
+| v1.6.50 | May 2026 | Unified top navigation across Chat, Workstation, Controls, Robo OS, Spine Ops, and Info; Controls now opens as a full-page app surface at `/controls`; Robo OS tab can jump directly into the Workstation control-plane panel; downloader/docs advanced to the v1.6.50 desktop line. |
 | v1.6.49 | May 2026 | GitHub onboarding now focuses on three local control paths: fine-grained token, SSH key, or GitHub App installation, with no webhook setup required in Controls; GitHub status works in local desktop mode; autonomous Roundtable meeting turns retry transient provider/network failures before surfacing errors; heartbeat notes are best-effort so note capture does not break the meeting loop; downloader/docs advanced to the v1.6.49 desktop line. |
 | v1.6.48 | May 2026 | Guardian/Spine security stabilization: redact secret-like tool args from Spine approval events, redact metadata and result excerpts in executive decision JSONL, 21 new security gate tests covering vault auth denial, write-mode enforcement, PII redaction at persistence, bypass TTL expiry, and approval pruning. Preservation docs and extraction audit for LIMA-Guardian-Suite. |
 | v1.6.47 | May 2026 | Memory growth controls: 30-day hot ledger rotation into month-named cold archives, pre-ledger chat-noise filtering, nightly consolidation into daily summaries, semantic fact dedup/superseding, incremental tombstone deletes with weekly compaction, ranked memory inspector/correct/remove actions, natural "forget that..." matching, low-weight fact TTL archival, and a 90-day improvement-loop outcome window. |

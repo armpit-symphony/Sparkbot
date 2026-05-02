@@ -1,12 +1,13 @@
 // Sparkbot DM Page — streaming, slash commands, syntax highlighting, search, meeting mode
 
-import { useState, useEffect, useCallback, useRef, type CSSProperties } from "react"
+import { useState, useEffect, useCallback, useRef, type CSSProperties, type ReactNode } from "react"
 import { useNavigate, useRouterState } from "@tanstack/react-router"
 import { Check, ChevronDown, CornerUpLeft, Copy, Loader2, Mic, Paperclip, Pencil, Radio, RefreshCw, Search, Send, Volume2, VolumeX, X } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter"
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism"
 import SparkbotSurfaceTabs from "@/components/Common/SparkbotSurfaceTabs"
+import SparkbotSurfaceInfoDialog from "@/components/Common/SparkbotSurfaceInfoDialog"
 import {
   Dialog,
   DialogContent,
@@ -18,7 +19,6 @@ import {
   CONTROLS_AUTOOPEN_KEY,
   CONTROLS_ONBOARDING_KEY,
   controlsOnboardingComplete,
-  CONTROLS_SEARCH_VALUE,
   isControlsSearchOpen,
 } from "@/lib/sparkbotControls"
 import { apiFetch, apiUrl } from "@/lib/apiBase"
@@ -709,6 +709,8 @@ function SearchPanel({ roomId, onClose }: SearchPanelProps) {
 interface SparkbotSettingsDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  fullScreen?: boolean
+  surfaceTabs?: ReactNode
   room: RoomInfo | null
   loading: boolean
   savingExecution: boolean
@@ -824,6 +826,8 @@ const TASK_TOOL_OPTIONS = [
 function SparkbotSettingsDialog({
   open,
   onOpenChange,
+  fullScreen = false,
+  surfaceTabs,
   loading,
   savingExecution,
   executionSaved,
@@ -1058,9 +1062,15 @@ function SparkbotSettingsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-auto sm:max-w-3xl">
+      <DialogContent
+        className={
+          fullScreen
+            ? "h-[100dvh] max-h-[100dvh] w-screen max-w-none overflow-auto rounded-none border-0 p-4 sm:max-w-none md:p-6"
+            : "max-h-[90vh] overflow-auto sm:max-w-3xl"
+        }
+      >
         <DialogHeader>
-          <div className="flex items-start justify-between gap-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div className="space-y-1">
               <DialogTitle>Sparkbot Controls</DialogTitle>
               <DialogDescription>
@@ -1069,17 +1079,20 @@ function SparkbotSettingsDialog({
                   : "Connect your AI model, choose a default, and optionally keep selected agents local on this machine."}
               </DialogDescription>
             </div>
-            <button
-              type="button"
-              onClick={() => onOpenChange(false)}
-              className="shrink-0 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            >
-              Continue to chat
-            </button>
+            <div className="flex flex-wrap items-center justify-start gap-2 lg:justify-end">
+              {surfaceTabs}
+              <button
+                type="button"
+                onClick={() => onOpenChange(false)}
+                className="shrink-0 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                Chat
+              </button>
+            </div>
           </div>
         </DialogHeader>
 
-        <div className="space-y-6">
+        <div className={fullScreen ? "mx-auto w-full max-w-7xl space-y-6" : "space-y-6"}>
           <section className="rounded-xl border p-4">
             <div className="mb-3 flex items-start justify-between gap-3">
               <div>
@@ -2640,7 +2653,11 @@ const emptyMeeting = (): MeetingState => ({ active: false, startedAt: null, note
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
-function SparkbotDmPage() {
+interface SparkbotDmPageProps {
+  controlsSurface?: boolean
+}
+
+function SparkbotDmPage({ controlsSurface = false }: SparkbotDmPageProps = {}) {
   const navigate = useNavigate()
   const routerState = useRouterState()
   const [roomId, setRoomId] = useState<string | null>(null)
@@ -2657,6 +2674,7 @@ function SparkbotDmPage() {
   const [showAgentPicker, setShowAgentPicker] = useState(false)
   const [agents, setAgents] = useState<Agent[]>(BUILTIN_AGENTS)
   const [showSearch, setShowSearch] = useState(false)
+  const [infoOpen, setInfoOpen] = useState(false)
   const [meeting, setMeeting] = useState<MeetingState>(emptyMeeting())
   const [uploading, setUploading] = useState(false)
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null)
@@ -2765,9 +2783,11 @@ function SparkbotDmPage() {
   const ttsAudioRef = useRef<HTMLAudioElement | null>(null)
   const ttsUrlRef = useRef<string | null>(null)
   const ttsStopRef = useRef<(() => void) | null>(null)
-  const controlsRequested = isControlsSearchOpen(
-    ((routerState.location as { searchStr?: string }).searchStr) ?? window.location.search
-  )
+  const controlsRequested =
+    controlsSurface ||
+    isControlsSearchOpen(
+      ((routerState.location as { searchStr?: string }).searchStr) ?? window.location.search
+    )
   const pageHasOpenRouterConfigured = Boolean(
     modelsConfig?.providers?.find((provider) => provider.id === "openrouter")?.configured,
   )
@@ -2919,8 +2939,7 @@ function SparkbotDmPage() {
     if (nextMode) setAiSourceMode(nextMode)
     setSettingsOpen(true)
     navigate({
-      to: "/dm",
-      search: { controls: CONTROLS_SEARCH_VALUE },
+      to: "/controls",
       replace: true,
     })
   }, [navigate])
@@ -2941,6 +2960,11 @@ function SparkbotDmPage() {
       closeControlsPanel()
     }
   }, [closeControlsPanel, openControlsPanel])
+
+  const openRoboOsFromTab = useCallback(() => {
+    sessionStorage.setItem("sparkbot_workstation_open_panel", "mcp")
+    navigate({ to: "/workstation" })
+  }, [navigate])
 
   useEffect(() => {
     if (controlsRequested && !settingsOpen) {
@@ -2985,8 +3009,7 @@ function SparkbotDmPage() {
             if (!onboardingDone && (controlsRequested || !alreadyAutoOpened)) {
               if (!controlsRequested) {
                 navigate({
-                  to: "/dm",
-                  search: { controls: CONTROLS_SEARCH_VALUE },
+                  to: "/controls",
                   replace: true,
                 })
               }
@@ -4722,6 +4745,18 @@ function SparkbotDmPage() {
       <SparkbotSettingsDialog
         open={settingsOpen}
         onOpenChange={handleSettingsOpenChange}
+        fullScreen={controlsSurface}
+        surfaceTabs={
+          <SparkbotSurfaceTabs
+            active="controls"
+            onChat={() => closeControlsPanel()}
+            onWorkstation={() => navigate({ to: "/workstation" })}
+            onControls={() => openControlsPanel()}
+            onRoboOs={openRoboOsFromTab}
+            onSpineOps={() => navigate({ to: "/spine" })}
+            onInfo={() => setInfoOpen(true)}
+          />
+        }
         room={roomInfo}
         loading={settingsLoading}
         savingExecution={savingExecution}
@@ -4853,6 +4888,9 @@ function SparkbotDmPage() {
               onChat={() => closeControlsPanel()}
               onWorkstation={() => navigate({ to: "/workstation" })}
               onControls={() => openControlsPanel()}
+              onRoboOs={openRoboOsFromTab}
+              onSpineOps={() => navigate({ to: "/spine" })}
+              onInfo={() => setInfoOpen(true)}
             />
             <button
               onClick={() => setShowSearch(true)}
@@ -5194,7 +5232,18 @@ function SparkbotDmPage() {
           </div>
         )}
         </div>
-      </div>
+      <SparkbotSurfaceInfoDialog
+        open={infoOpen}
+        title="Sparkbot"
+        subtitle="Chat, full-page Controls, Workstation, Robo OS, and Spine Ops now share the same top navigation."
+        bullets={[
+          "Chat is the everyday surface for prompts, files, voice, slash commands, and agent mentions.",
+          "Controls opens as a full-page setup and safety surface with the same tabs.",
+          "Workstation, Robo OS, and Spine Ops stay reachable from the same tab bar instead of mode-specific links.",
+        ]}
+        onClose={() => setInfoOpen(false)}
+      />
+    </div>
   )
 }
 

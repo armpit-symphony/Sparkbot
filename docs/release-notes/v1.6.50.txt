@@ -1,0 +1,11 @@
+Sparkbot v1.6.50
+
+Focus: unified app navigation and full-page Controls.
+
+- Unified the top tabs across Chat, Workstation, Controls, Robo OS, Spine Ops, and Info.
+- Added `/controls` as a first-class full-page Controls route.
+- Reused the existing Controls implementation for model setup, Computer Control, PIN setup, providers, comms, agents, and Task Guardian schedules.
+- Added the same surface tabs inside Controls so users can move between modes without backing out through chat.
+- Added a Robo OS tab handoff from Chat and Controls into the Workstation MCP control-plane panel.
+- Added Controls to the app sidebar.
+- Advanced backend, frontend, Tauri shell, README, public downloader, capabilities docs, release notes, service worker, and packaging notes to v1.6.50.
