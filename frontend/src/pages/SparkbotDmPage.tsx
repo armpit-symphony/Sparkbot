@@ -286,6 +286,16 @@ interface ModelsControlsConfig {
     google: {
       gmail_configured: boolean
       calendar_configured: boolean
+      drive_configured?: boolean
+      docs_configured?: boolean
+      shared_drive_configured?: boolean
+    }
+    microsoft?: {
+      configured: boolean
+      outlook_configured: boolean
+      calendar_configured: boolean
+      onedrive_configured: boolean
+      tenant_id: string
     }
   }
   notices: string[]
@@ -370,6 +380,13 @@ interface CommsForm {
     client_secret: string
     refresh_token: string
     calendar_id: string
+    shared_drive_id: string
+  }
+  microsoft: {
+    client_id: string
+    client_secret: string
+    tenant_id: string
+    refresh_token: string
   }
 }
 
@@ -1009,6 +1026,8 @@ function SparkbotSettingsDialog({
     Boolean(commsForm.github.enabled && modelsConfig?.comms?.github?.configured),
     Boolean(modelsConfig?.comms?.google?.gmail_configured),
     Boolean(modelsConfig?.comms?.google?.calendar_configured),
+    Boolean(modelsConfig?.comms?.google?.drive_configured),
+    Boolean(modelsConfig?.comms?.microsoft?.configured),
   ].filter(Boolean).length
   const onboardingSteps = showAdvancedControls
     ? [
@@ -2162,10 +2181,11 @@ function SparkbotSettingsDialog({
                     />
                     <div className="rounded-md bg-background/70 border px-3 py-3 text-xs text-muted-foreground space-y-1">
                       <div className="text-[11px] uppercase tracking-wide font-medium">Setup</div>
-                      <div>1. Create a project in Google Cloud Console and enable the Gmail API.</div>
+                      <div>1. Create a project in Google Cloud Console and enable Gmail, Calendar, Drive, and Docs APIs as needed.</div>
                       <div>2. Create OAuth 2.0 credentials (Desktop app type).</div>
-                      <div>3. Run the OAuth flow once to obtain a refresh token.</div>
+                      <div>3. Run the OAuth flow once with Gmail, Calendar, and Drive scopes to obtain a refresh token.</div>
                       <div>4. Paste Client ID, Client Secret, and Refresh Token above, then save.</div>
+                      <div className="text-amber-600">You can also ask Sparkbot: help me onboard Google Workspace step by step.</div>
                     </div>
                   </div>
                 )}
@@ -2220,7 +2240,117 @@ function SparkbotSettingsDialog({
                   </div>
                 )}
               </div>
+              {/* Google Drive / Docs */}
+              <div>
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-muted/40"
+                  onClick={() => onCommsOpenSectionChange(commsOpenSection === "google_drive" ? null : "google_drive")}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-medium">Google Drive & Docs</span>
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms?.google?.drive_configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
+                      {modelsConfig?.comms?.google?.drive_configured ? "Configured" : "Missing"}
+                    </span>
+                  </div>
+                  <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${commsOpenSection === "google_drive" ? "rotate-180" : ""}`} />
+                </button>
+                {commsOpenSection === "google_drive" && (
+                  <div className="border-t bg-muted/20 px-4 py-4 space-y-3">
+                    <p className="text-[10px] text-muted-foreground/70">Search Drive, read Google Docs text exports, and create folders.</p>
+                    <p className="text-[10px] text-muted-foreground/60">Uses the same OAuth credentials as Gmail and Calendar. Add an optional shared drive ID when Sparkbot should search a team drive.</p>
+                    <input
+                      type="password"
+                      value={commsForm.google.client_id}
+                      onChange={(e) => onCommsTextChange("google", "client_id", e.target.value)}
+                      placeholder="Google Client ID (shared)"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                    />
+                    <input
+                      type="password"
+                      value={commsForm.google.client_secret}
+                      onChange={(e) => onCommsTextChange("google", "client_secret", e.target.value)}
+                      placeholder="Google Client Secret (shared)"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                    />
+                    <input
+                      type="password"
+                      value={commsForm.google.refresh_token}
+                      onChange={(e) => onCommsTextChange("google", "refresh_token", e.target.value)}
+                      placeholder="Google Refresh Token (shared)"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                    />
+                    <input
+                      type="text"
+                      value={commsForm.google.shared_drive_id}
+                      onChange={(e) => onCommsTextChange("google", "shared_drive_id", e.target.value)}
+                      placeholder="Optional shared drive ID"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                    />
+                    <div className="rounded-md bg-background/70 border px-3 py-3 text-xs text-muted-foreground space-y-1">
+                      <div className="text-[11px] uppercase tracking-wide font-medium">Need help?</div>
+                      <div>Ask Sparkbot: help me onboard Google Drive and Docs step by step.</div>
+                    </div>
+                  </div>
+                )}
+              </div>
               </> : null}
+              {/* Microsoft 365 */}
+              <div>
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-muted/40"
+                  onClick={() => onCommsOpenSectionChange(commsOpenSection === "microsoft" ? null : "microsoft")}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-medium">Microsoft 365</span>
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${modelsConfig?.comms?.microsoft?.configured ? "bg-emerald-500/15 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
+                      {modelsConfig?.comms?.microsoft?.configured ? "Configured" : "Missing"}
+                    </span>
+                  </div>
+                  <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${commsOpenSection === "microsoft" ? "rotate-180" : ""}`} />
+                </button>
+                {commsOpenSection === "microsoft" && (
+                  <div className="border-t bg-muted/20 px-4 py-4 space-y-3">
+                    <p className="text-[10px] text-muted-foreground/70">Outlook mail, Outlook Calendar, OneDrive, and Microsoft 365 files through Microsoft Graph.</p>
+                    <input
+                      type="password"
+                      value={commsForm.microsoft.client_id}
+                      onChange={(e) => onCommsTextChange("microsoft", "client_id", e.target.value)}
+                      placeholder="Microsoft Client ID"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                    />
+                    <input
+                      type="password"
+                      value={commsForm.microsoft.client_secret}
+                      onChange={(e) => onCommsTextChange("microsoft", "client_secret", e.target.value)}
+                      placeholder="Microsoft Client Secret"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                    />
+                    <input
+                      type="text"
+                      value={commsForm.microsoft.tenant_id}
+                      onChange={(e) => onCommsTextChange("microsoft", "tenant_id", e.target.value)}
+                      placeholder="Tenant ID (common for personal Microsoft accounts)"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                    />
+                    <input
+                      type="password"
+                      value={commsForm.microsoft.refresh_token}
+                      onChange={(e) => onCommsTextChange("microsoft", "refresh_token", e.target.value)}
+                      placeholder="Microsoft Refresh Token"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                    />
+                    <div className="rounded-md bg-background/70 border px-3 py-3 text-xs text-muted-foreground space-y-1">
+                      <div className="text-[11px] uppercase tracking-wide font-medium">Setup</div>
+                      <div>1. Register an Azure app and enable Microsoft Graph delegated permissions.</div>
+                      <div>2. Include Mail, Calendars, and Files scopes in the first OAuth consent.</div>
+                      <div>3. Paste Client ID, Client Secret, Tenant ID, and Refresh Token, then save.</div>
+                      <div className="text-amber-600">You can ask Sparkbot: help me onboard Microsoft 365 step by step.</div>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
             <div className="mt-3 flex items-center justify-between gap-3">
               <div className="text-xs text-muted-foreground">
@@ -2748,7 +2878,8 @@ function SparkbotDmPage({ controlsSurface = false }: SparkbotDmPageProps = {}) {
       allowed_repos: "",
       enabled: false,
     },
-    google: { client_id: "", client_secret: "", refresh_token: "", calendar_id: "" },
+    google: { client_id: "", client_secret: "", refresh_token: "", calendar_id: "", shared_drive_id: "" },
+    microsoft: { client_id: "", client_secret: "", tenant_id: "common", refresh_token: "" },
   })
   const [commsOpenSection, setCommsOpenSection] = useState<string | null>(null)
   const [savingModelStack, setSavingModelStack] = useState(false)
@@ -2921,7 +3052,8 @@ function SparkbotDmPage({ controlsSurface = false }: SparkbotDmPageProps = {}) {
         allowed_repos: (config.comms?.github?.allowed_repos ?? []).join(", "),
         enabled: Boolean(config.comms?.github?.enabled),
       },
-      google: { client_id: "", client_secret: "", refresh_token: "", calendar_id: "" },
+      google: { client_id: "", client_secret: "", refresh_token: "", calendar_id: "", shared_drive_id: "" },
+      microsoft: { client_id: "", client_secret: "", tenant_id: config.comms?.microsoft?.tenant_id || "common", refresh_token: "" },
     })
     setOllamaBaseUrl(config.local_runtime?.base_url || "http://localhost:11434")
     if (config.ollama_status) {
@@ -3642,7 +3774,7 @@ function SparkbotDmPage({ controlsSurface = false }: SparkbotDmPageProps = {}) {
       } else {
         applyControlsConfig(data)
         await refreshControls()
-        setMessages(prev => [...prev, systemMsg("Communications settings saved. Telegram, Discord, WhatsApp, GitHub, Gmail, and Google Calendar credentials remain available from Controls.")])
+        setMessages(prev => [...prev, systemMsg("Communications settings saved. Telegram, Discord, WhatsApp, GitHub, Google Workspace, and Microsoft 365 credentials remain available from Controls.")])
       }
     } catch {
       setSettingsError("Could not save comms settings.")

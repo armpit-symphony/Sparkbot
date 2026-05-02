@@ -360,6 +360,7 @@ const SPECIALTY_PLACEHOLDERS: Station[] = [
 
 const STATIC_SPECIALTY_AGENT_NAMES = new Set(["researcher", "coder", "analyst"])
 const SPECIALTY_AGENT_ACCENTS = ["#7dd3fc", "#a78bfa", "#34d399", "#f472b6", "#fbbf24", "#60a5fa"]
+const SPECIALTY_OFFICE_COUNT = 5
 
 function buildCustomSpecialtyStations(controlsConfig: SparkbotControlsConfig | null): Station[] {
   return (controlsConfig?.available_agents ?? [])
@@ -378,6 +379,28 @@ function buildCustomSpecialtyStations(controlsConfig: SparkbotControlsConfig | n
       description: agent.description || `@${agent.name} is available in chat and roundtable meetings.`,
       capabilities: [`@${agent.name}`, "Created in Controls", "Meeting-ready"],
     }))
+}
+
+function buildSpecialtyOfficeStations(customStations: Station[]): Station[] {
+  const occupied = [...SPECIALTY_PLACEHOLDERS.filter((station) => station.id !== "sb-custom"), ...customStations]
+    .slice(0, SPECIALTY_OFFICE_COUNT)
+  const offices = [...occupied]
+  while (offices.length < SPECIALTY_OFFICE_COUNT) {
+    const index = offices.length + 1
+    offices.push({
+      id: `sb-add-agent-${index}`,
+      label: "Add Agent",
+      subtitle: `Specialty office ${index}`,
+      type: "sparkbud",
+      status: "empty",
+      icon: Plus,
+      accentHex: SPECIALTY_AGENT_ACCENTS[(index - 1) % SPECIALTY_AGENT_ACCENTS.length],
+      description:
+        "Create a new custom specialist from this office, or use Controls to spawn a prebuilt skill agent and return here to seat it in meetings.",
+      capabilities: ["Create specialist", "Prebuilt templates", "Meeting-ready"],
+    })
+  }
+  return offices
 }
 
 function getAssignedStationIds(projectRoom: ProjectRoom): string[] {
@@ -1065,7 +1088,7 @@ function StationDetailPanel({
   const isSparkBud = type === "sparkbud"
   const isModelOffice = id.startsWith("stack-")
   const isInRoom = isStationAssigned(projectRoom, id)
-  const canToggleRoom = type !== "table" && type !== "terminal"
+  const canToggleRoom = type !== "table" && type !== "terminal" && status !== "empty"
   const sparkBudLaunchConfig = isSparkBud ? getSparkBudLaunchConfig(id) : null
   const [launchPrompt, setLaunchPrompt] = useState(sparkBudLaunchConfig?.defaultPrompt ?? "")
   const [launchAgentName, setLaunchAgentName] = useState(sparkBudLaunchConfig?.defaultHandle ?? "")
@@ -4029,7 +4052,7 @@ export default function WorkstationPage() {
   // ── Derived from config ────────────────────────────────────────────────────
   const companionModelStations = buildCompanionModelStations(controlsConfig)
   const customSpecialtyStations = buildCustomSpecialtyStations(controlsConfig)
-  const specialtyStations = [...SPECIALTY_PLACEHOLDERS, ...customSpecialtyStations]
+  const specialtyStations = buildSpecialtyOfficeStations(customSpecialtyStations)
   const resolvedInviteStations = INVITE_DESKS.map((station) =>
     resolveInviteStation(station, configuredInvites),
   )
@@ -4686,8 +4709,8 @@ export default function WorkstationPage() {
                     Public-safe posture
                   </div>
                   <p style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.65, margin: "8px 0 0" }}>
-                    Use the scrollable Specialty Wing to seat built-in SparkBuds or agents created in
-                    Controls. Seated specialists are available in meetings and by @mention in chat.
+                    Five Specialty Wing offices can hold built-in SparkBuds or agents created in
+                    Controls. Add Agent opens a custom specialist desk; seated specialists join meetings and work by @mention in chat.
                   </p>
                 </div>
               </div>

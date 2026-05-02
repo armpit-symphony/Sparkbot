@@ -52,6 +52,25 @@ interface MeetingAgentOption {
   is_builtin?: boolean
 }
 
+function isTransientMeetingError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "")
+  return /network|fetch|failed|timeout|temporar|connection|body stream/i.test(message)
+}
+
+async function apiFetchWithTransientRetry(input: string, init: RequestInit, attempts = 2): Promise<Response> {
+  let lastError: unknown = null
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await apiFetch(input, init)
+    } catch (error) {
+      lastError = error
+      if (!isTransientMeetingError(error) || attempt === attempts - 1) break
+      await new Promise((resolve) => window.setTimeout(resolve, 450 * (attempt + 1)))
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("Network error starting meeting stream.")
+}
+
 export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
   const navigate = useNavigate()
   const [room, setRoom] = useState<RoomDetail | null>(null)
@@ -335,24 +354,23 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
     setStreamError("")
     setInputValue("")
 
-    // Derive participant handles from seated agents (when no @mention present)
-    const hasMention = /^@\w+/.test(content.trim())
-    const preparedSeats = await prepareMeetingSeats(seatedParticipants)
-    if (meetingMeta) {
-      const nextMeta = { ...meetingMeta, seats: preparedSeats }
-      setMeetingMeta(nextMeta)
-      saveMeetingRoomMeta(nextMeta)
-    }
-    const participants = (!hasMention && preparedSeats.length > 0)
-      ? getMeetingParticipantHandles(preparedSeats)
-      : undefined
-    if (!hasMention && room?.meeting_mode_enabled && (!participants || participants.length === 0)) {
-      setStreamError("This meeting has no valid participant handles wired to chat. Relaunch it from Workstation.")
-      return
-    }
-
     try {
-      const response = await apiFetch(`/api/v1/chat/rooms/${roomId}/messages/stream`, {
+      // Derive participant handles from seated agents (when no @mention present)
+      const hasMention = /^@\w+/.test(content.trim())
+      const preparedSeats = await prepareMeetingSeats(seatedParticipants)
+      if (meetingMeta) {
+        const nextMeta = { ...meetingMeta, seats: preparedSeats }
+        setMeetingMeta(nextMeta)
+        saveMeetingRoomMeta(nextMeta)
+      }
+      const participants = (!hasMention && preparedSeats.length > 0)
+        ? getMeetingParticipantHandles(preparedSeats)
+        : undefined
+      if (!hasMention && room?.meeting_mode_enabled && (!participants || participants.length === 0)) {
+        throw new Error("This meeting has no valid participant handles wired to chat. Relaunch it from Workstation.")
+      }
+
+      const response = await apiFetchWithTransientRetry(`/api/v1/chat/rooms/${roomId}/messages/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -435,7 +453,12 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
     } catch (err) {
       if ((err as Error).name !== "AbortError") {
         console.error("Meeting stream error:", err)
-        setStreamError((err as Error).message || "Stream error. Check console.")
+        const message = (err as Error).message || "Stream error. Check console."
+        setStreamError(
+          isTransientMeetingError(err)
+            ? `${message} Send "proceed" or "try again" when the backend is reachable.`
+            : message,
+        )
       }
     } finally {
       if (activeStreamIdRef.current === streamId) {

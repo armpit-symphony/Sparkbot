@@ -31,11 +31,30 @@ _GRAPH = "https://graph.microsoft.com/v1.0"
 _TOKEN_CACHE: dict = {}
 
 
+def _env_or_vault_value(env_var: str, vault_alias: str, default: str = "") -> str:
+    value = os.getenv(env_var, "").strip()
+    if value:
+        return value
+    try:
+        from app.services.guardian import get_guardian_suite
+
+        return str(
+            get_guardian_suite().vault.vault_use(
+                alias=vault_alias,
+                user_id="microsoft_graph_skill",
+                operator="system",
+            )
+            or default
+        ).strip()
+    except Exception:
+        return default.strip()
+
+
 async def _get_token() -> tuple[str | None, str | None]:
-    client_id = os.getenv("MICROSOFT_CLIENT_ID", "").strip()
-    client_secret = os.getenv("MICROSOFT_CLIENT_SECRET", "").strip()
+    client_id = _env_or_vault_value("MICROSOFT_CLIENT_ID", "microsoft_client_id")
+    client_secret = _env_or_vault_value("MICROSOFT_CLIENT_SECRET", "microsoft_client_secret")
     tenant_id = os.getenv("MICROSOFT_TENANT_ID", "common").strip() or "common"
-    refresh_token = os.getenv("MICROSOFT_REFRESH_TOKEN", "").strip()
+    refresh_token = _env_or_vault_value("MICROSOFT_REFRESH_TOKEN", "microsoft_refresh_token")
     if not (client_id and client_secret and refresh_token):
         return None, "Microsoft Graph not configured. Set MICROSOFT_CLIENT_ID, MICROSOFT_CLIENT_SECRET, MICROSOFT_TENANT_ID, MICROSOFT_REFRESH_TOKEN."
     if _TOKEN_CACHE.get("token") and time.time() < _TOKEN_CACHE.get("expires", 0) - 60:

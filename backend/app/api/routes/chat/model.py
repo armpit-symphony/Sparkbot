@@ -354,6 +354,26 @@ def _build_google_comms_status() -> dict[str, Any]:
     return {
         "gmail_configured": has_oauth,
         "calendar_configured": has_oauth and bool(os.getenv("GOOGLE_CALENDAR_ID", "").strip()),
+        "drive_configured": has_oauth,
+        "docs_configured": has_oauth,
+        "shared_drive_configured": bool(os.getenv("GOOGLE_DRIVE_SHARED_DRIVE_ID", "").strip()),
+    }
+
+
+def _build_microsoft_comms_status() -> dict[str, Any]:
+    """Return configured status for Microsoft 365 / Graph credentials."""
+    has_oauth = bool(
+        _env_or_vault_has_secret("MICROSOFT_CLIENT_ID", "microsoft_client_id")
+        and _env_or_vault_has_secret("MICROSOFT_CLIENT_SECRET", "microsoft_client_secret")
+        and _env_or_vault_has_secret("MICROSOFT_REFRESH_TOKEN", "microsoft_refresh_token")
+    )
+    tenant_id = os.getenv("MICROSOFT_TENANT_ID", "common").strip() or "common"
+    return {
+        "configured": has_oauth,
+        "outlook_configured": has_oauth,
+        "calendar_configured": has_oauth,
+        "onedrive_configured": has_oauth,
+        "tenant_id": tenant_id,
     }
 
 
@@ -362,6 +382,7 @@ def _build_comms_status() -> dict[str, Any]:
     libraries not bundled in V1_LOCAL_MODE; Telegram and GitHub use httpx/local
     helpers and are safe to report in the desktop build."""
     google_status = _build_google_comms_status()
+    microsoft_status = _build_microsoft_comms_status()
     # Telegram bridge uses plain httpx — always report real status so the UI
     # correctly shows configured/linked state in the desktop (V1_LOCAL_MODE) build.
     from app.services.telegram_bridge import get_status as get_telegram_status
@@ -373,6 +394,7 @@ def _build_comms_status() -> dict[str, Any]:
             "whatsapp": {"enabled": False},
             "github": get_github_status(),
             "google": google_status,
+            "microsoft": microsoft_status,
         }
     from app.services.discord_bridge import get_status as get_discord_status
     from app.services.whatsapp_bridge import get_status as get_whatsapp_status
@@ -382,6 +404,7 @@ def _build_comms_status() -> dict[str, Any]:
         "whatsapp": get_whatsapp_status(),
         "github": get_github_status(),
         "google": google_status,
+        "microsoft": microsoft_status,
     }
 
 
@@ -575,6 +598,14 @@ class GoogleConfigInput(BaseModel):
     client_secret: str | None = None
     refresh_token: str | None = None
     calendar_id: str | None = None
+    shared_drive_id: str | None = None
+
+
+class MicrosoftConfigInput(BaseModel):
+    client_id: str | None = None
+    client_secret: str | None = None
+    tenant_id: str | None = None
+    refresh_token: str | None = None
 
 
 class CommsConfigInput(BaseModel):
@@ -583,6 +614,7 @@ class CommsConfigInput(BaseModel):
     whatsapp: WhatsAppConfigInput | None = None
     github: GitHubConfigInput | None = None
     google: GoogleConfigInput | None = None
+    microsoft: MicrosoftConfigInput | None = None
 
 
 class ControlsConfigUpdate(BaseModel):
@@ -1196,7 +1228,54 @@ async def update_models_config(
                     notices.append("Google refresh token saved to env storage because Vault is unavailable.")
             if body.comms.google.calendar_id is not None:
                 env_updates["GOOGLE_CALENDAR_ID"] = body.comms.google.calendar_id
-            notices.append("Google credentials saved — Gmail and Calendar skills are live immediately.")
+            notices.append("Google credentials saved - Gmail, Calendar, Drive, and Docs skills are live immediately.")
+
+    if body.comms is not None:
+        if body.comms.google is not None and body.comms.google.shared_drive_id is not None:
+            env_updates["GOOGLE_DRIVE_SHARED_DRIVE_ID"] = body.comms.google.shared_drive_id
+        if body.comms.microsoft is not None:
+            if body.comms.microsoft.client_id:
+                if _upsert_vault_secret(
+                    alias="microsoft_client_id",
+                    value=body.comms.microsoft.client_id,
+                    category="communications",
+                    notes="Microsoft Graph OAuth client id",
+                    current_user=current_user,
+                ):
+                    runtime_only_env_updates["MICROSOFT_CLIENT_ID"] = body.comms.microsoft.client_id
+                    notices.append("Microsoft client ID saved to Vault.")
+                else:
+                    env_updates["MICROSOFT_CLIENT_ID"] = body.comms.microsoft.client_id
+                    notices.append("Microsoft client ID saved to env storage because Vault is unavailable.")
+            if body.comms.microsoft.client_secret:
+                if _upsert_vault_secret(
+                    alias="microsoft_client_secret",
+                    value=body.comms.microsoft.client_secret,
+                    category="communications",
+                    notes="Microsoft Graph OAuth client secret",
+                    current_user=current_user,
+                ):
+                    runtime_only_env_updates["MICROSOFT_CLIENT_SECRET"] = body.comms.microsoft.client_secret
+                    notices.append("Microsoft client secret saved to Vault.")
+                else:
+                    env_updates["MICROSOFT_CLIENT_SECRET"] = body.comms.microsoft.client_secret
+                    notices.append("Microsoft client secret saved to env storage because Vault is unavailable.")
+            if body.comms.microsoft.refresh_token:
+                if _upsert_vault_secret(
+                    alias="microsoft_refresh_token",
+                    value=body.comms.microsoft.refresh_token,
+                    category="communications",
+                    notes="Microsoft Graph OAuth refresh token",
+                    current_user=current_user,
+                ):
+                    runtime_only_env_updates["MICROSOFT_REFRESH_TOKEN"] = body.comms.microsoft.refresh_token
+                    notices.append("Microsoft refresh token saved to Vault.")
+                else:
+                    env_updates["MICROSOFT_REFRESH_TOKEN"] = body.comms.microsoft.refresh_token
+                    notices.append("Microsoft refresh token saved to env storage because Vault is unavailable.")
+            if body.comms.microsoft.tenant_id is not None:
+                env_updates["MICROSOFT_TENANT_ID"] = body.comms.microsoft.tenant_id.strip() or "common"
+            notices.append("Microsoft 365 credentials saved - Outlook, Calendar, and OneDrive skills are live immediately.")
 
     if body.token_guardian_mode is not None:
         env_updates["SPARKBOT_TOKEN_GUARDIAN_MODE"] = body.token_guardian_mode

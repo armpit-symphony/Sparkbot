@@ -1,5 +1,15 @@
 # Release Notes
 
+## Sparkbot v1.6.53
+
+- Added shared image detection and vision-model fallback routing for app uploads and Telegram photos.
+- Telegram now downloads photo messages, records them in the linked room, analyzes them with a configured vision-capable model, and replies back to Telegram.
+- Hardened meeting send setup and transient stream startup retries so roundtables do not stay stuck after network errors.
+- Expanded Controls onboarding for Google Drive, Google Docs, and Microsoft 365 / Graph credentials.
+- Added Microsoft 365 credential save/status support and vault-backed runtime lookup for the Microsoft Graph skill.
+- Redesigned the Workstation Specialty Wing into five fixed offices with Add Agent slots that create custom specialists and keep created agents meeting-ready.
+- Advanced backend, frontend, Tauri shell, README, public downloader, capabilities docs, release notes, service worker, and packaging notes to v1.6.53.
+
 ## Sparkbot v1.6.52
 
 - Fixed Controls credential storage so operator-entered connector secrets save directly into Guardian Vault without requiring an active breakglass session.

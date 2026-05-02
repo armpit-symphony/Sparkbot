@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+import litellm
 from sqlalchemy import select
 from sqlmodel import Session
 
@@ -31,6 +32,7 @@ from app.crud import (
 )
 from app.models import ChatUser, UserType
 from app.services.guardian import get_guardian_suite
+from app.services.image_vision import build_vision_user_message, detect_image_type, resolve_vision_model
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +43,7 @@ _AWAITING_PIN_TTL_SECONDS = max(60, min(int(os.getenv("SPARKBOT_PIN_PROMPT_TTL_S
 _TELEGRAM_POLL_TIMEOUT_SECONDS = max(10, min(int(os.getenv("TELEGRAM_POLL_TIMEOUT_SECONDS", "45")), 55))
 _TELEGRAM_POLL_RETRY_SECONDS = max(3, min(int(os.getenv("TELEGRAM_POLL_RETRY_SECONDS", "5")), 60))
 _TELEGRAM_UNCONFIGURED_RETRY_SECONDS = 30
+_TELEGRAM_MAX_PHOTO_BYTES = 10 * 1024 * 1024
 _TELEGRAM_BOT_TOKEN_RE = re.compile(r"\b\d{5,12}:[A-Za-z0-9_-]{20,}\b")
 _TELEGRAM_BOT_URL_RE = re.compile(r"(https://api\.telegram\.org/bot)([^/\s]+)")
 _TELEGRAM_TOKEN_PLACEHOLDER = "[REDACTED_TELEGRAM_BOT_TOKEN]"
@@ -403,6 +406,30 @@ async def _telegram_api(method: str, payload: dict[str, Any]) -> Any:
     return data.get("result")
 
 
+async def _download_telegram_file(file_id: str) -> tuple[bytes | None, str | None]:
+    try:
+        file_meta = await _telegram_api("getFile", {"file_id": file_id})
+    except Exception as exc:
+        return None, f"Telegram file lookup failed: {_safe_exception_text(exc)}"
+
+    file_path = str((file_meta or {}).get("file_path") or "").strip()
+    if not file_path:
+        return None, "Telegram did not return a downloadable file path."
+
+    timeout = max(_TELEGRAM_POLL_TIMEOUT_SECONDS + 10, 20)
+    try:
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+            response = await client.get(f"https://api.telegram.org/file/bot{_bot_token()}/{file_path}")
+    except httpx.HTTPError as exc:
+        return None, f"Telegram file download failed: {_safe_exception_text(exc)}"
+
+    if response.status_code != 200:
+        return None, f"Telegram file download failed with HTTP {response.status_code}."
+    if len(response.content) > _TELEGRAM_MAX_PHOTO_BYTES:
+        return None, "Telegram photo is too large for Sparkbot image analysis (max 10 MB)."
+    return response.content, None
+
+
 async def _send_text(chat_id: str, text: str) -> None:
     for chunk in _chunk_text(text):
         try:
@@ -644,6 +671,106 @@ async def _run_room_prompt(session: Session, room_id: str, user_id: str, content
     return {"kind": "reply", "text": final_text, "message_id": str(bot_msg.id)}
 
 
+async def _run_room_photo_prompt(
+    session: Session,
+    room_id: str,
+    user_id: str,
+    image_data: bytes,
+    *,
+    chat_id: str,
+    caption: str = "",
+) -> dict[str, Any]:
+    from app.api.routes.chat.llm import SYSTEM_PROMPT, get_model
+
+    room_uuid = uuid.UUID(room_id)
+    user_uuid = uuid.UUID(user_id)
+    room = get_chat_room_by_id(session, room_uuid)
+    user = get_chat_user_by_id(session, user_uuid)
+    if not room or not user:
+        raise RuntimeError("Linked Telegram room or user no longer exists.")
+
+    content_type = detect_image_type(image_data)
+    if not content_type:
+        return {"kind": "error", "text": "That Telegram attachment is not a supported image type."}
+
+    human_content = "Telegram photo received."
+    if caption.strip():
+        human_content += f"\n\n{caption.strip()}"
+    human_message = create_chat_message(
+        session=session,
+        room_id=room_uuid,
+        sender_id=user_uuid,
+        content=human_content,
+        sender_type="HUMAN",
+        meta_json={"source": "telegram", "telegram_chat_id": chat_id, "message_type": "image"},
+    )
+    await _broadcast_room_message(room_id, str(human_message.id), human_content, user.username, "HUMAN")
+
+    preferred_model = get_model(user_id)
+    vision_model = resolve_vision_model(preferred_model)
+    if not vision_model:
+        text = (
+            "I received the photo, but no configured vision-capable model is available. "
+            "Configure OpenAI, Gemini, Claude, or a vision OpenRouter model in Controls and try again."
+        )
+        bot_user = _find_or_create_bot_user(session)
+        bot_msg = create_chat_message(
+            session=session,
+            room_id=room_uuid,
+            sender_id=bot_user.id,
+            content=text,
+            sender_type="BOT",
+            reply_to_id=human_message.id,
+            meta_json={"source": "telegram", "telegram_chat_id": chat_id, "message_type": "image"},
+        )
+        await _broadcast_room_message(room_id, str(bot_msg.id), text, bot_user.username, "BOT")
+        return {"kind": "reply", "text": text, "message_id": str(bot_msg.id)}
+
+    history_msgs, _, _ = get_chat_messages(session=session, room_id=room_uuid, limit=10)
+    text_history: list[dict[str, str]] = []
+    for msg in history_msgs:
+        if str(msg.id) == str(human_message.id):
+            continue
+        role = "assistant" if str(msg.sender_type).upper() == "BOT" else "user"
+        text_history.append({"role": role, "content": msg.content})
+
+    prompt = caption.strip() or "Describe this Telegram photo and note anything relevant."
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        *text_history,
+        build_vision_user_message(image_data, content_type, prompt),
+    ]
+
+    response = await litellm.acompletion(
+        model=vision_model,
+        messages=messages,
+        temperature=0.2,
+        max_tokens=700,
+    )
+    final_text = str(response.choices[0].message.content or "").strip() or "I could not analyze that photo."
+    bot_user = _find_or_create_bot_user(session)
+    bot_msg = create_chat_message(
+        session=session,
+        room_id=room_uuid,
+        sender_id=bot_user.id,
+        content=final_text,
+        sender_type="BOT",
+        reply_to_id=human_message.id,
+        meta_json={"source": "telegram", "telegram_chat_id": chat_id, "message_type": "image"},
+    )
+    try:
+        get_guardian_suite().memory.remember_chat_message(
+            user_id=user_id,
+            room_id=room_id,
+            role="assistant",
+            content=final_text,
+        )
+    except Exception:
+        pass
+    await _broadcast_room_message(room_id, str(bot_msg.id), final_text, bot_user.username, "BOT")
+    return {"kind": "reply", "text": final_text, "message_id": str(bot_msg.id)}
+
+
 async def _execute_pending_confirmation(session: Session, room_id: str, user_id: str, confirm_id: str, *, chat_id: str) -> str:
     from app.api.routes.chat.llm import (
         consume_pending,
@@ -825,14 +952,40 @@ async def _handle_private_message(message: dict[str, Any], get_db_session: Calla
     if sender.get("is_bot"):
         return
 
-    text = str(message.get("text", "") or "").strip()
-    if not text:
-        await _send_text(chat_id, "I can currently process text messages only on Telegram.")
-        return
-
     db = next(get_db_session())
     try:
         link = _ensure_linked_room(db, chat_id, sender)
+        text = str(message.get("text", "") or "").strip()
+        photo_sizes = message.get("photo") if isinstance(message.get("photo"), list) else []
+        if not text and photo_sizes:
+            largest = max(
+                (item for item in photo_sizes if isinstance(item, dict)),
+                key=lambda item: int(item.get("file_size") or item.get("width") or 0),
+                default=None,
+            )
+            file_id = str((largest or {}).get("file_id") or "").strip()
+            if not file_id:
+                await _send_text(chat_id, "I received a Telegram photo but could not find its file ID.")
+                return
+            image_data, download_error = await _download_telegram_file(file_id)
+            if download_error or image_data is None:
+                await _send_text(chat_id, download_error or "Could not download the Telegram photo.")
+                return
+            result = await _run_room_photo_prompt(
+                db,
+                link.room_id,
+                link.user_id,
+                image_data,
+                chat_id=chat_id,
+                caption=str(message.get("caption", "") or ""),
+            )
+            await _send_text(chat_id, str(result.get("text", "")))
+            return
+
+        if not text:
+            await _send_text(chat_id, "I can process text messages and photos on Telegram. Other files are not supported yet.")
+            return
+
         lower = text.lower().strip()
 
         if chat_id in _prune_awaiting_pin(chat_id=chat_id):

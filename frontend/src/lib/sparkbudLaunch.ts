@@ -88,6 +88,7 @@ export interface SparkBudLaunchDraft {
 }
 
 export function getSparkBudLaunchConfig(stationId: string): SparkBudLaunchConfig | null {
+  if (stationId.startsWith("sb-add-agent")) return SPARKBUD_CONFIG["sb-custom"]
   return SPARKBUD_CONFIG[stationId as SparkBudLaunchConfig["stationId"]] ?? null
 }
 

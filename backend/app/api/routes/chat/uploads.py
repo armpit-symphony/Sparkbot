@@ -4,12 +4,10 @@ File upload route for Sparkbot chat.
 Handles image and file uploads, stores them locally, and streams
 AI vision analysis back as SSE (same protocol as /messages/stream).
 """
-import base64
 import json
 import os
 import uuid
 from pathlib import Path
-from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
@@ -20,6 +18,7 @@ from sqlalchemy import select
 from app.api.deps import CurrentChatUser, SessionDep, get_db
 from app.crud import create_chat_message, get_chat_messages, get_chat_room_member
 from app.models import ChatUser, RoomRole, UserType
+from app.services.image_vision import build_vision_user_message, detect_image_type, resolve_vision_model
 
 router = APIRouter(tags=["chat-uploads"])
 
@@ -31,32 +30,6 @@ else:
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 MAX_SIZE = 10 * 1024 * 1024  # 10 MB
-IMAGE_TYPES = {"image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"}
-
-# Magic byte signatures for server-side image type verification.
-# Keyed by the canonical MIME type; values are byte prefixes to match.
-_IMAGE_MAGIC: list[tuple[bytes, str]] = [
-    (b"\xff\xd8\xff", "image/jpeg"),
-    (b"\x89PNG\r\n\x1a\n", "image/png"),
-    (b"GIF87a", "image/gif"),
-    (b"GIF89a", "image/gif"),
-    # WebP: RIFF....WEBP
-    (b"RIFF", "image/webp"),
-]
-_WEBP_MARKER = b"WEBP"
-
-
-def _detect_image_type(data: bytes) -> str | None:
-    """Return the MIME type if data matches a known image magic, else None."""
-    for magic, mime in _IMAGE_MAGIC:
-        if data[:len(magic)] == magic:
-            if mime == "image/webp":
-                # RIFF header: bytes 8-12 must be WEBP
-                if len(data) >= 12 and data[8:12] == _WEBP_MARKER:
-                    return mime
-                return None
-            return mime
-    return None
 
 
 @router.get("/rooms/{room_id}/uploads/{file_id}/{filename}")
@@ -85,7 +58,7 @@ def serve_upload(
 
     # Determine content type from magic bytes, not the stored filename.
     raw = file_path.read_bytes()
-    detected_mime = _detect_image_type(raw)
+    detected_mime = detect_image_type(raw)
 
     if detected_mime:
         # Known image: serve inline so the browser can render it in chat.
@@ -140,7 +113,7 @@ async def upload_file(
         raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
 
     # Use magic bytes to determine image type — never trust the client Content-Type header.
-    detected_mime = _detect_image_type(data)
+    detected_mime = detect_image_type(data)
     is_image = detected_mime is not None
     # Use the server-verified MIME for downstream processing; fall back to octet-stream.
     content_type = detected_mime or "application/octet-stream"
@@ -185,9 +158,6 @@ async def upload_file(
         role = "assistant" if str(m.sender_type).upper() == "BOT" else "user"
         text_history.append({"role": role, "content": m.content})
 
-    # Encode image for vision
-    b64_image = base64.b64encode(data).decode() if is_image else None
-
     async def event_stream():
         yield f"data: {json.dumps({'type': 'human_message', 'message_id': human_msg_id})}\n\n"
 
@@ -196,14 +166,17 @@ async def upload_file(
             from app.api.routes.chat.llm import SYSTEM_PROMPT as LLM_SYSTEM_PROMPT, get_model
 
             if is_image:
-                user_message: dict = {
-                    "role": "user",
-                    "content": [
-                        {"type": "image_url", "image_url": {"url": f"data:{content_type};base64,{b64_image}"}},
-                        {"type": "text", "text": caption.strip() or "Describe this image and note anything relevant."},
-                    ],
-                }
+                vision_model = resolve_vision_model(get_model(str(current_user.id)))
+                if not vision_model:
+                    yield f"data: {json.dumps({'type': 'error', 'error': 'No configured vision-capable model is available. Configure OpenAI, Gemini, Claude, or a vision OpenRouter model in Controls and try again.'})}\n\n"
+                    return
+                user_message: dict = build_vision_user_message(
+                    data,
+                    content_type,
+                    caption.strip() or "Describe this image and note anything relevant.",
+                )
             else:
+                vision_model = get_model(str(current_user.id))
                 user_message = {
                     "role": "user",
                     "content": f"I've uploaded a file: **{filename_safe}**. {caption.strip() or 'Please acknowledge the upload.'}",
@@ -212,7 +185,7 @@ async def upload_file(
             messages = [{"role": "system", "content": LLM_SYSTEM_PROMPT}] + text_history + [user_message]
 
             response = await litellm.acompletion(
-                model=get_model(str(current_user.id)),
+                model=vision_model,
                 messages=messages,
                 temperature=0.2,
                 stream=True,

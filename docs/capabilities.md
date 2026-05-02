@@ -392,6 +392,15 @@ GOOGLE_GMAIL_USER=me
 ```
 Required OAuth scopes: `gmail.readonly`, `gmail.send`
 
+**Outlook / Microsoft 365 (Microsoft Graph)**
+```env
+MICROSOFT_CLIENT_ID=...
+MICROSOFT_CLIENT_SECRET=...
+MICROSOFT_TENANT_ID=common
+MICROSOFT_REFRESH_TOKEN=...
+```
+Required delegated Microsoft Graph scopes: `Mail.Read`, `Mail.Send`, `Calendars.Read`, `Calendars.ReadWrite`, `Files.Read`
+
 **IMAP / SMTP (any provider)**
 ```env
 IMAP_HOST=imap.example.com
@@ -429,6 +438,15 @@ GOOGLE_REFRESH_TOKEN=...
 GOOGLE_DRIVE_SHARED_DRIVE_ID=...   # optional, for shared drive
 ```
 Required OAuth scopes: `drive.readonly`, `drive.file`
+
+### Microsoft 365 / OneDrive
+```env
+MICROSOFT_CLIENT_ID=...
+MICROSOFT_CLIENT_SECRET=...
+MICROSOFT_TENANT_ID=common
+MICROSOFT_REFRESH_TOKEN=...
+```
+The same Microsoft Graph OAuth credentials power Outlook mail, Outlook Calendar, and OneDrive tools.
 
 ### GitHub
 ```env
@@ -1279,6 +1297,15 @@ GOOGLE_GMAIL_USER=me
 GOOGLE_DRIVE_SHARED_DRIVE_ID=
 ```
 
+### Microsoft 365
+
+```env
+MICROSOFT_CLIENT_ID=
+MICROSOFT_CLIENT_SECRET=
+MICROSOFT_TENANT_ID=common
+MICROSOFT_REFRESH_TOKEN=
+```
+
 ### IMAP / SMTP
 
 ```env
@@ -1827,7 +1854,7 @@ curl -b cookies.txt http://localhost:8000/api/v1/chat/system/watcher | python -m
 
 Desktop release tags and app versions are aligned on the `1.6.x` release line.
 
-For `v1.6.52`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release makes Controls connector credential saves vault-first: GitHub tokens, GitHub SSH/App secrets, Discord, WhatsApp, and Google OAuth secrets save into Guardian Vault without requiring breakglass, while non-secret toggles and IDs still persist through normal env storage.
+For `v1.6.53`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release fixes app and Telegram photo processing through shared vision-model fallback routing, hardens meeting retry handling for transient network errors, expands Google Drive/Docs and Microsoft 365 connector onboarding, and presents the Workstation Specialty Wing as five fixed agent offices with Add Agent slots.
 
 ### How to upgrade safely
 
