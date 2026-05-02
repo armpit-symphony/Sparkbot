@@ -1,0 +1,9 @@
+Sparkbot v1.6.51
+
+Focus: restored connector onboarding.
+
+- Restored Telegram, Discord, WhatsApp, Gmail, and Google Calendar onboarding in Controls.
+- Kept GitHub token, SSH key/path, and GitHub App setup in the same Comms section.
+- Restored the full comms save payload so all connector credentials and toggles persist, not only GitHub.
+- Updated the Controls onboarding checklist to count all configured connectors.
+- Advanced backend, frontend, Tauri shell, README, public downloader, capabilities docs, release notes, service worker, and packaging notes to v1.6.51.

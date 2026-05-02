@@ -1,5 +1,12 @@
 # Release Notes
 
+## Sparkbot v1.6.51
+
+- Restored the full Controls comms onboarding set after the GitHub-focused update: Telegram, Discord, WhatsApp, Gmail, and Google Calendar are visible again alongside GitHub.
+- Restored the full comms save payload so non-GitHub connector credentials and toggles are persisted again.
+- Kept the newer GitHub token, SSH key/path, and GitHub App onboarding in the same Comms section.
+- Advanced backend, frontend, Tauri shell, README, public downloader, capabilities docs, release notes, service worker, and packaging notes to v1.6.51.
+
 ## Sparkbot v1.6.50
 
 - Unified the top surface navigation across Chat, Workstation, Controls, Robo OS, Spine Ops, and Info.

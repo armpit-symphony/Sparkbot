@@ -396,7 +396,7 @@ const BUILTIN_AGENTS: Agent[] = [
   { name: "analyst",    emoji: "📊", description: "Data analyst — structured reasoning and actionable insights" },
 ]
 
-const LEGACY_COMMS_VISIBLE = false
+const LEGACY_COMMS_VISIBLE = true
 
 // ─── Specialty agent templates (shown in Spawn Agent picker) ──────────────────
 
@@ -1003,7 +1003,12 @@ function SparkbotSettingsDialog({
     (provider) => provider.configured || provider.models_available === true,
   ).length ?? 0
   const enabledChannelCount = [
-    Boolean(modelsConfig?.comms?.github?.configured),
+    Boolean(commsForm.telegram.enabled && modelsConfig?.comms?.telegram?.configured),
+    Boolean(commsForm.discord.enabled && modelsConfig?.comms?.discord?.configured),
+    Boolean(commsForm.whatsapp.enabled && modelsConfig?.comms?.whatsapp?.configured),
+    Boolean(commsForm.github.enabled && modelsConfig?.comms?.github?.configured),
+    Boolean(modelsConfig?.comms?.google?.gmail_configured),
+    Boolean(modelsConfig?.comms?.google?.calendar_configured),
   ].filter(Boolean).length
   const onboardingSteps = showAdvancedControls
     ? [
@@ -1022,11 +1027,11 @@ function SparkbotSettingsDialog({
             : "Choose OpenRouter cloud AI or a local Ollama model",
         },
         {
-          title: "Add GitHub access",
+          title: "Turn on one connector",
           done: enabledChannelCount > 0,
           detail: enabledChannelCount > 0
-            ? "GitHub access is ready"
-            : "Add GitHub access with a token, SSH key, or GitHub App",
+            ? `${enabledChannelCount} connector${enabledChannelCount === 1 ? "" : "s"} ready`
+            : "Enable Telegram, Discord, WhatsApp, GitHub, Gmail, or Google Calendar after adding credentials",
         },
         {
           title: "Choose Computer Control mode",
@@ -1876,7 +1881,7 @@ function SparkbotSettingsDialog({
             <div className="mb-3">
               <h2 className="text-sm font-semibold">Comms</h2>
               <p className="text-xs text-muted-foreground">
-                Configure GitHub repo access. Choose token, SSH, or GitHub App credentials, then save.
+                Configure chat channels, repo access, and Google workspace connectors. GitHub supports token, SSH, or GitHub App credentials.
               </p>
             </div>
             <div className="divide-y rounded-lg border">
@@ -2219,7 +2224,7 @@ function SparkbotSettingsDialog({
             </div>
             <div className="mt-3 flex items-center justify-between gap-3">
               <div className="text-xs text-muted-foreground">
-                GitHub settings are saved locally. Tokens define API permissions, SSH keys define git access, and GitHub Apps define installation-scoped access.
+                Connector settings are saved locally. Google credentials apply immediately, Telegram polling activates within 30 seconds, and Discord, WhatsApp, or GitHub bridge startup changes may require a restart.
               </div>
               <button
                 type="button"
@@ -3629,7 +3634,7 @@ function SparkbotDmPage({ controlsSurface = false }: SparkbotDmPageProps = {}) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ comms: { github: commsForm.github } }),
+        body: JSON.stringify({ comms: commsForm }),
       })
       const data = await res.json().catch(() => ({ detail: "Could not save comms settings." }))
       if (!res.ok) {
@@ -3637,7 +3642,7 @@ function SparkbotDmPage({ controlsSurface = false }: SparkbotDmPageProps = {}) {
       } else {
         applyControlsConfig(data)
         await refreshControls()
-        setMessages(prev => [...prev, systemMsg("GitHub access settings saved. Token scopes, SSH keys, and GitHub App installation permissions control what Sparkbot can do.")])
+        setMessages(prev => [...prev, systemMsg("Communications settings saved. Telegram, Discord, WhatsApp, GitHub, Gmail, and Google Calendar credentials remain available from Controls.")])
       }
     } catch {
       setSettingsError("Could not save comms settings.")

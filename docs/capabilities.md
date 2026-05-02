@@ -1827,7 +1827,7 @@ curl -b cookies.txt http://localhost:8000/api/v1/chat/system/watcher | python -m
 
 Desktop release tags and app versions are aligned on the `1.6.x` release line.
 
-For `v1.6.50`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release also makes Chat, Workstation, Controls, Robo OS, Spine Ops, and Info share one top navigation model, with Controls available as a full-page route.
+For `v1.6.51`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release restores Telegram, Discord, WhatsApp, Gmail, and Google Calendar onboarding in Controls while keeping the upgraded GitHub token, SSH, and GitHub App setup paths.
 
 ### How to upgrade safely
 
