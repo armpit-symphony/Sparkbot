@@ -1,5 +1,13 @@
 # Release Notes
 
+## Sparkbot v1.6.52
+
+- Fixed Controls credential storage so operator-entered connector secrets save directly into Guardian Vault without requiring an active breakglass session.
+- GitHub tokens, GitHub SSH private keys, GitHub App private keys, GitHub webhook secrets, Discord bot tokens, WhatsApp tokens, and Google OAuth secrets now use `use_only` vault entries for bridge/runtime use.
+- Kept non-secret connector toggles and IDs in normal env persistence while applying vault-backed secrets to the current runtime process.
+- Added regression coverage proving a GitHub token submitted from Controls writes to vault with no breakglass session active.
+- Advanced backend, frontend, Tauri shell, README, public downloader, capabilities docs, release notes, service worker, and packaging notes to v1.6.52.
+
 ## Sparkbot v1.6.51
 
 - Restored the full Controls comms onboarding set after the GitHub-focused update: Telegram, Discord, WhatsApp, Gmail, and Google Calendar are visible again alongside GitHub.

@@ -23,6 +23,7 @@ node_modules/
 /blob-report/
 /playwright/.cache/
 /coverage
+/.pytest-tmp/
 /tmp/
 backend/.pytest-basetemp/
 backend/.pytest-run-tmp/

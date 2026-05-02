@@ -1827,7 +1827,7 @@ curl -b cookies.txt http://localhost:8000/api/v1/chat/system/watcher | python -m
 
 Desktop release tags and app versions are aligned on the `1.6.x` release line.
 
-For `v1.6.51`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release restores Telegram, Discord, WhatsApp, Gmail, and Google Calendar onboarding in Controls while keeping the upgraded GitHub token, SSH, and GitHub App setup paths.
+For `v1.6.52`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release makes Controls connector credential saves vault-first: GitHub tokens, GitHub SSH/App secrets, Discord, WhatsApp, and Google OAuth secrets save into Guardian Vault without requiring breakglass, while non-secret toggles and IDs still persist through normal env storage.
 
 ### How to upgrade safely
 

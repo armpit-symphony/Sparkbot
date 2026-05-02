@@ -229,22 +229,26 @@ def _upsert_vault_secret(
     notes: str,
     current_user: CurrentChatUser,
 ) -> bool:
-    """Persist a secret into Vault when a privileged session is active."""
+    """Persist an operator-submitted Controls credential into Vault.
+
+    Direct Controls setup is already an explicit operator credential-entry flow,
+    so it should not require an active break-glass session. Break-glass still
+    governs conversational vault tools and plaintext reveal paths.
+    """
     if not value:
         return False
     guardian_suite = get_guardian_suite()
     priv_session = guardian_suite.auth.get_active_session(str(current_user.id))
-    if not priv_session:
-        return False
     from app.services.guardian.vault import vault_get_metadata
 
     operator = str(current_user.username or "system")
+    session_id = priv_session.session_id if priv_session else "controls-config"
     if vault_get_metadata(alias):
         guardian_suite.vault.vault_update(
             alias=alias,
             value=value,
             operator=operator,
-            session_id=priv_session.session_id,
+            session_id=session_id,
             notes=notes,
             policy="use_only",
         )
@@ -256,7 +260,7 @@ def _upsert_vault_secret(
             notes=notes,
             policy="use_only",
             operator=operator,
-            session_id=priv_session.session_id,
+            session_id=session_id,
         )
     return True
 
@@ -1041,7 +1045,7 @@ async def update_models_config(
                     notices.append("Discord bot token saved to Vault.")
                 else:
                     env_updates["DISCORD_BOT_TOKEN"] = body.comms.discord.bot_token
-                    notices.append("Discord bot token saved to env storage. Use break-glass access to persist it in Vault.")
+                    notices.append("Discord bot token saved to env storage because Vault is unavailable.")
             if body.comms.discord.enabled is not None:
                 env_updates["DISCORD_ENABLED"] = "true" if body.comms.discord.enabled else "false"
             if body.comms.discord.dm_only is not None:
@@ -1060,7 +1064,7 @@ async def update_models_config(
                     notices.append("WhatsApp token saved to Vault.")
                 else:
                     env_updates["WHATSAPP_TOKEN"] = body.comms.whatsapp.token
-                    notices.append("WhatsApp token saved to env storage. Use break-glass access to persist it in Vault.")
+                    notices.append("WhatsApp token saved to env storage because Vault is unavailable.")
             if body.comms.whatsapp.phone_id:
                 env_updates["WHATSAPP_PHONE_ID"] = body.comms.whatsapp.phone_id
             if body.comms.whatsapp.verify_token:
@@ -1075,7 +1079,7 @@ async def update_models_config(
                     notices.append("WhatsApp verify token saved to Vault.")
                 else:
                     env_updates["WHATSAPP_VERIFY_TOKEN"] = body.comms.whatsapp.verify_token
-                    notices.append("WhatsApp verify token saved to env storage. Use break-glass access to persist it in Vault.")
+                    notices.append("WhatsApp verify token saved to env storage because Vault is unavailable.")
             if body.comms.whatsapp.enabled is not None:
                 env_updates["WHATSAPP_ENABLED"] = "true" if body.comms.whatsapp.enabled else "false"
             restart_required = True
@@ -1092,7 +1096,7 @@ async def update_models_config(
                     notices.append("GitHub token saved to Vault.")
                 else:
                     env_updates["GITHUB_TOKEN"] = body.comms.github.token
-                    notices.append("GitHub token saved to env storage. Use break-glass access to persist it in Vault.")
+                    notices.append("GitHub token saved to env storage because Vault is unavailable.")
             if body.comms.github.ssh_private_key:
                 if _upsert_vault_secret(
                     alias="github_ssh_private_key",
@@ -1105,7 +1109,7 @@ async def update_models_config(
                     notices.append("GitHub SSH key saved to Vault.")
                 else:
                     env_updates["GITHUB_SSH_PRIVATE_KEY"] = body.comms.github.ssh_private_key
-                    notices.append("GitHub SSH key saved to env storage. Use break-glass access to persist it in Vault.")
+                    notices.append("GitHub SSH key saved to env storage because Vault is unavailable.")
             if body.comms.github.ssh_key_path is not None:
                 env_updates["GITHUB_SSH_KEY_PATH"] = body.comms.github.ssh_key_path.strip()
             if body.comms.github.app_id is not None:
@@ -1124,7 +1128,7 @@ async def update_models_config(
                     notices.append("GitHub App private key saved to Vault.")
                 else:
                     env_updates["GITHUB_APP_PRIVATE_KEY"] = body.comms.github.app_private_key
-                    notices.append("GitHub App private key saved to env storage. Use break-glass access to persist it in Vault.")
+                    notices.append("GitHub App private key saved to env storage because Vault is unavailable.")
             if body.comms.github.webhook_secret:
                 if _upsert_vault_secret(
                     alias="github_webhook_secret",
@@ -1137,7 +1141,7 @@ async def update_models_config(
                     notices.append("GitHub webhook secret saved to Vault.")
                 else:
                     env_updates["GITHUB_WEBHOOK_SECRET"] = body.comms.github.webhook_secret
-                    notices.append("GitHub webhook secret saved to env storage. Use break-glass access to persist it in Vault.")
+                    notices.append("GitHub webhook secret saved to env storage because Vault is unavailable.")
             if body.comms.github.bot_login:
                 env_updates["GITHUB_BOT_LOGIN"] = body.comms.github.bot_login
             if body.comms.github.default_repo is not None:
@@ -1163,7 +1167,7 @@ async def update_models_config(
                     notices.append("Google client ID saved to Vault.")
                 else:
                     env_updates["GOOGLE_CLIENT_ID"] = body.comms.google.client_id
-                    notices.append("Google client ID saved to env storage. Use break-glass access to persist it in Vault.")
+                    notices.append("Google client ID saved to env storage because Vault is unavailable.")
             if body.comms.google.client_secret:
                 if _upsert_vault_secret(
                     alias="google_client_secret",
@@ -1176,7 +1180,7 @@ async def update_models_config(
                     notices.append("Google client secret saved to Vault.")
                 else:
                     env_updates["GOOGLE_CLIENT_SECRET"] = body.comms.google.client_secret
-                    notices.append("Google client secret saved to env storage. Use break-glass access to persist it in Vault.")
+                    notices.append("Google client secret saved to env storage because Vault is unavailable.")
             if body.comms.google.refresh_token:
                 if _upsert_vault_secret(
                     alias="google_refresh_token",
@@ -1189,7 +1193,7 @@ async def update_models_config(
                     notices.append("Google refresh token saved to Vault.")
                 else:
                     env_updates["GOOGLE_REFRESH_TOKEN"] = body.comms.google.refresh_token
-                    notices.append("Google refresh token saved to env storage. Use break-glass access to persist it in Vault.")
+                    notices.append("Google refresh token saved to env storage because Vault is unavailable.")
             if body.comms.google.calendar_id is not None:
                 env_updates["GOOGLE_CALENDAR_ID"] = body.comms.google.calendar_id
             notices.append("Google credentials saved — Gmail and Calendar skills are live immediately.")

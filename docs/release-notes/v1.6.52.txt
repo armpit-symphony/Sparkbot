@@ -1,0 +1,9 @@
+Sparkbot v1.6.52
+
+Focus: vault-first connector credential saves.
+
+- Fixed Controls credential storage so connector secrets save directly into Guardian Vault without requiring breakglass mode.
+- GitHub tokens, GitHub SSH private keys, GitHub App private keys, GitHub webhook secrets, Discord bot tokens, WhatsApp tokens, and Google OAuth secrets now save as use-only vault entries.
+- Kept connector IDs and enable/disable toggles in normal env persistence while applying vault-backed secrets to the active runtime process.
+- Added regression coverage for saving a GitHub token from Controls into vault with no active breakglass session.
+- Advanced backend, frontend, Tauri shell, README, public downloader, capabilities docs, release notes, service worker, and packaging notes to v1.6.52.

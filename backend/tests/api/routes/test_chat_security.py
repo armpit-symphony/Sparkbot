@@ -322,3 +322,56 @@ def test_models_config_update_requires_operator_identity(client: TestClient, mon
         json={"token_guardian_mode": "shadow"},
     )
     assert response.status_code == 403
+
+
+def test_comms_github_token_save_writes_vault_without_breakglass(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from pathlib import Path
+
+    from cryptography.fernet import Fernet
+
+    from app.api.routes.chat import model as model_route
+    from app.services.guardian.auth import close_privileged_session
+    from app.services.guardian.vault import init_vault_db, vault_use
+
+    guardian_dir = Path.cwd() / ".test-data" / f"guardian-{random_lower_string()[:10]}"
+    monkeypatch.setenv("SPARKBOT_OPERATOR_USERNAMES", "sparkbot-user")
+    monkeypatch.setenv("SPARKBOT_GUARDIAN_DATA_DIR", str(guardian_dir))
+    monkeypatch.setenv("SPARKBOT_VAULT_KEY", Fernet.generate_key().decode("utf-8"))
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    init_vault_db()
+
+    persisted_env: dict[str, str] = {}
+
+    async def fake_ollama_status():
+        return {"reachable": False, "models_available": False, "models": [], "model_ids": []}
+
+    monkeypatch.setattr(model_route, "_write_env_updates", lambda updates: persisted_env.update(updates))
+    monkeypatch.setattr(model_route, "get_ollama_status", fake_ollama_status)
+
+    operator_id = _ensure_chat_user("sparkbot-user")
+    close_privileged_session(str(operator_id))
+    headers = _chat_headers_for_user(operator_id)
+
+    response = client.post(
+        f"{settings.API_V1_STR}/chat/models/config",
+        headers=headers,
+        json={
+            "comms": {
+                "github": {
+                    "token": "ghp_controls_token",
+                    "enabled": True,
+                    "default_repo": "armpit-symphony/Sparkbot",
+                }
+            }
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "GitHub token saved to Vault." in payload["notices"]
+    assert vault_use("github_token", user_id="github_bridge", operator="system") == "ghp_controls_token"
+    assert "GITHUB_TOKEN" not in persisted_env
+    assert persisted_env["GITHUB_BRIDGE_ENABLED"] == "true"
