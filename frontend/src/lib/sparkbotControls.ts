@@ -94,6 +94,7 @@ export function controlsOnboardingComplete(config: SparkbotControlsConfig | null
 
 export function providerForModel(model: string): string {
   if (model.startsWith("openrouter/")) return "openrouter"
+  if (model.startsWith("openai-codex/")) return "openai_codex"
   if (model.startsWith("ollama/")) return "ollama"
   if (model.startsWith("gpt-") || model.startsWith("codex-")) return "openai"
   if (model.startsWith("claude")) return "anthropic"
@@ -107,7 +108,7 @@ export function providerForModel(model: string): string {
 export function routeForModelOverride(model: string): string {
   const provider = providerForModel(model)
   if (provider === "ollama") return "local"
-  if (["openrouter", "openai", "anthropic", "google", "groq", "minimax", "xai"].includes(provider)) {
+  if (["openrouter", "openai", "openai_codex", "anthropic", "google", "groq", "minimax", "xai"].includes(provider)) {
     return provider
   }
   return "default"
@@ -160,6 +161,7 @@ export function buildControlsModelGroups(
   const providerGroups: Array<{ id: string; label: string }> = [
     { id: "openrouter", label: "OpenRouter" },
     { id: "openai", label: "OpenAI" },
+    { id: "openai_codex", label: "OpenAI Codex Subscription" },
     { id: "anthropic", label: "Anthropic" },
     { id: "google", label: "Google" },
     { id: "groq", label: "Groq" },

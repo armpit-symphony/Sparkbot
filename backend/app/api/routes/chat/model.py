@@ -54,6 +54,7 @@ from app.api.routes.chat.llm import (
     model_label,
     model_is_configured,
     model_provider,
+    _codex_cli_auth_available,
     set_invite_agent_config,
     set_model,
     set_model_stack,
@@ -87,7 +88,17 @@ def _provider_saved_auth_mode(provider_id: str) -> str:
     if provider_id == "anthropic":
         raw = os.getenv("ANTHROPIC_AUTH_MODE", "").strip().lower()
         return raw if raw in {"api_key", "oauth"} else "api_key"
+    if provider_id == "openai_codex":
+        return "codex_cli"
     return "api_key"
+
+
+def _provider_configured(provider_id: str, env_key: str) -> bool:
+    if provider_id == "openai_codex":
+        return _codex_cli_auth_available()
+    return bool(os.getenv(env_key, "").strip())
+
+
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[5]
 
@@ -288,6 +299,7 @@ def _provider_catalog(ollama_status: dict[str, Any] | None = None) -> list[dict[
     ordered = [
         ("openrouter", "OpenRouter", "OPENROUTER_API_KEY"),
         ("openai", "OpenAI", "OPENAI_API_KEY"),
+        ("openai_codex", "OpenAI Codex Subscription", ""),
         ("anthropic", "Anthropic", "ANTHROPIC_API_KEY"),
         ("google", "Google", "GOOGLE_API_KEY"),
         ("groq", "Groq", "GROQ_API_KEY"),
@@ -301,7 +313,7 @@ def _provider_catalog(ollama_status: dict[str, Any] | None = None) -> list[dict[
             {
                 "id": provider_id,
                 "label": label,
-                "configured": bool(os.getenv(env_key, "").strip()),
+                "configured": _provider_configured(provider_id, env_key),
                 "reachable": None,
                 "models_available": None,
                 "available_models": [],
@@ -309,6 +321,8 @@ def _provider_catalog(ollama_status: dict[str, Any] | None = None) -> list[dict[
                 "auth_modes": (
                     ["api_key", "codex_sub"]
                     if provider_id == "openai"
+                    else ["codex_cli"]
+                    if provider_id == "openai_codex"
                     else ["api_key", "oauth"]
                     if provider_id == "anthropic"
                     else ["api_key"]
@@ -940,7 +954,7 @@ async def update_models_config(
     if body.default_selection is not None:
         provider = str(body.default_selection.get("provider") or "").strip().lower()
         model = str(body.default_selection.get("model") or "").strip()
-        if provider not in {"openrouter", "ollama", "openai", "anthropic", "google", "groq", "minimax"}:
+        if provider not in {"openrouter", "ollama", "openai", "openai_codex", "anthropic", "google", "groq", "minimax", "xai"}:
             raise HTTPException(status_code=400, detail="Unknown default provider.")
         if not is_valid_model(model):
             raise HTTPException(status_code=400, detail=f"Unknown model '{model}'.")
@@ -1004,7 +1018,7 @@ async def update_models_config(
 
     if body.agent_overrides is not None:
         cleaned: dict[str, dict[str, str]] = {}
-        _route_to_provider = {"openrouter": "openrouter", "local": "ollama", "openai": "openai", "anthropic": "anthropic", "google": "google", "groq": "groq", "minimax": "minimax", "xai": "xai"}
+        _route_to_provider = {"openrouter": "openrouter", "local": "ollama", "openai": "openai", "openai_codex": "openai_codex", "anthropic": "anthropic", "google": "google", "groq": "groq", "minimax": "minimax", "xai": "xai"}
         for agent_name, value in body.agent_overrides.items():
             route = str((value or {}).get("route") or "default").strip().lower()
             model = str((value or {}).get("model") or "").strip()

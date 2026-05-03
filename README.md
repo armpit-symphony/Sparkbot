@@ -6,7 +6,7 @@ Use it to chat, search, summarize documents, control a browser, run shell comman
 
 **Download:** [armpit-symphony.github.io/Sparkbot](https://armpit-symphony.github.io/Sparkbot/)
 
-**Current release line:** v1.6.55
+**Current release line:** v1.6.56
 
 > Sparkbot stores its app data locally. If you connect a cloud LLM provider or an external service, the text and actions needed for that provider or service are sent to that provider. Local models can run without an LLM cloud account.
 
@@ -66,7 +66,7 @@ The desktop app is the easiest path for one person. Docker and systemd deploymen
 
 ### Intelligence & Memory
 - **Relationship memory** — personal CRM built from conversation; remember facts, notes, and interaction history for any person
-- **Multi-model** — OpenAI, Anthropic, Google, Groq, MiniMax, OpenRouter, Ollama — switch live with `/model`
+- **Multi-model** — OpenAI API, OpenAI Codex subscription, Anthropic, Google, Groq, MiniMax, OpenRouter, Ollama — switch live with `/model`
 - **Model stack** — configure Primary, two Backups, and a Heavy Hitter; Sparkbot auto-routes and falls back across providers
 - **Multi-agent rooms** — mention `@researcher`, `@coder`, `@writer`, `@analyst`, `@meetings_manager`, `@web_designer`, `@marketing_agent`, `@business_analyst`, or any custom agent for a specialist response
 - **Spawn agents** — create named agents with custom system prompts and first-class identity metadata from 11 specialty templates
@@ -94,7 +94,7 @@ The desktop app is the easiest path for one person. Docker and systemd deploymen
 - **Full-page Controls** — model setup, providers, comms, agents, and routing configuration stay in a connected app page instead of a chat-only panel
 - **Phone access** — the full workstation now opens on phone-sized screens as a horizontally scrollable operations map instead of blocking mobile users
 - **Robo OS** — Workstation button for the unified MCP control plane, LIMA Robotics OS manifests, policy tags, no-hardware replay/simulation commands, and robot-skill safety posture
-- **Invite Wing** — seat any model with its own API key and model ID; routes directly to that provider. The **Claude** and **ChatGPT** desks now use a matching `API Key / Subscription` setup pattern for Anthropic and OpenAI subscription-linked credentials, and the third desk is preset for **xAI Grok**
+- **Invite Wing** — seat any model with its own API key and model ID; routes directly to that provider. The **Claude** desk supports API key or subscription token setup, the **ChatGPT/Codex** desk defaults to the local Codex subscription bridge, and the third desk is preset for **xAI Grok**
 - **Round Table** — autonomous multi-agent meeting room; all agents contribute without you typing between turns
 - **Company Operations** — view all Guardian Tasks across every room, active meetings, and launch project rooms in one click
 - **Task-linked meetings** — hit **Meet** on any task and a pre-seeded project room opens
@@ -352,7 +352,7 @@ Exports a dated `.md` file with all notes, decisions, and action items.
 
 The **Round Table** in the Workstation launches an autonomous multi-agent meeting. New meeting setup preloads `@meetings_manager` into the first seat, but you can change that chair before launch. Click **Auto-fill Stack** to seat your configured models, then start the meeting. The chair frames the problem, specialists contribute, Sparkbot synthesizes the result, and the room can keep moving through a Guardian `meeting_heartbeat` task until it reaches a terminal state such as solved, blocked, recommendation ready, or needs approval. Meeting notes, decisions, action items, and project artifacts are captured so the room behaves like an orchestrator instead of a one-off chat. You can interrupt at any time.
 
-The Workstation **Specialty Wing** has five office slots backed by the same packaged and custom Agents list used in Controls. The default offices are `@meetings_manager`, `@researcher`, `@analyst`, `@writer`, and `@workstation_backup_1`; each office can be changed from its dropdown and the assignment persists locally in the browser. Opening an office shows the selected agent details plus a model selector that saves to the same per-agent model override system as **Controls -> Agents -> Model Overrides**.
+The Workstation **Specialty Wing** has five office slots backed by the same packaged and custom Agents list used in Controls. The default offices are `@meetings_manager`, `@researcher`, `@analyst`, `@writer`, and `@workstation_backup_1`; each office can be changed from the compact card dropdown or the office detail-panel selector, and the assignment persists locally in the browser. Opening an office shows the selected agent details plus a model selector that saves to the same per-agent model override system as **Controls -> Agents -> Model Overrides**.
 
 ### Robo OS And MCP Control Plane
 
@@ -550,6 +550,7 @@ User message → Token Guardian → Memory Guardian → LLM
 
 | Version | Date | Highlights |
 |---------|------|-----------|
+| v1.6.56 | May 2026 | Added a first-class OpenAI Codex subscription provider that detects the local Codex ChatGPT sign-in and dispatches `openai-codex/gpt-5.3-codex` through the Codex CLI bridge; Controls can set it as the default, Workstation ChatGPT/Codex desks prefill the subscription model, Specialty Wing office detail panels now include an agent selector for packaged or spawned agents, local desktop routing config was moved to the Codex subscription default, and downloader/docs/package metadata advanced to the v1.6.56 desktop line. |
 | v1.6.55 | May 2026 | Advanced the Command Center update line for local testing and public updater/download metadata: downloader links, package versions, Tauri metadata, service worker cache, README, capabilities docs, release notes, and GitHub Pages copy now point at the v1.6.55 desktop line. |
 | v1.6.54 | May 2026 | Cleaned up Controls by removing the obsolete Active custom agents display, moved Spawn Agent to the top of Agents, added packaged specialist agents, upgraded Workstation Specialty Wing offices with shared Agents dropdowns/model selection, preloaded Meetings Manager into new meeting setup, promoted Spine Ops to the official Command Center with Room Persona/System Health/Computer Control/Token Guardian/Task Guardian surfaced there, and kept downloader/docs/package metadata on the v1.6.54 desktop line. |
 | v1.6.53 | May 2026 | Fixed photo processing in app uploads and Telegram by routing images through a shared vision-capable model picker; hardened meeting sends so transient network failures do not leave the room stuck while retrying with proceed/go/try again; expanded Controls onboarding for Google Drive, Google Docs, and Microsoft 365; redesigned the Workstation Specialty Wing into five fixed agent offices with Add Agent slots; downloader/docs advanced to the v1.6.53 desktop line. |

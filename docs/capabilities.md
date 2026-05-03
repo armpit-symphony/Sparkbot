@@ -506,6 +506,7 @@ SEARCH_CACHE_TTL_SECONDS=300   # cache identical queries (default 300s)
 | Provider | Env var | Notes |
 |---------|---------|-------|
 | OpenAI | `OPENAI_API_KEY` | GPT-4o, o1, o3, GPT-5 |
+| OpenAI Codex Subscription | local `~/.codex/auth.json` sign-in | `openai-codex/gpt-5.3-codex` through read-only `codex exec`; set `SPARKBOT_DEFAULT_PROVIDER=openai_codex` |
 | Anthropic | `ANTHROPIC_API_KEY` | Claude Sonnet, Haiku, Opus |
 | Google | `GOOGLE_API_KEY` | Gemini 2.0 Flash, Pro |
 | Groq | `GROQ_API_KEY` | Llama 3.3 70B (very fast) |
@@ -541,7 +542,7 @@ How to get the token:
 
 Sparkbot sends the token via `Authorization: Bearer` with the `anthropic-beta: oauth-2025-04-20` header, so meetings launched through that seat spend against your subscription quota rather than API credits. Tokens expire — paste a fresh one if Anthropic starts rejecting requests.
 
-**Codex with your ChatGPT plan.** The **ChatGPT** Invite Wing desk is also the **Codex** gateway. Pick `API Key / Subscription`, keep the model set to `codex-mini-latest` (or switch to another OpenAI model), and paste the OpenAI API key created when you sign in to Codex with ChatGPT. OpenAI’s current official flow is `codex --login` (or `codex --free` for the promo path), which links the ChatGPT plan and creates an API key automatically. Sparkbot stores that key locally and uses it only when the invited seat joins a meeting.
+**Codex with your ChatGPT plan.** Sparkbot has a first-class **OpenAI Codex Subscription** provider. Run `codex login`, choose ChatGPT sign-in, then select `openai-codex/gpt-5.3-codex` in Controls. Sparkbot detects the local `~/.codex/auth.json` session and dispatches that provider through `codex exec --sandbox read-only` instead of requiring an OpenAI Platform API key. The **ChatGPT** Invite Wing desk is also the Codex gateway and now preloads the same subscription model for meeting seats.
 
 **xAI (Grok).** The third Invite Wing desk is preset for **xAI Grok**. Per xAI’s official developer docs, Sparkbot uses the xAI API path: create an xAI account and API key, then paste `XAI_API_KEY`. Grok app / X subscription linking applies to consumer access on xAI properties and does not replace the API key in Sparkbot.
 
@@ -642,9 +643,9 @@ A visual grid showing all active desks:
 - **Computer Control** — shell, terminal, and browser capability panel
 - **Robo OS** — unified MCP control-plane panel for Sparkbot tools and LIMA Robotics OS skills
 
-The Specialty Wing defaults to `@meetings_manager`, `@researcher`, `@analyst`, `@writer`, and `@workstation_backup_1`. Each office card includes an agent dropdown populated from the same packaged/custom agent list used by Controls, so user-created custom agents remain available without a second registry. Office assignments are saved in local browser storage as Workstation layout state, with missing defaults falling back to the first available agent instead of crashing.
+The Specialty Wing defaults to `@meetings_manager`, `@researcher`, `@analyst`, `@writer`, and `@workstation_backup_1`. Each office card and its detail panel include an agent dropdown populated from the same packaged/custom agent list used by Controls, so user-created custom agents remain available without a second registry. Office assignments are saved in local browser storage as Workstation layout state, with missing defaults falling back to the first available agent instead of crashing.
 
-Opening a Specialty Wing office keeps the existing agent breakdown and adds a model selector. That selector uses the same Controls model config and writes to the same per-agent `agent_overrides` path as **Controls > Agents > Model Overrides**, so changing an office model does not create a Workstation-only route that can drift.
+Opening a Specialty Wing office keeps the existing agent breakdown and adds both the assigned-agent selector and a model selector. The model selector uses the same Controls model config and writes to the same per-agent `agent_overrides` path as **Controls > Agents > Model Overrides**, so changing an office model does not create a Workstation-only route that can drift.
 
 ### Computer Control Panel
 
@@ -1880,7 +1881,7 @@ curl -b cookies.txt http://localhost:8000/api/v1/chat/system/watcher | python -m
 
 Desktop release tags and app versions are aligned on the `1.6.x` release line.
 
-For `v1.6.55`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release line promotes Spine Ops to the official Command Center, keeps the shared top navigation, and points public updater/download metadata at the v1.6.55 desktop artifacts for local testing.
+For `v1.6.56`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release line adds the OpenAI Codex subscription provider, sets the local desktop default to `openai-codex/gpt-5.3-codex`, adds Specialty Wing detail-panel agent selectors, and points public updater/download metadata at the v1.6.56 desktop artifacts.
 
 ### How to upgrade safely
 

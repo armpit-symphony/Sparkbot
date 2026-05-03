@@ -811,7 +811,7 @@ const PROVIDER_OPTIONS = [
 
 const MODEL_ID_PLACEHOLDER: Record<string, string> = {
   Anthropic: "e.g. claude-sonnet-4-6",
-  OpenAI: "e.g. codex-mini-latest or gpt-5",
+  OpenAI: "e.g. openai-codex/gpt-5.3-codex or gpt-5.3-codex",
   xAI: "e.g. xai/grok-4.20-multi-agent-0309",
   Ollama: "e.g. ollama/phi4-mini",
   Google: "e.g. gemini/gemini-1.5-pro",
@@ -831,7 +831,7 @@ function InviteConfigModal({ station, onSave, onCancel }: InviteConfigModalProps
   const [description, setDescription] = useState("")
   const [modelId, setModelId] = useState(
     station.id === "invite-gpt"
-      ? "codex-mini-latest"
+      ? "openai-codex/gpt-5.3-codex"
       : station.id === "invite-custom"
         ? "xai/grok-4.20-multi-agent-0309"
         : "",
@@ -1190,6 +1190,8 @@ interface StationDetailPanelProps {
   controlsConfig: SparkbotControlsConfig | null
   onAgentModelChange: (agentName: string, modelId: string) => Promise<void>
   savingAgentModel: string | null
+  agentOptions: SpecialtyAgentOption[]
+  onAgentChange: (stationId: string, agentName: string) => void
 }
 
 function StationDetailPanel({
@@ -1205,6 +1207,8 @@ function StationDetailPanel({
   controlsConfig,
   onAgentModelChange,
   savingAgentModel,
+  agentOptions,
+  onAgentChange,
 }: StationDetailPanelProps) {
   const {
     accentHex,
@@ -1470,6 +1474,49 @@ function StationDetailPanel({
                 padding: "10px 12px",
               }}
             >
+              <label
+                htmlFor={`${id}-agent-select-panel`}
+                style={{
+                  display: "block",
+                  fontSize: 10,
+                  color: accentHex,
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  marginBottom: 6,
+                  fontWeight: 700,
+                }}
+              >
+                Assigned agent
+              </label>
+              <select
+                id={`${id}-agent-select-panel`}
+                value={station.agentHandle ?? ""}
+                disabled={agentOptions.length === 0}
+                onChange={(event) => onAgentChange(id, event.target.value)}
+                style={{
+                  width: "100%",
+                  backgroundColor: "#030508",
+                  border: `1px solid ${accentHex}44`,
+                  borderRadius: 5,
+                  padding: "8px 9px",
+                  color: agentOptions.length ? "#dbeafe" : "#64748b",
+                  fontSize: 11,
+                  fontFamily: "monospace",
+                  outline: "none",
+                  boxSizing: "border-box",
+                  marginBottom: 10,
+                }}
+              >
+                {agentOptions.length === 0 ? (
+                  <option value="">Loading agents</option>
+                ) : (
+                  agentOptions.map((agent) => (
+                    <option key={agent.name} value={agent.name}>
+                      {agent.label}
+                    </option>
+                  ))
+                )}
+              </select>
               <label
                 htmlFor={`${id}-model-select`}
                 style={{
@@ -5406,6 +5453,8 @@ export default function WorkstationPage() {
             controlsConfig={controlsConfig}
             onAgentModelChange={handleAgentModelChange}
             savingAgentModel={savingAgentModel}
+            agentOptions={specialtyAgentOptions}
+            onAgentChange={handleSpecialtyAgentChange}
           />
         )}
         {panel?.kind === "table" && (

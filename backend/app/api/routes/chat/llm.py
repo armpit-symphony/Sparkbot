@@ -4,14 +4,18 @@ Centralized LLM routing via litellm.
 Replaces direct OpenAI SDK calls so any provider can be swapped
 by changing a model string. Per-user model preferences stored in memory.
 """
+import asyncio
 import json
 import logging
 import os
 import pathlib
 import re
+import shutil
+import tempfile
 import time
 import uuid as _uuid_module
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import Any, AsyncGenerator
 
 import litellm
@@ -215,7 +219,15 @@ AVAILABLE_MODELS: dict[str, str] = {
     "gpt-5.4":          "GPT-5.4 — latest OpenAI flagship",
     "gpt-5.4-mini":     "GPT-5.4 Mini — fast 5.4 series",
     "gpt-5.4-nano":     "GPT-5.4 Nano — lightest 5.4 series",
+    "gpt-5.3-codex":    "GPT-5.3 Codex — OpenAI API coding model",
     "codex-mini-latest": "Codex Mini Latest — OpenAI coding agent model",
+    # ChatGPT/Codex subscription route. These are not direct OpenAI Platform
+    # API-key calls; Sparkbot dispatches them through the locally signed-in
+    # Codex CLI account when OPENAI_AUTH_MODE=codex_sub or the openai-codex
+    # provider is selected.
+    "openai-codex/gpt-5.3-codex": "GPT-5.3 Codex Spark — Codex subscription default",
+    "openai-codex/gpt-5.5": "GPT-5.5 — Codex subscription",
+    "openai-codex/gpt-5.4": "GPT-5.4 — Codex subscription",
     # ── Anthropic ──────────────────────────────────────────────────────────────
     "claude-haiku-4-5":          "Claude Haiku 4.5 — fastest Anthropic model",
     "claude-sonnet-4-5":         "Claude Sonnet 4.5 — balanced Anthropic model",
@@ -610,6 +622,144 @@ def get_local_default_model() -> str:
     return "ollama/phi4-mini"
 
 
+def _codex_auth_path() -> pathlib.Path:
+    return pathlib.Path(os.getenv("CODEX_HOME", str(pathlib.Path.home() / ".codex"))) / "auth.json"
+
+
+def _codex_cli_auth_available() -> bool:
+    if os.getenv("CODEX_API_KEY", "").strip():
+        return True
+    auth_path = _codex_auth_path()
+    try:
+        payload = json.loads(auth_path.read_text(encoding="utf-8"))
+    except Exception:
+        return False
+    tokens = payload.get("tokens") if isinstance(payload, dict) else None
+    if not isinstance(tokens, dict):
+        return False
+    return bool(str(tokens.get("access_token") or "").strip() or str(tokens.get("refresh_token") or "").strip())
+
+
+def _codex_cli_executable() -> str:
+    explicit = os.getenv("SPARKBOT_CODEX_CLI", "").strip()
+    if explicit:
+        return explicit
+    resolved = shutil.which("codex")
+    if resolved:
+        return resolved
+    windows_cmd = pathlib.Path.home() / "AppData" / "Roaming" / "npm" / "codex.cmd"
+    if windows_cmd.is_file():
+        return str(windows_cmd)
+    return "codex"
+
+
+def _codex_cli_model(model: str) -> str:
+    configured = os.getenv("SPARKBOT_CODEX_SUBSCRIPTION_MODEL", "").strip()
+    if configured:
+        return configured
+    normalized = (model or "").strip().removeprefix("openai-codex/")
+    aliases = {
+        "gpt-5.3-codex-spark": "gpt-5.3-codex",
+        "GPT-5.3-codex-Spark": "gpt-5.3-codex",
+    }
+    return aliases.get(normalized, normalized or "gpt-5.3-codex")
+
+
+def _messages_to_codex_prompt(messages: list[dict[str, Any]]) -> str:
+    parts: list[str] = [
+        "Answer as Sparkbot. Follow the conversation below. Do not modify files or run write actions.",
+        "",
+    ]
+    for message in messages:
+        role = str(message.get("role") or "message").strip()
+        content = _extract_text_content(message.get("content"))
+        if not content:
+            continue
+        parts.append(f"{role.upper()}:")
+        parts.append(content.strip())
+        parts.append("")
+    parts.append("ASSISTANT:")
+    return "\n".join(parts).strip()
+
+
+def _plain_completion_response(text: str) -> Any:
+    message = SimpleNamespace(content=text)
+    choice = SimpleNamespace(finish_reason="stop", message=message)
+    return SimpleNamespace(choices=[choice])
+
+
+async def _single_chunk_stream(text: str) -> AsyncGenerator[Any, None]:
+    delta = SimpleNamespace(content=text)
+    choice = SimpleNamespace(delta=delta)
+    yield SimpleNamespace(choices=[choice])
+
+
+async def _codex_cli_acompletion(*, model: str, **kwargs: Any) -> Any:
+    if not _codex_cli_auth_available():
+        raise RuntimeError(
+            "Codex subscription route selected, but no local Codex ChatGPT sign-in was found. "
+            "Run `codex login` and choose Sign in with ChatGPT, then retry."
+        )
+
+    prompt = _messages_to_codex_prompt(list(kwargs.get("messages") or []))
+    if not prompt:
+        raise RuntimeError("Codex subscription route received an empty prompt.")
+
+    with tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8", suffix=".txt") as tmp:
+        output_path = tmp.name
+
+    command = [
+        _codex_cli_executable(),
+        "exec",
+        "--model",
+        _codex_cli_model(model),
+        "--sandbox",
+        "read-only",
+        "--skip-git-repo-check",
+        "--ephemeral",
+        "--cd",
+        os.getenv("SPARKBOT_CODEX_WORKDIR", str(pathlib.Path.home())),
+        "--output-last-message",
+        output_path,
+        "-",
+    ]
+    timeout = max(30.0, min(float(os.getenv("SPARKBOT_CODEX_CLI_TIMEOUT_SECONDS", "180")), 600.0))
+    proc = await asyncio.create_subprocess_exec(
+        *command,
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(prompt.encode("utf-8")), timeout=timeout)
+    except asyncio.TimeoutError as exc:
+        proc.kill()
+        await proc.communicate()
+        raise RuntimeError("Codex subscription route timed out waiting for Codex CLI.") from exc
+
+    text = ""
+    try:
+        text = pathlib.Path(output_path).read_text(encoding="utf-8").strip()
+    except Exception:
+        text = ""
+    try:
+        pathlib.Path(output_path).unlink(missing_ok=True)
+    except Exception:
+        pass
+
+    if proc.returncode != 0:
+        error_text = (stderr or stdout).decode("utf-8", errors="replace").strip()
+        raise RuntimeError(f"Codex CLI failed for subscription route: {error_text[:500]}")
+    if not text:
+        text = stdout.decode("utf-8", errors="replace").strip()
+    if not text:
+        raise RuntimeError("Codex CLI returned an empty response.")
+
+    if kwargs.get("stream"):
+        return _single_chunk_stream(text)
+    return _plain_completion_response(text)
+
+
 def default_cross_provider_fallback_enabled() -> bool:
     raw = os.getenv(DEFAULT_CROSS_PROVIDER_FALLBACK_ENV, "").strip().lower()
     if raw:
@@ -651,7 +801,7 @@ def get_invite_agent_config(agent_name: str) -> dict[str, str]:
     return _invite_agent_configs.get(agent_name.strip().lower(), {})
 
 
-VALID_AGENT_ROUTES = {"default", "openrouter", "local", "openai", "anthropic", "google", "groq", "minimax", "xai"}
+VALID_AGENT_ROUTES = {"default", "openrouter", "local", "openai", "openai_codex", "anthropic", "google", "groq", "minimax", "xai"}
 
 
 def get_agent_model_overrides() -> dict[str, dict[str, str]]:
@@ -716,7 +866,7 @@ def get_agent_route_context(
         chosen_model = override_model or get_openrouter_default_model()
     elif route == "local":
         chosen_model = override_model or get_local_default_model()
-    elif route in {"openai", "anthropic", "google", "groq", "minimax", "xai"}:
+    elif route in {"openai", "openai_codex", "anthropic", "google", "groq", "minimax", "xai"}:
         # Provider-specific route: use the override model or find first model for that provider
         if override_model:
             chosen_model = override_model
@@ -750,6 +900,8 @@ def model_provider(model: str) -> str:
     normalized = (model or "").strip()
     if normalized.startswith("openrouter/"):
         return "openrouter"
+    if normalized.startswith("openai-codex/"):
+        return "openai_codex"
     if normalized.startswith("gpt-") or normalized.startswith("codex-"):
         return "openai"
     if normalized.startswith("claude"):
@@ -773,6 +925,8 @@ def model_is_configured(model: str) -> bool:
         return bool(os.getenv("OPENROUTER_API_KEY", "").strip())
     if provider == "openai":
         return bool(os.getenv("OPENAI_API_KEY", "").strip())
+    if provider == "openai_codex":
+        return _codex_cli_auth_available()
     if provider == "anthropic":
         return bool(os.getenv("ANTHROPIC_API_KEY", "").strip())
     if provider == "google":
@@ -803,6 +957,8 @@ def _global_provider_auth_config(provider: str) -> tuple[str | None, str]:
         if auth_mode not in {"api_key", "codex_sub"}:
             auth_mode = "api_key"
         return api_key, auth_mode
+    if normalized == "openai_codex":
+        return None, "codex_cli"
     return None, "api_key"
 
 
@@ -983,6 +1139,13 @@ async def _ensure_locked_route_ready(route_context: dict[str, Any]) -> None:
             raise RuntimeError(
                 f"Local Ollama is forced for this agent, but model '{model_name}' is not downloaded on this machine."
             )
+        return
+    if locked_provider == "openai_codex":
+        if not _codex_cli_auth_available():
+            raise RuntimeError(
+                "Codex subscription is forced for this agent, but no local Codex ChatGPT sign-in was found. "
+                "Run `codex login` and choose Sign in with ChatGPT, then retry."
+            )
 
 
 def humanise_chat_error(error: Exception) -> str:
@@ -1033,6 +1196,11 @@ def _format_locked_route_error(route_context: dict[str, Any], error: Exception) 
         return (
             f"Local Ollama is forced for this agent, but model '{model_name}' could not run. "
             f"Make sure Ollama is running and the model is downloaded, or change this agent back to Use default. Details: {error}"
+        )
+    if locked_provider == "openai_codex":
+        return (
+            f"Codex subscription is forced for this agent, but model '{model_name}' could not run through the local Codex CLI. "
+            f"Confirm `codex login` is signed in with ChatGPT or change this agent back to Use default. Details: {error}"
         )
     return str(error)
 
@@ -1395,6 +1563,18 @@ async def _acompletion_with_fallback(
                 provider_auth_mode = invite_auth_mode
             else:
                 provider_api_key, provider_auth_mode = _global_provider_auth_config(candidate_provider)
+            if candidate_provider == "openai_codex":
+                _t0 = time.perf_counter()
+                response = await _codex_cli_acompletion(model=candidate, **call_kwargs)
+                record_latency(candidate, time.perf_counter() - _t0)
+                log.info(
+                    "LLM route applied through Codex CLI subscription: route=%s requested_model=%s applied_model=%s latency_s=%.2f",
+                    route_mode,
+                    model,
+                    candidate,
+                    time.perf_counter() - _t0,
+                )
+                return chosen_candidate, response
             if provider_api_key:
                 call_kwargs["api_key"] = provider_api_key
                 # Claude Pro/Max subscription tokens (sk-ant-oat01-…) authenticate

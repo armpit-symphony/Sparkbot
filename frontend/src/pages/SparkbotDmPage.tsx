@@ -322,7 +322,7 @@ interface ProviderTokenDrafts {
 }
 
 interface DefaultModelSelectionForm {
-  provider: "openrouter" | "ollama" | "openai" | "anthropic" | "google" | "groq" | "minimax" | "xai"
+  provider: "openrouter" | "ollama" | "openai" | "openai_codex" | "anthropic" | "google" | "groq" | "minimax" | "xai"
   model: string
 }
 
@@ -976,6 +976,7 @@ function SparkbotSettingsDialog({
   const _providerOrder: Array<[string, string, (id: string) => boolean]> = [
     ["openrouter", "OpenRouter (OPENROUTER_API_KEY)", (id) => id.startsWith("openrouter/")],
     ["openai", "OpenAI direct (OPENAI_API_KEY)", (id) => id.startsWith("gpt-") || id.startsWith("codex-")],
+    ["openai_codex", "OpenAI Codex subscription", (id) => id.startsWith("openai-codex/")],
     ["anthropic", "Anthropic direct (ANTHROPIC_API_KEY)", (id) => id.startsWith("claude")],
     ["google", "Google direct (GOOGLE_API_KEY)", (id) => id.startsWith("gemini/")],
     ["xai", "xAI direct (XAI_API_KEY)", (id) => id.startsWith("xai/")],
@@ -991,7 +992,7 @@ function SparkbotSettingsDialog({
     modelsConfig?.providers?.find((provider) => provider.id === "openrouter")?.configured,
   )
   const directProviderLabel: Record<string, string> = {
-    openai: "OpenAI", anthropic: "Anthropic", google: "Google", groq: "Groq", minimax: "MiniMax", xai: "xAI",
+    openai: "OpenAI", openai_codex: "OpenAI Codex Subscription", anthropic: "Anthropic", google: "Google", groq: "Groq", minimax: "MiniMax", xai: "xAI",
   }
   const directProviderKeyField: Record<string, keyof ProviderTokenDrafts> = {
     openai: "openai_api_key", anthropic: "anthropic_api_key",
@@ -1514,6 +1515,7 @@ function SparkbotSettingsDialog({
                     {([
                       ["openrouter", "OpenRouter"],
                       ["openai", "OpenAI"],
+                      ["openai_codex", "Codex Sub"],
                       ["anthropic", "Anthropic"],
                       ["google", "Google"],
                       ["groq", "Groq"],
@@ -1597,6 +1599,40 @@ function SparkbotSettingsDialog({
                           {isV1LocalMode
                             ? "Free models work with no API key. For paid models, paste your OpenRouter key above."
                             : "Sparkbot will use this as the main cloud model for everyday chat unless an agent override says otherwise."}
+                        </p>
+                      </div>
+                    </div>
+                  ) : defaultSelection.provider === "openai_codex" ? (
+                    <div className="space-y-3">
+                      <div className="rounded-md border bg-background px-3 py-2">
+                        <div className="text-xs font-semibold">
+                          {directProviderIsConfigured("openai_codex")
+                            ? "Codex ChatGPT sign-in detected"
+                            : "Codex ChatGPT sign-in needed"}
+                        </div>
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          This route uses your local Codex CLI subscription session instead of a pasted
+                          OpenAI Platform API key. Run{" "}
+                          <code className="rounded bg-muted px-1 py-0.5">codex login</code> and choose
+                          ChatGPT sign-in if this status is not ready.
+                        </p>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-muted-foreground">Default Codex model</label>
+                        <select
+                          value={defaultSelection.model}
+                          onChange={(e) => onDefaultSelectionChange("model", e.target.value)}
+                          className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                        >
+                          <option value="">Choose a Codex subscription model</option>
+                          {directProviderModels("openai_codex").map((model) => (
+                            <option key={model} value={model}>
+                              {modelsConfig?.model_labels?.[model] ?? model}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          Sparkbot will use the Codex CLI bridge for this provider. The packaged default is GPT-5.3 Codex Spark.
                         </p>
                       </div>
                     </div>
@@ -1728,7 +1764,7 @@ function SparkbotSettingsDialog({
                     </div>
                   )}
 
-                  {error && (defaultSelection.provider === "openrouter" || defaultSelection.provider === "ollama" || directProviderKeyField[defaultSelection.provider] !== undefined) && (
+                  {error && (defaultSelection.provider === "openrouter" || defaultSelection.provider === "ollama" || defaultSelection.provider === "openai_codex" || directProviderKeyField[defaultSelection.provider] !== undefined) && (
                     <p className="mt-2 text-xs font-medium text-destructive">{error}</p>
                   )}
                   <div className="mt-4 flex justify-end gap-2">
@@ -2510,12 +2546,12 @@ function SparkbotSettingsDialog({
                   const route = override.route
                   const modelValue = override.model ?? ""
                   const routeProviderMap: Record<string, string> = {
-                    openrouter: "openrouter", local: "ollama", openai: "openai",
+                    openrouter: "openrouter", local: "ollama", openai: "openai", openai_codex: "openai_codex",
                     anthropic: "anthropic", google: "google", groq: "groq",
                     minimax: "minimax", xai: "xai",
                   }
                   const routeLabels: Record<string, string> = {
-                    openrouter: "OpenRouter", local: "Local (Ollama)", openai: "OpenAI",
+                    openrouter: "OpenRouter", local: "Local (Ollama)", openai: "OpenAI", openai_codex: "Codex Subscription",
                     anthropic: "Anthropic", google: "Google", groq: "Groq",
                     minimax: "MiniMax", xai: "xAI",
                   }
@@ -2547,6 +2583,7 @@ function SparkbotSettingsDialog({
                         >
                           <option value="default">Use default</option>
                           <option value="openai">OpenAI</option>
+                          <option value="openai_codex">Codex Subscription</option>
                           <option value="anthropic">Anthropic</option>
                           <option value="google">Google</option>
                           <option value="groq">Groq</option>
@@ -3450,7 +3487,7 @@ function SparkbotDmPage({ controlsSurface = false }: SparkbotDmPageProps = {}) {
 
   const handleDefaultSelectionChange = useCallback((field: keyof DefaultModelSelectionForm, value: string) => {
     if (field === "provider") {
-      const _validProviders = new Set(["openrouter", "ollama", "openai", "anthropic", "google", "groq", "minimax", "xai"])
+      const _validProviders = new Set(["openrouter", "ollama", "openai", "openai_codex", "anthropic", "google", "groq", "minimax", "xai"])
       const nextProvider = (_validProviders.has(value) ? value : "openrouter") as DefaultModelSelectionForm["provider"]
       setDefaultSelection((prev) => {
         let nextModel = ""
@@ -3464,13 +3501,16 @@ function SparkbotDmPage({ controlsSurface = false }: SparkbotDmPageProps = {}) {
             const firstFree = openRouterModels.find(m => m.is_free) ?? openRouterModels[0]
             nextModel = firstFree?.id ?? ""
           }
+        } else if (nextProvider === "openai_codex") {
+          nextModel = modelsConfig?.providers?.find((provider) => provider.id === "openai_codex")?.models?.[0]
+            ?? "openai-codex/gpt-5.3-codex"
         }
         return { provider: nextProvider, model: nextModel }
       })
       return
     }
     setDefaultSelection((prev) => ({ ...prev, [field]: value }))
-  }, [localDefaultModel, openRouterModels])
+  }, [localDefaultModel, modelsConfig?.providers, openRouterModels])
 
   const handleLocalDefaultModelChange = useCallback((value: string) => {
     setLocalDefaultModel(value)
@@ -3495,7 +3535,7 @@ function SparkbotDmPage({ controlsSurface = false }: SparkbotDmPageProps = {}) {
     value: string,
   ) => {
     const routeToProviderPrefix: Record<string, string> = {
-      openrouter: "openrouter/", local: "ollama/", openai: "gpt-", anthropic: "claude",
+      openrouter: "openrouter/", local: "ollama/", openai: "gpt-", openai_codex: "openai-codex/", anthropic: "claude",
       google: "gemini/", groq: "groq/", minimax: "minimax/", xai: "xai/",
     }
     setAgentOverrides((prev) => {
@@ -3603,7 +3643,7 @@ function SparkbotDmPage({ controlsSurface = false }: SparkbotDmPageProps = {}) {
 
     if (!chosenDefaultModel) {
       const _PROVIDER_NAMES: Record<string, string> = {
-        openrouter: "OpenRouter", ollama: "Ollama", openai: "OpenAI",
+        openrouter: "OpenRouter", ollama: "Ollama", openai: "OpenAI", openai_codex: "OpenAI Codex Subscription",
         anthropic: "Anthropic", google: "Google", groq: "Groq", minimax: "MiniMax", xai: "xAI",
       }
       const _pName = _PROVIDER_NAMES[defaultSelection.provider] ?? defaultSelection.provider
@@ -3619,6 +3659,13 @@ function SparkbotDmPage({ controlsSurface = false }: SparkbotDmPageProps = {}) {
     const _selectedIsFreeOpenRouterModel = openRouterModels.find(m => m.id === chosenDefaultModel)?.is_free ?? false
     if (defaultSelection.provider === "openrouter" && !pageHasOpenRouterConfigured && !providerDrafts.openrouter_api_key.trim() && !_selectedIsFreeOpenRouterModel) {
       setSettingsError("This is a paid OpenRouter model. Save an OpenRouter API key before setting it as default.")
+      return
+    }
+    if (
+      defaultSelection.provider === "openai_codex"
+      && !modelsConfig?.providers?.find((provider) => provider.id === "openai_codex")?.configured
+    ) {
+      setSettingsError("Sign in with ChatGPT through Codex CLI before using Codex subscription as the default.")
       return
     }
     const _DIRECT_KEY_FIELDS: Record<string, keyof ProviderTokenDrafts> = {

@@ -1,5 +1,13 @@
 # Release Notes
 
+## Sparkbot v1.6.56
+
+- Added `openai-codex/gpt-5.3-codex` as the GPT-5.3 Codex Spark subscription default path.
+- Sparkbot now detects the local Codex ChatGPT sign-in and dispatches OpenAI Codex subscription models through read-only `codex exec` instead of requiring an OpenAI Platform API key.
+- Controls exposes OpenAI Codex Subscription as its own provider, and Workstation ChatGPT/Codex invite desks prefill the subscription model.
+- Specialty Wing detail panels now include an assigned-agent selector, matching the compact office-card selector for packaged and spawned agents.
+- Advanced backend, frontend, Tauri shell, README, public downloader, capabilities docs, release notes, service worker, and packaging notes to v1.6.56.
+
 ## Sparkbot v1.6.55
 
 - Advanced backend, frontend, Tauri shell, README, public downloader, capabilities docs, release notes, service worker, and packaging notes to v1.6.55.
