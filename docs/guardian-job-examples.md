@@ -26,7 +26,7 @@ Tell Sparkbot in plain language:
 "Send me a calendar preview every day at 7:30am"
 ```
 
-Or use the Task Guardian panel in **Sparkbot Controls** to create jobs with a form.
+Or use the Task Guardian panel in **Command Center** to review and operate jobs backed by the existing room scheduler APIs.
 
 ---
 

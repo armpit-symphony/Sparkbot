@@ -1643,8 +1643,8 @@ function StationDetailPanel({
                   Setup and safety
                 </div>
                 <p style={{ fontSize: 10, color: "#9ca3af", lineHeight: 1.6, margin: 0 }}>
-                  Provider keys, model stack, channels, Token Guardian, Task Guardian, and room
-                  safety settings all remain in Sparkbot Controls today.
+                  Provider keys, model stack, channels, and agent routing remain in Sparkbot Controls.
+                  Operational health, Token Guardian, Task Guardian, and room safety now live in Command Center.
                 </p>
               </div>
 
@@ -2880,7 +2880,7 @@ function ComputerControlPanel({ onClose, onOpenTerminal, status }: ComputerContr
       <div style={{ flex: 1, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
         <p style={{ fontSize: 11, color: "#64748b", margin: 0, lineHeight: 1.65 }}>
           Sparkbot can control your local machine. Just ask it in chat — or use the terminal panel
-          to interact live. This follows the Computer Control checkbox in Sparkbot Controls.
+          to interact live. This follows the Computer Control state in Command Center.
         </p>
 
         <div
@@ -2905,7 +2905,7 @@ function ComputerControlPanel({ onClose, onOpenTerminal, status }: ComputerContr
               : bgActive
                 ? `Break-glass is active — all tools are unlocked except vault writes/reveals. ${status.breakglassTtl != null ? `Expires in ${Math.ceil(status.breakglassTtl / 60)} min.` : ""}`
                 : status.pinConfigured === false
-                  ? "Computer Control is off and no PIN is configured yet. Open Controls to set the 6-digit PIN before privileged actions."
+                  ? "Computer Control is off and no PIN is configured yet. Open Command Center to set the 6-digit PIN before privileged actions."
                   : "Computer Control is off. Sparkbot will ask for the break-glass PIN before commands, edits, browser writes, vault access, or comms sends."}
           </p>
           {bgActive && (
@@ -5214,7 +5214,7 @@ export default function WorkstationPage() {
                       color: "#4b5563",
                     }}
                   >
-                    No tasks yet. Create tasks in Controls → Task Guardian.
+                    No tasks yet. Create or operate tasks from Command Center.
                   </div>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>

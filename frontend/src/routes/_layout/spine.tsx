@@ -1,7 +1,10 @@
-import { Link, createFileRoute, redirect } from "@tanstack/react-router"
-import { ArrowLeft, Database, LoaderCircle, RefreshCw, ShieldAlert, Lock, ClipboardList, Plus, Trash2, Archive } from "lucide-react"
+import { createFileRoute, useNavigate } from "@tanstack/react-router"
+import { Archive, ClipboardList, Database, LoaderCircle, Lock, Plus, RefreshCw, ShieldAlert, Trash2 } from "lucide-react"
 import { useEffect, useState } from "react"
 
+import SparkbotSurfaceInfoDialog from "@/components/Common/SparkbotSurfaceInfoDialog"
+import SparkbotSurfaceTabs from "@/components/Common/SparkbotSurfaceTabs"
+import { CommandCenterOperations } from "@/components/CommandCenter/OperationalPanels"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -41,15 +44,8 @@ import {
 
 export const Route = createFileRoute("/_layout/spine")({
   component: SpineOps,
-  beforeLoad: async () => {
-    try {
-      await fetchGuardianStatus()
-    } catch {
-      throw redirect({ to: "/" })
-    }
-  },
   head: () => ({
-    meta: [{ title: "Spine Ops - Sparkbot" }],
+    meta: [{ title: "Command Center - Sparkbot" }],
   }),
 })
 
@@ -906,6 +902,7 @@ const QUEUE_TABS: Array<{ label: string; value: SpineQueueName }> = [
 // ─── Main component ────────────────────────────────────────────────────────────
 
 function SpineOps() {
+  const navigate = useNavigate()
   const [overview, setOverview] = useState<SpineTMOverview | null>(null)
   const [overviewLoading, setOverviewLoading] = useState(true)
   const [overviewError, setOverviewError] = useState("")
@@ -915,6 +912,7 @@ function SpineOps() {
   const [refreshKey, setRefreshKey] = useState(0)
   const [inspector, setInspector] = useState<InspectorTarget>(null)
   const [workloadData, setWorkloadData] = useState<SpineProjectWorkloadEntry[]>([])
+  const [infoOpen, setInfoOpen] = useState(false)
 
   useEffect(() => {
     setOverviewLoading(true)
@@ -971,8 +969,34 @@ function SpineOps() {
     // If not found in cache, we can't open (no task object). Event payload shows the ID at minimum.
   }
 
+  function openRoboOs() {
+    sessionStorage.setItem("sparkbot_workstation_open_panel", "mcp")
+    navigate({ to: "/workstation" })
+  }
+
   return (
-    <div className="space-y-6">
+    <div className="min-h-screen bg-background">
+      <header className="sticky top-0 z-20 border-b bg-background/95 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 md:px-6 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">
+              Sparkbot operations
+            </div>
+            <div className="text-lg font-semibold tracking-tight">Command Center</div>
+          </div>
+          <SparkbotSurfaceTabs
+            active="spine_ops"
+            onChat={() => navigate({ to: "/dm" })}
+            onWorkstation={() => navigate({ to: "/workstation" })}
+            onControls={() => navigate({ to: "/controls" })}
+            onRoboOs={openRoboOs}
+            onSpineOps={() => navigate({ to: "/spine" })}
+            onInfo={() => setInfoOpen(true)}
+          />
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-7xl space-y-6 px-4 py-6 md:px-6">
       <SpineInspectorSheet
         inspector={inspector}
         onClose={() => setInspector(null)}
@@ -988,22 +1012,19 @@ function SpineOps() {
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <Database className="size-5 text-primary" />
-            <h1 className="text-2xl font-semibold tracking-tight">Guardian Spine Ops</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">Command Center</h1>
             <Badge variant="outline" className="rounded-full">
               Operator
             </Badge>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            Guardian Spine · Canonical work-state substrate. Task Master executes over it. Mirrors and legacy tables are
-            one-way downstream reflections.
+            Operational hub for Sparkbot, Guardian, Task, rooms, health, and safe-control workflows.
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Last refreshed {new Date().toLocaleTimeString()}.
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Link to="/">
-            <Button variant="ghost" size="sm" className="gap-1.5">
-              <ArrowLeft className="size-3.5" /> Dashboard
-            </Button>
-          </Link>
           <Button
             variant="outline"
             size="sm"
@@ -1015,6 +1036,14 @@ function SpineOps() {
             Refresh
           </Button>
         </div>
+      </div>
+
+      <CommandCenterOperations refreshNonce={refreshKey} onRefresh={() => setRefreshKey((k) => k + 1)} />
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Database className="size-4 text-primary" />
+        <h2 className="text-lg font-semibold">Spine and Guardian operations</h2>
+        <Badge variant="secondary">Inspector</Badge>
       </div>
 
       {/* Summary bar */}
@@ -1169,6 +1198,18 @@ function SpineOps() {
       {activeTab === "security" && <SecurityTab />}
       {activeTab === "vault" && <VaultTab />}
       {activeTab === "task-guardian" && <TaskGuardianTab />}
+      </main>
+      <SparkbotSurfaceInfoDialog
+        open={infoOpen}
+        title="Command Center"
+        subtitle="The operational hub for Sparkbot health, room persona, Computer Control, Token Guardian, Task Guardian, and Guardian Spine work state."
+        bullets={[
+          "Room Persona stays at the top so the active room context is visible before operational actions.",
+          "Computer Control, Token Guardian, System Health, and Task Guardian use the same backend paths as Controls.",
+          "Spine and Guardian inspector tabs remain available below the command workflow for queues, events, security, vault, and diagnostics.",
+        ]}
+        onClose={() => setInfoOpen(false)}
+      />
     </div>
   )
 }
@@ -1202,8 +1243,14 @@ function NewProjectButton({ onCreated }: { onCreated: () => void }) {
 
   if (!open) {
     return (
-      <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setOpen(true)}>
-        <Plus className="size-3.5" /> New Project
+      <Button
+        size="sm"
+        variant="outline"
+        className="gap-1.5"
+        disabled
+        title="Project creation from Command Center needs room context and is not configured yet."
+      >
+        <Plus className="size-3.5" /> New Project coming soon
       </Button>
     )
   }

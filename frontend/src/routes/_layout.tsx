@@ -1,4 +1,4 @@
-import { createFileRoute, Outlet, redirect, useNavigate } from "@tanstack/react-router"
+import { createFileRoute, Outlet, redirect, useLocation, useNavigate } from "@tanstack/react-router"
 
 import { Footer } from "@/components/Common/Footer"
 import AppSidebar from "@/components/Sidebar/AppSidebar"
@@ -24,6 +24,7 @@ export const Route = createFileRoute("/_layout")({
 
 function Layout() {
   const navigate = useNavigate()
+  const location = useLocation()
   
   const handleLogout = () => {
     localStorage.removeItem("access_token")
@@ -31,6 +32,10 @@ function Layout() {
     sessionStorage.removeItem("chat_auth")
     sessionStorage.removeItem("chat_token")
     navigate({ to: "/login" })
+  }
+
+  if (location.pathname === "/spine") {
+    return <Outlet />
   }
 
   return (

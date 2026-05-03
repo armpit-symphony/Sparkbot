@@ -41,6 +41,7 @@ References used for this roadmap framing: [Okta's 2026 agent governance framing]
 
 1. [Chat Features](#chat-features)
 2. [Slash Commands](#slash-commands)
+3. [Command Center](#command-center)
 3. [Computer Control](#computer-control)
 4. [Agent Tools (Built-In)](#agent-tools-built-in)
 5. [Skill Plugins (Drop-In)](#skill-plugins-drop-in)
@@ -127,6 +128,21 @@ Type `/` in the chat input to get autocomplete.
 | `/agents` | List available named agents |
 | `/audit` | Show recent bot tool actions |
 | `/perf` | Model + tool latency, call counts, error rate, last error this session |
+
+---
+
+## Command Center
+
+Command Center is the operator-facing page for Sparkbot operations. It replaces the old Spine Ops presentation while preserving `/spine` and adding `/command-center` as an alias.
+
+- Uses the same top header/navigation flow as Chat, Workstation, Controls, and Robo OS.
+- Puts **Room Persona** at the top so the active room/persona context is visible before actions.
+- Surfaces **System Health**, **Computer Control**, **Token Guardian**, and **Task Guardian** from the existing Controls/backend sources.
+- Keeps the existing Guardian Spine queues, events, security, vault, and Task Guardian inspector panels below the main operator flow.
+- Leaves **Controls** focused on setup/configuration: provider keys, model stack, comms, agents, and routing configuration.
+- Marks actions with incomplete backend context as disabled, read-only, coming soon, or not configured instead of showing dead controls.
+
+Room Persona saves through the existing room update path. Computer Control and operator PIN use the same guarded model config and Guardian PIN APIs as before. Token Guardian mode saves through the shared model config endpoint. Task Guardian reads and operates room jobs through the existing room Guardian APIs, and write mode remains runtime-scoped.
 
 ---
 
@@ -743,7 +759,7 @@ Task Guardian runs tools on a schedule and posts results back into the room.
 ### Creating a scheduled job
 
 From chat: *"Every morning at 8am, run my morning briefing"*
-Or from the **Controls → Task Guardian** panel.
+Or from the **Command Center → Task Guardian** panel.
 
 Supported schedule strings are `every:<seconds>`, `daily:<HH:MM>` in UTC, and `at:<ISO-8601 UTC datetime>` for one-shot runs. For a complete demo pack, see [Sparkbot Jarvis Demo Kit](./jarvis-demo-kit.md).
 

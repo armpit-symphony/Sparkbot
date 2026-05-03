@@ -33,7 +33,7 @@ export const Route = createFileRoute("/_layout/")({
   head: () => ({
     meta: [
       {
-        title: "Command Center - Sparkbot",
+        title: "Dashboard - Sparkbot",
       },
     ],
   }),
@@ -225,7 +225,7 @@ function SpineWorkStateSection() {
             to="/spine"
             className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
           >
-            Open Spine Ops <ArrowRight className="size-3" />
+            Open Command Center <ArrowRight className="size-3" />
           </Link>
         </div>
       </CardHeader>
@@ -399,7 +399,7 @@ function Dashboard() {
           <div className="max-w-3xl space-y-4">
             <Badge variant="secondary" className="gap-1.5 rounded-full px-3 py-1">
               <Sparkles className="size-3.5" />
-              Command Center beta
+              Dashboard overview
             </Badge>
             <div className="space-y-2">
               <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">

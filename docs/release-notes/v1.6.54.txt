@@ -9,4 +9,9 @@ Focus: Agents and Controls cleanup, Workstation Specialty Wing agent seating, pa
 - Specialty Wing office cards now have dropdowns backed by the shared Controls Agents list, defaulting to @meetings_manager, @researcher, @analyst, @writer, and @workstation_backup_1 with local persistence for office assignments.
 - Specialty Wing office side panels now include a model selector that saves through the same per-agent model override system used by Controls.
 - New Workstation meeting setup preloads @meetings_manager into the first seat while leaving the seat editable.
+- Promoted Spine Ops to the operator-facing Command Center while preserving the existing /spine route and adding /command-center as an alias.
+- Moved/surfaced Room Persona, System Health, Computer Control, Token Guardian, and Task Guardian in Command Center, with Room Persona at the top.
+- Command Center now uses the same top tab/header flow as the main Sparkbot pages instead of the separate left-side layout.
+- Controls is now more configuration-focused, with a Command Center shortcut and operational panels removed from the visible Controls flow.
+- Planned Command Center actions without complete backend context are disabled or clearly marked as not configured/read-only instead of appearing as live controls.
 - Advanced backend, frontend, Tauri shell, README, public downloader, capabilities docs, release notes, service worker, and packaging notes to v1.6.54.

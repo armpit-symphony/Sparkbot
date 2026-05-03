@@ -20,6 +20,7 @@ import { Route as RecoverPasswordRouteImport } from './routes/recover-password'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as DmRouteImport } from './routes/dm'
 import { Route as ControlsRouteImport } from './routes/controls'
+import { Route as CommandCenterRouteImport } from './routes/command-center'
 import { Route as LayoutRouteImport } from './routes/_layout'
 import { Route as LayoutIndexRouteImport } from './routes/_layout/index'
 import { Route as MeetingRoomIdRouteImport } from './routes/meeting.$roomId'
@@ -84,6 +85,11 @@ const ControlsRoute = ControlsRouteImport.update({
   path: '/controls',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CommandCenterRoute = CommandCenterRouteImport.update({
+  id: '/command-center',
+  path: '/command-center',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LayoutRoute = LayoutRouteImport.update({
   id: '/_layout',
   getParentRoute: () => rootRouteImport,
@@ -126,6 +132,7 @@ const LayoutAdminRoute = LayoutAdminRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof LayoutIndexRoute
+  '/command-center': typeof CommandCenterRoute
   '/controls': typeof ControlsRoute
   '/dm': typeof DmRoute
   '/login': typeof LoginRoute
@@ -145,6 +152,7 @@ export interface FileRoutesByFullPath {
   '/meeting/$roomId': typeof MeetingRoomIdRoute
 }
 export interface FileRoutesByTo {
+  '/command-center': typeof CommandCenterRoute
   '/controls': typeof ControlsRoute
   '/dm': typeof DmRoute
   '/login': typeof LoginRoute
@@ -167,6 +175,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_layout': typeof LayoutRouteWithChildren
+  '/command-center': typeof CommandCenterRoute
   '/controls': typeof ControlsRoute
   '/dm': typeof DmRoute
   '/login': typeof LoginRoute
@@ -190,6 +199,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/command-center'
     | '/controls'
     | '/dm'
     | '/login'
@@ -209,6 +219,7 @@ export interface FileRouteTypes {
     | '/meeting/$roomId'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/command-center'
     | '/controls'
     | '/dm'
     | '/login'
@@ -230,6 +241,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_layout'
+    | '/command-center'
     | '/controls'
     | '/dm'
     | '/login'
@@ -252,6 +264,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   LayoutRoute: typeof LayoutRouteWithChildren
+  CommandCenterRoute: typeof CommandCenterRoute
   ControlsRoute: typeof ControlsRoute
   DmRoute: typeof DmRoute
   LoginRoute: typeof LoginRoute
@@ -345,6 +358,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ControlsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/command-center': {
+      id: '/command-center'
+      path: '/command-center'
+      fullPath: '/command-center'
+      preLoaderRoute: typeof CommandCenterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_layout': {
       id: '/_layout'
       path: ''
@@ -427,6 +447,7 @@ const LayoutRouteWithChildren =
 
 const rootRouteChildren: RootRouteChildren = {
   LayoutRoute: LayoutRouteWithChildren,
+  CommandCenterRoute: CommandCenterRoute,
   ControlsRoute: ControlsRoute,
   DmRoute: DmRoute,
   LoginRoute: LoginRoute,

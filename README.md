@@ -89,8 +89,9 @@ The desktop app is the easiest path for one person. Docker and systemd deploymen
 
 ### Workstation
 - **Office floor** — visual grid of all your AI desks: Sparkbot, model stack companions, agents, invite seats, terminal
-- **Unified top tabs** — Chat, Workstation, Controls, Robo OS, Spine Ops, and Info stay visible from the main app surfaces
-- **Full-page Controls** — model setup, Computer Control, PIN, providers, comms, agents, and Task Guardian now open as a connected app page instead of a chat-only panel
+- **Unified top tabs** — Chat, Workstation, Controls, Robo OS, Command Center, and Info stay visible from the main app surfaces
+- **Command Center** — the former Spine Ops surface is now Sparkbot's operational hub, with Room Persona first, then System Health, Computer Control, Token Guardian, Task Guardian, and Spine/Guardian queues
+- **Full-page Controls** — model setup, providers, comms, agents, and routing configuration stay in a connected app page instead of a chat-only panel
 - **Phone access** — the full workstation now opens on phone-sized screens as a horizontally scrollable operations map instead of blocking mobile users
 - **Robo OS** — Workstation button for the unified MCP control plane, LIMA Robotics OS manifests, policy tags, no-hardware replay/simulation commands, and robot-skill safety posture
 - **Invite Wing** — seat any model with its own API key and model ID; routes directly to that provider. The **Claude** and **ChatGPT** desks now use a matching `API Key / Subscription` setup pattern for Anthropic and OpenAI subscription-linked credentials, and the third desk is preset for **xAI Grok**
@@ -295,7 +296,7 @@ Type `/` in the input to open the command menu.
 
 ### Computer Control
 
-Computer Control capabilities are shown in the **Workstation → Computer Control** panel.
+Computer Control capabilities are shown in **Command Center** and mirrored in the **Workstation → Computer Control** panel. Command Center keeps the existing approval, break-glass, and 6-digit PIN guardrails.
 
 **Shell commands** — just ask:
 ```
@@ -324,6 +325,12 @@ Prefix your message with `@agentname` to route to a specialist.
 | `@business_analyst` | Requirements, risks, priorities, metrics, workflows, and execution plans |
 
 Type `@` in the input to get the autocomplete picker. Create custom agents in **Controls → Agents → Spawn Agent**, now positioned above Model Overrides. Fresh installs and upgraded installs receive the packaged built-in agents from the backend registry; custom agents remain database-backed and preserved.
+
+### Command Center
+
+Open **Command Center** from the top tabs or `/spine` (alias: `/command-center`). It is the official operator page for Room Persona, System Health, Computer Control, Token Guardian, Task Guardian, and Guardian Spine queues/logs. The page uses the same top navigation pattern as Chat, Workstation, and Controls, with the old Spine Ops internals preserved behind the route/component names where needed.
+
+Controls is now configuration-focused: providers, model stack, comms, agents, and model routing setup stay there, while operational status/actions live in Command Center. Planned actions without complete backend wiring are disabled or marked as not configured/read-only instead of appearing as live controls.
 
 ### Meeting Mode
 
@@ -377,7 +384,7 @@ Tell Sparkbot to run anything on a schedule:
 "Send me a daily calendar preview at 7:30am"
 ```
 
-Manage scheduled jobs from **Controls → Task Guardian** or from the **Company Operations** section of the Workstation.
+Manage scheduled jobs and runtime Task Guardian status from **Command Center → Task Guardian** or from the **Company Operations** section of the Workstation. Controls remains focused on setup and configuration.
 
 Supported schedule strings:
 
@@ -543,7 +550,7 @@ User message → Token Guardian → Memory Guardian → LLM
 
 | Version | Date | Highlights |
 |---------|------|-----------|
-| v1.6.54 | May 2026 | Cleaned up Controls by removing the obsolete Active custom agents display, moved Spawn Agent to the top of the Agents section above Model Overrides, added packaged Meetings Manager, Web Designer, Marketing Agent, and Business Analyst agents, upgraded Workstation Specialty Wing offices with shared Agents dropdowns and shared per-agent model selection, preloaded Meetings Manager into new meeting setup, and advanced downloader/docs/package metadata to the v1.6.54 desktop line. |
+| v1.6.54 | May 2026 | Cleaned up Controls by removing the obsolete Active custom agents display, moved Spawn Agent to the top of Agents, added packaged specialist agents, upgraded Workstation Specialty Wing offices with shared Agents dropdowns/model selection, preloaded Meetings Manager into new meeting setup, promoted Spine Ops to the official Command Center with Room Persona/System Health/Computer Control/Token Guardian/Task Guardian surfaced there, and kept downloader/docs/package metadata on the v1.6.54 desktop line. |
 | v1.6.53 | May 2026 | Fixed photo processing in app uploads and Telegram by routing images through a shared vision-capable model picker; hardened meeting sends so transient network failures do not leave the room stuck while retrying with proceed/go/try again; expanded Controls onboarding for Google Drive, Google Docs, and Microsoft 365; redesigned the Workstation Specialty Wing into five fixed agent offices with Add Agent slots; downloader/docs advanced to the v1.6.53 desktop line. |
 | v1.6.52 | May 2026 | Fixed Controls credential storage so GitHub tokens, GitHub SSH/App secrets, Discord, WhatsApp, and Google connector secrets save directly into Guardian Vault without requiring breakglass; connector secrets remain `use_only` for bridge/runtime use while non-secret toggles persist normally; downloader/docs advanced to the v1.6.52 desktop line. |
 | v1.6.51 | May 2026 | Restored full Controls comms onboarding after the GitHub-focused update: Telegram, Discord, WhatsApp, Gmail, and Google Calendar are visible again alongside GitHub; Comms save now persists the full connector form again; downloader/docs advanced to the v1.6.51 desktop line. |

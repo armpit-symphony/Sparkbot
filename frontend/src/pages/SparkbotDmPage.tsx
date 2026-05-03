@@ -1006,6 +1006,10 @@ function SparkbotSettingsDialog({
   const ollamaProvider = modelsConfig?.providers?.find((provider) => provider.id === "ollama")
   const routingAgents = modelsConfig?.available_agents ?? []
   const showAdvancedControls = true
+  const showOperationalControlsInControls = false
+  const openCommandCenter = () => {
+    window.location.href = "/spine"
+  }
   const [currentPinDraft, setCurrentPinDraft] = useState("")
   const [pinDraft, setPinDraft] = useState("")
   const [pinConfirmDraft, setPinConfirmDraft] = useState("")
@@ -1063,11 +1067,11 @@ function SparkbotSettingsDialog({
             : "Enable Telegram, Discord, WhatsApp, GitHub, Gmail, or Google Calendar after adding credentials",
         },
         {
-          title: "Choose Computer Control mode",
+          title: "Use Command Center for operations",
           done: Boolean(guardianStatus?.pin_configured),
           detail: globalControlActive
             ? `Computer Control is on across all chats for 24 hours (${globalControlTimeLabel}).`
-            : "Computer Control is off: PIN is required before gated actions; vault always stays PIN-protected.",
+            : "Command Center manages Computer Control, room persona, health, Token Guardian, and Task Guardian.",
         },
       ]
     : [
@@ -1109,7 +1113,7 @@ function SparkbotSettingsDialog({
               <DialogTitle>Sparkbot Controls</DialogTitle>
               <DialogDescription>
                 {showAdvancedControls
-                  ? "Computer Control, operator PIN, function routing, dashboard access, and Task Guardian schedules."
+                  ? "Provider setup, model stack, comms, agent routing, and configuration. Operational actions live in Command Center."
                   : "Connect your AI model, choose a default, and optionally keep selected agents local on this machine."}
               </DialogDescription>
             </div>
@@ -1166,7 +1170,7 @@ function SparkbotSettingsDialog({
                   ) : null}
                 </div>
               </div>
-              <div className="rounded-lg border bg-background/60 px-3 py-3">
+              {showOperationalControlsInControls ? <div className="rounded-lg border bg-background/60 px-3 py-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Computer Control</div>
                   <button onClick={onRefresh} className="rounded border px-1.5 py-0.5 text-[10px] hover:bg-muted" type="button">
@@ -1253,7 +1257,7 @@ function SparkbotSettingsDialog({
                 </div>
                 {executionSaved && <p className="mt-1 text-[10px] font-medium text-green-600">Saved.</p>}
                 {executionError && <p className="mt-1 text-[10px] font-medium text-destructive">{executionError}</p>}
-              </div>
+              </div> : null}
               <div className="rounded-lg border border-emerald-500/20 bg-emerald-50/30 dark:bg-emerald-950/20 px-3 py-3">
                 <div className="text-[11px] uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
                   {showAdvancedControls ? "How Sparkbot protects you" : "Simple mode"}
@@ -1269,8 +1273,8 @@ function SparkbotSettingsDialog({
                   </div>
                   {showAdvancedControls ? (
                     <div>
-                      <span className="font-medium text-foreground">Computer Control is explicit.</span>{" "}
-                      Leave it off for PIN-gated commands and comms writes, or turn it on for always-on device control.
+                      <span className="font-medium text-foreground">Operations moved to Command Center.</span>{" "}
+                      Use it for Computer Control, health, room persona, Token Guardian, and Task Guardian actions.
                     </div>
                   ) : null}
                 </div>
@@ -1278,7 +1282,25 @@ function SparkbotSettingsDialog({
             </div>
           </section>
 
-          {showAdvancedControls ? <div className="grid gap-4 lg:grid-cols-2">
+          <section className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-sm font-semibold">Operational Command Center</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Room Persona, System Health, Computer Control, Token Guardian, and Task Guardian now live in Command Center.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={openCommandCenter}
+                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+              >
+                Open Command Center
+              </button>
+            </div>
+          </section>
+
+          {showAdvancedControls && showOperationalControlsInControls ? <div className="grid gap-4 lg:grid-cols-2">
           <section className="rounded-xl border p-4">
             <div className="mb-3">
               <h2 className="text-sm font-semibold">Token Guardian</h2>
@@ -1876,7 +1898,7 @@ function SparkbotSettingsDialog({
             </div>
           </section>
 
-          <section className="rounded-xl border p-4">
+          {showOperationalControlsInControls ? <section className="rounded-xl border p-4">
             <div className="mb-3">
               <h2 className="text-sm font-semibold">Room persona</h2>
               <p className="text-xs text-muted-foreground">
@@ -1904,7 +1926,7 @@ function SparkbotSettingsDialog({
                 {savingPersona ? "Saving…" : "Save persona"}
               </button>
             </div>
-          </section>
+          </section> : null}
 
           {showAdvancedControls ? <section className="rounded-xl border p-4">
             <div className="mb-3">
@@ -2582,7 +2604,7 @@ function SparkbotSettingsDialog({
             </div>
           </section> : null}
 
-          {showAdvancedControls ? <section className="rounded-xl border p-4">
+          {showAdvancedControls && showOperationalControlsInControls ? <section className="rounded-xl border p-4">
             <div className="mb-3">
               <h2 className="text-sm font-semibold">Task Guardian</h2>
               <p className="text-xs text-muted-foreground">
@@ -5333,11 +5355,11 @@ function SparkbotDmPage({ controlsSurface = false }: SparkbotDmPageProps = {}) {
       <SparkbotSurfaceInfoDialog
         open={infoOpen}
         title="Sparkbot"
-        subtitle="Chat, full-page Controls, Workstation, Robo OS, and Spine Ops now share the same top navigation."
+        subtitle="Chat, full-page Controls, Workstation, Robo OS, and Command Center now share the same top navigation."
         bullets={[
           "Chat is the everyday surface for prompts, files, voice, slash commands, and agent mentions.",
           "Controls opens as a full-page setup and safety surface with the same tabs.",
-          "Workstation, Robo OS, and Spine Ops stay reachable from the same tab bar instead of mode-specific links.",
+          "Workstation, Robo OS, and Command Center stay reachable from the same tab bar instead of mode-specific links.",
         ]}
         onClose={() => setInfoOpen(false)}
       />

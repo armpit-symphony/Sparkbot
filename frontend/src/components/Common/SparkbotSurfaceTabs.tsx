@@ -25,7 +25,7 @@ const TAB_ACTIVE_SHADOW = "0 10px 24px rgba(49, 46, 129, 0.24)"
 
 const TAB_CONFIG: Array<{
   id: SparkbotSurfaceTab
-  label: "Chat" | "Workstation" | "Controls" | "Robo OS" | "Spine Ops" | "Info"
+  label: "Chat" | "Workstation" | "Controls" | "Robo OS" | "Command Center" | "Info"
   onClick: (props: SparkbotSurfaceTabsProps) => void
 }> = [
   {
@@ -56,7 +56,7 @@ const TAB_CONFIG: Array<{
   },
   {
     id: "spine_ops",
-    label: "Spine Ops",
+    label: "Command Center",
     onClick: (props) => props.onSpineOps?.(),
   },
   {

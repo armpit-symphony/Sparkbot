@@ -848,7 +848,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                 </div>
                 {roomTasks.length === 0 ? (
                   <p style={{ fontSize: 11, color: "#4b5563", margin: 0, lineHeight: 1.6 }}>
-                    No Task Guardian jobs in this room yet. Create them via Controls → Task Guardian.
+                    No Task Guardian jobs in this room yet. Create or operate them from Command Center.
                   </p>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>

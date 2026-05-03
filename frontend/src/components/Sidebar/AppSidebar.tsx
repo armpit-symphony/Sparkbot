@@ -31,7 +31,7 @@ export function AppSidebar() {
   const items = hasChatSession()
     ? [
         ...visibleBaseItems,
-        { icon: Database, title: "Spine Ops", path: "/spine" },
+        { icon: Database, title: "Command Center", path: "/spine" },
         ...(currentUser?.is_superuser ? [{ icon: Users, title: "Admin", path: "/admin" }] : []),
       ]
     : visibleBaseItems

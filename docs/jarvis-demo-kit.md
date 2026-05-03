@@ -24,7 +24,7 @@ Sparkbot is Jarvis for work: a secure orchestration layer that runs autonomous a
 ## Demo Script
 
 1. Open Sparkbot and explain the goal: "daily briefing plus safe execution under policy."
-2. In Controls -> Task Guardian, create the "9am Morning Brief" job using the JSON below.
+2. In Command Center -> Task Guardian, review/run the "9am Morning Brief" job if it exists, or create it through the room scheduler API using the JSON below.
 3. Click Run now or ask: "Run my morning briefing now."
 4. Show the concise result: calendar, unread email, reminders, weather if configured.
 5. Open Workstation -> Round Table, Auto-fill Stack, and start a short project meeting to show Sparkbot acting as an orchestrator.
