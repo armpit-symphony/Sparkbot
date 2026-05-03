@@ -264,6 +264,15 @@ def _build_policy_registry() -> dict[str, ToolPolicy]:
         action_type="robot_simulation",
         high_risk=False,
     )
+    add(
+        "lima_robot_command",
+        scope="execute",
+        resource="robot",
+        default_action="confirm",
+        action_type="robot_command",
+        high_risk=True,
+        requires_execution_gate=True,
+    )
 
     for tool_name in ("telegram_send_message", "discord_send_message", "whatsapp_send_message"):
         add(

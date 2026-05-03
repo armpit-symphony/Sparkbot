@@ -1942,6 +1942,45 @@ _VAULT_TOOL_DEFINITIONS = [
     },
 ]
 
+_ROBOTICS_TOOL_DEFINITIONS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "lima_robot_command",
+            "description": (
+                "Send a natural-language command to LIMA Robo OS through the configured LIMA MCP bridge. "
+                "Use for robot status, camera inspection, replay/simulation movement, and operator-approved robot control. "
+                "Real hardware motion is blocked by default until Guardian approval handoff is implemented."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "requested_action": {
+                        "type": "string",
+                        "description": "Natural-language robot command, e.g. 'move forward 0.5 meters' or 'describe camera feed'.",
+                    },
+                    "robot_id": {
+                        "type": "string",
+                        "description": "Target robot identifier; defaults to 'default'.",
+                    },
+                    "environment": {
+                        "type": "string",
+                        "enum": ["replay", "simulation", "real_hardware"],
+                        "description": "Target environment. Use simulation unless the user explicitly says real hardware.",
+                    },
+                    "dry_run": {
+                        "type": "boolean",
+                        "description": "When true, only produce the command contract and safety classification.",
+                        "default": False,
+                    },
+                },
+                "required": ["requested_action"],
+            },
+        },
+    },
+]
+
+
 # Extend with dynamically loaded skills, deduping by tool name. Native definitions
 # in this file always win over a same-named skill so behaviour is predictable.
 def _dedupe_tool_definitions(*sources: list[dict]) -> list[dict]:
@@ -1965,6 +2004,7 @@ def _dedupe_tool_definitions(*sources: list[dict]) -> list[dict]:
 
 TOOL_DEFINITIONS = _dedupe_tool_definitions(
     list(TOOL_DEFINITIONS),
+    _ROBOTICS_TOOL_DEFINITIONS,
     _VAULT_TOOL_DEFINITIONS,
     _skill_registry.definitions,
 )
@@ -4620,6 +4660,49 @@ async def _cancel_reminder(
     return "Reminder cancelled." if ok else f"Reminder '{reminder_id}' not found."
 
 
+async def _lima_robot_command(
+    *,
+    requested_action: str,
+    robot_id: str,
+    environment: str,
+    dry_run: bool,
+    user_id: Optional[str],
+) -> str:
+    from app.services.lima_robotics_bridge import LimaBridgeError, execute_robot_command
+
+    env = environment if environment in {"replay", "simulation", "real_hardware"} else "simulation"
+    try:
+        payload = await execute_robot_command(
+            source_user=user_id or "chat",
+            requested_action=requested_action,
+            robot_id=robot_id or "default",
+            environment=env,  # type: ignore[arg-type]
+            dry_run=dry_run,
+        )
+    except LimaBridgeError as exc:
+        return f"LIMA Robo OS bridge unavailable: {exc}"
+
+    contract = payload.get("contract", {})
+    tool_name = contract.get("mcp_tool_name", "unknown")
+    risk = contract.get("risk_level", "unknown")
+    reason = contract.get("safety_reason", "")
+    if payload.get("blocked"):
+        return (
+            f"LIMA Robo OS command blocked. Tool: {tool_name}; risk: {risk}; "
+            f"reason: {reason}"
+        )
+    if not payload.get("executed"):
+        return (
+            f"LIMA Robo OS dry run ready. Tool: {tool_name}; risk: {risk}; "
+            f"approval required: {contract.get('approval_required')}; reason: {reason}"
+        )
+    result = contract.get("result", {})
+    return (
+        f"LIMA Robo OS command executed. Tool: {tool_name}; risk: {risk}; "
+        f"result: {_truncate_tool_output(json.dumps(result, sort_keys=True), 1000)}"
+    )
+
+
 # ─── Task Guardian executors ──────────────────────────────────────────────────
 
 async def _guardian_schedule_task(
@@ -5344,6 +5427,14 @@ async def execute_tool(
             reminder_id=args.get("reminder_id", ""),
             room_id=room_id,
             session=session,
+        )
+    if name == "lima_robot_command":
+        return await _lima_robot_command(
+            requested_action=args.get("requested_action", ""),
+            robot_id=args.get("robot_id", "default"),
+            environment=args.get("environment", "simulation"),
+            dry_run=bool(args.get("dry_run", False)),
+            user_id=user_id,
         )
     if name == "guardian_schedule_task":
         return await _guardian_schedule_task(

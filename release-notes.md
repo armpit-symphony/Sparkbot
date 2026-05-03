@@ -5,6 +5,7 @@
 - Reduced public/server backend web/API worker defaults from 4 to 2.
 - Production settings now fail closed for missing explicit `SECRET_KEY`, weak auth/passphrase defaults, localhost or wildcard CORS, missing `BACKEND_CORS_ORIGINS`, or localhost `FRONTEND_HOST`.
 - `WORKSTATION_LIVE_TERMINAL_ENABLED` now defaults to `false`; disabled terminal endpoints return a clear safe state instead of appearing broken.
+- Added the Phase 2 LIMA Robo OS bridge: authenticated robotics status/tools/command/emergency-stop endpoints, a chat `lima_robot_command` tool for natural-language replay/simulation control, command-contract audit records, and default blocking for real-hardware motion until Guardian runner handoff is complete.
 - Added v1.6.57 release-readiness notes for `api.sparkpitlabs.com` DNS, nginx/TLS proxying, provider-key rotation, Guardian Vault migration, background-job worker safety, frontend chunk polish, and Pydantic/FastAPI deprecation cleanup.
 - Advanced backend, frontend, Tauri shell, README, public downloader, capabilities docs, release notes, service worker, and packaging notes to v1.6.57.
 

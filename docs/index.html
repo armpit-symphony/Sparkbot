@@ -1121,46 +1121,46 @@
     =========================== -->
     <section class="section" aria-labelledby="new-heading">
       <div class="container">
-        <h2 class="section-title" id="new-heading">New in v1.6.57: safer public-v1 defaults</h2>
+        <h2 class="section-title" id="new-heading">New in v1.6.57: safer public-v1 defaults and Robo OS bridge</h2>
         <p class="section-subtitle">
-          This update keeps the desktop line current while tightening server defaults: two API workers, production-safe CORS/auth validation, live terminal disabled by default, and clearer public wiring notes.
+          This update keeps the desktop line current while tightening server defaults and adding the first executable Sparkbot-to-LIMA Robo OS bridge for governed replay and simulation robot commands.
         </p>
 
         <div class="features-grid">
           <div class="feature-card">
             <span class="feature-icon" role="img" aria-hidden="true">🛡️</span>
-            <h3 class="feature-title">Cleaner Agents controls</h3>
-            <p class="feature-desc">The old Active custom agents display is gone, while custom agent creation and backend support remain available.</p>
+            <h3 class="feature-title">Two API workers</h3>
+            <p class="feature-desc">Public/server backend defaults now use two web/API workers until recurring background jobs are leader-locked and load-tested.</p>
           </div>
 
           <div class="feature-card">
             <span class="feature-icon" role="img" aria-hidden="true">💬</span>
-            <h3 class="feature-title">Spawn Agent first</h3>
-            <p class="feature-desc">Spawn Agent now sits above Model Overrides in Controls so creating a custom specialist is the first Agents action.</p>
+            <h3 class="feature-title">Production-safe config</h3>
+            <p class="feature-desc">Production startup fails closed for missing auth secrets, wildcard CORS, localhost public origins, and unsafe frontend host settings.</p>
           </div>
 
           <div class="feature-card">
             <span class="feature-icon" role="img" aria-hidden="true">📊</span>
-            <h3 class="feature-title">More packaged agents</h3>
-            <p class="feature-desc">Meetings Manager, Web Designer, Marketing Agent, and Business Analyst now ship as built-in agents alongside the existing specialists.</p>
+            <h3 class="feature-title">Live terminal off</h3>
+            <p class="feature-desc">The raw Workstation terminal is disabled by default for public v1 and returns a clear safe disabled state when unavailable.</p>
           </div>
 
           <div class="feature-card">
             <span class="feature-icon" role="img" aria-hidden="true">🏢</span>
-            <h3 class="feature-title">Assignable Specialty offices</h3>
-            <p class="feature-desc">Workstation Specialty Wing office slots now choose agents from the shared Controls Agents list and persist those office assignments locally.</p>
+            <h3 class="feature-title">LIMA Robo OS bridge</h3>
+            <p class="feature-desc">Sparkbot can now route natural-language replay and simulation robot commands through a configured LIMA MCP endpoint.</p>
           </div>
 
           <div class="feature-card">
             <span class="feature-icon" role="img" aria-hidden="true">🎛️</span>
-            <h3 class="feature-title">Office model routing</h3>
-            <p class="feature-desc">Opening a Specialty office now shows a model selector that writes through the same per-agent override system used by Controls.</p>
+            <h3 class="feature-title">Robot safety contract</h3>
+            <p class="feature-desc">Robotics commands produce a command contract, risk classification, audit entry, and default block for real-hardware motion.</p>
           </div>
 
           <div class="feature-card">
             <span class="feature-icon" role="img" aria-hidden="true">📝</span>
-            <h3 class="feature-title">Meeting-ready first seat</h3>
-            <p class="feature-desc">New Workstation meeting setup now starts with Meetings Manager in the first seat while keeping the chair editable.</p>
+            <h3 class="feature-title">Public wiring notes</h3>
+            <p class="feature-desc">DNS, reverse proxy, TLS, provider-key rotation, and worker-scaling notes are documented for the public-v1 rollout.</p>
           </div>
           <div class="feature-card">
             <span class="feature-icon" role="img" aria-hidden="true">CC</span>
@@ -1170,7 +1170,7 @@
         </div>
 
         <p class="download-meta" style="margin-top:24px;">
-          Codex subscription routing can use a local ChatGPT-signed-in Codex CLI session as Sparkbot's default, and Specialty Wing offices now expose agent selectors on both cards and the detail panel.
+          LIMA Robo OS calls require `LIMA_MCP_URL`, default to replay/simulation, and keep real-hardware motion blocked until the Guardian approval-to-runner handoff is complete.
         </p>
       </div>
     </section>

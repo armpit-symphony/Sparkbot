@@ -696,7 +696,16 @@ The explain-plan also creates a durable MCP run record in `mcp_runs.db` under th
 - `POST /api/v1/chat/mcp/runs/{run_id}/approve`
 - `POST /api/v1/chat/mcp/runs/{run_id}/deny`
 
-Run statuses are `planned`, `awaiting_approval`, `ready`, `blocked`, `completed`, or `failed`. The current implementation records planning, policy, and approval state only. Approval marks a run `ready` for future runner handoff, denial marks it `blocked`, and neither path executes the underlying Sparkbot or LIMA tool yet.
+Run statuses are `planned`, `awaiting_approval`, `ready`, `blocked`, `completed`, or `failed`. The MCP run history records planning, policy, and approval state. Approval marks a run `ready` for future runner handoff, denial marks it `blocked`, and this path still does not execute the underlying Sparkbot or LIMA tool directly.
+
+The Phase 2 LIMA robotics bridge is available separately for explicit robot commands:
+
+- `GET /api/v1/chat/robotics/status`
+- `GET /api/v1/chat/robotics/tools`
+- `POST /api/v1/chat/robotics/command`
+- `POST /api/v1/chat/robotics/emergency-stop`
+
+The bridge accepts natural-language robot commands, creates the command contract, classifies risk, and calls the configured LIMA MCP tool only when the request is safe. Dry runs work without hardware. Replay/simulation is the default. Real-hardware motion is blocked by default until the Guardian approval-to-runner handoff is complete.
 
 No hardware is required for the Robo OS demo path. LIMA replay/simulation commands are surfaced directly in Sparkbot:
 
@@ -708,7 +717,9 @@ LIMA run demo-camera
 
 Robot-motion tools such as `navigate`, `follow_route`, `return_home`, and `stop` are marked critical. They should produce a dry-run/explain-plan, then require operator approval and audit evidence before execution.
 
-Set `LIMA_MCP_URL` or `LIMA_DAEMON_URL` to mark live LIMA bridge tools as configured. If neither is set, Robo OS still exposes the replay/simulation manifests as demo-ready so the control plane remains testable without hardware.
+Set `LIMA_MCP_URL` to the running LIMA MCP endpoint, such as `http://127.0.0.1:9990/mcp`, to enable live replay/simulation calls from Sparkbot. If it is not set, Robo OS still exposes the replay/simulation manifests as demo-ready and the robotics bridge can produce dry-run command contracts without hardware.
+
+Detailed phase notes live in [LIMA Robo OS Integration](./lima-robo-os-integration.md).
 
 The universal run timeline is:
 
@@ -1471,6 +1482,10 @@ PUBLIC_URL=
 | `POST` | `/api/v1/chat/mcp/runs/{run_id}/request-approval` | Move a planned or unapproved ready MCP run to awaiting approval without executing it |
 | `POST` | `/api/v1/chat/mcp/runs/{run_id}/approve` | Guardian-operator approval that marks an awaiting MCP run ready for future runner handoff without executing it |
 | `POST` | `/api/v1/chat/mcp/runs/{run_id}/deny` | Guardian-operator denial that blocks an awaiting MCP run with an audit reason |
+| `GET` | `/api/v1/chat/robotics/status` | LIMA Robo OS bridge status and configured MCP target metadata |
+| `GET` | `/api/v1/chat/robotics/tools` | Tools discovered from the configured LIMA MCP endpoint |
+| `POST` | `/api/v1/chat/robotics/command` | Natural-language robot command contract, risk classification, and safe replay/simulation MCP execution |
+| `POST` | `/api/v1/chat/robotics/emergency-stop` | Audited stop call to the best available LIMA stop tool |
 | `GET` | `/api/v1/chat/audit` | Recent tool audit log (room-scoped) |
 | `GET` | `/api/v1/utils/health-check/` | Health check → `true` |
 
@@ -1884,7 +1899,7 @@ curl -b cookies.txt http://localhost:8000/api/v1/chat/system/watcher | python -m
 
 Desktop release tags and app versions are aligned on the `1.6.x` release line.
 
-For `v1.6.57`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release line tightens public-v1 defaults: two API workers, production-safe CORS/auth validation, live terminal disabled by default, public DNS/proxy wiring notes, provider-key rotation guidance, and background-job scaling guardrails.
+For `v1.6.57`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release line tightens public-v1 defaults: two API workers, production-safe CORS/auth validation, live terminal disabled by default, public DNS/proxy wiring notes, provider-key rotation guidance, background-job scaling guardrails, and the Phase 2 LIMA Robo OS bridge for natural-language replay/simulation robot commands.
 
 ### How to upgrade safely
 

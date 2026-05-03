@@ -72,6 +72,10 @@ Sparkbot already has Guardian Vault for connector/provider secrets. The migratio
 
 Web/API workers are for HTTP and WebSocket responsiveness. Long-running work should move to separate task workers or a queue. Any recurring background job must be leader-locked or run in a dedicated singleton worker. Do not increase API workers above 2 until Guardian jobs, bridge polling, reminders, live terminal, browser control, shell/code execution, multi-agent rooms, and push channels are audited and load-tested.
 
+## LIMA Robo OS status
+
+Sparkbot has the Phase 2 robotics bridge endpoints and the `lima_robot_command` chat tool. Set `LIMA_MCP_URL=http://127.0.0.1:9990/mcp` after starting `LIMA --simulation run unitree-go2-agentic-mcp --daemon` to enable replay/simulation calls. Real-hardware motion remains blocked by default until approved MCP run records are safely handed to the robotics executor and per-robot safety limits are load-tested.
+
 ## Polish notes
 
 - Frontend build currently warns about a large main chunk. Code-splitting chat, workstation, and terminal surfaces is recommended polish, not a public-v1 blocker.

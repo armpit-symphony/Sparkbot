@@ -372,7 +372,14 @@ LIMA run demo-camera
 
 Robot-motion tools are marked critical and go through explain-plan and operator approval before execution.
 
-Set `LIMA_MCP_URL` or `LIMA_DAEMON_URL` when a LIMA Robotics OS MCP bridge is available. Without those values, Sparkbot keeps Robo OS in replay/simulation-first mode so the demos remain usable with no hardware.
+Set `LIMA_MCP_URL` when a LIMA Robotics OS MCP bridge is available, for example `http://127.0.0.1:9990/mcp` after running `LIMA --simulation run unitree-go2-agentic-mcp --daemon`. Sparkbot now also exposes the Phase 2 robotics bridge:
+
+- `GET /api/v1/chat/robotics/status`
+- `GET /api/v1/chat/robotics/tools`
+- `POST /api/v1/chat/robotics/command`
+- `POST /api/v1/chat/robotics/emergency-stop`
+
+Chat can use the `lima_robot_command` tool for natural-language robot status, camera inspection, and replay/simulation commands. Real-hardware motion remains blocked by default until the Guardian approval-to-runner handoff is complete. See [LIMA Robo OS Integration](docs/lima-robo-os-integration.md) for the phase notes and runbook.
 
 ### Scheduling Tasks (Task Guardian)
 
@@ -554,7 +561,7 @@ User message → Token Guardian → Memory Guardian → LLM
 
 | Version | Date | Highlights |
 |---------|------|-----------|
-| v1.6.57 | May 2026 | Public-v1 readiness hardening: backend worker defaults reduced to 2, production config now fails closed on missing auth secrets or unsafe CORS/front-end origins, live terminal defaults off with a clear disabled API state, server docs now call out DNS/reverse proxy/TLS wiring, provider key rotation, background-job worker limits, and frontend/deprecation polish notes. |
+| v1.6.57 | May 2026 | Public-v1 readiness hardening plus LIMA Robo OS Phase 2 bridge: backend worker defaults reduced to 2, production config fails closed on unsafe auth/CORS, live terminal defaults off, robotics status/tools/command/emergency-stop endpoints and chat `lima_robot_command` are available for replay/simulation while real-hardware motion stays blocked until Guardian runner handoff is complete. |
 | v1.6.56 | May 2026 | Added a first-class OpenAI Codex subscription provider that detects the local Codex ChatGPT sign-in and dispatches `openai-codex/gpt-5.3-codex` through the Codex CLI bridge; Controls can set it as the default, Workstation ChatGPT/Codex desks prefill the subscription model, Specialty Wing office detail panels now include an agent selector for packaged or spawned agents, local desktop routing config was moved to the Codex subscription default, and downloader/docs/package metadata advanced to the v1.6.56 desktop line. |
 | v1.6.55 | May 2026 | Advanced the Command Center update line for local testing and public updater/download metadata: downloader links, package versions, Tauri metadata, service worker cache, README, capabilities docs, release notes, and GitHub Pages copy now point at the v1.6.55 desktop line. |
 | v1.6.54 | May 2026 | Cleaned up Controls by removing the obsolete Active custom agents display, moved Spawn Agent to the top of Agents, added packaged specialist agents, upgraded Workstation Specialty Wing offices with shared Agents dropdowns/model selection, preloaded Meetings Manager into new meeting setup, promoted Spine Ops to the official Command Center with Room Persona/System Health/Computer Control/Token Guardian/Task Guardian surfaced there, and kept downloader/docs/package metadata on the v1.6.54 desktop line. |
