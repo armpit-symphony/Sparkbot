@@ -27,6 +27,14 @@ export interface Station {
   inviteAuthMode?: "api_key" | "oauth" | "codex_sub"
   shellType?: "bash" | "zsh" | "ssh" | "powershell"
   host?: string
+  isSpecialtyOffice?: boolean
+  specialtySlot?: number
+  agentHandle?: string
+  agentDisplayName?: string
+  agentDescription?: string
+  agentEmoji?: string
+  modelId?: string
+  routeMode?: "default" | "openrouter" | "local" | string
 }
 
 // ─── Station data ─────────────────────────────────────────────────────────────

@@ -21,6 +21,7 @@ export interface SparkbotControlsConfig {
     default_local_model: string
     base_url: string
   }
+  model_labels?: Record<string, string>
   routing_policy?: {
     default_provider_authoritative: boolean
     cross_provider_fallback: boolean
@@ -62,6 +63,17 @@ export interface SparkbotControlsConfig {
   }
 }
 
+export interface ControlsModelOption {
+  id: string
+  label: string
+}
+
+export interface ControlsModelGroup {
+  id: string
+  label: string
+  models: ControlsModelOption[]
+}
+
 export interface ChatEntryTarget {
   to: "/dm"
   search?: {
@@ -89,6 +101,82 @@ export function providerForModel(model: string): string {
   if (model.startsWith("minimax/")) return "minimax"
   if (model.startsWith("xai/")) return "xai"
   return "other"
+}
+
+export function routeForModelOverride(model: string): string {
+  const provider = providerForModel(model)
+  if (provider === "ollama") return "local"
+  if (["openrouter", "openai", "anthropic", "google", "groq", "minimax", "xai"].includes(provider)) {
+    return provider
+  }
+  return "default"
+}
+
+export function agentDisplayName(name: string): string {
+  if (name === "sparkbot") return "Sparkbot"
+  return name
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ")
+}
+
+export function buildControlsModelGroups(
+  config: SparkbotControlsConfig | null,
+): ControlsModelGroup[] {
+  if (!config) return []
+
+  const localModels = [
+    config.local_runtime?.default_local_model,
+    ...(config.ollama_status?.model_ids ?? []),
+    ...(config.ollama_status?.models ?? []).map((modelName) =>
+      modelName.startsWith("ollama/") ? modelName : `ollama/${modelName}`,
+    ),
+  ].filter(Boolean) as string[]
+
+  const modelIds = Array.from(
+    new Set(
+      [
+        config.active_model,
+        config.default_selection?.model,
+        config.stack?.primary,
+        config.stack?.backup_1,
+        config.stack?.backup_2,
+        config.stack?.heavy_hitter,
+        ...Object.keys(config.model_labels ?? {}),
+        ...localModels,
+        ...(config.providers ?? []).flatMap((provider) => [
+          ...(provider.available_models ?? []),
+          ...(provider.models ?? []),
+        ]),
+      ].filter(Boolean) as string[],
+    ),
+  )
+
+  const labelForModel = (modelId: string) =>
+    config.model_labels?.[modelId] ?? modelId.replace("ollama/", "")
+
+  const providerGroups: Array<{ id: string; label: string }> = [
+    { id: "openrouter", label: "OpenRouter" },
+    { id: "openai", label: "OpenAI" },
+    { id: "anthropic", label: "Anthropic" },
+    { id: "google", label: "Google" },
+    { id: "groq", label: "Groq" },
+    { id: "minimax", label: "MiniMax" },
+    { id: "xai", label: "xAI" },
+    { id: "ollama", label: "Local (Ollama)" },
+    { id: "other", label: "Other configured models" },
+  ]
+
+  return providerGroups
+    .map((group) => ({
+      id: group.id,
+      label: group.label,
+      models: modelIds
+        .filter((modelId) => providerForModel(modelId) === group.id)
+        .map((modelId) => ({ id: modelId, label: labelForModel(modelId) })),
+    }))
+    .filter((group) => group.models.length > 0)
 }
 
 export async function fetchControlsConfig(): Promise<SparkbotControlsConfig | null> {

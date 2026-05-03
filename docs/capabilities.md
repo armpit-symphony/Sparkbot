@@ -621,10 +621,14 @@ A visual grid showing all active desks:
 - **Main Desk** — your primary Sparkbot DM
 - **Stack Desks** — Primary, Backup 1, Backup 2, Heavy Hitter model companions
 - **Invite Wing** — externally-keyed model seats
-- **Specialty Agents** — spawned custom agents
+- **Specialty Wing** — five assignable office slots backed by the shared Controls Agents list
 - **Terminal Desk** — live xterm.js terminal panel
 - **Computer Control** — shell, terminal, and browser capability panel
 - **Robo OS** — unified MCP control-plane panel for Sparkbot tools and LIMA Robotics OS skills
+
+The Specialty Wing defaults to `@meetings_manager`, `@researcher`, `@analyst`, `@writer`, and `@workstation_backup_1`. Each office card includes an agent dropdown populated from the same packaged/custom agent list used by Controls, so user-created custom agents remain available without a second registry. Office assignments are saved in local browser storage as Workstation layout state, with missing defaults falling back to the first available agent instead of crashing.
+
+Opening a Specialty Wing office keeps the existing agent breakdown and adds a model selector. That selector uses the same Controls model config and writes to the same per-agent `agent_overrides` path as **Controls > Agents > Model Overrides**, so changing an office model does not create a Workstation-only route that can drift.
 
 ### Computer Control Panel
 
@@ -704,6 +708,7 @@ The universal run timeline is:
 
 Launch a multi-agent autonomous meeting room. Features:
 - Fresh meeting instance each launch
+- New meeting setup preloads `@meetings_manager` into the first seat, while leaving the seat editable
 - Chair-led autonomous mode: framing → specialist perspectives → synthesis → recommendation
 - Owner can interrupt at any time
 - **Auto-fill Stack** button seats all four stack models instantly
@@ -1859,7 +1864,7 @@ curl -b cookies.txt http://localhost:8000/api/v1/chat/system/watcher | python -m
 
 Desktop release tags and app versions are aligned on the `1.6.x` release line.
 
-For `v1.6.54`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release cleans up Controls by removing the obsolete Active custom agents display, moves Spawn Agent above Model Overrides, and packages Meetings Manager, Web Designer, Marketing Agent, and Business Analyst as built-in agents while preserving custom agent storage and API support.
+For `v1.6.54`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release cleans up Controls by removing the obsolete Active custom agents display, moves Spawn Agent above Model Overrides, packages Meetings Manager, Web Designer, Marketing Agent, and Business Analyst as built-in agents, and upgrades Workstation Specialty Wing offices with shared Agents dropdowns, shared per-agent model selection, persistent local office assignments, and a Meetings Manager first-seat default for new meeting setup.
 
 ### How to upgrade safely
 

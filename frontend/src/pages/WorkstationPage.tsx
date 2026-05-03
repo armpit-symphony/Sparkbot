@@ -3,7 +3,7 @@
 // Route: /workstation
 // Phase 3: Live terminal via xterm.js + WebSocket-backed PTY sessions.
 
-import { useState, useCallback, useEffect, lazy, Suspense } from "react"
+import { useState, useCallback, useEffect, useMemo, useRef, lazy, Suspense } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import {
   Plus,
@@ -20,9 +20,7 @@ import {
   PowerOff,
   Loader2,
   SlidersHorizontal,
-  Search,
   Code2,
-  LineChart,
   Rocket,
   Briefcase,
   Clock,
@@ -50,7 +48,13 @@ const XtermTerminal = lazy(() =>
   import("@/components/Terminal/XtermTerminal").then((m) => ({ default: m.XtermTerminal }))
 )
 import { apiFetch } from "@/lib/apiBase"
-import { fetchControlsConfig, type SparkbotControlsConfig } from "@/lib/sparkbotControls"
+import {
+  agentDisplayName,
+  buildControlsModelGroups,
+  fetchControlsConfig,
+  routeForModelOverride,
+  type SparkbotControlsConfig,
+} from "@/lib/sparkbotControls"
 import {
   buildSparkBudChatLaunchText,
   getSparkBudLaunchConfig,
@@ -174,6 +178,8 @@ function slugifyMeetingHandleLabel(value: string, fallback: string): string {
 }
 
 function deriveMeetingAgentHandle(station: Station): string | null {
+  if (station.agentHandle) return station.agentHandle
+
   switch (station.id) {
     case MAIN_DESK.id:
       return "sparkbot"
@@ -203,21 +209,35 @@ function buildMeetingSeatMeta(
   modelId?: string,
 ): WorkstationMeetingSeatMeta {
   const agentHandle = deriveMeetingAgentHandle(station)
+  const effectiveModelId = modelId ?? station.modelId
+  const effectiveRoute = station.routeMode === "ollama"
+    ? "local"
+    : station.routeMode
+      ? station.routeMode
+      : "default"
+  const shouldProvisionCustom = Boolean(
+    agentHandle
+    && !station.isSpecialtyOffice
+    && (station.isInviteSlot || station.id.startsWith("agent-") || Boolean(effectiveModelId)),
+  )
   return {
     seatIndex,
     stationId: station.id,
-    label: station.label,
+    label: station.agentDisplayName || station.label,
     accentHex: station.accentHex,
-    ...(modelId ? { modelId, route: "default" as const } : {}),
+    ...(effectiveModelId ? { modelId: effectiveModelId, route: effectiveRoute } : {}),
     ...(agentHandle ? { agentHandle } : {}),
-    ...((station.isInviteSlot || station.id.startsWith("agent-") || Boolean(modelId)) && agentHandle
+    ...(shouldProvisionCustom
       ? {
           agentProvisioning: "custom" as const,
           agentProvider: station.subtitle,
           agentDescription: station.description,
         }
       : agentHandle
-      ? { agentProvisioning: "builtin" as const }
+      ? {
+          agentProvisioning: "builtin" as const,
+          agentDescription: station.agentDescription || station.description,
+        }
       : {}),
     ...(station.inviteApiKey ? { inviteApiKey: station.inviteApiKey } : {}),
     ...(station.inviteAuthMode ? { inviteAuthMode: station.inviteAuthMode } : {}),
@@ -307,100 +327,132 @@ function buildCompanionModelStations(
   })
 }
 
-const SPECIALTY_PLACEHOLDERS: Station[] = [
-  {
-    id: "sb-researcher",
-    label: "Researcher",
-    subtitle: "Launch-ready specialty desk",
-    type: "sparkbud",
-    status: "idle",
-    icon: Search,
-    accentHex: "#60a5fa",
-    description:
-      "Pulls sources, compares references, and assembles research packets when Sparkbot needs a deeper evidence pass.",
-    capabilities: ["Source sweeps", "Reference compare", "Draft brief"],
-  },
-  {
-    id: "sb-coder",
-    label: "Coder",
-    subtitle: "Launch-ready specialty desk",
-    type: "sparkbud",
-    status: "idle",
-    icon: Code2,
-    accentHex: "#fb7185",
-    description:
-      "Handles repo edits, implementation passes, and code-focused breakdowns when Sparkbot needs a dedicated builder.",
-    capabilities: ["Code changes", "Repo review", "Patch drafting"],
-  },
-  {
-    id: "sb-analyst",
-    label: "Analyst",
-    subtitle: "Launch-ready specialty desk",
-    type: "sparkbud",
-    status: "idle",
-    icon: LineChart,
-    accentHex: "#c084fc",
-    description:
-      "Sorts signals, compares tradeoffs, and turns rough findings into clearer recommendations and decision support.",
-    capabilities: ["Compare options", "Decision support", "Trend summaries"],
-  },
-  {
-    id: "sb-custom",
-    label: "Custom",
-    subtitle: "Launch-ready custom desk",
-    type: "sparkbud",
-    status: "idle",
-    icon: Plus,
-    accentHex: "#7dd3fc",
-    description:
-      "Use this desk to define a specialist in plain language, set its launch prompt, and create a named custom SparkBud for the current workspace.",
-    capabilities: ["Custom role", "Editable prompt", "Named specialist"],
-  },
-]
-
-const STATIC_SPECIALTY_AGENT_NAMES = new Set(["researcher", "coder", "analyst"])
 const SPECIALTY_AGENT_ACCENTS = ["#7dd3fc", "#a78bfa", "#34d399", "#f472b6", "#fbbf24", "#60a5fa"]
 const SPECIALTY_OFFICE_COUNT = 5
+const WORKSTATION_SPECIALTY_ASSIGNMENTS_KEY = "sparkbot_workstation_specialty_assignments"
+const DEFAULT_SPECIALTY_AGENT_HANDLES = [
+  "meetings_manager",
+  "researcher",
+  "analyst",
+  "writer",
+  "workstation_backup_1",
+]
 
-function buildCustomSpecialtyStations(controlsConfig: SparkbotControlsConfig | null): Station[] {
-  return (controlsConfig?.available_agents ?? [])
-    .filter((agent) => agent.name !== "sparkbot")
-    .filter((agent) => !STATIC_SPECIALTY_AGENT_NAMES.has(agent.name))
-    .filter((agent) => agent.is_builtin === false)
-    .map((agent, index) => ({
-      id: `agent-${agent.name}`,
-      label: agent.name.replace(/_/g, " "),
-      subtitle: "Created specialty agent",
-      type: "sparkbud" as const,
-      status: "idle" as StationStatus,
-      icon: UserPlus,
-      route: "/dm",
-      accentHex: SPECIALTY_AGENT_ACCENTS[index % SPECIALTY_AGENT_ACCENTS.length],
-      description: agent.description || `@${agent.name} is available in chat and roundtable meetings.`,
-      capabilities: [`@${agent.name}`, "Created in Controls", "Meeting-ready"],
-    }))
+type ControlsAgent = SparkbotControlsConfig["available_agents"][number]
+
+interface SpecialtyAgentOption {
+  name: string
+  label: string
+  emoji: string
+  description: string
+  isBuiltin: boolean
 }
 
-function buildSpecialtyOfficeStations(customStations: Station[]): Station[] {
-  const occupied = [...SPECIALTY_PLACEHOLDERS.filter((station) => station.id !== "sb-custom"), ...customStations]
-    .slice(0, SPECIALTY_OFFICE_COUNT)
-  const offices = [...occupied]
-  while (offices.length < SPECIALTY_OFFICE_COUNT) {
-    const index = offices.length + 1
-    offices.push({
-      id: `sb-add-agent-${index}`,
-      label: "Add Agent",
-      subtitle: `Specialty office ${index}`,
-      type: "sparkbud",
-      status: "empty",
-      icon: Plus,
-      accentHex: SPECIALTY_AGENT_ACCENTS[(index - 1) % SPECIALTY_AGENT_ACCENTS.length],
-      description:
-        "Create a new custom specialist from this office, or use Controls to spawn a prebuilt skill agent and return here to seat it in meetings.",
-      capabilities: ["Create specialist", "Prebuilt templates", "Meeting-ready"],
-    })
+function loadSpecialtyOfficeAssignments(): string[] {
+  if (typeof window === "undefined") return []
+  try {
+    const raw = window.localStorage.getItem(WORKSTATION_SPECIALTY_ASSIGNMENTS_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed)
+      ? parsed.map((value) => String(value || "")).slice(0, SPECIALTY_OFFICE_COUNT)
+      : []
+  } catch {
+    return []
   }
-  return offices
+}
+
+function saveSpecialtyOfficeAssignments(assignments: string[]): void {
+  if (typeof window === "undefined") return
+  window.localStorage.setItem(
+    WORKSTATION_SPECIALTY_ASSIGNMENTS_KEY,
+    JSON.stringify(assignments.slice(0, SPECIALTY_OFFICE_COUNT)),
+  )
+}
+
+function buildSpecialtyAgentOptions(config: SparkbotControlsConfig | null): SpecialtyAgentOption[] {
+  return (config?.available_agents ?? []).map((agent) => ({
+    name: agent.name,
+    label: agentDisplayName(agent.name),
+    emoji: agent.emoji,
+    description: agent.description || `@${agent.name} is available in chat and meetings.`,
+    isBuiltin: agent.is_builtin !== false,
+  }))
+}
+
+function agentMatchKeys(agent: ControlsAgent | SpecialtyAgentOption): string[] {
+  const identity = "identity" in agent ? agent.identity ?? {} : {}
+  return [
+    agent.name,
+    agentDisplayName(agent.name),
+    typeof identity.slug === "string" ? identity.slug : "",
+    typeof identity.id === "string" ? identity.id : "",
+  ]
+    .filter(Boolean)
+    .flatMap((value) => {
+      const lowered = value.toLowerCase()
+      return [lowered, slugifyMeetingHandleLabel(lowered, lowered)]
+    })
+}
+
+function resolveSpecialtyAgent(
+  options: SpecialtyAgentOption[],
+  requested: string | undefined,
+): SpecialtyAgentOption | null {
+  if (!options.length) return null
+  if (!requested) return options[0]
+  const needle = requested.trim().replace(/^@/, "").toLowerCase()
+  const slugNeedle = slugifyMeetingHandleLabel(needle, needle)
+  return options.find((agent) => agentMatchKeys(agent).includes(needle) || agentMatchKeys(agent).includes(slugNeedle))
+    ?? options[0]
+}
+
+function buildSpecialtyOfficeStations(
+  config: SparkbotControlsConfig | null,
+  assignments: string[],
+): Station[] {
+  const options = buildSpecialtyAgentOptions(config)
+  return Array.from({ length: SPECIALTY_OFFICE_COUNT }, (_, index) => {
+    const requestedAgent = assignments[index] || DEFAULT_SPECIALTY_AGENT_HANDLES[index]
+    const agent = resolveSpecialtyAgent(options, requestedAgent)
+    const accentHex = SPECIALTY_AGENT_ACCENTS[index % SPECIALTY_AGENT_ACCENTS.length]
+    const modelOverride = agent ? config?.agent_overrides?.[agent.name] : null
+    return {
+      id: `specialty-office-${index + 1}`,
+      label: agent ? agent.label : `Office ${index + 1}`,
+      subtitle: `Specialty office ${index + 1}`,
+      type: "sparkbud",
+      status: agent ? "idle" : "empty",
+      icon: agent ? UserPlus : Plus,
+      route: "/dm",
+      accentHex,
+      description: agent?.description
+        || "Controls has not returned available agents yet. This office will fall back safely once agents load.",
+      capabilities: agent
+        ? [`@${agent.name}`, agent.isBuiltin ? "Packaged agent" : "Custom agent", "Meeting-ready"]
+        : ["Shared Agents list", "Waiting for Controls", "Safe fallback"],
+      isSpecialtyOffice: true,
+      specialtySlot: index,
+      agentHandle: agent?.name,
+      agentDisplayName: agent?.label,
+      agentDescription: agent?.description,
+      agentEmoji: agent?.emoji,
+      ...(modelOverride?.model ? { modelId: modelOverride.model, routeMode: modelOverride.route } : {}),
+    }
+  })
+}
+
+function findDefaultMeetingOffice(stations: Station[]): Station | null {
+  const meetingsManagerOffice = stations.find((station) =>
+    agentMatchKeys({
+      name: station.agentHandle || "",
+      label: station.agentDisplayName || station.label,
+      emoji: station.agentEmoji || "",
+      description: station.agentDescription || station.description,
+      isBuiltin: true,
+    }).includes("meetings_manager"),
+  )
+  return meetingsManagerOffice ?? stations.find((station) => station.status !== "empty") ?? null
 }
 
 function getAssignedStationIds(projectRoom: ProjectRoom): string[] {
@@ -535,15 +587,27 @@ interface DeskCardProps {
   onClick: (station: Station) => void
   isSelected: boolean
   compact?: boolean
+  agentOptions?: SpecialtyAgentOption[]
+  selectedAgentName?: string
+  onAgentChange?: (stationId: string, agentName: string) => void
 }
 
-function DeskCard({ station, onClick, isSelected, compact = false }: DeskCardProps) {
+function DeskCard({
+  station,
+  onClick,
+  isSelected,
+  compact = false,
+  agentOptions = [],
+  selectedAgentName,
+  onAgentChange,
+}: DeskCardProps) {
   const [hovered, setHovered] = useState(false)
   const handleClick = useCallback(() => onClick(station), [onClick, station])
   const handleMouseEnter = useCallback(() => setHovered(true), [])
   const handleMouseLeave = useCallback(() => setHovered(false), [])
   const { accentHex, status, icon: Icon, label, subtitle, capabilities } = station
   const isActive = status !== "empty" && status !== "offline"
+  const showAgentSelector = Boolean(station.isSpecialtyOffice && onAgentChange)
   const glowColor = isActive ? accentHex : "#374151"
   const borderColor = isSelected
     ? accentHex
@@ -628,6 +692,20 @@ function DeskCard({ station, onClick, isSelected, compact = false }: DeskCardPro
       <div style={{ padding: compact ? "8px 10px" : "10px 12px" }}>
         <MonitorScreen icon={Icon} status={status} hex={accentHex} size={compact ? "sm" : "md"} />
       </div>
+      {station.isSpecialtyOffice && (
+        <p
+          style={{
+            padding: compact ? "0 10px 8px" : "0 12px 10px",
+            margin: 0,
+            color: "#94a3b8",
+            fontSize: 10,
+            lineHeight: 1.45,
+            minHeight: compact ? 30 : undefined,
+          }}
+        >
+          {station.description}
+        </p>
+      )}
       {!compact && (
         <div style={{ padding: "0 12px 10px", display: "flex", gap: 6, flexWrap: "wrap" }}>
           {capabilities.slice(0, 2).map((cap) => (
@@ -646,6 +724,59 @@ function DeskCard({ station, onClick, isSelected, compact = false }: DeskCardPro
               {cap}
             </span>
           ))}
+        </div>
+      )}
+      {showAgentSelector && (
+        <div
+          role="presentation"
+          style={{ padding: compact ? "0 10px 10px" : "0 12px 10px" }}
+          onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => event.stopPropagation()}
+        >
+          <label
+            htmlFor={`${station.id}-agent-select`}
+            style={{
+              display: "block",
+              fontSize: 9,
+              fontWeight: 700,
+              color: "#64748b",
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              marginBottom: 5,
+            }}
+          >
+            Assigned agent
+          </label>
+          <select
+            id={`${station.id}-agent-select`}
+            value={selectedAgentName ?? ""}
+            disabled={agentOptions.length === 0}
+            onChange={(event) => onAgentChange?.(station.id, event.target.value)}
+            style={{
+              width: "100%",
+              minWidth: 0,
+              backgroundColor: "#030508",
+              border: `1px solid ${isActive ? `${accentHex}44` : "#1f2937"}`,
+              borderRadius: 5,
+              padding: "7px 8px",
+              color: agentOptions.length ? "#dbeafe" : "#475569",
+              fontSize: 10,
+              fontFamily: "monospace",
+              outline: "none",
+              cursor: agentOptions.length ? "pointer" : "not-allowed",
+              boxSizing: "border-box",
+            }}
+          >
+            {agentOptions.length === 0 ? (
+              <option value="">Loading agents</option>
+            ) : (
+              agentOptions.map((agent) => (
+                <option key={agent.name} value={agent.name}>
+                  {agent.label}
+                </option>
+              ))
+            )}
+          </select>
         </div>
       )}
       <div
@@ -1056,6 +1187,9 @@ interface StationDetailPanelProps {
   availableSeatCount: number
   onLaunchSparkBud: (station: Station, config: { prompt: string; agentName?: string }) => Promise<string | null>
   launchingSparkBudId: string | null
+  controlsConfig: SparkbotControlsConfig | null
+  onAgentModelChange: (agentName: string, modelId: string) => Promise<void>
+  savingAgentModel: string | null
 }
 
 function StationDetailPanel({
@@ -1068,6 +1202,9 @@ function StationDetailPanel({
   availableSeatCount,
   onLaunchSparkBud,
   launchingSparkBudId,
+  controlsConfig,
+  onAgentModelChange,
+  savingAgentModel,
 }: StationDetailPanelProps) {
   const {
     accentHex,
@@ -1087,12 +1224,29 @@ function StationDetailPanel({
   const isSparkbot = id === "sparkbot"
   const isSparkBud = type === "sparkbud"
   const isModelOffice = id.startsWith("stack-")
+  const isSpecialtyOffice = Boolean(station.isSpecialtyOffice && station.agentHandle)
   const isInRoom = isStationAssigned(projectRoom, id)
   const canToggleRoom = type !== "table" && type !== "terminal" && status !== "empty"
   const sparkBudLaunchConfig = isSparkBud ? getSparkBudLaunchConfig(id) : null
   const [launchPrompt, setLaunchPrompt] = useState(sparkBudLaunchConfig?.defaultPrompt ?? "")
   const [launchAgentName, setLaunchAgentName] = useState(sparkBudLaunchConfig?.defaultHandle ?? "")
   const [launchError, setLaunchError] = useState("")
+  const modelGroups = buildControlsModelGroups(controlsConfig)
+  const agentOverride = station.agentHandle
+    ? controlsConfig?.agent_overrides?.[station.agentHandle]
+    : null
+  const selectedModelId = agentOverride?.model ?? station.modelId ?? ""
+  const defaultModelLabel =
+    controlsConfig?.default_selection?.label
+    || controlsConfig?.model_labels?.[controlsConfig?.default_selection?.model ?? ""]
+    || controlsConfig?.default_selection?.model
+    || controlsConfig?.active_model
+    || "default model"
+  const selectedModelLabel = selectedModelId
+    ? modelGroups.flatMap((group) => group.models).find((model) => model.id === selectedModelId)?.label
+      ?? controlsConfig?.model_labels?.[selectedModelId]
+      ?? selectedModelId
+    : ""
 
   useEffect(() => {
     setLaunchPrompt(sparkBudLaunchConfig?.defaultPrompt ?? "")
@@ -1291,6 +1445,85 @@ function StationDetailPanel({
           ))}
         </div>
       </div>
+
+      {isSpecialtyOffice && (
+        <>
+          <div style={{ height: 1, backgroundColor: "#1a2235", margin: "0 16px" }} />
+          <div style={{ padding: "12px 16px 16px" }}>
+            <div
+              style={{
+                fontSize: 10,
+                color: "#4b5563",
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                marginBottom: 8,
+                fontWeight: 700,
+              }}
+            >
+              Agent Model
+            </div>
+            <div
+              style={{
+                backgroundColor: "#0a1120",
+                border: `1px solid ${accentHex}22`,
+                borderRadius: 6,
+                padding: "10px 12px",
+              }}
+            >
+              <label
+                htmlFor={`${id}-model-select`}
+                style={{
+                  display: "block",
+                  fontSize: 10,
+                  color: accentHex,
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  marginBottom: 6,
+                  fontWeight: 700,
+                }}
+              >
+                Model override
+              </label>
+              <select
+                id={`${id}-model-select`}
+                value={selectedModelId}
+                disabled={savingAgentModel === station.agentHandle || modelGroups.length === 0}
+                onChange={(event) => {
+                  if (station.agentHandle) void onAgentModelChange(station.agentHandle, event.target.value)
+                }}
+                style={{
+                  width: "100%",
+                  backgroundColor: "#030508",
+                  border: `1px solid ${accentHex}44`,
+                  borderRadius: 5,
+                  padding: "8px 9px",
+                  color: "#dbeafe",
+                  fontSize: 11,
+                  fontFamily: "monospace",
+                  outline: "none",
+                  boxSizing: "border-box",
+                }}
+              >
+                <option value="">Inherit default: {defaultModelLabel}</option>
+                {modelGroups.map((group) => (
+                  <optgroup key={group.id} label={group.label}>
+                    {group.models.map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+              <p style={{ fontSize: 10, color: "#9ca3af", lineHeight: 1.6, margin: "8px 0 0" }}>
+                {selectedModelId
+                  ? `Current override: ${selectedModelLabel}. This is saved to the same per-agent routing Controls uses.`
+                  : `Currently inheriting ${defaultModelLabel} from Controls.`}
+              </p>
+            </div>
+          </div>
+        </>
+      )}
 
       {isSparkbot && (
         <>
@@ -3975,6 +4208,11 @@ export default function WorkstationPage() {
   const [infoOpen, setInfoOpen] = useState(false)
   const [seatPicker, setSeatPicker] = useState<SeatPickerState | null>(null)
   const [launchingSparkBudId, setLaunchingSparkBudId] = useState<string | null>(null)
+  const [savingAgentModel, setSavingAgentModel] = useState<string | null>(null)
+  const [specialtyOfficeAssignments, setSpecialtyOfficeAssignments] = useState<string[]>(() =>
+    loadSpecialtyOfficeAssignments(),
+  )
+  const meetingDefaultAppliedRef = useRef(false)
   const [launchingMeeting, setLaunchingMeeting] = useState(false)
   const [meetingLaunchError, setMeetingLaunchError] = useState<string | null>(null)
   const [showNewProject, setShowNewProject] = useState(false)
@@ -4049,10 +4287,23 @@ export default function WorkstationPage() {
     })
   }, [projectRoom])
 
+  useEffect(() => {
+    saveSpecialtyOfficeAssignments(specialtyOfficeAssignments)
+  }, [specialtyOfficeAssignments])
+
   // ── Derived from config ────────────────────────────────────────────────────
-  const companionModelStations = buildCompanionModelStations(controlsConfig)
-  const customSpecialtyStations = buildCustomSpecialtyStations(controlsConfig)
-  const specialtyStations = buildSpecialtyOfficeStations(customSpecialtyStations)
+  const companionModelStations = useMemo(
+    () => buildCompanionModelStations(controlsConfig),
+    [controlsConfig],
+  )
+  const specialtyAgentOptions = useMemo(
+    () => buildSpecialtyAgentOptions(controlsConfig),
+    [controlsConfig],
+  )
+  const specialtyStations = useMemo(
+    () => buildSpecialtyOfficeStations(controlsConfig, specialtyOfficeAssignments),
+    [controlsConfig, specialtyOfficeAssignments],
+  )
   const resolvedInviteStations = INVITE_DESKS.map((station) =>
     resolveInviteStation(station, configuredInvites),
   )
@@ -4068,6 +4319,32 @@ export default function WorkstationPage() {
     "stack-backup_2": controlsConfig?.stack.backup_2 ?? "",
     "stack-heavy_hitter": controlsConfig?.stack.heavy_hitter ?? "",
   }
+
+  useEffect(() => {
+    setPanel((prev) => {
+      if (prev?.kind !== "station") return prev
+      const updatedSpecialty = specialtyStations.find((station) => station.id === prev.station.id)
+      return updatedSpecialty ? { kind: "station", station: updatedSpecialty } : prev
+    })
+  }, [specialtyStations])
+
+  useEffect(() => {
+    if (meetingDefaultAppliedRef.current) return
+    if (!specialtyStations.length) return
+    const defaultOffice = findDefaultMeetingOffice(specialtyStations)
+    if (!defaultOffice) return
+
+    setProjectRoom((prev) => {
+      const seats = normalizeMeetingSeats(prev.seats)
+      if (prev.roomId || seats.some(Boolean)) {
+        meetingDefaultAppliedRef.current = true
+        return prev
+      }
+      meetingDefaultAppliedRef.current = true
+      seats[0] = defaultOffice.id
+      return { ...prev, seats }
+    })
+  }, [specialtyStations])
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
@@ -4105,6 +4382,49 @@ export default function WorkstationPage() {
   const handleRemoveFromRoom = useCallback((id: string) => {
     setProjectRoom((prev) => removeStationFromSeats(prev, id))
   }, [])
+
+  const handleSpecialtyAgentChange = useCallback((stationId: string, agentName: string) => {
+    const slotIndex = Number(stationId.replace("specialty-office-", "")) - 1
+    if (Number.isNaN(slotIndex) || slotIndex < 0 || slotIndex >= SPECIALTY_OFFICE_COUNT) return
+    setSpecialtyOfficeAssignments((prev) => {
+      const next = [...DEFAULT_SPECIALTY_AGENT_HANDLES]
+      prev.forEach((value, index) => {
+        if (value) next[index] = value
+      })
+      next[slotIndex] = agentName
+      return next
+    })
+  }, [])
+
+  const handleAgentModelChange = useCallback(async (agentName: string, modelId: string) => {
+    if (!controlsConfig) return
+    setSavingAgentModel(agentName)
+    const nextOverride = modelId
+      ? { route: routeForModelOverride(modelId), model: modelId }
+      : { route: "default", model: "" }
+    const nextOverrides = {
+      ...(controlsConfig.agent_overrides ?? {}),
+      [agentName]: nextOverride,
+    }
+    try {
+      const response = await apiFetch("/api/v1/chat/models/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ agent_overrides: nextOverrides }),
+      })
+      const data = await response.json().catch(() => null)
+      if (response.ok && data) {
+        setControlsConfig(data as SparkbotControlsConfig)
+      } else {
+        setControlsConfig((prev) => prev
+          ? { ...prev, agent_overrides: nextOverrides }
+          : prev)
+      }
+    } finally {
+      setSavingAgentModel(null)
+    }
+  }, [controlsConfig])
 
   // Auto-fill the 4 stack bots into seats 1-4
   const handleAutoFillStack = useCallback(() => {
@@ -4327,11 +4647,14 @@ export default function WorkstationPage() {
         roomName,
         seats: assignedSeatMeta,
       })
+      const nextSeats = normalizeMeetingSeats([])
+      const defaultMeetingOffice = findDefaultMeetingOffice(specialtyStations)
+      if (defaultMeetingOffice) nextSeats[0] = defaultMeetingOffice.id
       setProjectRoom((prev) => ({
         ...prev,
         roomId: null,
         roomName,
-        seats: normalizeMeetingSeats([]),
+        seats: nextSeats,
       }))
       navigate({ to: "/meeting/$roomId", params: { roomId: meetingMeta.roomId } })
     } catch (error) {
@@ -4340,7 +4663,7 @@ export default function WorkstationPage() {
     } finally {
       setLaunchingMeeting(false)
     }
-  }, [launchingMeeting, navigate, projectRoom, roomEligibleStations])
+  }, [launchingMeeting, navigate, projectRoom, roomEligibleStations, specialtyStations])
 
   const panelOpen = panel !== null
   const availableSeatCount = projectRoom.seats.filter((seatId) => !seatId).length
@@ -4686,6 +5009,9 @@ export default function WorkstationPage() {
                       onClick={handleStationClick}
                       isSelected={panel?.kind === "station" && panel.station.id === station.id}
                       compact
+                      agentOptions={specialtyAgentOptions}
+                      selectedAgentName={station.agentHandle}
+                      onAgentChange={handleSpecialtyAgentChange}
                     />
                   ))}
                 </div>
@@ -4709,8 +5035,8 @@ export default function WorkstationPage() {
                     Public-safe posture
                   </div>
                   <p style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.65, margin: "8px 0 0" }}>
-                    Five Specialty Wing offices can hold built-in SparkBuds or agents created in
-                    Controls. Add Agent opens a custom specialist desk; seated specialists join meetings and work by @mention in chat.
+                    Five Specialty Wing offices can assign any packaged or custom agent from Controls.
+                    Selections persist locally, and seated specialists join meetings by @mention.
                   </p>
                 </div>
               </div>
@@ -5077,6 +5403,9 @@ export default function WorkstationPage() {
             availableSeatCount={availableSeatCount}
             onLaunchSparkBud={handleLaunchSparkBud}
             launchingSparkBudId={launchingSparkBudId}
+            controlsConfig={controlsConfig}
+            onAgentModelChange={handleAgentModelChange}
+            savingAgentModel={savingAgentModel}
           />
         )}
         {panel?.kind === "table" && (

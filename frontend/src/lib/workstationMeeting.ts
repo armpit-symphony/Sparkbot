@@ -38,7 +38,7 @@ export interface WorkstationMeetingSeatMeta {
   agentProvider?: string
   agentDescription?: string
   modelId?: string
-  route?: "default" | "openrouter" | "local"
+  route?: string
   inviteApiKey?: string
   inviteAuthMode?: "api_key" | "oauth" | "codex_sub"
 }
