@@ -1,5 +1,13 @@
 # Release Notes
 
+## Sparkbot v1.6.54
+
+- Cleaned up Controls by removing the obsolete Active custom agents display while preserving custom agent creation, persistence, and backend support.
+- Moved Spawn Agent to the top of the Agents section above Model Overrides for a clearer creation-first workflow on desktop and mobile.
+- Added packaged built-in agents: Meetings Manager, Web Designer, Marketing Agent, and Business Analyst.
+- Fresh installs and upgraded installs receive the new packaged agents from the existing backend registry; user-created custom agents remain preserved.
+- Advanced backend, frontend, Tauri shell, README, public downloader, capabilities docs, release notes, service worker, and packaging notes to v1.6.54.
+
 ## Sparkbot v1.6.53
 
 - Added shared image detection and vision-model fallback routing for app uploads and Telegram photos.

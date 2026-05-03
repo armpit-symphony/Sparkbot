@@ -548,19 +548,24 @@ SPARKBOT_TOKEN_GUARDIAN_SHADOW_ENABLED=true
 | Coder | `@coder` | Clean, working code with explanations |
 | Writer | `@writer` | Writing, editing, emails, summaries, docs |
 | Analyst | `@analyst` | Structured reasoning, data analysis, calculations |
+| Meetings Manager | `@meetings_manager` | Meeting agendas, decisions, action items, owners, deadlines, and recaps |
+| Web Designer | `@web_designer` | Responsive web/product UI design, hierarchy, reviews, and implementation-ready specs |
+| Marketing Agent | `@marketing_agent` | Positioning, launch copy, campaigns, social posts, and practical growth plans |
+| Business Analyst | `@business_analyst` | Business requirements, risks, priorities, metrics, workflows, and execution recommendations |
 
 Type `@` in the input to get an autocomplete picker. The bot's response shows an agent badge (e.g. `🔍 RESEARCHER`).
 
+Packaged built-in agents are defined in the backend agent registry and appear for both fresh installs and upgraded installs. Spawned custom agents remain database-backed and are not removed by package updates.
+
 ### Spawning custom agents
 
-In **Controls → Spawn Agent**, choose from 11 specialty templates:
+In **Controls → Agents → Spawn Agent**, choose from 11 specialty templates. The Spawn Agent box appears at the top of the Agents section, above Model Overrides:
 
 Data Scientist · DevOps · Legal Advisor · HR Manager · Marketing · Finance · Customer Support · PM · Security Analyst · Technical Writer · Custom
 
 Each agent gets a full system prompt, emoji, name, and description. Spawned agents are:
 - Immediately available via `@name` mention (no restart required)
 - Persisted in the database across restarts
-- Removable from the Controls interface (built-in agents are protected)
 
 ### Agent identity and permissions
 
@@ -580,7 +585,7 @@ Operators can set `SPARKBOT_DISABLED_AGENTS=researcher,coder` as a coarse kill s
 
 ### Per-Agent Model Routing
 
-Each agent can be routed to a specific provider and model using **Controls > Agents > Model overrides**.
+Each agent can be routed to a specific provider and model using **Controls > Agents > Model Overrides**.
 
 | Route | Behavior |
 |-------|----------|
@@ -1854,7 +1859,7 @@ curl -b cookies.txt http://localhost:8000/api/v1/chat/system/watcher | python -m
 
 Desktop release tags and app versions are aligned on the `1.6.x` release line.
 
-For `v1.6.53`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release fixes app and Telegram photo processing through shared vision-model fallback routing, hardens meeting retry handling for transient network errors, expands Google Drive/Docs and Microsoft 365 connector onboarding, and presents the Workstation Specialty Wing as five fixed agent offices with Add Agent slots.
+For `v1.6.54`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release cleans up Controls by removing the obsolete Active custom agents display, moves Spawn Agent above Model Overrides, and packages Meetings Manager, Web Designer, Marketing Agent, and Business Analyst as built-in agents while preserving custom agent storage and API support.
 
 ### How to upgrade safely
 

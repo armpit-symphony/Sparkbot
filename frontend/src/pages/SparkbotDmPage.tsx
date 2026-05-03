@@ -397,6 +397,15 @@ interface Agent {
   is_builtin?: boolean
 }
 
+function agentDisplayName(name: string): string {
+  if (name === "sparkbot") return "Sparkbot"
+  return name
+    .split("_")
+    .filter(Boolean)
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ")
+}
+
 interface OllamaStatus {
   reachable: boolean
   base_url: string
@@ -411,6 +420,10 @@ const BUILTIN_AGENTS: Agent[] = [
   { name: "coder",      emoji: "💻", description: "Software engineer — clean, working code with explanations" },
   { name: "writer",     emoji: "✍️", description: "Professional writer — drafts, edits, structures content" },
   { name: "analyst",    emoji: "📊", description: "Data analyst — structured reasoning and actionable insights" },
+  { name: "meetings_manager", emoji: "🗓️", description: "Plans, runs, summarizes, and follows up on meetings with clear agendas, decisions, action items, owners, deadlines, and operator-ready recaps." },
+  { name: "web_designer", emoji: "🎨", description: "Designs clean, modern, responsive web pages and product experiences with strong layout, copy structure, visual hierarchy, and implementation-ready specs." },
+  { name: "marketing_agent", emoji: "📣", description: "Creates practical marketing strategy, landing page copy, launch messaging, social posts, positioning, and campaign plans for SparkPit Labs products and services." },
+  { name: "business_analyst", emoji: "📈", description: "Turns ideas, products, operations, and technical plans into clear business requirements, risks, priorities, metrics, workflows, and execution-ready recommendations." },
 ]
 
 const LEGACY_COMMS_VISIBLE = true
@@ -615,7 +628,8 @@ function AgentPicker({ query, agents, onSelect }: { query: string; agents: Agent
           className="flex w-full items-start gap-3 px-3 py-2 text-left hover:bg-muted">
           <span className="text-base shrink-0">{agent.emoji}</span>
           <div>
-            <span className="font-mono text-sm font-semibold text-primary">@{agent.name}</span>
+            <span className="text-sm font-semibold text-primary">{agentDisplayName(agent.name)}</span>
+            <span className="ml-2 font-mono text-xs text-muted-foreground">@{agent.name}</span>
             <p className="text-xs text-muted-foreground mt-0.5">{agent.description}</p>
           </div>
         </button>
@@ -806,14 +820,12 @@ interface SparkbotSettingsDialogProps {
   spawnDescription: string
   spawnPrompt: string
   spawning: boolean
-  deletingAgent: string | null
   onSpawnTemplateChange: (id: string) => void
   onSpawnNameChange: (v: string) => void
   onSpawnEmojiChange: (v: string) => void
   onSpawnDescriptionChange: (v: string) => void
   onSpawnPromptChange: (v: string) => void
   onSpawnAgent: () => void
-  onDeleteAgent: (name: string) => void
   ollamaStatus: OllamaStatus | null
   ollamaBaseUrl: string
   ollamaLoading: boolean
@@ -920,14 +932,12 @@ function SparkbotSettingsDialog({
   spawnDescription,
   spawnPrompt,
   spawning,
-  deletingAgent,
   onSpawnTemplateChange,
   onSpawnNameChange,
   onSpawnEmojiChange,
   onSpawnDescriptionChange,
   onSpawnPromptChange,
   onSpawnAgent,
-  onDeleteAgent,
   ollamaStatus,
   ollamaBaseUrl,
   ollamaLoading,
@@ -2371,136 +2381,14 @@ function SparkbotSettingsDialog({
             <div className="mb-3">
               <h2 className="text-sm font-semibold">Agents</h2>
               <p className="text-xs text-muted-foreground">
-                Manage agent model routing, spawn custom agents, and review active agents.
+                Spawn custom agents, route agent models, and review packaged built-ins.
               </p>
             </div>
 
-            {/* Agent model overrides */}
-            <div className="rounded-lg border bg-background/70 p-4 mb-4">
-              <div className="mb-3">
-                <h3 className="text-sm font-semibold">Model overrides</h3>
-                <p className="text-xs text-muted-foreground">
-                  Keep agents on the default path, or force them to a specific provider and model.
-                </p>
-              </div>
-              <div className="space-y-3">
-                {routingAgents.map((agent) => {
-                  const override = agentOverrides[agent.name] ?? { route: "default", model: "" }
-                  const route = override.route
-                  const modelValue = override.model ?? ""
-                  const routeProviderMap: Record<string, string> = {
-                    openrouter: "openrouter", local: "ollama", openai: "openai",
-                    anthropic: "anthropic", google: "google", groq: "groq",
-                    minimax: "minimax", xai: "xai",
-                  }
-                  const routeLabels: Record<string, string> = {
-                    openrouter: "OpenRouter", local: "Local (Ollama)", openai: "OpenAI",
-                    anthropic: "Anthropic", google: "Google", groq: "Groq",
-                    minimax: "MiniMax", xai: "xAI",
-                  }
-                  const providerForRoute = routeProviderMap[route] ?? ""
-                  const modelsForRoute = route === "openrouter"
-                    ? openRouterModels.map((m) => m.id)
-                    : route === "local"
-                      ? localModelOptions
-                      : providerForRoute
-                        ? directProviderModels(providerForRoute)
-                        : []
-                  const selectedModel = modelValue || ""
-
-                  return (
-                    <div key={agent.name} className="rounded-lg border bg-muted/30 px-3 py-3">
-                      <div className="mb-2 flex items-center gap-2">
-                        <span className="text-base">{agent.emoji}</span>
-                        <div>
-                          <div className="text-sm font-medium">{agent.name === "sparkbot" ? "Sparkbot main chat" : `@${agent.name}`}</div>
-                          <div className="text-[11px] text-muted-foreground">{agent.description}</div>
-                        </div>
-                      </div>
-                      <div className="grid gap-2">
-                        <select
-                          value={route}
-                          onChange={(e) => onAgentOverrideChange(agent.name, "route", e.target.value)}
-                          className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
-                        >
-                          <option value="default">Use default</option>
-                          <option value="openai">OpenAI</option>
-                          <option value="anthropic">Anthropic</option>
-                          <option value="google">Google</option>
-                          <option value="groq">Groq</option>
-                          <option value="minimax">MiniMax</option>
-                          <option value="xai">xAI</option>
-                          <option value="openrouter">OpenRouter</option>
-                          <option value="local">Local (Ollama)</option>
-                        </select>
-
-                        {route !== "default" && modelsForRoute.length > 0 && (
-                          <select
-                            value={selectedModel}
-                            onChange={(e) => onAgentOverrideChange(agent.name, "model", e.target.value)}
-                            className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
-                          >
-                            <option value="">
-                              {`Use default ${routeLabels[route] ?? route} model`}
-                            </option>
-                            {modelsForRoute.map((modelId) => (
-                              <option key={modelId} value={modelId}>
-                                {route === "openrouter"
-                                  ? openRouterModels.find((m) => m.id === modelId)?.label ?? modelId
-                                  : modelsConfig?.model_labels?.[modelId] ?? modelId}
-                              </option>
-                            ))}
-                          </select>
-                        )}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-              <div className="mt-4 flex justify-end">
-                <button
-                  type="button"
-                  onClick={onSaveAgentOverrides}
-                  disabled={savingAgentOverrides}
-                  className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50"
-                >
-                  {savingAgentOverrides ? "Saving overrides..." : "Save overrides"}
-                </button>
-              </div>
-            </div>
-
-            {/* Active custom agents */}
-            {allAgents.filter(a => a.is_builtin === false).length > 0 && (
-              <div className="rounded-lg border bg-background/70 p-4 mb-4">
-                <h3 className="mb-3 text-sm font-semibold">Active custom agents</h3>
-                <div className="space-y-2">
-                  {allAgents.filter(a => a.is_builtin === false).map(agent => (
-                    <div key={agent.name} className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-base">{agent.emoji}</span>
-                        <div>
-                          <div className="text-sm font-medium">@{agent.name}</div>
-                          <div className="text-xs text-muted-foreground">{agent.description}</div>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => onDeleteAgent(agent.name)}
-                        disabled={deletingAgent === agent.name}
-                        className="rounded-md border px-2 py-1 text-xs text-destructive hover:bg-destructive/10 disabled:opacity-50"
-                      >
-                        {deletingAgent === agent.name ? "…" : "Remove"}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {/* Spawn new agent */}
-            <div className="rounded-lg border bg-background/70 p-4">
+            <div className="mb-4 rounded-lg border bg-background/70 p-4">
               <div className="mb-3">
-                <h3 className="text-sm font-semibold">Spawn agent</h3>
+                <h3 className="text-sm font-semibold">Spawn Agent</h3>
                 <p className="text-xs text-muted-foreground">
                   Activate a specialty agent. Available immediately via <code className="rounded bg-muted px-1">@mention</code> in all rooms — no restart needed.
                 </p>
@@ -2586,13 +2474,108 @@ function SparkbotSettingsDialog({
             </div>
             </div>
 
+            {/* Agent model overrides */}
+            <div className="rounded-lg border bg-background/70 p-4 mb-4">
+              <div className="mb-3">
+                <h3 className="text-sm font-semibold">Model Overrides</h3>
+                <p className="text-xs text-muted-foreground">
+                  Keep agents on the default path, or force them to a specific provider and model.
+                </p>
+              </div>
+              <div className="space-y-3">
+                {routingAgents.map((agent) => {
+                  const override = agentOverrides[agent.name] ?? { route: "default", model: "" }
+                  const route = override.route
+                  const modelValue = override.model ?? ""
+                  const routeProviderMap: Record<string, string> = {
+                    openrouter: "openrouter", local: "ollama", openai: "openai",
+                    anthropic: "anthropic", google: "google", groq: "groq",
+                    minimax: "minimax", xai: "xai",
+                  }
+                  const routeLabels: Record<string, string> = {
+                    openrouter: "OpenRouter", local: "Local (Ollama)", openai: "OpenAI",
+                    anthropic: "Anthropic", google: "Google", groq: "Groq",
+                    minimax: "MiniMax", xai: "xAI",
+                  }
+                  const providerForRoute = routeProviderMap[route] ?? ""
+                  const modelsForRoute = route === "openrouter"
+                    ? openRouterModels.map((m) => m.id)
+                    : route === "local"
+                      ? localModelOptions
+                      : providerForRoute
+                        ? directProviderModels(providerForRoute)
+                        : []
+                  const selectedModel = modelValue || ""
+
+                  return (
+                    <div key={agent.name} className="rounded-lg border bg-muted/30 px-3 py-3">
+                      <div className="mb-2 flex items-center gap-2">
+                        <span className="text-base">{agent.emoji}</span>
+                        <div>
+                          <div className="text-sm font-medium">{agent.name === "sparkbot" ? "Sparkbot main chat" : agentDisplayName(agent.name)}</div>
+                          {agent.name !== "sparkbot" ? <div className="font-mono text-[11px] text-muted-foreground">@{agent.name}</div> : null}
+                          <div className="text-[11px] text-muted-foreground">{agent.description}</div>
+                        </div>
+                      </div>
+                      <div className="grid gap-2">
+                        <select
+                          value={route}
+                          onChange={(e) => onAgentOverrideChange(agent.name, "route", e.target.value)}
+                          className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                        >
+                          <option value="default">Use default</option>
+                          <option value="openai">OpenAI</option>
+                          <option value="anthropic">Anthropic</option>
+                          <option value="google">Google</option>
+                          <option value="groq">Groq</option>
+                          <option value="minimax">MiniMax</option>
+                          <option value="xai">xAI</option>
+                          <option value="openrouter">OpenRouter</option>
+                          <option value="local">Local (Ollama)</option>
+                        </select>
+
+                        {route !== "default" && modelsForRoute.length > 0 && (
+                          <select
+                            value={selectedModel}
+                            onChange={(e) => onAgentOverrideChange(agent.name, "model", e.target.value)}
+                            className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                          >
+                            <option value="">
+                              {`Use default ${routeLabels[route] ?? route} model`}
+                            </option>
+                            {modelsForRoute.map((modelId) => (
+                              <option key={modelId} value={modelId}>
+                                {route === "openrouter"
+                                  ? openRouterModels.find((m) => m.id === modelId)?.label ?? modelId
+                                  : modelsConfig?.model_labels?.[modelId] ?? modelId}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+              <div className="mt-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={onSaveAgentOverrides}
+                  disabled={savingAgentOverrides}
+                  className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50"
+                >
+                  {savingAgentOverrides ? "Saving overrides..." : "Save overrides"}
+                </button>
+              </div>
+            </div>
+
             {/* Built-in agents reference */}
             <div className="rounded-lg border bg-background/70 p-4">
               <h3 className="mb-3 text-sm font-semibold">Built-in agents</h3>
               <div className="flex flex-wrap gap-2">
                 {allAgents.filter(a => a.is_builtin !== false).map(agent => (
                   <span key={agent.name} className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-xs">
-                    {agent.emoji} @{agent.name}
+                    {agent.emoji} {agentDisplayName(agent.name)}
                   </span>
                 ))}
               </div>
@@ -2946,7 +2929,6 @@ function SparkbotDmPage({ controlsSurface = false }: SparkbotDmPageProps = {}) {
   const [spawnDescription, setSpawnDescription] = useState("")
   const [spawnPrompt, setSpawnPrompt] = useState("")
   const [spawning, setSpawning] = useState(false)
-  const [deletingAgent, setDeletingAgent] = useState<string | null>(null)
 
   const syncBreakglassPinState = useCallback((text: string) => {
     const lower = text.toLowerCase()
@@ -3443,25 +3425,6 @@ function SparkbotDmPage({ controlsSurface = false }: SparkbotDmPageProps = {}) {
       }
     } catch { setSettingsError("Could not spawn agent.") } finally { setSpawning(false) }
   }, [spawnName, spawnEmoji, spawnDescription, spawnPrompt])
-
-  const deleteAgent = useCallback(async (name: string) => {
-    setDeletingAgent(name)
-    setSettingsError("")
-    try {
-      const res = await apiFetch(`/api/v1/chat/agents/${name}`, { method: "DELETE", credentials: "include" })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({ detail: "Could not delete agent." }))
-        setSettingsError(data.detail ?? "Could not delete agent.")
-      } else {
-        setAgents(prev => prev.filter(a => a.name !== name))
-        setModelsConfig(prev => prev ? {
-          ...prev,
-          available_agents: (prev.available_agents ?? []).filter(a => a.name !== name),
-          agent_overrides: Object.fromEntries(Object.entries(prev.agent_overrides ?? {}).filter(([agentName]) => agentName !== name)),
-        } : prev)
-      }
-    } catch { setSettingsError("Could not delete agent.") } finally { setDeletingAgent(null) }
-  }, [])
 
   const handleDefaultSelectionChange = useCallback((field: keyof DefaultModelSelectionForm, value: string) => {
     if (field === "provider") {
@@ -4972,14 +4935,12 @@ function SparkbotDmPage({ controlsSurface = false }: SparkbotDmPageProps = {}) {
         spawnDescription={spawnDescription}
         spawnPrompt={spawnPrompt}
         spawning={spawning}
-        deletingAgent={deletingAgent}
         onSpawnTemplateChange={setSpawnTemplate}
         onSpawnNameChange={setSpawnName}
         onSpawnEmojiChange={setSpawnEmoji}
         onSpawnDescriptionChange={setSpawnDescription}
         onSpawnPromptChange={setSpawnPrompt}
         onSpawnAgent={spawnAgent}
-        onDeleteAgent={deleteAgent}
         ollamaStatus={ollamaStatus}
         ollamaBaseUrl={ollamaBaseUrl}
         ollamaLoading={ollamaLoading}

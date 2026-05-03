@@ -1,4 +1,10 @@
-from app.api.routes.chat.agents import agent_is_enabled, get_all_agents, resolve_agent_from_message
+from app.api.routes.chat.agents import (
+    BUILT_IN_AGENTS,
+    agent_is_enabled,
+    get_all_agents,
+    resolve_agent_from_message,
+)
+from app.api.routes.chat.model import list_agents
 from app.services.guardian.governance import connector_health, evaluation_summary, workflow_templates
 from app.services.guardian.tool_guardrails import validate_tool_input
 
@@ -12,6 +18,35 @@ def test_agent_identity_metadata_and_kill_switch(monkeypatch) -> None:
     assert identity["kill_switch"] is True
     assert agent_is_enabled("researcher") is False
     assert resolve_agent_from_message("@researcher check this") == (None, "@researcher check this")
+
+
+def test_packaged_specialist_agents_are_registered() -> None:
+    expected = {
+        "meetings_manager": "Plans, runs, summarizes, and follows up on meetings with clear agendas, decisions, action items, owners, deadlines, and operator-ready recaps.",
+        "web_designer": "Designs clean, modern, responsive web pages and product experiences with strong layout, copy structure, visual hierarchy, and implementation-ready specs.",
+        "marketing_agent": "Creates practical marketing strategy, landing page copy, launch messaging, social posts, positioning, and campaign plans for SparkPit Labs products and services.",
+        "business_analyst": "Turns ideas, products, operations, and technical plans into clear business requirements, risks, priorities, metrics, workflows, and execution-ready recommendations.",
+    }
+
+    for name, description in expected.items():
+        assert name in BUILT_IN_AGENTS
+        assert BUILT_IN_AGENTS[name]["description"] == description
+        assert BUILT_IN_AGENTS[name]["system_prompt"].startswith(f"You are {name.replace('_', ' ').title()}")
+        assert get_all_agents()[name]["identity"]["owner"] == "sparkbot-core"
+
+    assert len(BUILT_IN_AGENTS) == len(set(BUILT_IN_AGENTS))
+
+
+def test_packaged_specialist_agents_are_returned_by_api_registry() -> None:
+    payload = list_agents(current_user=object())
+    names = {item["name"] for item in payload["agents"]}
+
+    assert {
+        "meetings_manager",
+        "web_designer",
+        "marketing_agent",
+        "business_analyst",
+    }.issubset(names)
 
 
 def test_tool_guardrail_rejects_secret_like_payload() -> None:

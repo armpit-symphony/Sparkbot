@@ -6,7 +6,7 @@ Use it to chat, search, summarize documents, control a browser, run shell comman
 
 **Download:** [armpit-symphony.github.io/Sparkbot](https://armpit-symphony.github.io/Sparkbot/)
 
-**Current release line:** v1.6.53
+**Current release line:** v1.6.54
 
 > Sparkbot stores its app data locally. If you connect a cloud LLM provider or an external service, the text and actions needed for that provider or service are sent to that provider. Local models can run without an LLM cloud account.
 
@@ -68,7 +68,7 @@ The desktop app is the easiest path for one person. Docker and systemd deploymen
 - **Relationship memory** — personal CRM built from conversation; remember facts, notes, and interaction history for any person
 - **Multi-model** — OpenAI, Anthropic, Google, Groq, MiniMax, OpenRouter, Ollama — switch live with `/model`
 - **Model stack** — configure Primary, two Backups, and a Heavy Hitter; Sparkbot auto-routes and falls back across providers
-- **Multi-agent rooms** — mention `@researcher`, `@coder`, `@writer`, `@analyst`, or any custom agent for a specialist response
+- **Multi-agent rooms** — mention `@researcher`, `@coder`, `@writer`, `@analyst`, `@meetings_manager`, `@web_designer`, `@marketing_agent`, `@business_analyst`, or any custom agent for a specialist response
 - **Spawn agents** — create named agents with custom system prompts and first-class identity metadata from 11 specialty templates
 - **Agent identity + kill switches** — each agent exposes owner, purpose, scopes, allowed tools, expiration, risk tier, and kill-switch state; disabled agents do not route from `@mention`
 - **Persistent memory** — Sparkbot stores facts about you and injects them into every conversation
@@ -318,8 +318,12 @@ Prefix your message with `@agentname` to route to a specialist.
 | `@coder` | Code generation and debugging |
 | `@writer` | Emails, docs, editing, summaries |
 | `@analyst` | Data analysis, structured reasoning, calculations |
+| `@meetings_manager` | Agendas, meeting recaps, decisions, action items, owners, and deadlines |
+| `@web_designer` | Responsive page design, UI review, visual hierarchy, and implementation specs |
+| `@marketing_agent` | Positioning, launch copy, campaigns, social posts, and practical growth plans |
+| `@business_analyst` | Requirements, risks, priorities, metrics, workflows, and execution plans |
 
-Type `@` in the input to get the autocomplete picker. Create custom agents in **Controls → Spawn Agent**.
+Type `@` in the input to get the autocomplete picker. Create custom agents in **Controls → Agents → Spawn Agent**, now positioned above Model Overrides. Fresh installs and upgraded installs receive the packaged built-in agents from the backend registry; custom agents remain database-backed and preserved.
 
 ### Meeting Mode
 
@@ -537,6 +541,7 @@ User message → Token Guardian → Memory Guardian → LLM
 
 | Version | Date | Highlights |
 |---------|------|-----------|
+| v1.6.54 | May 2026 | Cleaned up Controls by removing the obsolete Active custom agents display, moved Spawn Agent to the top of the Agents section above Model Overrides, added packaged Meetings Manager, Web Designer, Marketing Agent, and Business Analyst agents for fresh and upgraded installs, and advanced downloader/docs/package metadata to the v1.6.54 desktop line. |
 | v1.6.53 | May 2026 | Fixed photo processing in app uploads and Telegram by routing images through a shared vision-capable model picker; hardened meeting sends so transient network failures do not leave the room stuck while retrying with proceed/go/try again; expanded Controls onboarding for Google Drive, Google Docs, and Microsoft 365; redesigned the Workstation Specialty Wing into five fixed agent offices with Add Agent slots; downloader/docs advanced to the v1.6.53 desktop line. |
 | v1.6.52 | May 2026 | Fixed Controls credential storage so GitHub tokens, GitHub SSH/App secrets, Discord, WhatsApp, and Google connector secrets save directly into Guardian Vault without requiring breakglass; connector secrets remain `use_only` for bridge/runtime use while non-secret toggles persist normally; downloader/docs advanced to the v1.6.52 desktop line. |
 | v1.6.51 | May 2026 | Restored full Controls comms onboarding after the GitHub-focused update: Telegram, Discord, WhatsApp, Gmail, and Google Calendar are visible again alongside GitHub; Comms save now persists the full connector form again; downloader/docs advanced to the v1.6.51 desktop line. |
