@@ -1596,8 +1596,12 @@
           throw new Error("Unexpected releases payload");
         }
 
+        var expectedTag = "desktop-v" + fallbackRelease.version;
         var desktopRelease = releases.find(function(release) {
-          return release && !release.draft && !release.prerelease && /^desktop-v/i.test(release.tag_name || "");
+          return release
+            && !release.draft
+            && !release.prerelease
+            && String(release.tag_name || "").toLowerCase() === expectedTag.toLowerCase();
         });
         if (!desktopRelease) {
           return;
