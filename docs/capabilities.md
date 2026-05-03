@@ -1198,6 +1198,7 @@ FIRST_SUPERUSER_PASSWORD=<strong>
 SPARKBOT_PASSPHRASE=<passphrase>
 FRONTEND_HOST=https://chat.example.com
 BACKEND_CORS_ORIGINS=https://chat.example.com
+BACKEND_WORKERS=2
 ```
 
 ### Database
@@ -1236,9 +1237,11 @@ SPARKBOT_SHELL_DISABLE=false
 SPARKBOT_CODE_DISABLE=false
 SPARKBOT_BROWSER_HEADLESS=false         # desktop app: show browser window
 SPARKBOT_DM_EXECUTION_DEFAULT=true      # desktop app: enable execution in DM room
-WORKSTATION_LIVE_TERMINAL_ENABLED=true
+WORKSTATION_LIVE_TERMINAL_ENABLED=false        # set true only for private/operator-only live terminal
 V1_LOCAL_MODE=true                      # desktop app mode
 ```
+
+For public v1, `WORKSTATION_LIVE_TERMINAL_ENABLED` defaults to `false`. Enabling it exposes raw shell access through the Workstation terminal and must be limited to private, operator-only deployments. Keep `BACKEND_WORKERS=2`; do not increase API workers until recurring background jobs are leader-locked or moved to dedicated task workers and load-tested.
 
 ### Guardian Security
 
@@ -1881,7 +1884,7 @@ curl -b cookies.txt http://localhost:8000/api/v1/chat/system/watcher | python -m
 
 Desktop release tags and app versions are aligned on the `1.6.x` release line.
 
-For `v1.6.56`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release line adds the OpenAI Codex subscription provider, sets the local desktop default to `openai-codex/gpt-5.3-codex`, adds Specialty Wing detail-panel agent selectors, and points public updater/download metadata at the v1.6.56 desktop artifacts.
+For `v1.6.57`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release line tightens public-v1 defaults: two API workers, production-safe CORS/auth validation, live terminal disabled by default, public DNS/proxy wiring notes, provider-key rotation guidance, and background-job scaling guardrails.
 
 ### How to upgrade safely
 

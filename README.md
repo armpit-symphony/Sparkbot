@@ -6,7 +6,7 @@ Use it to chat, search, summarize documents, control a browser, run shell comman
 
 **Download:** [armpit-symphony.github.io/Sparkbot](https://armpit-symphony.github.io/Sparkbot/)
 
-**Current release line:** v1.6.56
+**Current release line:** v1.6.57
 
 > Sparkbot stores its app data locally. If you connect a cloud LLM provider or an external service, the text and actions needed for that provider or service are sent to that provider. Local models can run without an LLM cloud account.
 
@@ -436,11 +436,15 @@ SPARKBOT_PASSPHRASE=<strong passphrase>
 FIRST_SUPERUSER_PASSWORD=<strong admin password>
 FRONTEND_HOST=https://chat.example.com
 BACKEND_CORS_ORIGINS=https://chat.example.com
+BACKEND_WORKERS=2
+WORKSTATION_LIVE_TERMINAL_ENABLED=false
 ```
 
 Choose SQLite with `DATABASE_TYPE=sqlite` and `SPARKBOT_DATA_DIR`, or PostgreSQL with the `POSTGRES_*` settings.
 
 And at least one provider key: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `GROQ_API_KEY`, `MINIMAX_API_KEY`, or `OPENROUTER_API_KEY`.
+
+For public v1, keep web/API workers at `2`. Do not increase API workers until recurring background jobs are leader-locked or moved into a dedicated singleton worker and load-tested. Live terminal is raw shell access; leave it disabled for public deployments unless the instance is private and operator-only.
 
 For the full list of every environment variable, see **[docs/capabilities.md — Environment Variables](./docs/capabilities.md#environment-variables--full-reference)**.
 
@@ -550,6 +554,7 @@ User message → Token Guardian → Memory Guardian → LLM
 
 | Version | Date | Highlights |
 |---------|------|-----------|
+| v1.6.57 | May 2026 | Public-v1 readiness hardening: backend worker defaults reduced to 2, production config now fails closed on missing auth secrets or unsafe CORS/front-end origins, live terminal defaults off with a clear disabled API state, server docs now call out DNS/reverse proxy/TLS wiring, provider key rotation, background-job worker limits, and frontend/deprecation polish notes. |
 | v1.6.56 | May 2026 | Added a first-class OpenAI Codex subscription provider that detects the local Codex ChatGPT sign-in and dispatches `openai-codex/gpt-5.3-codex` through the Codex CLI bridge; Controls can set it as the default, Workstation ChatGPT/Codex desks prefill the subscription model, Specialty Wing office detail panels now include an agent selector for packaged or spawned agents, local desktop routing config was moved to the Codex subscription default, and downloader/docs/package metadata advanced to the v1.6.56 desktop line. |
 | v1.6.55 | May 2026 | Advanced the Command Center update line for local testing and public updater/download metadata: downloader links, package versions, Tauri metadata, service worker cache, README, capabilities docs, release notes, and GitHub Pages copy now point at the v1.6.55 desktop line. |
 | v1.6.54 | May 2026 | Cleaned up Controls by removing the obsolete Active custom agents display, moved Spawn Agent to the top of Agents, added packaged specialist agents, upgraded Workstation Specialty Wing offices with shared Agents dropdowns/model selection, preloaded Meetings Manager into new meeting setup, promoted Spine Ops to the official Command Center with Room Persona/System Health/Computer Control/Token Guardian/Task Guardian surfaced there, and kept downloader/docs/package metadata on the v1.6.54 desktop line. |

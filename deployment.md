@@ -285,9 +285,16 @@ Set the `BACKEND_CORS_ORIGINS` to include your domain:
 export BACKEND_CORS_ORIGINS="https://dashboard.${DOMAIN?Variable not set},https://api.${DOMAIN?Variable not set}"
 ```
 
+For public v1, do not use wildcard or localhost CORS in production. Set
+`FRONTEND_HOST` to the real browser origin, set `BACKEND_CORS_ORIGINS` to the
+real allowed origin list, keep `BACKEND_WORKERS=2`, and keep
+`WORKSTATION_LIVE_TERMINAL_ENABLED=false` unless the instance is private and
+operator-only.
+
 You can set several other environment variables:
 
 * `PROJECT_NAME`: The name of the project, used in the API for the docs and emails.
+* `BACKEND_WORKERS`: Number of FastAPI web/API workers. Use `2` for public v1 until background jobs are leader-locked and load-tested.
 * `STACK_NAME`: The name of the stack used for Docker Compose labels and project name, this should be different for `staging`, `production`, etc. You could use the same domain replacing dots with dashes, e.g. `fastapi-project-example-com` and `staging-fastapi-project-example-com`.
 * `BACKEND_CORS_ORIGINS`: A list of allowed CORS origins separated by commas.
 * `FIRST_SUPERUSER`: The email of the first superuser, this superuser will be the one that can create new users.

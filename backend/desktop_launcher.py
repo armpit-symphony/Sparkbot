@@ -11,7 +11,7 @@ import sys
 os.environ.setdefault("PROJECT_NAME", "Sparkbot")
 os.environ.setdefault("DATABASE_TYPE", "sqlite")
 os.environ.setdefault("ENVIRONMENT", "local")
-os.environ.setdefault("WORKSTATION_LIVE_TERMINAL_ENABLED", "true")
+os.environ.setdefault("WORKSTATION_LIVE_TERMINAL_ENABLED", "false")
 os.environ.setdefault("SPARKBOT_BROWSER_HEADLESS", "false")  # show browser window on desktop
 os.environ.setdefault("SPARKBOT_DM_EXECUTION_DEFAULT", "true")  # enable shell/terminal/browser in DM
 

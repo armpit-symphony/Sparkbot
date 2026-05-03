@@ -1,0 +1,7 @@
+Sparkbot v1.6.57
+
+- Reduced production backend web/API worker defaults from 4 to 2 and documented the public-v1 worker cap until recurring background jobs are leader-locked and load-tested.
+- Made production configuration fail closed for missing explicit auth secrets, unsafe frontend/CORS origins, wildcard CORS, and localhost production CORS.
+- Changed Workstation live terminal to default disabled and kept the terminal API mounted so disabled instances return a clear safe error instead of a missing route.
+- Added public-v1 readiness notes for DNS, nginx/TLS proxying, provider key rotation, Guardian Vault migration, background-job worker safety, frontend chunk polish, and Pydantic/FastAPI deprecation cleanup.
+- Advanced backend, frontend, Tauri shell, README, public downloader, capabilities docs, release notes, service worker, and packaging notes to v1.6.57.

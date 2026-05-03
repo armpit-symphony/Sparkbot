@@ -36,6 +36,8 @@ public hostname, confirm these values before starting systemd:
 ENVIRONMENT=production
 FRONTEND_HOST=https://chat.example.com
 BACKEND_CORS_ORIGINS=https://chat.example.com
+BACKEND_WORKERS=2
+WORKSTATION_LIVE_TERMINAL_ENABLED=false
 SECRET_KEY=REPLACE_WITH_RANDOM_64_HEX
 FIRST_SUPERUSER_PASSWORD=REPLACE_WITH_ADMIN_PASSWORD
 SPARKBOT_PASSPHRASE=REPLACE_WITH_STRONG_PASSPHRASE
@@ -50,6 +52,10 @@ OPENROUTER_API_KEY=
 ```
 
 Set at least one LLM provider key or an Ollama model before expecting chat responses.
+
+Use 2 web/API workers for v1. Do not increase until background jobs are
+leader-locked and load-tested. Live terminal is raw shell access; keep it
+disabled on public deployments unless the instance is private and operator-only.
 
 ## 2. Create the backend venv
 
@@ -86,3 +92,30 @@ curl http://127.0.0.1:8091/api/v1/utils/health-check/
 If you are serving the browser UI publicly, build the frontend separately and
 proxy `/api/` and `/ws/` to the backend service. For the full Traefik + Docker
 Compose path, see `deployment.md`.
+
+For an API subdomain such as `api.sparkpitlabs.com`, first create DNS pointing
+the subdomain to the server. Then configure nginx to proxy to the private
+backend:
+
+```nginx
+server {
+    server_name api.sparkpitlabs.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:8091;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+```
+
+Issue TLS only after DNS resolves:
+
+```bash
+sudo certbot --nginx -d api.sparkpitlabs.com
+curl -f https://api.sparkpitlabs.com/api/v1/utils/health-check/
+```

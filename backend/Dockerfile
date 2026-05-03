@@ -42,4 +42,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 WORKDIR /app/backend/
 
-CMD ["fastapi", "run", "--workers", "4", "app/main.py"]
+# Use 2 web/API workers for v1. Do not increase until background jobs are
+# leader-locked and load-tested.
+ENV BACKEND_WORKERS=2
+CMD ["sh", "-c", "fastapi run --workers ${BACKEND_WORKERS:-2} app/main.py"]

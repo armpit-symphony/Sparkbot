@@ -8,7 +8,9 @@ Type=simple
 User=youruser
 WorkingDirectory=/home/youruser/sparkbot-v2/backend
 EnvironmentFile=/home/youruser/sparkbot-v2/.env
-ExecStart=/home/youruser/sparkbot-v2/backend/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8091
+# Use 2 web/API workers for v1. Do not increase until background jobs are leader-locked and load-tested.
+Environment=BACKEND_WORKERS=2
+ExecStart=/home/youruser/sparkbot-v2/backend/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8091 --workers ${BACKEND_WORKERS}
 Restart=always
 RestartSec=5
 NoNewPrivileges=true

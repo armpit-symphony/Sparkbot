@@ -2,6 +2,7 @@ import secrets
 import warnings
 from pathlib import Path
 from typing import Annotated, Any, Literal
+from urllib.parse import urlparse
 
 from pydantic import (
     AnyUrl,
@@ -49,7 +50,7 @@ class Settings(BaseSettings):
             self.FRONTEND_HOST
         ]
 
-    PROJECT_NAME: str
+    PROJECT_NAME: str = "Sparkbot"
     SENTRY_DSN: HttpUrl | None = None
     DATABASE_TYPE: str = "sqlite"  # sqlite or postgresql
     POSTGRES_SERVER: str = ""
@@ -118,12 +119,12 @@ class Settings(BaseSettings):
     # Workstation live terminal (Phase 3)
     # Enables PTY shell sessions via WebSocket. Self-hosted / operator use only.
     # No command-level filtering is enforced in Phase 3 — raw shell access.
-    WORKSTATION_LIVE_TERMINAL_ENABLED: bool = True
+    WORKSTATION_LIVE_TERMINAL_ENABLED: bool = False
 
     def _check_default_secret(self, var_name: str, value: str | None) -> None:
-        if value == "changethis":
+        if value in {"changethis", "REPLACE_WITH_RANDOM_64_HEX"}:
             message = (
-                f'The value of {var_name} is "changethis", '
+                f"The value of {var_name} is a placeholder, "
                 "for security, please change it, at least for deployments."
             )
             if self.ENVIRONMENT == "local":
@@ -131,11 +132,33 @@ class Settings(BaseSettings):
             else:
                 raise ValueError(message)
 
+    def _origin_host(self, origin: str) -> str:
+        parsed = urlparse(origin)
+        return (parsed.hostname or "").lower()
+
+    def _is_local_origin(self, origin: str) -> bool:
+        host = self._origin_host(origin)
+        return host in {"localhost", "127.0.0.1", "::1"} or host.endswith(".localhost")
+
+    def _production_error(self, message: str) -> None:
+        raise ValueError(f"Unsafe production configuration: {message}")
+
     @model_validator(mode="after")
     def _enforce_non_default_secrets(self) -> Self:
         self._check_default_secret("SECRET_KEY", self.SECRET_KEY)
         self._check_default_secret("POSTGRES_PASSWORD", self.POSTGRES_PASSWORD)
-        _weak_defaults = {"admin123", "changethis", "password", "changeme-in-production"}
+        _weak_defaults = {
+            "",
+            "admin",
+            "admin123",
+            "changethis",
+            "password",
+            "sparkbot",
+            "sparkbot-local",
+            "changeme-in-production",
+            "REPLACE_WITH_ADMIN_PASSWORD",
+            "REPLACE_WITH_STRONG_PASSPHRASE",
+        }
         if self.FIRST_SUPERUSER_PASSWORD in _weak_defaults:
             message = (
                 'FIRST_SUPERUSER_PASSWORD is set to a known weak default. '
@@ -154,6 +177,19 @@ class Settings(BaseSettings):
                 warnings.warn(message, stacklevel=1)
             else:
                 raise ValueError(message)
+        if self.ENVIRONMENT == "production":
+            explicitly_set = self.model_fields_set
+            if "SECRET_KEY" not in explicitly_set:
+                self._production_error("SECRET_KEY must be explicitly set.")
+            if "FRONTEND_HOST" not in explicitly_set or self._is_local_origin(self.FRONTEND_HOST):
+                self._production_error("FRONTEND_HOST must be the real public frontend URL.")
+            if "BACKEND_CORS_ORIGINS" not in explicitly_set or not self.BACKEND_CORS_ORIGINS:
+                self._production_error("BACKEND_CORS_ORIGINS must list the real allowed origin(s).")
+            for origin in self.all_cors_origins:
+                if origin == "*" or self._is_local_origin(origin):
+                    self._production_error("wildcard and localhost CORS origins are not allowed.")
+            if self.WORKSTATION_LIVE_TERMINAL_ENABLED and "WORKSTATION_LIVE_TERMINAL_ENABLED" not in explicitly_set:
+                self._production_error("live terminal must only be enabled intentionally.")
         return self
 
 

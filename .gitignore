@@ -24,6 +24,7 @@ node_modules/
 /playwright/.cache/
 /coverage
 /.pytest-tmp/
+/.pytest-run-*/
 /tmp/
 backend/.pytest-basetemp/
 backend/.pytest-run-tmp/

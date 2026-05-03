@@ -1,2 +1,15 @@
 [tool.uv.workspace]
 members = ["backend"]
+
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+norecursedirs = [
+    ".git",
+    ".venv",
+    ".venv-ci",
+    "node_modules",
+    "backend/.pytest-basetemp",
+    "backend/.pytest-run-tmp",
+    "backend/.pytest-tmp",
+    "backend/testtmp",
+]

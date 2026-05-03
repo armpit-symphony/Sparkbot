@@ -29,15 +29,15 @@ api_router.include_router(workstation_router, prefix="/chat") # Workstation over
 api_router.include_router(mcp_router, prefix="/chat")       # Unified MCP registry
 api_router.include_router(ws_router, prefix="/chat")  # WebSocket under /chat
 
-# Terminal router: now cross-platform (Windows uses pywinpty ConPTY, Unix uses pty/fcntl).
-# Gated by WORKSTATION_LIVE_TERMINAL_ENABLED; defaults to true in desktop_launcher.py.
-if settings.WORKSTATION_LIVE_TERMINAL_ENABLED:
-    try:
-        from app.api.routes.terminal import terminal_router as _terminal_router
-        api_router.include_router(_terminal_router, prefix="/terminal")
-    except Exception as _term_err:
-        import logging as _logging
-        _logging.getLogger(__name__).warning("Terminal router unavailable: %s", _term_err)
+# Terminal router: mounted even when disabled so clients receive a clear 403
+# instead of a broken/missing feature. The raw PTY is still gated by
+# WORKSTATION_LIVE_TERMINAL_ENABLED, which defaults to false for public v1.
+try:
+    from app.api.routes.terminal import terminal_router as _terminal_router
+    api_router.include_router(_terminal_router, prefix="/terminal")
+except Exception as _term_err:
+    import logging as _logging
+    _logging.getLogger(__name__).warning("Terminal router unavailable: %s", _term_err)
 
 api_router.include_router(utils.router)
 api_router.include_router(items.router)

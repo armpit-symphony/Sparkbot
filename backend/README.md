@@ -91,7 +91,18 @@ Nevertheless, if it doesn't detect a change but a syntax error, it will just sto
 
 ## Backend tests
 
-To test the backend run:
+From a clean checkout, the env-free backend test command is:
+
+```console
+$ uv run pytest -q
+```
+
+The root pytest config limits collection to `backend/tests/` so runtime temp
+directories and local data are not collected. On Windows hosts without WSL,
+the shell setup-script tests may fail because they intentionally execute Bash
+startup scripts; run those in WSL/Linux for the full script suite.
+
+To test through the backend helper script run:
 
 ```console
 $ bash ./scripts/test.sh
