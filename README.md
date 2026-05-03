@@ -6,7 +6,7 @@ Use it to chat, search, summarize documents, control a browser, run shell comman
 
 **Download:** [armpit-symphony.github.io/Sparkbot](https://armpit-symphony.github.io/Sparkbot/)
 
-**Current release line:** v1.6.54
+**Current release line:** v1.6.55
 
 > Sparkbot stores its app data locally. If you connect a cloud LLM provider or an external service, the text and actions needed for that provider or service are sent to that provider. Local models can run without an LLM cloud account.
 
@@ -550,6 +550,7 @@ User message → Token Guardian → Memory Guardian → LLM
 
 | Version | Date | Highlights |
 |---------|------|-----------|
+| v1.6.55 | May 2026 | Advanced the Command Center update line for local testing and public updater/download metadata: downloader links, package versions, Tauri metadata, service worker cache, README, capabilities docs, release notes, and GitHub Pages copy now point at the v1.6.55 desktop line. |
 | v1.6.54 | May 2026 | Cleaned up Controls by removing the obsolete Active custom agents display, moved Spawn Agent to the top of Agents, added packaged specialist agents, upgraded Workstation Specialty Wing offices with shared Agents dropdowns/model selection, preloaded Meetings Manager into new meeting setup, promoted Spine Ops to the official Command Center with Room Persona/System Health/Computer Control/Token Guardian/Task Guardian surfaced there, and kept downloader/docs/package metadata on the v1.6.54 desktop line. |
 | v1.6.53 | May 2026 | Fixed photo processing in app uploads and Telegram by routing images through a shared vision-capable model picker; hardened meeting sends so transient network failures do not leave the room stuck while retrying with proceed/go/try again; expanded Controls onboarding for Google Drive, Google Docs, and Microsoft 365; redesigned the Workstation Specialty Wing into five fixed agent offices with Add Agent slots; downloader/docs advanced to the v1.6.53 desktop line. |
 | v1.6.52 | May 2026 | Fixed Controls credential storage so GitHub tokens, GitHub SSH/App secrets, Discord, WhatsApp, and Google connector secrets save directly into Guardian Vault without requiring breakglass; connector secrets remain `use_only` for bridge/runtime use while non-secret toggles persist normally; downloader/docs advanced to the v1.6.52 desktop line. |

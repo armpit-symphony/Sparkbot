@@ -1880,7 +1880,7 @@ curl -b cookies.txt http://localhost:8000/api/v1/chat/system/watcher | python -m
 
 Desktop release tags and app versions are aligned on the `1.6.x` release line.
 
-For `v1.6.54`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release cleans up Controls by removing the obsolete Active custom agents display, moves Spawn Agent above Model Overrides, packages Meetings Manager, Web Designer, Marketing Agent, and Business Analyst as built-in agents, and upgrades Workstation Specialty Wing offices with shared Agents dropdowns, shared per-agent model selection, persistent local office assignments, and a Meetings Manager first-seat default for new meeting setup.
+For `v1.6.55`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release line promotes Spine Ops to the official Command Center, keeps the shared top navigation, and points public updater/download metadata at the v1.6.55 desktop artifacts for local testing.
 
 ### How to upgrade safely
 

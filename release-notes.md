@@ -1,5 +1,11 @@
 # Release Notes
 
+## Sparkbot v1.6.55
+
+- Advanced backend, frontend, Tauri shell, README, public downloader, capabilities docs, release notes, service worker, and packaging notes to v1.6.55.
+- GitHub Pages download links now point at the desktop-v1.6.55 artifact names for local update testing.
+- Carries forward the Command Center promotion from Spine Ops, shared top navigation, Room Persona-first layout, and moved operational panels.
+
 ## Sparkbot v1.6.54
 
 - Cleaned up Controls by removing the obsolete Active custom agents display while preserving custom agent creation, persistence, and backend support.

@@ -1,0 +1,8 @@
+Sparkbot v1.6.55
+
+Focus: Command Center update/download line for local testing.
+
+- Advanced backend, frontend, Tauri shell, README, public downloader, capabilities docs, release notes, service worker, and packaging notes to v1.6.55.
+- GitHub Pages download links now point at the desktop-v1.6.55 artifact names.
+- Carries forward the Command Center promotion from Spine Ops, shared top navigation, Room Persona-first layout, and moved operational panels.
+- Controls remains configuration-focused while Command Center owns Room Persona, System Health, Computer Control, Token Guardian, and Task Guardian operations.
