@@ -1468,6 +1468,8 @@
                 <code>bash scripts/sparkbot-start.sh --server --show-passphrase-input</code> for visible passphrase troubleshooting<br>
                 <code>bash scripts/sparkbot-start.sh --server --dry-run-setup</code> to validate prompts without starting Docker<br>
                 <code>bash scripts/sparkbot-start.sh --server --hide-input</code> if you prefer hidden provider-key entry<br>
+                OpenAI Codex subscription on SSH servers: <code>codex login --device-auth</code>, then run <code>docker compose -f compose.local.yml -f compose.codex.yml up -d --build</code><br>
+                Set <code>SPARKBOT_CODEX_AUTH_FILE=/absolute/path/to/auth.json</code> first if Codex auth is not at <code>$HOME/.codex/auth.json</code><br>
                 The launcher starts detached, prompts for a server passphrase, prints the actual URL, and is the normal install path. Raw Docker Compose is advanced only.
               </p>
             </div>

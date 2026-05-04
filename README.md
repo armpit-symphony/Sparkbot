@@ -257,6 +257,30 @@ SPARKBOT_FRONTEND_PORT=3001 bash scripts/sparkbot-start.sh --local
 
 Normal installs should use `scripts/sparkbot-start.sh`. Advanced users can still edit `.env.local` directly or run Compose manually, but raw `docker compose` reads root `.env` for interpolation and bypasses the launcher's mode, port, and setup checks.
 
+#### OpenAI Codex Subscription on Docker Servers
+
+Sparkbot can use your ChatGPT Codex subscription through the local Codex CLI instead of an OpenAI Platform API key. Sign in on the host as the user that runs Sparkbot:
+
+```bash
+codex login --device-auth
+codex login status
+```
+
+Then start Sparkbot with the Codex Compose override:
+
+```bash
+docker compose -f compose.local.yml -f compose.codex.yml up -d --build
+```
+
+The override mounts only the host `auth.json` into the backend container as read-only, sets `CODEX_HOME=/root/.codex`, and uses `/tmp` as the read-only Codex working directory for Sparkbot prompts. If the host auth file is somewhere else, set it explicitly:
+
+```bash
+SPARKBOT_CODEX_AUTH_FILE=/absolute/path/to/auth.json \
+  docker compose -f compose.local.yml -f compose.codex.yml up -d --build
+```
+
+After startup, open **Controls → OpenAI Codex Subscription** and choose `openai-codex/gpt-5.3-codex`. Sparkbot dispatches that route through `codex exec --sandbox read-only`.
+
 For a public or private server install, use [deployment.md](./deployment.md) for Docker, Traefik, and Let's Encrypt, or [docs/systemd-single-node.md](./docs/systemd-single-node.md) for systemd and nginx.
 
 ---

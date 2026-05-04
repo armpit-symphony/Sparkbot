@@ -80,6 +80,37 @@ and prints the actual URL. You can also set it explicitly:
 SPARKBOT_FRONTEND_PORT=3001 bash scripts/sparkbot-start.sh --server
 ```
 
+## OpenAI Codex Subscription on a Server
+
+Sparkbot can route the **OpenAI Codex Subscription** provider through a local
+Codex CLI ChatGPT sign-in instead of an OpenAI Platform API key. On SSH servers,
+use device auth:
+
+```bash
+codex login --device-auth
+codex login status
+```
+
+Then run Sparkbot with the optional Codex Compose override:
+
+```bash
+docker compose -f compose.local.yml -f compose.codex.yml up -d --build
+```
+
+The override mounts only the host Codex `auth.json` into the backend container
+as read-only, leaves the container's `/root/.codex` writable for Codex runtime
+state, sets `CODEX_HOME=/root/.codex`, and sets `SPARKBOT_CODEX_WORKDIR=/tmp`.
+If the host auth file is not at `$HOME/.codex/auth.json`, set:
+
+```bash
+export SPARKBOT_CODEX_AUTH_FILE=/absolute/path/to/auth.json
+docker compose -f compose.local.yml -f compose.codex.yml up -d --build
+```
+
+After startup, select **OpenAI Codex Subscription** in Controls and use
+`openai-codex/gpt-5.3-codex`. Sparkbot verifies the mounted auth file and
+dispatches that provider through `codex exec --sandbox read-only`.
+
 The launcher:
 
 * detects `docker compose` and falls back to legacy `docker-compose` 1.29.x

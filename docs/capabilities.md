@@ -542,7 +542,17 @@ How to get the token:
 
 Sparkbot sends the token via `Authorization: Bearer` with the `anthropic-beta: oauth-2025-04-20` header, so meetings launched through that seat spend against your subscription quota rather than API credits. Tokens expire — paste a fresh one if Anthropic starts rejecting requests.
 
-**Codex with your ChatGPT plan.** Sparkbot has a first-class **OpenAI Codex Subscription** provider. In PowerShell or your shell, run `codex login`, choose **ChatGPT sign-in**, finish the browser login, then restart Sparkbot. Select `openai-codex/gpt-5.3-codex` in **Controls -> Codex Sub**. Sparkbot detects the local Codex session at `~/.codex/auth.json` on macOS/Linux or `%USERPROFILE%\.codex\auth.json` on Windows and dispatches that provider through read-only `codex exec` instead of requiring an OpenAI Platform API key. If the Controls card still says sign-in is needed after login, set `CODEX_HOME` to the Codex profile directory and optionally `SPARKBOT_CODEX_CLI` to the installed Codex executable, then restart Sparkbot. The **ChatGPT** Invite Wing desk is also the Codex gateway and now preloads the same subscription model for meeting seats.
+**Codex with your ChatGPT plan.** Sparkbot has a first-class **OpenAI Codex Subscription** provider. In PowerShell or your shell, run `codex login` (or `codex login --device-auth` on an SSH server), choose **ChatGPT sign-in**, finish the login, then restart Sparkbot. Select `openai-codex/gpt-5.3-codex` in **Controls -> Codex Sub**. Sparkbot detects the local Codex session at `~/.codex/auth.json` on macOS/Linux or `%USERPROFILE%\.codex\auth.json` on Windows and dispatches that provider through read-only `codex exec` instead of requiring an OpenAI Platform API key. If the Controls card still says sign-in is needed after login, set `CODEX_HOME` to the Codex profile directory and optionally `SPARKBOT_CODEX_CLI` to the installed Codex executable, then restart Sparkbot. The **ChatGPT** Invite Wing desk is also the Codex gateway and now preloads the same subscription model for meeting seats.
+
+For Docker/server installs, sign in on the host as the same user that runs Sparkbot, then start with the optional Codex override so the backend container can read only the auth file while keeping its runtime Codex state inside the container:
+
+```bash
+codex login --device-auth
+codex login status
+docker compose -f compose.local.yml -f compose.codex.yml up -d --build
+```
+
+If your Codex auth file lives somewhere else, set `SPARKBOT_CODEX_AUTH_FILE=/absolute/path/to/auth.json` before the Compose command. The override sets `CODEX_HOME=/root/.codex`, `SPARKBOT_CODEX_WORKDIR=/tmp`, and mounts only `auth.json` read-only.
 
 **xAI (Grok).** The third Invite Wing desk is preset for **xAI Grok**. Per xAI’s official developer docs, Sparkbot uses the xAI API path: create an xAI account and API key, then paste `XAI_API_KEY`. Grok app / X subscription linking applies to consumer access on xAI properties and does not replace the API key in Sparkbot.
 

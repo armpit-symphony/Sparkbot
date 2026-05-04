@@ -4,5 +4,6 @@ Sparkbot v1.6.57
 - Made production configuration fail closed for missing explicit auth secrets, unsafe frontend/CORS origins, wildcard CORS, and localhost production CORS.
 - Changed Workstation live terminal to default disabled and kept the terminal API mounted so disabled instances return a clear safe error instead of a missing route.
 - Added the Phase 2 LIMA Robo OS bridge with robotics status/tools/command/emergency-stop endpoints, natural-language chat command routing, command-contract audit records, and default blocking for real-hardware motion until Guardian runner handoff is complete.
+- Added Docker/server documentation and an optional Compose override for OpenAI Codex subscription routing through a host `codex login --device-auth` ChatGPT session.
 - Added public-v1 readiness notes for DNS, nginx/TLS proxying, provider key rotation, Guardian Vault migration, background-job worker safety, frontend chunk polish, and Pydantic/FastAPI deprecation cleanup.
 - Advanced backend, frontend, Tauri shell, README, public downloader, capabilities docs, release notes, service worker, and packaging notes to v1.6.57.

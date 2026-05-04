@@ -1,0 +1,16 @@
+# Optional OpenAI Codex subscription bridge for Docker/server installs.
+#
+# Usage:
+#   codex login --device-auth
+#   docker compose -f compose.local.yml -f compose.codex.yml up -d --build
+#
+# Override SPARKBOT_CODEX_AUTH_FILE if the host Codex auth file is not in the
+# default user home directory.
+
+services:
+  backend:
+    environment:
+      - CODEX_HOME=/root/.codex
+      - SPARKBOT_CODEX_WORKDIR=/tmp
+    volumes:
+      - ${SPARKBOT_CODEX_AUTH_FILE:-${HOME}/.codex/auth.json}:/root/.codex/auth.json:ro

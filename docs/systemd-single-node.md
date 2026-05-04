@@ -53,6 +53,28 @@ OPENROUTER_API_KEY=
 
 Set at least one LLM provider key or an Ollama model before expecting chat responses.
 
+OpenAI Codex subscription routing can use a ChatGPT sign-in instead of
+`OPENAI_API_KEY`. Install the Codex CLI for the service user, sign in, and keep
+`CODEX_HOME` pointing at that user's Codex directory:
+
+```bash
+codex login --device-auth
+codex login status
+```
+
+For systemd, add these to the service environment if the defaults do not match
+your user:
+
+```env
+CODEX_HOME=/home/youruser/.codex
+SPARKBOT_CODEX_WORKDIR=/tmp
+```
+
+Then choose **OpenAI Codex Subscription** in Controls with
+`openai-codex/gpt-5.3-codex`. Docker installs should prefer
+`compose.codex.yml` from `deployment.md`, which mounts only `auth.json`
+read-only into the backend container.
+
 Use 2 web/API workers for v1. Do not increase until background jobs are
 leader-locked and load-tested. Live terminal is raw shell access; keep it
 disabled on public deployments unless the instance is private and operator-only.

@@ -46,6 +46,19 @@ passphrase input falls back to visible input when an SSH terminal cannot accept
 hidden typing or paste. Do not expose Sparkbot without that passphrase gate or
 reverse proxy authentication.
 
+Server operators who want the **OpenAI Codex Subscription** provider can sign in
+with the Codex CLI on the host, then run Compose with the optional override:
+
+```bash
+codex login --device-auth
+codex login status
+docker compose -f compose.local.yml -f compose.codex.yml up -d --build
+```
+
+The override mounts only `auth.json` read-only into the backend container. Set
+`SPARKBOT_CODEX_AUTH_FILE=/absolute/path/to/auth.json` first if the host Codex
+auth file is not at `$HOME/.codex/auth.json`.
+
 Fresh Ubuntu with missing Docker plugins:
 
 ```bash
