@@ -979,7 +979,7 @@
         <span class="logo-name">Sparkbot</span>
       </div>
 
-      <div class="hero-badge">Free &amp; Open Source &nbsp;·&nbsp; <span id="version-badge">v1.6.57</span></div>
+      <div class="hero-badge">Free &amp; Open Source &nbsp;·&nbsp; <span id="version-badge">v1.6.58</span></div>
       <h1>Your own AI,<br>on your computer</h1>
 
       <p class="hero-tagline">
@@ -1001,7 +1001,7 @@
       <div class="download-primary-wrap">
         <a
           id="download-windows-primary"
-          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.57/Sparkbot.Local_1.6.57_x64-setup.exe"
+          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.58/Sparkbot.Local_1.6.58_x64-setup.exe"
           class="btn-download-windows"
           aria-label="Download Sparkbot for Windows, latest stable version"
         >
@@ -1013,7 +1013,7 @@
         </a>
       </div>
 
-      <p class="download-meta"><span id="download-version-label">Version 1.6.57</span> &nbsp;·&nbsp; Windows 10 &amp; 11 &nbsp;·&nbsp; 64-bit &nbsp;·&nbsp; Free forever</p>
+      <p class="download-meta"><span id="download-version-label">Version 1.6.58</span> &nbsp;·&nbsp; Windows 10 &amp; 11 &nbsp;·&nbsp; 64-bit &nbsp;·&nbsp; Free forever</p>
       <p class="download-meta" style="margin-top:12px; font-size:0.95rem;">
         This page checks GitHub for the latest stable desktop release automatically. If the button does not start a download, open
         <a href="https://github.com/armpit-symphony/Sparkbot/releases" target="_blank" rel="noopener noreferrer">All Releases</a>
@@ -1023,7 +1023,7 @@
       <div class="other-os">
         <a
           id="download-macos-link"
-          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.57/Sparkbot.Local_1.6.57_aarch64.dmg"
+          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.58/Sparkbot.Local_1.6.58_aarch64.dmg"
           class="btn-os-small"
           aria-label="Download Sparkbot for macOS"
         >
@@ -1031,7 +1031,7 @@
         </a>
         <a
           id="download-linux-link"
-          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.57/Sparkbot.Local_1.6.57_amd64.AppImage"
+          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.58/Sparkbot.Local_1.6.58_amd64.AppImage"
           class="btn-os-small"
           aria-label="Download Sparkbot for Linux AppImage"
         >
@@ -1121,46 +1121,46 @@
     =========================== -->
     <section class="section" aria-labelledby="new-heading">
       <div class="container">
-        <h2 class="section-title" id="new-heading">New in v1.6.57: safer public-v1 defaults and Robo OS bridge</h2>
+        <h2 class="section-title" id="new-heading">New in v1.6.58: clearer Codex subscription setup</h2>
         <p class="section-subtitle">
-          This update keeps the desktop line current while tightening server defaults and adding the first executable Sparkbot-to-LIMA Robo OS bridge for governed replay and simulation robot commands.
+          This update makes the ChatGPT Codex subscription path easier to set up: run Codex login, choose ChatGPT sign-in, restart Sparkbot, then pick GPT-5.3 Codex Spark in Controls.
         </p>
 
         <div class="features-grid">
           <div class="feature-card">
             <span class="feature-icon" role="img" aria-hidden="true">🛡️</span>
-            <h3 class="feature-title">Two API workers</h3>
-            <p class="feature-desc">Public/server backend defaults now use two web/API workers until recurring background jobs are leader-locked and load-tested.</p>
+            <h3 class="feature-title">Codex Sub guidance</h3>
+            <p class="feature-desc">Controls now explains that the Codex Sub route uses your local Codex CLI ChatGPT session instead of an OpenAI Platform API key.</p>
           </div>
 
           <div class="feature-card">
             <span class="feature-icon" role="img" aria-hidden="true">💬</span>
-            <h3 class="feature-title">Production-safe config</h3>
-            <p class="feature-desc">Production startup fails closed for missing auth secrets, wildcard CORS, localhost public origins, and unsafe frontend host settings.</p>
+            <h3 class="feature-title">Exact login steps</h3>
+            <p class="feature-desc">The setup card now tells users to run codex login, choose ChatGPT sign-in, finish browser auth, and restart Sparkbot.</p>
           </div>
 
           <div class="feature-card">
             <span class="feature-icon" role="img" aria-hidden="true">📊</span>
-            <h3 class="feature-title">Live terminal off</h3>
-            <p class="feature-desc">The raw Workstation terminal is disabled by default for public v1 and returns a clear safe disabled state when unavailable.</p>
+            <h3 class="feature-title">Fallback env hints</h3>
+            <p class="feature-desc">Advanced users get CODEX_HOME and SPARKBOT_CODEX_CLI hints when Sparkbot runs under a different profile than Codex login.</p>
           </div>
 
           <div class="feature-card">
             <span class="feature-icon" role="img" aria-hidden="true">🏢</span>
-            <h3 class="feature-title">LIMA Robo OS bridge</h3>
-            <p class="feature-desc">Sparkbot can now route natural-language replay and simulation robot commands through a configured LIMA MCP endpoint.</p>
+            <h3 class="feature-title">Read-only Codex bridge</h3>
+            <p class="feature-desc">Sparkbot routes the subscription provider through read-only codex exec for normal chat and agent seats.</p>
           </div>
 
           <div class="feature-card">
             <span class="feature-icon" role="img" aria-hidden="true">🎛️</span>
-            <h3 class="feature-title">Robot safety contract</h3>
-            <p class="feature-desc">Robotics commands produce a command contract, risk classification, audit entry, and default block for real-hardware motion.</p>
+            <h3 class="feature-title">Clearer errors</h3>
+            <p class="feature-desc">Codex subscription failures now point to the same login, restart, and environment fallback steps shown in Controls.</p>
           </div>
 
           <div class="feature-card">
             <span class="feature-icon" role="img" aria-hidden="true">📝</span>
-            <h3 class="feature-title">Public wiring notes</h3>
-            <p class="feature-desc">DNS, reverse proxy, TLS, provider-key rotation, and worker-scaling notes are documented for the public-v1 rollout.</p>
+            <h3 class="feature-title">Downloader refreshed</h3>
+            <p class="feature-desc">The public download page and package metadata now point at the v1.6.58 desktop build line.</p>
           </div>
           <div class="feature-card">
             <span class="feature-icon" role="img" aria-hidden="true">CC</span>
@@ -1170,7 +1170,7 @@
         </div>
 
         <p class="download-meta" style="margin-top:24px;">
-          LIMA Robo OS calls require `LIMA_MCP_URL`, default to replay/simulation, and keep real-hardware motion blocked until the Guardian approval-to-runner handoff is complete.
+          The Codex Sub provider is the right route when you want Sparkbot to use your ChatGPT plan through Codex CLI without pasting an OpenAI Platform key.
         </p>
       </div>
     </section>
@@ -1191,7 +1191,7 @@
             <div class="step-num" aria-hidden="true">1</div>
             <div class="step-body">
               <h3 class="step-title">Click the big purple "Download for Windows" button above</h3>
-              <p class="step-desc">Your browser will download a file called <strong id="windows-filename-step-1">Sparkbot.Local_1.6.57_x64-setup.exe</strong>. This is the installer. It usually arrives in less than a minute.</p>
+              <p class="step-desc">Your browser will download a file called <strong id="windows-filename-step-1">Sparkbot.Local_1.6.58_x64-setup.exe</strong>. This is the installer. It usually arrives in less than a minute.</p>
             </div>
           </div>
 
@@ -1199,7 +1199,7 @@
             <div class="step-num" aria-hidden="true">2</div>
             <div class="step-body">
               <h3 class="step-title">Find the downloaded file and open it</h3>
-              <p class="step-desc">Look at the bottom of your browser for the downloaded file, or check your <strong>Downloads folder</strong>. Double-click the file named <strong id="windows-filename-step-2">Sparkbot.Local_1.6.57_x64-setup.exe</strong> to start installing.</p>
+              <p class="step-desc">Look at the bottom of your browser for the downloaded file, or check your <strong>Downloads folder</strong>. Double-click the file named <strong id="windows-filename-step-2">Sparkbot.Local_1.6.58_x64-setup.exe</strong> to start installing.</p>
             </div>
           </div>
 
@@ -1269,7 +1269,7 @@
               </div>
 
               <div class="win-info-row">
-                <strong>App:</strong> <span id="windows-filename-dialog">Sparkbot.Local_1.6.57_x64-setup.exe</span>
+                <strong>App:</strong> <span id="windows-filename-dialog">Sparkbot.Local_1.6.58_x64-setup.exe</span>
               </div>
               <div class="win-info-row">
                 <strong>Publisher:</strong> <span>Unknown publisher</span>
@@ -1503,7 +1503,7 @@
       <p>Free. Private. Yours. Download takes less than a minute.</p>
       <a
         id="download-windows-bottom"
-        href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.57/Sparkbot.Local_1.6.57_x64-setup.exe"
+        href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.58/Sparkbot.Local_1.6.58_x64-setup.exe"
         class="btn-download-windows"
         style="display:inline-flex;"
         aria-label="Download Sparkbot for Windows"
@@ -1523,7 +1523,7 @@
   =========================== -->
   <footer>
     <p>
-      <span role="img" aria-hidden="true">⚡</span> <strong>Sparkbot</strong> &nbsp;·&nbsp; <span id="footer-version-label">Version 1.6.57</span> &nbsp;·&nbsp; Free &amp; Open Source
+      <span role="img" aria-hidden="true">⚡</span> <strong>Sparkbot</strong> &nbsp;·&nbsp; <span id="footer-version-label">Version 1.6.58</span> &nbsp;·&nbsp; Free &amp; Open Source
     </p>
     <p style="margin-top:10px;">
       <a href="https://github.com/armpit-symphony/Sparkbot" target="_blank" rel="noopener noreferrer">GitHub</a>
@@ -1534,9 +1534,9 @@
     </p>
     <p style="margin-top:12px; font-size:0.8rem;">
       Other platforms:
-      <a id="footer-macos-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.57/Sparkbot.Local_1.6.57_aarch64.dmg">macOS (all Macs)</a>
+      <a id="footer-macos-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.58/Sparkbot.Local_1.6.58_aarch64.dmg">macOS (all Macs)</a>
       &nbsp;·&nbsp;
-      <a id="footer-linux-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.57/Sparkbot.Local_1.6.57_amd64.AppImage">Linux (AppImage)</a>
+      <a id="footer-linux-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.58/Sparkbot.Local_1.6.58_amd64.AppImage">Linux (AppImage)</a>
     </p>
   </footer>
 
@@ -1545,11 +1545,11 @@
   =========================== -->
   <script>
     var fallbackRelease = {
-      version: "1.6.57",
-      windowsFilename: "Sparkbot.Local_1.6.57_x64-setup.exe",
-      windowsUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.57/Sparkbot.Local_1.6.57_x64-setup.exe",
-      macosUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.57/Sparkbot.Local_1.6.57_aarch64.dmg",
-      linuxUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.57/Sparkbot.Local_1.6.57_amd64.AppImage"
+      version: "1.6.58",
+      windowsFilename: "Sparkbot.Local_1.6.58_x64-setup.exe",
+      windowsUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.58/Sparkbot.Local_1.6.58_x64-setup.exe",
+      macosUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.58/Sparkbot.Local_1.6.58_aarch64.dmg",
+      linuxUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.58/Sparkbot.Local_1.6.58_amd64.AppImage"
     };
 
     function setText(id, value) {

@@ -698,7 +698,9 @@ async def _codex_cli_acompletion(*, model: str, **kwargs: Any) -> Any:
     if not _codex_cli_auth_available():
         raise RuntimeError(
             "Codex subscription route selected, but no local Codex ChatGPT sign-in was found. "
-            "Run `codex login` and choose Sign in with ChatGPT, then retry."
+            "Run `codex login`, choose ChatGPT sign-in, finish the browser login, then restart Sparkbot. "
+            "If the backend runs under a different user, set CODEX_HOME to the signed-in .codex directory "
+            "and optionally SPARKBOT_CODEX_CLI to the Codex executable."
         )
 
     prompt = _messages_to_codex_prompt(list(kwargs.get("messages") or []))
@@ -1144,7 +1146,7 @@ async def _ensure_locked_route_ready(route_context: dict[str, Any]) -> None:
         if not _codex_cli_auth_available():
             raise RuntimeError(
                 "Codex subscription is forced for this agent, but no local Codex ChatGPT sign-in was found. "
-                "Run `codex login` and choose Sign in with ChatGPT, then retry."
+                "Run `codex login`, choose ChatGPT sign-in, finish the browser login, then restart Sparkbot."
             )
 
 
@@ -1200,7 +1202,7 @@ def _format_locked_route_error(route_context: dict[str, Any], error: Exception) 
     if locked_provider == "openai_codex":
         return (
             f"Codex subscription is forced for this agent, but model '{model_name}' could not run through the local Codex CLI. "
-            f"Confirm `codex login` is signed in with ChatGPT or change this agent back to Use default. Details: {error}"
+            f"Confirm `codex login` is signed in with ChatGPT, restart Sparkbot, or change this agent back to Use default. Details: {error}"
         )
     return str(error)
 

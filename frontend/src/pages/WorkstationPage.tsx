@@ -1077,12 +1077,10 @@ function InviteConfigModal({ station, onSave, onCancel }: InviteConfigModalProps
                   </>
                 ) : effectiveAuthMode === "codex_sub" ? (
                   <>
-                    Use your ChatGPT/Codex-linked OpenAI key here. OpenAI’s current Codex setup uses{" "}
-                    <code style={{ color: "#9ca3af" }}>codex --login</code> or{" "}
-                    <code style={{ color: "#9ca3af" }}>codex --free</code> to connect a ChatGPT plan and create
-                    an API key automatically. Paste that generated OpenAI key here and keep{" "}
-                    <code style={{ color: "#9ca3af" }}>codex-mini-latest</code> as the model for a Codex desk.
-                    Stored locally — used only when this seat joins a meeting.
+                    For ChatGPT-plan Codex, use Sparkbot Controls -&gt; Codex Sub. Run{" "}
+                    <code style={{ color: "#9ca3af" }}>codex login</code>, choose ChatGPT sign-in, restart Sparkbot,
+                    then pick <code style={{ color: "#9ca3af" }}>openai-codex/gpt-5.3-codex</code>. This regular
+                    OpenAI key field is only for OpenAI Platform API-key routing.
                   </>
                 ) : provider === "xAI" ? (
                   <>

@@ -1611,10 +1611,17 @@ function SparkbotSettingsDialog({
                             : "Codex ChatGPT sign-in needed"}
                         </div>
                         <p className="mt-1 text-[11px] text-muted-foreground">
-                          This route uses your local Codex CLI subscription session instead of a pasted
-                          OpenAI Platform API key. Run{" "}
-                          <code className="rounded bg-muted px-1 py-0.5">codex login</code> and choose
-                          ChatGPT sign-in if this status is not ready.
+                          This uses your local Codex CLI ChatGPT session, not a pasted OpenAI Platform API key.
+                          In PowerShell, run <code className="rounded bg-muted px-1 py-0.5">codex login</code>,
+                          choose <strong>ChatGPT sign-in</strong>, finish the browser login, then restart Sparkbot
+                          and reopen Controls.
+                        </p>
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          If you signed in but this still says needed, set{" "}
+                          <code className="rounded bg-muted px-1 py-0.5">CODEX_HOME=%USERPROFILE%\.codex</code>{" "}
+                          and, if needed,{" "}
+                          <code className="rounded bg-muted px-1 py-0.5">SPARKBOT_CODEX_CLI=%APPDATA%\npm\codex.ps1</code>,
+                          then restart Sparkbot.
                         </p>
                       </div>
                       <div>
@@ -1632,7 +1639,9 @@ function SparkbotSettingsDialog({
                           ))}
                         </select>
                         <p className="mt-1 text-[11px] text-muted-foreground">
-                          Sparkbot will use the Codex CLI bridge for this provider. The packaged default is GPT-5.3 Codex Spark.
+                          Sparkbot runs this provider through read-only{" "}
+                          <code className="rounded bg-muted px-1 py-0.5">codex exec</code>. The packaged default is
+                          GPT-5.3 Codex Spark.
                         </p>
                       </div>
                     </div>
@@ -1673,7 +1682,7 @@ function SparkbotSettingsDialog({
                           {defaultSelection.provider === "anthropic" && providerDrafts.anthropic_auth_mode === "oauth"
                             ? "Claude subscription token"
                             : defaultSelection.provider === "openai" && providerDrafts.openai_auth_mode === "codex_sub"
-                              ? "OpenAI subscription key"
+                              ? "OpenAI Platform API key"
                               : `${directProviderLabel[defaultSelection.provider]} API key`}
                         </label>
                         <input
@@ -1704,11 +1713,8 @@ function SparkbotSettingsDialog({
                         )}
                         {defaultSelection.provider === "openai" && providerDrafts.openai_auth_mode === "codex_sub" && (
                           <p className="mt-1 text-[11px] text-muted-foreground">
-                            ChatGPT/Codex subscription mode uses the OpenAI key created by{" "}
-                            <code className="rounded bg-muted px-1 py-0.5">codex --login</code> or{" "}
-                            <code className="rounded bg-muted px-1 py-0.5">codex --free</code>. Keep{" "}
-                            <code className="rounded bg-muted px-1 py-0.5">codex-mini-latest</code> or another
-                            OpenAI model selected below.
+                            For ChatGPT-plan Codex, use the separate <strong>Codex Sub</strong> provider above.
+                            The regular OpenAI provider still expects an OpenAI Platform API key.
                           </p>
                         )}
                         {defaultSelection.provider === "xai" && (

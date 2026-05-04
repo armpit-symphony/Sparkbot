@@ -542,7 +542,7 @@ How to get the token:
 
 Sparkbot sends the token via `Authorization: Bearer` with the `anthropic-beta: oauth-2025-04-20` header, so meetings launched through that seat spend against your subscription quota rather than API credits. Tokens expire — paste a fresh one if Anthropic starts rejecting requests.
 
-**Codex with your ChatGPT plan.** Sparkbot has a first-class **OpenAI Codex Subscription** provider. Run `codex login`, choose ChatGPT sign-in, then select `openai-codex/gpt-5.3-codex` in Controls. Sparkbot detects the local `~/.codex/auth.json` session and dispatches that provider through `codex exec --sandbox read-only` instead of requiring an OpenAI Platform API key. The **ChatGPT** Invite Wing desk is also the Codex gateway and now preloads the same subscription model for meeting seats.
+**Codex with your ChatGPT plan.** Sparkbot has a first-class **OpenAI Codex Subscription** provider. In PowerShell or your shell, run `codex login`, choose **ChatGPT sign-in**, finish the browser login, then restart Sparkbot. Select `openai-codex/gpt-5.3-codex` in **Controls -> Codex Sub**. Sparkbot detects the local Codex session at `~/.codex/auth.json` on macOS/Linux or `%USERPROFILE%\.codex\auth.json` on Windows and dispatches that provider through read-only `codex exec` instead of requiring an OpenAI Platform API key. If the Controls card still says sign-in is needed after login, set `CODEX_HOME` to the Codex profile directory and optionally `SPARKBOT_CODEX_CLI` to the installed Codex executable, then restart Sparkbot. The **ChatGPT** Invite Wing desk is also the Codex gateway and now preloads the same subscription model for meeting seats.
 
 **xAI (Grok).** The third Invite Wing desk is preset for **xAI Grok**. Per xAI’s official developer docs, Sparkbot uses the xAI API path: create an xAI account and API key, then paste `XAI_API_KEY`. Grok app / X subscription linking applies to consumer access on xAI properties and does not replace the API key in Sparkbot.
 
@@ -1899,7 +1899,7 @@ curl -b cookies.txt http://localhost:8000/api/v1/chat/system/watcher | python -m
 
 Desktop release tags and app versions are aligned on the `1.6.x` release line.
 
-For `v1.6.57`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release line tightens public-v1 defaults: two API workers, production-safe CORS/auth validation, live terminal disabled by default, public DNS/proxy wiring notes, provider-key rotation guidance, background-job scaling guardrails, and the Phase 2 LIMA Robo OS bridge for natural-language replay/simulation robot commands.
+For `v1.6.58`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release line clarifies the Codex subscription setup path: run `codex login`, choose ChatGPT sign-in, restart Sparkbot, then use the **Codex Sub** provider with GPT-5.3 Codex Spark. It carries forward the v1.6.57 public-v1 safety defaults and LIMA Robo OS bridge work.
 
 ### How to upgrade safely
 

@@ -1,5 +1,12 @@
 # Release Notes
 
+## Sparkbot v1.6.58
+
+- Clarified the Codex subscription setup flow in Controls: run `codex login`, choose ChatGPT sign-in, finish browser auth, restart Sparkbot, then select GPT-5.3 Codex Spark under the Codex Sub provider.
+- Added README and capabilities docs for the local Codex CLI ChatGPT session path, including `CODEX_HOME` and `SPARKBOT_CODEX_CLI` fallback env settings when the backend runs under a different profile.
+- Improved Codex subscription runtime errors so they point to the same login/restart/env fallback steps.
+- Advanced backend, frontend, Tauri shell, public downloader, service worker, README, capabilities docs, release notes, and packaging notes to v1.6.58.
+
 ## Sparkbot v1.6.57
 
 - Reduced public/server backend web/API worker defaults from 4 to 2.

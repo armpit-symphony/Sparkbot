@@ -1,0 +1,6 @@
+Sparkbot v1.6.58
+
+- Clarified Codex subscription setup in Sparkbot Controls: run `codex login`, choose ChatGPT sign-in, finish browser auth, restart Sparkbot, then choose GPT-5.3 Codex Spark under Codex Sub.
+- Added README/capabilities docs for the local Codex CLI ChatGPT session path and the `CODEX_HOME` / `SPARKBOT_CODEX_CLI` fallback env settings.
+- Improved Codex subscription error messages so they point to the same login, restart, and env fallback steps.
+- Advanced backend, frontend, Tauri shell, public downloader, service worker, README, capabilities docs, release notes, and packaging notes to v1.6.58.

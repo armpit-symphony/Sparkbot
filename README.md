@@ -6,7 +6,7 @@ Use it to chat, search, summarize documents, control a browser, run shell comman
 
 **Download:** [armpit-symphony.github.io/Sparkbot](https://armpit-symphony.github.io/Sparkbot/)
 
-**Current release line:** v1.6.57
+**Current release line:** v1.6.58
 
 > Sparkbot stores its app data locally. If you connect a cloud LLM provider or an external service, the text and actions needed for that provider or service are sent to that provider. Local models can run without an LLM cloud account.
 
@@ -160,6 +160,23 @@ On first launch, Sparkbot opens **Sparkbot Controls**. Paste at least one LLM AP
 | Groq | [console.groq.com](https://console.groq.com) |
 | MiniMax | [minimax.io](https://www.minimax.io) |
 | OpenRouter | [openrouter.ai](https://openrouter.ai) — one key, 100+ models |
+
+**Using ChatGPT Codex subscription instead of an OpenAI API key**
+
+Sparkbot can use your local Codex CLI ChatGPT sign-in for the **Codex Sub** provider. In PowerShell, run:
+
+```powershell
+codex login
+```
+
+Choose **ChatGPT sign-in**, finish the browser login, then restart Sparkbot. In **Sparkbot Controls -> Codex Sub**, select **GPT-5.3 Codex Spark** and save it as the default. Sparkbot detects the local Codex session at `%USERPROFILE%\.codex\auth.json` and routes `openai-codex/gpt-5.3-codex` through read-only `codex exec`, so no OpenAI Platform API key is required for this route.
+
+If Controls still says **Codex ChatGPT sign-in needed** after login, set these advanced env values and restart Sparkbot:
+
+```powershell
+CODEX_HOME=%USERPROFILE%\.codex
+SPARKBOT_CODEX_CLI=%APPDATA%\npm\codex.ps1
+```
 
 **Step 3 — Start chatting**
 
@@ -561,6 +578,7 @@ User message → Token Guardian → Memory Guardian → LLM
 
 | Version | Date | Highlights |
 |---------|------|-----------|
+| v1.6.58 | May 2026 | Clarified Codex subscription setup across Controls and docs: run `codex login`, choose ChatGPT sign-in, restart Sparkbot, then use the **Codex Sub** provider with GPT-5.3 Codex Spark; downloader/docs/package metadata advanced to the v1.6.58 desktop line. |
 | v1.6.57 | May 2026 | Public-v1 readiness hardening plus LIMA Robo OS Phase 2 bridge: backend worker defaults reduced to 2, production config fails closed on unsafe auth/CORS, live terminal defaults off, robotics status/tools/command/emergency-stop endpoints and chat `lima_robot_command` are available for replay/simulation while real-hardware motion stays blocked until Guardian runner handoff is complete. |
 | v1.6.56 | May 2026 | Added a first-class OpenAI Codex subscription provider that detects the local Codex ChatGPT sign-in and dispatches `openai-codex/gpt-5.3-codex` through the Codex CLI bridge; Controls can set it as the default, Workstation ChatGPT/Codex desks prefill the subscription model, Specialty Wing office detail panels now include an agent selector for packaged or spawned agents, local desktop routing config was moved to the Codex subscription default, and downloader/docs/package metadata advanced to the v1.6.56 desktop line. |
 | v1.6.55 | May 2026 | Advanced the Command Center update line for local testing and public updater/download metadata: downloader links, package versions, Tauri metadata, service worker cache, README, capabilities docs, release notes, and GitHub Pages copy now point at the v1.6.55 desktop line. |

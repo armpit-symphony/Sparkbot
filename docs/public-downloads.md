@@ -11,7 +11,7 @@ For a release, keep these pieces aligned:
 - `README.md`
 - `docs/release-notes/vX.Y.Z.txt`
 
-The current Sparkbot release is `v1.6.57`.
+The current Sparkbot release is `v1.6.58`.
 
 ## Public install choices
 
@@ -120,9 +120,9 @@ If the target directory needs elevated permissions, run the script from a shell 
 
 ```bash
 bash scripts/package-public-download.sh \
-  --ref desktop-v1.6.57 \
-  --artifact-prefix sparkbot-1.6.57 \
-  --output-dir dist/public-download/1.6.57
+  --ref desktop-v1.6.58 \
+  --artifact-prefix sparkbot-1.6.58 \
+  --output-dir dist/public-download/1.6.58
 ```
 
 This ties the package to a specific tag or commit instead of the current `HEAD`.
@@ -131,7 +131,7 @@ This ties the package to a specific tag or commit instead of the current `HEAD`.
 
 ```bash
 bash scripts/package-public-download.sh \
-  --notes-file docs/release-notes/v1.6.57.txt
+  --notes-file docs/release-notes/v1.6.58.txt
 ```
 
 The script always stamps `RELEASE-NOTES.txt` with:
