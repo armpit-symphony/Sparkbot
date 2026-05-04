@@ -5,4 +5,6 @@ Sparkbot v1.6.59
 - Made Memory Guardian default to SPARKBOT_DATA_DIR/memory_guardian in downloaded desktop/local mode when no explicit memory data directory is set.
 - Made /chat/model persist the selected primary/default model to the same .env route state used by Controls.
 - Added resolved agent/model route metadata to meeting stream handoffs and showed the model label in the meeting UI.
+- Skipped exact duplicate meeting rollups and suppressed generated child artifact re-promotion when parent notes already contain the same decisions/actions.
+- Created the packaged/local SPARKBOT_DATA_DIR parent before writing .env, fixing first-run selector persistence when the data directory does not exist yet.
 - Advanced backend, frontend, Tauri shell, public downloader, service worker, README, capabilities docs, release notes, and packaging notes to v1.6.59.

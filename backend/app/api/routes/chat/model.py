@@ -205,6 +205,7 @@ def _reload_persisted_env() -> None:
 
 def _write_env_updates(updates: dict[str, str]) -> None:
     env_path = _env_path()
+    env_path.parent.mkdir(parents=True, exist_ok=True)
     existing_lines = env_path.read_text().splitlines() if env_path.exists() else []
     pending = {key: _sanitize_env_value(value) for key, value in updates.items()}
     rendered: list[str] = []

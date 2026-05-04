@@ -14,7 +14,9 @@
 - Added a shared Guardian work-memory session keyed by user. `build_memory_context` now retrieves durable user memory, shared work memory, and the current room memory.
 - Added `remember_meeting_artifact`, which rolls `notes`, `action_items`, `decisions`, and `agenda` artifacts into shared work memory using only decision/action/next-step/open-question/summary lines.
 - Wired artifact creation through the rollup path, so generated and manually saved meeting artifacts can inform main chat without exposing full room transcript memory globally.
+- Added memory quality controls: exact duplicate rollups are skipped by fingerprint, and generated child artifacts with `parent_notes_id` do not re-promote decisions/actions already captured in the parent notes artifact.
 - Made `/chat/model` persist `SPARKBOT_MODEL`, `SPARKBOT_DEFAULT_PROVIDER`, and provider-specific local/OpenRouter defaults through the same `.env` writer Controls uses.
+- Hardened packaged/local first-run selector persistence by creating the `SPARKBOT_DATA_DIR` parent before writing `.env`.
 - Added non-secret route metadata to meeting `agent_start` SSE events and displayed the resolved model label next to the speaking agent.
 - Changed Memory Guardian default data-dir selection to use `SPARKBOT_DATA_DIR/memory_guardian` when present.
 
@@ -25,7 +27,7 @@
 - Meeting-to-main rollup: important meeting artifacts promote only summaries, key decisions, action items, open questions, and next steps into `Shared Work Memory`.
 - Project/task memory: Guardian Spine remains canonical for tasks, project lineage, handoffs, and artifact events.
 - Session-only context: transient chat history stays in the active prompt/history and should not be promoted unless it becomes an artifact, task, or explicit durable fact.
-- Duplicate/conflict handling: durable user facts still use existing memory lifecycle/deprecation rules; meeting rollups are append-only work signals with artifact provenance.
+- Duplicate/conflict handling: durable user facts still use existing memory lifecycle/deprecation rules; repeated meeting rollups are suppressed when the extracted content fingerprint matches an existing active shared-work event; non-identical meeting conflicts remain artifact-provenance work signals and should be reconciled through Guardian Spine/project state.
 
 ### Intended model-routing rules
 
@@ -36,8 +38,22 @@
 - Meeting handoffs expose the resolved model label and route metadata so model changes are visible.
 - Local/Windows mode uses the same persisted `.env` route state, with `SPARKBOT_DATA_DIR` anchoring packaged memory storage.
 
+### Release validation results
+
+- Running Linux service health: `GET /api/v1/utils/health-check/` returned `true`; Docker shows `sparkbot-backend-1` healthy on `127.0.0.1:8000`, frontend on `3001`, and Postgres healthy. Recent backend logs show normal health-check traffic without new tracebacks.
+- Running container caveat: the live container image reports backend version `1.6.57`, so live service checks confirm service health but not the newly pushed `1.6.59` code paths.
+- Main chat -> meeting -> main chat continuity: isolated runtime validation wrote a main-room message, promoted a Release Roundtable notes artifact, then queried main chat context. Result: `main_chat_shared_memory=True`.
+- Shared Work Memory quality: duplicate validation promoted the first rollup and skipped the second exact duplicate. Result: `meeting_rollup_first=True`, `meeting_rollup_duplicate_skipped=True`, `shared_work_event_count=1`.
+- Structured memory recall: `memory_recall` now includes the shared work session. Result: `structured_recall_shared_work=True`.
+- Model selector restart persistence: isolated runtime validation selected `ollama/phi4-mini`, cleared process memory/env to simulate restart, reloaded persisted `.env`, and confirmed both runtime and Controls state matched. Results: `selector_after_restart=ollama/phi4-mini`, `controls_default_selection=ollama/phi4-mini`.
+- Windows/local packaged path: with only `SPARKBOT_DATA_DIR` set, Memory Guardian defaulted to `<SPARKBOT_DATA_DIR>/memory_guardian`; first-run `.env` writes now create the missing data-dir parent.
+- Multi-agent meeting route labeling: route display validation returned `ollama/phi4-mini`, provider `ollama`, route `local` for an agent override, without exposing secrets.
+- Guardian Spine continuity: creating a meeting action artifact still produced one Spine task for the meeting room.
+- Focused tests: `uv run pytest -q backend/tests/services/test_guardian_memory.py backend/tests/api/routes/test_chat_models_openrouter.py backend/tests/services/test_guardian_spine.py` passed `61` tests.
+
 ### Remaining before public release
 
 - Run a full Windows packaged installer smoke test against the v1.6.59 artifacts.
-- Verify an end-to-end roundtable in the installed app: generate notes, return to main chat, ask about a decision/action item, and confirm shared work memory appears.
+- Deploy/rebuild the Linux container if the server should run the pushed v1.6.59 code before public release; the currently running container reports v1.6.57.
+- Verify an end-to-end roundtable in the installed Windows app: generate notes, return to main chat, ask about a decision/action item, and confirm shared work memory appears.
 - Consider a future cleanup for persisted per-user model preferences if Sparkbot needs multi-user primary-model ownership rather than one operator/default route.

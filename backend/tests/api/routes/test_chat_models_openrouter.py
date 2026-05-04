@@ -152,6 +152,15 @@ def test_chat_model_selector_persists_primary_route(client: TestClient, monkeypa
     assert llm.get_model(str(operator_id)) == "ollama/custom-local:latest"
 
 
+def test_env_updates_create_packaged_data_dir(monkeypatch, tmp_path) -> None:
+    data_dir = tmp_path / "missing" / "Sparkbot"
+    monkeypatch.setenv("SPARKBOT_DATA_DIR", str(data_dir))
+
+    model_route._write_env_updates({"SPARKBOT_MODEL": "ollama/phi4-mini"})
+
+    assert (data_dir / ".env").read_text(encoding="utf-8") == "SPARKBOT_MODEL=ollama/phi4-mini\n"
+
+
 def test_default_route_candidates_stay_on_selected_provider_when_cross_fallback_off(monkeypatch) -> None:
     monkeypatch.setenv("SPARKBOT_DEFAULT_CROSS_PROVIDER_FALLBACK", "false")
     monkeypatch.setenv("SPARKBOT_BACKUP_MODEL_1", "gpt-4o")
@@ -290,6 +299,24 @@ def test_locked_provider_retries_without_tools_before_failing(monkeypatch) -> No
         ("minimax/MiniMax-M2.5", True),
         ("minimax/MiniMax-M2.5", False),
     ]
+
+
+def test_meeting_agent_route_display_exposes_non_secret_model_metadata(monkeypatch) -> None:
+    from app.api.routes.chat import rooms
+
+    monkeypatch.setenv("SPARKBOT_MODEL", "openrouter/openai/gpt-4o-mini")
+    monkeypatch.setenv(
+        "SPARKBOT_AGENT_MODEL_OVERRIDES_JSON",
+        '{"analyst":{"route":"local","model":"ollama/custom-local:latest"}}',
+    )
+
+    display = rooms._agent_route_display(user_id="user-1", agent_name="analyst")
+
+    assert display["model"] == "ollama/custom-local:latest"
+    assert display["model_label"] == "Local Ollama · custom-local:latest"
+    assert display["provider"] == "ollama"
+    assert display["route"] == "local"
+    assert "api" not in str(display).lower()
 
 
 def test_tool_manifest_selection_stays_under_provider_limit() -> None:

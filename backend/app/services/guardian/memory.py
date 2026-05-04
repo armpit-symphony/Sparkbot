@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import gzip
+import hashlib
 import json
 import os
 import re
@@ -961,6 +962,16 @@ def remember_meeting_artifact(
             *lines,
         ]
     )
+    fingerprint = hashlib.sha256(
+        "\n".join([user_id, room_id, normalized_type, *lines]).encode("utf-8")
+    ).hexdigest()
+    try:
+        for event in _guardian().ledger.iter_events(session_id=_shared_work_session(user_id)):
+            meta = dict(event.metadata or {})
+            if meta.get("rollup_fingerprint") == fingerprint and _is_event_active_for_prompt(event):
+                return False
+    except Exception:
+        pass
     return _append_event(
         event_type=EventType.SYSTEM,
         role="system",
@@ -973,6 +984,7 @@ def remember_meeting_artifact(
             "artifact_type": normalized_type,
             "scope_type": "shared_work",
             "project_id": project_id or "",
+            "rollup_fingerprint": fingerprint,
         },
         source=f"meeting.{normalized_type}.rollup",
         confidence=0.86,

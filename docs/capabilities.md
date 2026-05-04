@@ -1160,7 +1160,15 @@ Memory Guardian keeps raw audit evidence append-only in the redacted ledger, whi
 
 Memory sessions:
 - `user:{user_id}` — durable user profile
+- `work:user:{user_id}` — Shared Work Memory for cross-room meeting/project outcomes
 - `room:{room_id}:user:{user_id}` — room-context memory
+
+Shared Work Memory promotion rules:
+- Meeting transcripts and ordinary room chat stay room-scoped.
+- Meeting artifacts of type `notes`, `action_items`, `decisions`, or `agenda` can promote concise `Discussion Summary`, `Key Decisions`, `Action Items`, `Open Questions`, and `Next Steps` lines.
+- Generated child artifacts with `parent_notes_id` do not re-promote content already included in the parent notes artifact.
+- Exact duplicate rollups are skipped with a content fingerprint, preserving artifact provenance without filling recall with repeated meeting residue.
+- Guardian Spine remains the canonical project/task ledger; Shared Work Memory is a prompt-retrieval bridge so main chat can recall important meeting outcomes.
 
 Operator review helpers:
 - `GET /api/v1/chat/memory/proposals/delete` lists pending deletion proposals.

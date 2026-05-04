@@ -6,6 +6,8 @@
 - Moved desktop/local Memory Guardian default storage under `SPARKBOT_DATA_DIR` when present, reducing Windows downloaded-build drift from Linux/server source checkouts.
 - Made `/chat/model` persist the selected primary/default model to the same `.env` route state Controls uses, including provider-specific local/OpenRouter defaults.
 - Added non-secret per-agent route/model metadata to meeting stream handoffs and surfaced the resolved model label in the meeting UI.
+- Added Shared Work Memory quality controls: exact duplicate meeting rollups are skipped, and generated child decision/action artifacts do not re-promote content already present in parent notes.
+- Hardened packaged/local selector persistence by creating the `SPARKBOT_DATA_DIR` parent before writing `.env` on first run.
 - Advanced backend, frontend, Tauri shell, public downloader, service worker, README, capabilities docs, release notes, and packaging notes to v1.6.59.
 
 ## Sparkbot v1.6.57

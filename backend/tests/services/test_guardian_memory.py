@@ -104,6 +104,35 @@ def test_meeting_artifact_rollup_is_visible_from_main_room(monkeypatch, tmp_path
     assert any(item["session_id"] == memory._shared_work_session("user-1") for item in recalled)
 
 
+def test_meeting_artifact_rollup_deduplicates_repeated_content(monkeypatch, tmp_path: Path) -> None:
+    _reset_memory_guardian(monkeypatch, tmp_path)
+    markdown = (
+        "## Key Decisions\n"
+        "- Keep meeting outputs available to main chat through shared memory.\n\n"
+        "## Action Items\n"
+        "- [ ] Recheck shared memory noise before release - Sparkbot - Open\n"
+    )
+
+    assert memory.remember_meeting_artifact(
+        user_id="user-1",
+        room_id="meeting-room",
+        artifact_id="artifact-1",
+        artifact_type="notes",
+        content_markdown=markdown,
+    )
+    assert not memory.remember_meeting_artifact(
+        user_id="user-1",
+        room_id="meeting-room",
+        artifact_id="artifact-2",
+        artifact_type="notes",
+        content_markdown=markdown,
+    )
+
+    events = list(memory._guardian().ledger.iter_events(session_id=memory._shared_work_session("user-1")))
+    assert len(events) == 1
+    assert events[0].metadata["rollup_fingerprint"]
+
+
 def test_memory_guardian_uses_desktop_data_dir_when_specific_dir_absent(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.delenv("SPARKBOT_MEMORY_GUARDIAN_DATA_DIR", raising=False)
     monkeypatch.setenv("SPARKBOT_DATA_DIR", str(tmp_path / "desktop-data"))
