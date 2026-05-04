@@ -1909,7 +1909,7 @@ curl -b cookies.txt http://localhost:8000/api/v1/chat/system/watcher | python -m
 
 Desktop release tags and app versions are aligned on the `1.6.x` release line.
 
-For `v1.6.58`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release line clarifies the Codex subscription setup path: run `codex login`, choose ChatGPT sign-in, restart Sparkbot, then use the **Codex Sub** provider with GPT-5.3 Codex Spark. It carries forward the v1.6.57 public-v1 safety defaults and LIMA Robo OS bridge work.
+For `v1.6.59`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release line stabilizes memory continuity and model routing: meeting artifacts roll decisions/actions/questions into shared Guardian work memory for main-chat retrieval, Memory Guardian uses `SPARKBOT_DATA_DIR` in desktop/local mode, `/chat/model` persists to the same primary route state as Controls, and meeting handoffs expose the resolved agent/model route. It carries forward the v1.6.57 public-v1 safety defaults and LIMA Robo OS bridge work.
 
 ### How to upgrade safely
 

@@ -124,6 +124,26 @@ def _agent_label(agent_name: str, agent_info: Optional[dict[str, Any]] = None) -
     return f"{emoji} {display}".strip() if emoji else display
 
 
+def _agent_route_display(*, user_id: str, agent_name: str) -> dict[str, str]:
+    """Return non-secret route metadata for meeting stream UI events."""
+    try:
+        from app.api.routes.chat.llm import get_agent_route_context, get_model, model_label, model_provider
+
+        base_model = get_model(user_id)
+        route_context = get_agent_route_context(default_model=base_model, agent_name=agent_name)
+        model_name = str(route_context.get("model") or base_model)
+        route = str(route_context.get("route") or "default")
+        return {
+            "model": model_name,
+            "model_label": model_label(model_name),
+            "provider": model_provider(model_name),
+            "route": route,
+            "route_label": "default route" if route == "default" else f"{route} route",
+        }
+    except Exception:
+        return {"model": "", "model_label": "", "provider": "", "route": "default", "route_label": "default route"}
+
+
 def _meeting_role_instruction(agent_name: str, *, chair: bool) -> str:
     """Return meeting-role instructions tuned for the participant."""
     normalized = agent_name.lower()
@@ -1603,8 +1623,9 @@ async def stream_room_message(
                 p_system += f"\n\n{memory_context}"
 
             label = _agent_label(participant_handle, agent_info)
+            route_display = _agent_route_display(user_id=user_id_str, agent_name=participant_handle)
             emitted_events = [
-                f"data: {json.dumps({'type': 'agent_start', 'agent': participant_handle, 'label': label})}\n\n"
+                f"data: {json.dumps({'type': 'agent_start', 'agent': participant_handle, 'label': label, **route_display})}\n\n"
             ]
 
             agent_full_text = ""
@@ -1941,7 +1962,8 @@ async def stream_room_message(
 
                 emoji = str(agent_info.get("emoji") or "")
                 label = f"{emoji} {p_handle.title()}".strip()
-                yield f"data: {json.dumps({'type': 'agent_start', 'agent': p_handle, 'label': label})}\n\n"
+                route_display = _agent_route_display(user_id=user_id_str, agent_name=p_handle)
+                yield f"data: {json.dumps({'type': 'agent_start', 'agent': p_handle, 'label': label, **route_display})}\n\n"
 
                 agent_full_text = ""
                 agent_routing_payload = None

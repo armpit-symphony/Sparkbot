@@ -6,7 +6,7 @@ Use it to chat, search, summarize documents, control a browser, run shell comman
 
 **Download:** [armpit-symphony.github.io/Sparkbot](https://armpit-symphony.github.io/Sparkbot/)
 
-**Current release line:** v1.6.58
+**Current release line:** v1.6.59
 
 > Sparkbot stores its app data locally. If you connect a cloud LLM provider or an external service, the text and actions needed for that provider or service are sent to that provider. Local models can run without an LLM cloud account.
 
@@ -602,7 +602,7 @@ User message → Token Guardian → Memory Guardian → LLM
 
 | Version | Date | Highlights |
 |---------|------|-----------|
-| v1.6.58 | May 2026 | Clarified Codex subscription setup across Controls and docs: run `codex login`, choose ChatGPT sign-in, restart Sparkbot, then use the **Codex Sub** provider with GPT-5.3 Codex Spark; downloader/docs/package metadata advanced to the v1.6.58 desktop line. |
+| v1.6.59 | May 2026 | Release stabilization for memory continuity and model routing: meeting artifacts now roll decisions/actions into shared Guardian work memory visible from main chat, desktop memory storage follows `SPARKBOT_DATA_DIR`, `/chat/model` persists the primary route instead of drifting in process memory, meeting agent turns display resolved model routing, and downloader/docs/package metadata advanced to the v1.6.59 desktop line. |
 | v1.6.57 | May 2026 | Public-v1 readiness hardening plus LIMA Robo OS Phase 2 bridge: backend worker defaults reduced to 2, production config fails closed on unsafe auth/CORS, live terminal defaults off, robotics status/tools/command/emergency-stop endpoints and chat `lima_robot_command` are available for replay/simulation while real-hardware motion stays blocked until Guardian runner handoff is complete. |
 | v1.6.56 | May 2026 | Added a first-class OpenAI Codex subscription provider that detects the local Codex ChatGPT sign-in and dispatches `openai-codex/gpt-5.3-codex` through the Codex CLI bridge; Controls can set it as the default, Workstation ChatGPT/Codex desks prefill the subscription model, Specialty Wing office detail panels now include an agent selector for packaged or spawned agents, local desktop routing config was moved to the Codex subscription default, and downloader/docs/package metadata advanced to the v1.6.56 desktop line. |
 | v1.6.55 | May 2026 | Advanced the Command Center update line for local testing and public updater/download metadata: downloader links, package versions, Tauri metadata, service worker cache, README, capabilities docs, release notes, and GitHub Pages copy now point at the v1.6.55 desktop line. |

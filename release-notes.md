@@ -1,11 +1,12 @@
 # Release Notes
 
-## Sparkbot v1.6.58
+## Sparkbot v1.6.59
 
-- Clarified the Codex subscription setup flow in Controls: run `codex login`, choose ChatGPT sign-in, finish browser auth, restart Sparkbot, then select GPT-5.3 Codex Spark under the Codex Sub provider.
-- Added README and capabilities docs for the local Codex CLI ChatGPT session path, including `CODEX_HOME` and `SPARKBOT_CODEX_CLI` fallback env settings when the backend runs under a different profile.
-- Improved Codex subscription runtime errors so they point to the same login/restart/env fallback steps.
-- Advanced backend, frontend, Tauri shell, public downloader, service worker, README, capabilities docs, release notes, and packaging notes to v1.6.58.
+- Added a shared Guardian work-memory rollup path for meeting artifacts so roundtable decisions, action items, next steps, and open questions can inform main Sparkbot chat outside the meeting room.
+- Moved desktop/local Memory Guardian default storage under `SPARKBOT_DATA_DIR` when present, reducing Windows downloaded-build drift from Linux/server source checkouts.
+- Made `/chat/model` persist the selected primary/default model to the same `.env` route state Controls uses, including provider-specific local/OpenRouter defaults.
+- Added non-secret per-agent route/model metadata to meeting stream handoffs and surfaced the resolved model label in the meeting UI.
+- Advanced backend, frontend, Tauri shell, public downloader, service worker, README, capabilities docs, release notes, and packaging notes to v1.6.59.
 
 ## Sparkbot v1.6.57
 

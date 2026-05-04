@@ -1,0 +1,8 @@
+Sparkbot v1.6.59
+
+- Added shared Guardian work-memory rollups for meeting artifacts so roundtable decisions, action items, next steps, and open questions can inform main Sparkbot chat.
+- Kept meeting transcripts room-scoped while promoting important meeting outputs through explicit artifact rollup rules.
+- Made Memory Guardian default to SPARKBOT_DATA_DIR/memory_guardian in downloaded desktop/local mode when no explicit memory data directory is set.
+- Made /chat/model persist the selected primary/default model to the same .env route state used by Controls.
+- Added resolved agent/model route metadata to meeting stream handoffs and showed the model label in the meeting UI.
+- Advanced backend, frontend, Tauri shell, public downloader, service worker, README, capabilities docs, release notes, and packaging notes to v1.6.59.

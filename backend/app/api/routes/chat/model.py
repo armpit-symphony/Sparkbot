@@ -816,12 +816,32 @@ def set_agent_invite_route(name: str, body: InviteRouteConfig, current_user: Cur
 
 @router.post("/model")
 def set_current_model(body: ModelSelect, current_user: CurrentChatUser) -> dict:
-    """Set the active model for the current user."""
+    """Set the active model for the current user and persist it as the primary route."""
     try:
         chosen = set_model(str(current_user.id), body.model)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    return {"model": chosen, "description": model_label(chosen)}
+    provider = model_provider(chosen)
+    updates = {
+        DEFAULT_PROVIDER_ENV: provider,
+        PRIMARY_MODEL_ENV: chosen,
+    }
+    if provider == "openrouter":
+        updates[OPENROUTER_DEFAULT_MODEL_ENV] = chosen
+    if provider == "ollama":
+        updates[LOCAL_DEFAULT_MODEL_ENV] = chosen
+    _write_env_updates(updates)
+    _apply_env_updates(updates)
+    return {
+        "model": chosen,
+        "description": model_label(chosen),
+        "provider": provider,
+        "persisted": True,
+        "routing_policy": {
+            "default_provider_authoritative": True,
+            "cross_provider_fallback": default_cross_provider_fallback_enabled(),
+        },
+    }
 
 
 @router.get("/models/config")

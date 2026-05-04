@@ -64,6 +64,53 @@ def test_memory_guardian_builds_context_and_clears_user_events(monkeypatch, tmp_
     assert empty_context == ""
 
 
+def test_meeting_artifact_rollup_is_visible_from_main_room(monkeypatch, tmp_path: Path) -> None:
+    _reset_memory_guardian(monkeypatch, tmp_path)
+
+    stored = memory.remember_meeting_artifact(
+        user_id="user-1",
+        room_id="meeting-room",
+        artifact_id="artifact-1",
+        artifact_type="notes",
+        room_name="Release Roundtable",
+        content_markdown=(
+            "# Roundtable Meeting\n\n"
+            "## Discussion Summary\n"
+            "The group reviewed release stabilization and focused on memory continuity.\n\n"
+            "## Key Decisions\n"
+            "- Promote meeting decisions into shared work memory.\n\n"
+            "## Action Items\n"
+            "- [ ] Verify selector persistence before public release - Sparkbot - Open\n"
+        ),
+    )
+
+    assert stored is True
+    context = memory.build_memory_context(
+        user_id="user-1",
+        room_id="main-chat-room",
+        query="What did the release roundtable decide about memory continuity?",
+    )
+
+    assert "Shared Work Memory" in context
+    assert "Release Roundtable" in context
+    assert "Promote meeting decisions into shared work memory" in context
+    assert "Verify selector persistence" in context
+
+    recalled = memory.recall_relevant_events(
+        user_id="user-1",
+        room_id="main-chat-room",
+        query="selector persistence release action item",
+    )
+    assert any(item["session_id"] == memory._shared_work_session("user-1") for item in recalled)
+
+
+def test_memory_guardian_uses_desktop_data_dir_when_specific_dir_absent(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("SPARKBOT_MEMORY_GUARDIAN_DATA_DIR", raising=False)
+    monkeypatch.setenv("SPARKBOT_DATA_DIR", str(tmp_path / "desktop-data"))
+
+    assert memory._data_dir() == tmp_path / "desktop-data" / "memory_guardian"
+
+
 def test_delete_fact_memory_removes_only_matching_fact(monkeypatch, tmp_path: Path) -> None:
     _reset_memory_guardian(monkeypatch, tmp_path)
 

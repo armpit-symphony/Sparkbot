@@ -125,6 +125,33 @@ def test_models_config_supports_openrouter_default_with_local_override(
     }
 
 
+def test_chat_model_selector_persists_primary_route(client: TestClient, monkeypatch) -> None:
+    operator_id = _ensure_chat_user("sparkbot-user")
+    headers = _chat_headers_for_user(operator_id)
+    saved_updates: dict[str, str] = {}
+
+    monkeypatch.setattr(model_route, "_write_env_updates", lambda updates: saved_updates.update(updates))
+    monkeypatch.delenv("SPARKBOT_MODEL", raising=False)
+    monkeypatch.delenv("SPARKBOT_DEFAULT_PROVIDER", raising=False)
+    monkeypatch.delenv("SPARKBOT_LOCAL_MODEL", raising=False)
+
+    response = client.post(
+        f"{settings.API_V1_STR}/chat/model",
+        headers=headers,
+        json={"model": "ollama/custom-local:latest"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["model"] == "ollama/custom-local:latest"
+    assert payload["provider"] == "ollama"
+    assert payload["persisted"] is True
+    assert saved_updates["SPARKBOT_MODEL"] == "ollama/custom-local:latest"
+    assert saved_updates["SPARKBOT_DEFAULT_PROVIDER"] == "ollama"
+    assert saved_updates["SPARKBOT_LOCAL_MODEL"] == "ollama/custom-local:latest"
+    assert llm.get_model(str(operator_id)) == "ollama/custom-local:latest"
+
+
 def test_default_route_candidates_stay_on_selected_provider_when_cross_fallback_off(monkeypatch) -> None:
     monkeypatch.setenv("SPARKBOT_DEFAULT_CROSS_PROVIDER_FALLBACK", "false")
     monkeypatch.setenv("SPARKBOT_BACKUP_MODEL_1", "gpt-4o")

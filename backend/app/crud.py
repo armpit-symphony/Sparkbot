@@ -509,6 +509,17 @@ def create_chat_meeting_artifact(
             content_markdown=content_markdown,
             session=session,
         )
+        from app.services.guardian import memory as guardian_memory
+
+        guardian_memory.remember_meeting_artifact(
+            user_id=str(created_by_user_id),
+            room_id=str(room_id),
+            artifact_id=str(artifact.id),
+            artifact_type=type,
+            content_markdown=content_markdown,
+            room_name=room.name if room else str(room_id),
+            project_id=(meta_json or {}).get("project_id") if isinstance(meta_json, dict) else None,
+        )
     except Exception:
         pass
     return artifact

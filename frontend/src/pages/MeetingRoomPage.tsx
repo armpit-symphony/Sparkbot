@@ -416,7 +416,12 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
               // New agent starting — reset accumulated and update label
               accumulatedToken = ""
               setStreamingToken("")
-              setStreamingAgent(evt.label || evt.agent || null)
+              const modelLabel = evt.model_label || evt.model
+              setStreamingAgent(
+                modelLabel
+                  ? `${evt.label || evt.agent || "Agent"} · ${modelLabel}`
+                  : evt.label || evt.agent || null,
+              )
             } else if (evt.type === "agent_done") {
               accumulatedToken = ""
               setStreamingToken("")

@@ -143,6 +143,9 @@ def _data_dir() -> Path:
     configured = os.getenv("SPARKBOT_MEMORY_GUARDIAN_DATA_DIR", "").strip()
     if configured:
         return Path(configured).expanduser()
+    desktop_data_dir = os.getenv("SPARKBOT_DATA_DIR", "").strip()
+    if desktop_data_dir:
+        return Path(desktop_data_dir).expanduser() / "memory_guardian"
     return _DEFAULT_DATA_DIR
 
 
@@ -332,6 +335,10 @@ def _user_session(user_id: str) -> str:
 
 def _room_session(user_id: str, room_id: str) -> str:
     return f"room:{room_id}:user:{user_id}"
+
+
+def _shared_work_session(user_id: str) -> str:
+    return f"work:user:{user_id}"
 
 
 def _safe_text(value: str, limit: int = 4000) -> str:
@@ -892,6 +899,87 @@ def remember_tool_event(
     return stored
 
 
+def _artifact_rollup_lines(content: str, *, max_lines: int = 14) -> list[str]:
+    selected: list[str] = []
+    current_heading = ""
+    allowed_headings = {
+        "key decisions",
+        "action items",
+        "next steps",
+        "open questions",
+        "discussion summary",
+    }
+    for raw_line in (content or "").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("## "):
+            current_heading = line[3:].strip().lower()
+            continue
+        if line.startswith("#"):
+            continue
+        if current_heading and current_heading not in allowed_headings:
+            continue
+        if line.lower() in {"(none noted)", "- (none noted)", "none noted", "n/a"}:
+            continue
+        if line.startswith(("-", "*")) or current_heading in {"key decisions", "action items", "next steps", "open questions"}:
+            selected.append(line[:500])
+        elif current_heading == "discussion summary" and len(line) >= 20:
+            selected.append(line[:500])
+        if len(selected) >= max_lines:
+            break
+    return selected
+
+
+def remember_meeting_artifact(
+    *,
+    user_id: str,
+    room_id: str,
+    artifact_id: str,
+    artifact_type: str,
+    content_markdown: str,
+    room_name: str = "",
+    project_id: str | None = None,
+) -> bool:
+    """Roll important meeting outputs into shared work memory.
+
+    Room transcripts remain room-scoped. Summaries, decisions, action items,
+    next steps, and open questions are copied into a user-wide work session so
+    main Sparkbot chat can retrieve meeting outcomes without pretending the
+    meeting happened in the current room.
+    """
+    normalized_type = (artifact_type or "").strip().lower()
+    if normalized_type not in {"notes", "action_items", "decisions", "agenda"}:
+        return False
+    lines = _artifact_rollup_lines(content_markdown)
+    if not lines:
+        return False
+    title = room_name.strip() or f"room {room_id}"
+    content = "\n".join(
+        [
+            f"Meeting rollup from {title} ({normalized_type}):",
+            *lines,
+        ]
+    )
+    return _append_event(
+        event_type=EventType.SYSTEM,
+        role="system",
+        content=content,
+        session_id=_shared_work_session(user_id),
+        metadata={
+            "user_id": user_id,
+            "room_id": room_id,
+            "artifact_id": artifact_id,
+            "artifact_type": normalized_type,
+            "scope_type": "shared_work",
+            "project_id": project_id or "",
+        },
+        source=f"meeting.{normalized_type}.rollup",
+        confidence=0.86,
+        verification_state="recorded",
+    )
+
+
 def _emit_memory_event(event_type: str, content: str, payload: dict) -> None:
     """Emit a spine event for a memory action. Non-blocking — never raises."""
     try:
@@ -1075,10 +1163,13 @@ def build_memory_context(*, user_id: str, room_id: str, query: str) -> str:
     mode = _retriever_mode()
 
     user_block = ""
+    work_block = ""
     room_block = ""
     user_count = 0
+    work_count = 0
     room_count = 0
     user_top = 0.0
+    work_top = 0.0
     room_top = 0.0
 
     started = time.perf_counter()
@@ -1100,6 +1191,18 @@ def build_memory_context(*, user_id: str, room_id: str, query: str) -> str:
         user_top = user_hits[0].score if user_hits else 0.0
         if user_hits:
             user_block = guardian.packer.pack([hit.event for hit in user_hits]).strip()
+
+        work_hits = retriever.retrieve_scored(
+            prompt_query, limit=limit, session_id=_shared_work_session(user_id)
+        )
+        work_hits = [
+            hit for hit in work_hits
+            if _is_event_active_for_prompt(hit.event, inactive_refs=inactive_refs)
+        ]
+        work_count = len(work_hits)
+        work_top = work_hits[0].score if work_hits else 0.0
+        if work_hits:
+            work_block = guardian.packer.pack([hit.event for hit in work_hits]).strip()
 
         room_hits = retriever.retrieve_scored(
             prompt_query, limit=limit, session_id=_room_session(user_id, room_id)
@@ -1131,21 +1234,33 @@ def build_memory_context(*, user_id: str, room_id: str, query: str) -> str:
             )
         )
         user_count = len(user_events)
+        work_events = _filter_prompt_events(
+            guardian.retriever.retrieve(
+                prompt_query,
+                limit=limit,
+                session_id=_shared_work_session(user_id),
+                mode="fts",
+            )
+        )
+        work_count = len(work_events)
         room_count = len(room_events)
         user_block = guardian.packer.pack(user_events).strip()
+        work_block = guardian.packer.pack(work_events).strip()
         room_block = guardian.packer.pack(room_events).strip()
     finally:
         latency_ms = (time.perf_counter() - started) * 1000.0
         _STATS.record_recall(
             mode=mode,
             latency_ms=latency_ms,
-            event_count=user_count + room_count,
-            top_score=max(user_top, room_top),
+            event_count=user_count + work_count + room_count,
+            top_score=max(user_top, work_top, room_top),
             query=prompt_query,
         )
 
     if user_block and user_block != _NO_CONTEXT_MARKER:
         blocks.append("## Durable Memory\n" + user_block)
+    if work_block and work_block != _NO_CONTEXT_MARKER:
+        blocks.append("## Shared Work Memory\n" + work_block)
     if room_block and room_block != _NO_CONTEXT_MARKER:
         blocks.append("## Relevant Room Memory\n" + room_block)
     return "\n\n".join(blocks)
@@ -1216,7 +1331,7 @@ def recall_relevant_events(
     if effective_mode in {"embed", "hybrid"} and not _embeddings_enabled():
         effective_mode = "fts"
 
-    sessions: list[str] = [_user_session(user_id)]
+    sessions: list[str] = [_user_session(user_id), _shared_work_session(user_id)]
     if room_id:
         sessions.append(_room_session(user_id, room_id))
 
