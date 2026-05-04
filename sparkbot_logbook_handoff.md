@@ -41,7 +41,6 @@
 ### Release validation results
 
 - Running Linux service health: `GET /api/v1/utils/health-check/` returned `true`; Docker shows `sparkbot-backend-1` healthy on `127.0.0.1:8000`, frontend on `3001`, and Postgres healthy. Recent backend logs show normal health-check traffic without new tracebacks.
-- Running container caveat: the live container image reports backend version `1.6.57`, so live service checks confirm service health but not the newly pushed `1.6.59` code paths.
 - Main chat -> meeting -> main chat continuity: isolated runtime validation wrote a main-room message, promoted a Release Roundtable notes artifact, then queried main chat context. Result: `main_chat_shared_memory=True`.
 - Shared Work Memory quality: duplicate validation promoted the first rollup and skipped the second exact duplicate. Result: `meeting_rollup_first=True`, `meeting_rollup_duplicate_skipped=True`, `shared_work_event_count=1`.
 - Structured memory recall: `memory_recall` now includes the shared work session. Result: `structured_recall_shared_work=True`.
@@ -51,9 +50,27 @@
 - Guardian Spine continuity: creating a meeting action artifact still produced one Spine task for the meeting room.
 - Focused tests: `uv run pytest -q backend/tests/services/test_guardian_memory.py backend/tests/api/routes/test_chat_models_openrouter.py backend/tests/services/test_guardian_spine.py` passed `61` tests.
 
+### Live Linux deployment results
+
+- Rebuilt the live local Compose stack with `docker compose -f compose.local.yml build backend frontend prestart`.
+- Ran rebuilt prestart successfully: `sparkbot-prestart-1` exited `0`.
+- Recreated backend and frontend with `docker compose -f compose.local.yml up -d --no-deps --force-recreate backend frontend`.
+- Deployed backend package confirmed live: `docker exec sparkbot-backend-1 python -c "import importlib.metadata; print(importlib.metadata.version('app'))"` returned `1.6.59`.
+- Recreated image IDs/start times: backend `sha256:aedcac7ddf439808e015379f6d41ed3271209d4babb9abb99b33e60e6e43a521` started `2026-05-04T15:54:10Z`; frontend `sha256:88c5561b7a16d86b8f783dd4314b24c89945a612dc0626930fdb47ced3ab0b0f` started `2026-05-04T15:54:10Z`.
+- Live health after redeploy: backend healthy, Postgres healthy, `curl -s http://127.0.0.1:8000/api/v1/utils/health-check/` returned `true`, and `curl -s http://127.0.0.1:3001/` returned the frontend HTML shell.
+- Backend logs after redeploy show normal startup, two worker startups, Guardian Vault DB initialization at `/app/backend/data/guardian/vault.db`, reminder scheduler startup, and health-check traffic. No new deployment traceback was observed.
+- Live smoke inside the redeployed backend container returned:
+  - `deployed_package_version=1.6.59`
+  - `main_chat_meeting_continuity=True`
+  - `shared_work_retrieval=True`
+  - `shared_work_duplicate_control=True`
+  - `desktop_memory_default=/tmp/sparkbot-live-smoke-pjqaq15q/desktop_data/memory_guardian`
+  - `selector_persisted=True ollama/phi4-mini restart=ollama/phi4-mini controls=ollama/phi4-mini`
+  - `meeting_model_label=Phi-4 Mini — best default quality/speed balance (~2.5 GB) provider=ollama route=local`
+  - `spine_task_continuity=True task_count=1 artifact=40acda63-c9f9-4c70-bf26-4803bad21af2`
+
 ### Remaining before public release
 
 - Run a full Windows packaged installer smoke test against the v1.6.59 artifacts.
-- Deploy/rebuild the Linux container if the server should run the pushed v1.6.59 code before public release; the currently running container reports v1.6.57.
 - Verify an end-to-end roundtable in the installed Windows app: generate notes, return to main chat, ask about a decision/action item, and confirm shared work memory appears.
 - Consider a future cleanup for persisted per-user model preferences if Sparkbot needs multi-user primary-model ownership rather than one operator/default route.
