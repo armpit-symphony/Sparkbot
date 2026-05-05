@@ -189,8 +189,12 @@ async def terminal_websocket(websocket: WebSocket, session_id: str) -> None:
             return
         token = auth_msg["token"]
 
-    db = next(get_db())
-    user = await get_current_chat_user_from_token(token, db)
+    db_gen = get_db()
+    db = next(db_gen)
+    try:
+        user = await get_current_chat_user_from_token(token, db)
+    finally:
+        db_gen.close()
     if not user:
         await websocket.close(code=4001, reason="Invalid or expired token")
         return

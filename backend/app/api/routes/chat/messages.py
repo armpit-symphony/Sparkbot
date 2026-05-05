@@ -9,12 +9,11 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.api.deps import CurrentChatUser, SessionDep
 from app.crud import (
-    create_chat_message,
+    create_chat_message as crud_create_chat_message,
     get_chat_message_by_id,
     get_chat_messages,
     get_chat_room_by_id,
@@ -33,6 +32,16 @@ router = APIRouter(prefix="/messages", tags=["chat-messages"])
 # Configuration
 SPARKBOT_URL = "http://127.0.0.1:8080"
 logger = logging.getLogger(__name__)
+
+
+def _escape_like_query(value: str) -> str:
+    """Escape LIKE wildcards so search treats user text literally."""
+    return (
+        value
+        .replace("\\", "\\\\")
+        .replace("%", "\\%")
+        .replace("_", "\\_")
+    )
 
 
 def _require_room_access(
@@ -149,7 +158,7 @@ def search_room_messages(
     results = session.exec(
         select(ChatMessage)
         .where(ChatMessage.room_id == room_id)
-        .where(ChatMessage.content.ilike(f"%{q}%"))
+        .where(ChatMessage.content.ilike(f"%{_escape_like_query(q)}%", escape="\\"))
         .order_by(ChatMessage.created_at.desc())
         .limit(limit)
     ).all()
@@ -203,7 +212,7 @@ def read_chat_message(
 
 
 @router.post("/{room_id}", response_model=MessageResponse)
-async def create_chat_message(
+async def create_room_message(
     room_id: UUID,
     message_in: MessageCreate,
     session: SessionDep,
@@ -218,7 +227,7 @@ async def create_chat_message(
     if membership.role == RoomRole.VIEWER:
         raise HTTPException(status_code=403, detail="VIEWERs cannot send messages")
     
-    message = create_chat_message(
+    message = crud_create_chat_message(
         session=session,
         room_id=room_id,
         sender_id=current_user.id,
@@ -240,7 +249,7 @@ async def create_chat_message(
             bot_user = get_sparkbot_user(session)
             if bot_user:
                 # Create bot response message
-                bot_message = create_chat_message(
+                bot_message = crud_create_chat_message(
                     session=session,
                     room_id=room_id,
                     sender_id=bot_user.id,

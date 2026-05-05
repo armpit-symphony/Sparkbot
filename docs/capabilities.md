@@ -1920,7 +1920,7 @@ curl -b cookies.txt http://localhost:8000/api/v1/chat/system/watcher | python -m
 
 Desktop release tags and app versions are aligned on the `1.6.x` release line.
 
-For `v1.6.61`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release line hotfixes OpenRouter-routed Windows/local chat and Roundtable responses by retrying the same selected OpenRouter model without tools when the endpoint rejects `remember_fact`/tool use. It carries forward the v1.6.60 chaired Roundtable flow, manual-only meeting notes, assigned-provider readiness checks, mobile meeting scrolling, and the v1.6.59 memory-continuity/model-routing stabilization.
+For `v1.6.62`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release line hardens chat and workstation operations by fixing REST message creation recursion, escaping message-search wildcards, limiting chat-user creation to operator identities, closing WebSocket DB sessions on every exit path, pruning in-memory rate-limit state, removing closed terminal sessions, limiting upload MIME sniffing, and keeping local JWT secrets stable across restarts while production rejects unsafe defaults.
 
 ### How to upgrade safely
 

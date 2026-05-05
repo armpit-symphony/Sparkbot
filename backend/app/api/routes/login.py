@@ -18,7 +18,12 @@ _WINDOW_SECONDS = 15 * 60
 def _check_rate_limit(ip: str) -> None:
     now = time.time()
     with _rate_lock:
-        _login_attempts[ip] = [t for t in _login_attempts[ip] if now - t < _WINDOW_SECONDS]
+        for key in list(_login_attempts):
+            recent = [t for t in _login_attempts[key] if now - t < _WINDOW_SECONDS]
+            if recent:
+                _login_attempts[key] = recent
+            else:
+                del _login_attempts[key]
         if len(_login_attempts[ip]) >= _MAX_ATTEMPTS:
             raise HTTPException(
                 status_code=429,
@@ -28,8 +33,10 @@ def _check_rate_limit(ip: str) -> None:
 
 
 def _record_failed_attempt(ip: str) -> None:
+    now = time.time()
     with _rate_lock:
-        _login_attempts[ip].append(time.time())
+        _login_attempts[ip] = [t for t in _login_attempts[ip] if now - t < _WINDOW_SECONDS]
+        _login_attempts[ip].append(now)
 
 from app import crud
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser

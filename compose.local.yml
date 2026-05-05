@@ -31,7 +31,7 @@ services:
       - sparkbot-local-db:/var/lib/postgresql/data/pgdata
     environment:
       PGDATA: /var/lib/postgresql/data/pgdata
-      POSTGRES_PASSWORD: sparkbot-local
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run scripts/sparkbot-start.sh or set POSTGRES_PASSWORD in .env}
       POSTGRES_USER: sparkbot
       POSTGRES_DB: sparkbot
 
@@ -50,7 +50,7 @@ services:
       - POSTGRES_PORT=5432
       - POSTGRES_DB=sparkbot
       - POSTGRES_USER=sparkbot
-      - POSTGRES_PASSWORD=sparkbot-local
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?Run scripts/sparkbot-start.sh or set POSTGRES_PASSWORD in .env}
       - ENVIRONMENT=local
       - DATABASE_TYPE=postgresql
       - FIRST_SUPERUSER=${FIRST_SUPERUSER:-admin@example.com}
@@ -79,7 +79,7 @@ services:
       - POSTGRES_PORT=5432
       - POSTGRES_DB=sparkbot
       - POSTGRES_USER=sparkbot
-      - POSTGRES_PASSWORD=sparkbot-local
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?Run scripts/sparkbot-start.sh or set POSTGRES_PASSWORD in .env}
       - ENVIRONMENT=local
       - DOMAIN=localhost
       - FRONTEND_HOST=http://localhost:${SPARKBOT_FRONTEND_PORT:-3000}

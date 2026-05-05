@@ -34,9 +34,15 @@ _CHAT_WINDOW_SECONDS = 15 * 60
 def _check_chat_rate_limit(ip: str) -> None:
     now = time.time()
     with _chat_rate_lock:
-        _chat_login_attempts[ip] = [
-            ts for ts in _chat_login_attempts[ip] if now - ts < _CHAT_WINDOW_SECONDS
-        ]
+        for key in list(_chat_login_attempts):
+            recent = [
+                ts for ts in _chat_login_attempts[key]
+                if now - ts < _CHAT_WINDOW_SECONDS
+            ]
+            if recent:
+                _chat_login_attempts[key] = recent
+            else:
+                del _chat_login_attempts[key]
         if len(_chat_login_attempts[ip]) >= _CHAT_MAX_ATTEMPTS:
             raise HTTPException(
                 status_code=429,
@@ -46,8 +52,12 @@ def _check_chat_rate_limit(ip: str) -> None:
 
 
 def _record_failed_chat_attempt(ip: str) -> None:
+    now = time.time()
     with _chat_rate_lock:
-        _chat_login_attempts[ip].append(time.time())
+        _chat_login_attempts[ip] = [
+            ts for ts in _chat_login_attempts[ip] if now - ts < _CHAT_WINDOW_SECONDS
+        ]
+        _chat_login_attempts[ip].append(now)
 
 
 def _get_or_create_chat_user(
@@ -211,6 +221,12 @@ def create_chat_user(
     current_user: CurrentChatUser,
 ) -> Any:
     """Create a new chat user (admin only)."""
+    if not get_guardian_suite().auth.is_operator_identity(
+        username=current_user.username,
+        user_type=current_user.type,
+    ):
+        raise HTTPException(status_code=403, detail="Only operators can create chat users")
+
     # Check if username exists
     existing = session.execute(
         select(ChatUser).where(ChatUser.username == user_in.username)

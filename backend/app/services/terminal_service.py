@@ -386,7 +386,7 @@ class TerminalSessionManager:
     # ── Close ─────────────────────────────────────────────────────────────────
 
     async def close_session(self, session_id: str) -> None:
-        session = self._sessions.get(session_id)
+        session = self._sessions.pop(session_id, None)
         if not session:
             return
         session.status = "closed"

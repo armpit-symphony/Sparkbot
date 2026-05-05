@@ -199,7 +199,13 @@ def test_noninteractive_setup_creates_env_and_does_not_echo_secret(tmp_path: Pat
     assert "POSTGRES_PORT=5432" in content
     assert "POSTGRES_DB=sparkbot" in content
     assert "POSTGRES_USER=sparkbot" in content
-    assert "POSTGRES_PASSWORD=sparkbot-local" in content
+    postgres_password = next(
+        line.split("=", 1)[1]
+        for line in content.splitlines()
+        if line.startswith("POSTGRES_PASSWORD=")
+    )
+    assert postgres_password
+    assert postgres_password != "sparkbot-local"
     assert "SPARKBOT_FRONTEND_PORT=3000" in content
     assert "SPARKBOT_FRONTEND_BIND_HOST=127.0.0.1" in content
     assert "SPARKBOT_MODEL=gpt-5-mini" in content

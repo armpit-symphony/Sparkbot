@@ -1,10 +1,11 @@
 # Release Notes
 
-## Sparkbot v1.6.61
+## Sparkbot v1.6.62
 
-- Fixed OpenRouter-routed Windows/local chat and Roundtable responses when the selected OpenRouter endpoint does not support tool use.
-- Sparkbot now retries the same OpenRouter model without the tool payload when OpenRouter rejects `remember_fact`/tool use, preserving normal text replies instead of showing a provider 404.
-- Advanced backend, frontend, Tauri shell, public downloader, service worker, README, capabilities docs, release notes, and packaging notes to v1.6.61.
+- Fixed a REST chat-message recursion bug, escaped message-search wildcards, and restricted chat-user creation to configured operator identities.
+- Closed leaked database sessions in chat and terminal WebSocket authentication paths, pruned login/PIN rate-limiter state, removed closed terminal sessions from memory, and limited upload MIME sniffing to the first bytes of the file.
+- Stabilized local configuration by replacing restart-generated default JWT secrets with an explicit weak local placeholder that production rejects, rejecting `Letmein12345`, generating local Postgres passwords during setup, and moving FastAPI startup/shutdown work to lifespan.
+- Advanced backend, frontend, Tauri shell, public downloader, service worker, README, capabilities docs, release notes, and packaging notes to v1.6.62.
 
 ## Sparkbot v1.6.60
 

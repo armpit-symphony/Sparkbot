@@ -1,4 +1,3 @@
-import secrets
 import warnings
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -33,7 +32,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
     API_V1_STR: str = "/api/v1"
-    SECRET_KEY: str = secrets.token_urlsafe(32)
+    SECRET_KEY: str = "changethis"
     # 60 minutes * 24 hours * 8 days = 8 days
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8
     FRONTEND_HOST: str = "http://localhost:5173"
@@ -145,6 +144,9 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _enforce_non_default_secrets(self) -> Self:
+        explicitly_set = self.model_fields_set
+        if self.ENVIRONMENT == "production" and "SECRET_KEY" not in explicitly_set:
+            self._production_error("SECRET_KEY must be explicitly set.")
         self._check_default_secret("SECRET_KEY", self.SECRET_KEY)
         self._check_default_secret("POSTGRES_PASSWORD", self.POSTGRES_PASSWORD)
         _weak_defaults = {
@@ -152,6 +154,7 @@ class Settings(BaseSettings):
             "admin",
             "admin123",
             "changethis",
+            "letmein12345",
             "password",
             "sparkbot",
             "sparkbot-local",
@@ -159,7 +162,7 @@ class Settings(BaseSettings):
             "REPLACE_WITH_ADMIN_PASSWORD",
             "REPLACE_WITH_STRONG_PASSPHRASE",
         }
-        if self.FIRST_SUPERUSER_PASSWORD in _weak_defaults:
+        if (self.FIRST_SUPERUSER_PASSWORD or "").strip().lower() in _weak_defaults:
             message = (
                 'FIRST_SUPERUSER_PASSWORD is set to a known weak default. '
                 'Please change it for deployments.'
@@ -168,7 +171,7 @@ class Settings(BaseSettings):
                 warnings.warn(message, stacklevel=1)
             else:
                 raise ValueError(message)
-        if self.SPARKBOT_PASSPHRASE in _weak_defaults:
+        if (self.SPARKBOT_PASSPHRASE or "").strip().lower() in _weak_defaults:
             message = (
                 'SPARKBOT_PASSPHRASE is set to a known weak default. '
                 'Please change it for deployments.'
@@ -178,9 +181,6 @@ class Settings(BaseSettings):
             else:
                 raise ValueError(message)
         if self.ENVIRONMENT == "production":
-            explicitly_set = self.model_fields_set
-            if "SECRET_KEY" not in explicitly_set:
-                self._production_error("SECRET_KEY must be explicitly set.")
             if "FRONTEND_HOST" not in explicitly_set or self._is_local_origin(self.FRONTEND_HOST):
                 self._production_error("FRONTEND_HOST must be the real public frontend URL.")
             if "BACKEND_CORS_ORIGINS" not in explicitly_set or not self.BACKEND_CORS_ORIGINS:

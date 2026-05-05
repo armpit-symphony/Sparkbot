@@ -229,15 +229,20 @@ def is_locked_out(user_id: str) -> bool:
     """Return True if this user_id has too many recent failed PIN attempts."""
     now = time.time()
     window = _pin_lockout_window()
-    attempts = _FAILED_ATTEMPTS.get(user_id, [])
-    recent = [t for t in attempts if now - t < window]
-    _FAILED_ATTEMPTS[user_id] = recent
+    for key in list(_FAILED_ATTEMPTS):
+        recent = [t for t in _FAILED_ATTEMPTS[key] if now - t < window]
+        if recent:
+            _FAILED_ATTEMPTS[key] = recent
+        else:
+            del _FAILED_ATTEMPTS[key]
+    recent = _FAILED_ATTEMPTS.get(user_id, [])
     return len(recent) >= _pin_max_attempts()
 
 
 def _record_failed_attempt(user_id: str) -> None:
     now = time.time()
-    attempts = _FAILED_ATTEMPTS.get(user_id, [])
+    window = _pin_lockout_window()
+    attempts = [t for t in _FAILED_ATTEMPTS.get(user_id, []) if now - t < window]
     attempts.append(now)
     _FAILED_ATTEMPTS[user_id] = attempts
 

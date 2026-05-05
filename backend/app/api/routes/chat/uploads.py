@@ -57,7 +57,8 @@ def serve_upload(
         raise HTTPException(status_code=404, detail="File not found")
 
     # Determine content type from magic bytes, not the stored filename.
-    raw = file_path.read_bytes()
+    with file_path.open("rb") as handle:
+        raw = handle.read(16)
     detected_mime = detect_image_type(raw)
 
     if detected_mime:
@@ -203,30 +204,33 @@ async def upload_file(
 
         # Save bot reply
         try:
-            db = next(get_db())
-            bot_user = db.exec(select(ChatUser).where(ChatUser.username == "sparkbot")).scalar_one_or_none()
-            if not bot_user:
-                bot_user = ChatUser(
-                    username="sparkbot",
-                    type=UserType.BOT,
-                    is_active=True,
-                    hashed_password=None,
-                    bot_display_name="Sparkbot",
-                    bot_slug="sparkbot",
+            db_gen = get_db()
+            db = next(db_gen)
+            try:
+                bot_user = db.exec(select(ChatUser).where(ChatUser.username == "sparkbot")).scalar_one_or_none()
+                if not bot_user:
+                    bot_user = ChatUser(
+                        username="sparkbot",
+                        type=UserType.BOT,
+                        is_active=True,
+                        hashed_password=None,
+                        bot_display_name="Sparkbot",
+                        bot_slug="sparkbot",
+                    )
+                    db.add(bot_user)
+                    db.commit()
+                    db.refresh(bot_user)
+                bot_reply = create_chat_message(
+                    session=db,
+                    room_id=room_id,
+                    sender_id=bot_user.id,
+                    content=full_text,
+                    sender_type="BOT",
+                    reply_to_id=human_msg_uuid,
                 )
-                db.add(bot_user)
-                db.commit()
-                db.refresh(bot_user)
-            bot_reply = create_chat_message(
-                session=db,
-                room_id=room_id,
-                sender_id=bot_user.id,
-                content=full_text,
-                sender_type="BOT",
-                reply_to_id=human_msg_uuid,
-            )
-            bot_reply_id = str(bot_reply.id)
-            db.close()
+                bot_reply_id = str(bot_reply.id)
+            finally:
+                db_gen.close()
             yield f"data: {json.dumps({'type': 'done', 'message_id': bot_reply_id, 'file_url': file_url})}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'error': f'Save failed: {e}'})}\n\n"

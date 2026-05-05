@@ -66,3 +66,16 @@ def test_production_accepts_real_frontend_and_cors_origins() -> None:
         "https://sparkpitlabs.com",
         "https://sparkpitlabs.com",
     ]
+
+
+def test_production_rejects_letmein_passphrase() -> None:
+    with pytest.raises(ValidationError, match="SPARKBOT_PASSPHRASE is set to a known weak default"):
+        Settings(
+            _env_file=None,
+            ENVIRONMENT="production",
+            SECRET_KEY="test-secret-key-that-is-long-enough",
+            FRONTEND_HOST="https://sparkpitlabs.com",
+            BACKEND_CORS_ORIGINS="https://sparkpitlabs.com",
+            FIRST_SUPERUSER_PASSWORD="strong-admin-password",
+            SPARKBOT_PASSPHRASE="Letmein12345",
+        )

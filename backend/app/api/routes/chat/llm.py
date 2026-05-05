@@ -278,7 +278,7 @@ _PENDING_TTL = 600  # 10 minutes
 
 
 def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _pending_ttl_cleanup() -> None:

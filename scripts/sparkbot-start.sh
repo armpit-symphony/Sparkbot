@@ -283,9 +283,14 @@ sync_compose_env() {
   local frontend_port="$1"
   local frontend_bind_host="$2"
   local frontend_local_mode="$3"
+  local postgres_password
+  postgres_password="$(env_get_from_file "${ENV_FILE}" "POSTGRES_PASSWORD")"
   env_set_in_file "${COMPOSE_ENV_FILE}" "SPARKBOT_FRONTEND_PORT" "${frontend_port}"
   env_set_in_file "${COMPOSE_ENV_FILE}" "SPARKBOT_FRONTEND_BIND_HOST" "${frontend_bind_host}"
   env_set_in_file "${COMPOSE_ENV_FILE}" "VITE_V1_LOCAL_MODE" "${frontend_local_mode}"
+  if [ -n "${postgres_password}" ]; then
+    env_set_in_file "${COMPOSE_ENV_FILE}" "POSTGRES_PASSWORD" "${postgres_password}"
+  fi
 }
 
 detect_public_ip() {

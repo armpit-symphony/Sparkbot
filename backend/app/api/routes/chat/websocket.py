@@ -12,6 +12,7 @@ from typing import Dict, Optional, Set
 from uuid import UUID
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
+from starlette.websockets import WebSocketState
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
@@ -66,13 +67,15 @@ async def websocket_main(websocket: WebSocket):
             return
         token = auth_data["token"]
 
-    db = next(get_db())
-    user = await get_current_chat_user_from_token(token, db)
-    if not user:
-        await websocket.close(code=4001, reason="Invalid or expired token")
-        return
-
+    db_gen = get_db()
+    db = next(db_gen)
+    user = None
     try:
+        user = await get_current_chat_user_from_token(token, db)
+        if not user:
+            await websocket.close(code=4001, reason="Invalid or expired token")
+            return
+
         while True:
             data = await websocket.receive_json()
             msg_type = data.get("type")
@@ -148,8 +151,10 @@ async def websocket_main(websocket: WebSocket):
         pass
     finally:
         # Clean up all connections for this user
-        for room_id in list(ws_manager.user_rooms.get(str(user.id), set())):
-            await ws_manager.leave_room(websocket, room_id, str(user.id))
+        if user:
+            for room_id in list(ws_manager.user_rooms.get(str(user.id), set())):
+                await ws_manager.leave_room(websocket, room_id, str(user.id))
+        db_gen.close()
 
 
 class ConnectionManager:
@@ -220,7 +225,7 @@ class ConnectionManager:
                 continue
             
             try:
-                if websocket.client_state == websocket.application_state.CONNECTED:
+                if websocket.application_state == WebSocketState.CONNECTED:
                     await websocket.send_json(message)
             except Exception as e:
                 logger.warning(f"[WS] Failed to send to {user_id}: {e}")
@@ -395,38 +400,41 @@ async def websocket_chat(
         token = auth_data["token"]
 
     # Validate room exists
-    db = next(get_db())
+    db_gen = get_db()
+    db = next(db_gen)
     room_uuid = None
+    user = None
     try:
         room_uuid = UUID(room_id)
     except ValueError:
         await websocket.close(code=4000, reason="Invalid room ID format")
+        db_gen.close()
         return
 
-    room = get_chat_room_by_id(db, room_uuid)
-    if not room:
-        await websocket.close(code=4004, reason="Room not found")
-        return
-
-    # Validate token and get user
-    user = await get_current_chat_user_from_token(token, db)
-    if not user:
-        await websocket.close(code=4001, reason="Invalid or expired token")
-        return
-    
-    # Verify room membership
-    membership = get_chat_room_member(db, room_uuid, user.id)
-    if not membership:
-        await websocket.close(code=4003, reason="Not a member of this room")
-        return
-    
-    # Check if VIEWERs can connect (they can view but not send)
-    can_send = membership.role not in [RoomRole.VIEWER]
-
-    # Register connection
-    await ws_manager.connect(websocket, room_id, str(user.id))
-    
     try:
+        room = get_chat_room_by_id(db, room_uuid)
+        if not room:
+            await websocket.close(code=4004, reason="Room not found")
+            return
+
+        # Validate token and get user
+        user = await get_current_chat_user_from_token(token, db)
+        if not user:
+            await websocket.close(code=4001, reason="Invalid or expired token")
+            return
+
+        # Verify room membership
+        membership = get_chat_room_member(db, room_uuid, user.id)
+        if not membership:
+            await websocket.close(code=4003, reason="Not a member of this room")
+            return
+
+        # Check if VIEWERs can connect (they can view but not send)
+        can_send = membership.role not in [RoomRole.VIEWER]
+
+        # Register connection
+        await ws_manager.connect(websocket, room_id, str(user.id))
+
         # Send initial data
         messages, total, has_more = get_chat_messages(db, room_uuid, limit=50)
         
@@ -555,6 +563,10 @@ async def websocket_chat(
     
     finally:
         # Disconnect and broadcast
+        if not user:
+            db_gen.close()
+            return
+
         await ws_manager.disconnect(room_id, str(user.id))
         
         # Broadcast leaving
@@ -582,4 +594,4 @@ async def websocket_chat(
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
         
-        db.close()
+        db_gen.close()

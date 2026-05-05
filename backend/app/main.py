@@ -1,5 +1,6 @@
 import sentry_sdk
 import asyncio
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -42,12 +43,6 @@ if settings.SENTRY_DSN and settings.ENVIRONMENT != "local":
         before_send=_sentry_before_send,
     )
 
-app = FastAPI(
-    title=settings.PROJECT_NAME,
-    openapi_url=f"{settings.API_V1_STR}/openapi.json",
-    generate_unique_id_function=custom_generate_unique_id,
-)
-
 class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         response = await call_next(request)
@@ -68,32 +63,6 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
         return response
 
-
-# Set all CORS enabled origins
-if settings.all_cors_origins:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.all_cors_origins,
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "Accept"],
-    )
-
-app.add_middleware(_SecurityHeadersMiddleware)
-
-app.include_router(api_router, prefix=settings.API_V1_STR)
-
-# WhatsApp webhook routes mounted here (before uvicorn starts serving).
-# Skipped in V1_LOCAL_MODE — no bridge tokens expected for local installs.
-if not settings.V1_LOCAL_MODE:
-    try:
-        from app.services.whatsapp_bridge import register_whatsapp_bridge
-        register_whatsapp_bridge(app, get_db)
-    except Exception:
-        pass
-
-
-@app.on_event("startup")
 async def _load_persisted_env() -> None:
     """Load saved settings from data/.env so all workers start with the
     latest operator-configured values (model stack, provider keys, etc.)."""
@@ -104,8 +73,7 @@ async def _load_persisted_env() -> None:
         pass
 
 
-@app.on_event("startup")
-async def _start_background_guardians() -> None:
+async def _start_background_guardians(app: FastAPI) -> None:
     guardian_suite = get_guardian_suite()
     if not getattr(app.state, "reminder_scheduler_task", None):
         app.state.reminder_scheduler_task = asyncio.create_task(reminder_scheduler())
@@ -133,9 +101,12 @@ async def _start_background_guardians() -> None:
     # Load custom agents persisted in DB into the runtime registry
     try:
         from app.api.routes.chat.agents import load_db_agents_into_registry
-        db = next(get_db())
-        load_db_agents_into_registry(db)
-        db.close()
+        db_gen = get_db()
+        db = next(db_gen)
+        try:
+            load_db_agents_into_registry(db)
+        finally:
+            db_gen.close()
     except Exception:
         pass
 
@@ -157,8 +128,7 @@ async def _start_background_guardians() -> None:
         app.state.process_watcher_task = asyncio.create_task(process_watcher_loop())
 
 
-@app.on_event("shutdown")
-async def _stop_background_guardians() -> None:
+async def _stop_background_guardians(app: FastAPI) -> None:
     cancel_attrs = ["reminder_scheduler_task", "task_guardian_scheduler_task", "memory_guardian_nightly_task", "process_watcher_task", "telegram_poller_task", "discord_bot_task"]
     for attr in cancel_attrs:
         task = getattr(app.state, attr, None)
@@ -169,5 +139,46 @@ async def _stop_background_guardians() -> None:
     try:
         from app.services.terminal_service import terminal_manager as _tm
         await _tm.stop()
+    except Exception:
+        pass
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await _load_persisted_env()
+    await _start_background_guardians(app)
+    try:
+        yield
+    finally:
+        await _stop_background_guardians(app)
+
+
+app = FastAPI(
+    title=settings.PROJECT_NAME,
+    openapi_url=f"{settings.API_V1_STR}/openapi.json",
+    generate_unique_id_function=custom_generate_unique_id,
+    lifespan=lifespan,
+)
+
+# Set all CORS enabled origins
+if settings.all_cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.all_cors_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "Accept"],
+    )
+
+app.add_middleware(_SecurityHeadersMiddleware)
+
+app.include_router(api_router, prefix=settings.API_V1_STR)
+
+# WhatsApp webhook routes mounted here (before uvicorn starts serving).
+# Skipped in V1_LOCAL_MODE — no bridge tokens expected for local installs.
+if not settings.V1_LOCAL_MODE:
+    try:
+        from app.services.whatsapp_bridge import register_whatsapp_bridge
+        register_whatsapp_bridge(app, get_db)
     except Exception:
         pass

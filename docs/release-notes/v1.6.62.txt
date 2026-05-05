@@ -1,0 +1,6 @@
+Sparkbot v1.6.62
+
+- Fixed the REST chat-message recursion bug, escaped literal message-search wildcards, and made chat-user creation operator-only.
+- Closed database sessions in chat and terminal WebSocket auth paths, pruned in-memory login/PIN rate-limit buckets, and removed closed terminal sessions from the session map.
+- Reduced upload MIME sniffing to the first bytes of the served file, made local SECRET_KEY behavior stable across restarts while production still rejects unsafe defaults, rejected `Letmein12345`, and generated local Postgres passwords during setup.
+- Moved FastAPI startup/shutdown handlers to lifespan and advanced backend, frontend, Tauri shell, public downloader, service worker, README, capabilities docs, release notes, and packaging notes to v1.6.62.

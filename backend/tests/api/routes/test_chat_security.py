@@ -1,4 +1,5 @@
 from datetime import timedelta
+from unittest.mock import patch
 from uuid import UUID
 
 import pytest
@@ -236,6 +237,68 @@ def test_room_listing_and_message_lookup_require_auth_and_membership(
         f"{settings.API_V1_STR}/chat/messages/{room_id}/message/{message_id}"
     )
     assert unauth_message.status_code in {401, 403}
+
+
+def test_message_search_escapes_like_wildcards(client: TestClient) -> None:
+    room_id, owner_id = _create_room_with_owner()
+    with Session(engine) as db:
+        db.add(
+            ChatMessage(
+                room_id=room_id,
+                sender_id=owner_id,
+                sender_type=UserType.HUMAN,
+                content="literal 100% match",
+            )
+        )
+        db.add(
+            ChatMessage(
+                room_id=room_id,
+                sender_id=owner_id,
+                sender_type=UserType.HUMAN,
+                content="plain 1000 match",
+            )
+        )
+        db.commit()
+
+    response = client.get(
+        f"{settings.API_V1_STR}/chat/messages/{room_id}/search",
+        headers=_chat_headers_for_user(owner_id),
+        params={"q": "100%"},
+    )
+
+    assert response.status_code == 200
+    contents = [item["content"] for item in response.json()["messages"]]
+    assert contents == ["literal 100% match"]
+
+
+def test_message_create_route_uses_crud_function(client: TestClient) -> None:
+    room_id, owner_id = _create_room_with_owner()
+
+    with patch("app.api.routes.chat.messages.call_sparkbot_inline", return_value=None):
+        response = client.post(
+            f"{settings.API_V1_STR}/chat/messages/{room_id}",
+            headers=_chat_headers_for_user(owner_id),
+            json={"content": "hello through REST"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["content"] == "hello through REST"
+
+
+def test_chat_user_creation_requires_operator_identity(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user_id = _create_chat_user("non-operator")
+    monkeypatch.setenv("SPARKBOT_OPERATOR_USERNAMES", "configured-operator")
+
+    response = client.post(
+        f"{settings.API_V1_STR}/chat/users/",
+        headers=_chat_headers_for_user(user_id),
+        json={"username": f"bot-{random_lower_string()[:8]}", "type": "BOT"},
+    )
+
+    assert response.status_code == 403
 
 
 def test_audit_endpoints_require_room_scope_and_membership(
