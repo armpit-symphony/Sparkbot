@@ -301,6 +301,57 @@ def test_locked_provider_retries_without_tools_before_failing(monkeypatch) -> No
     ]
 
 
+def test_openrouter_retries_without_tools_when_provider_has_no_tool_endpoint(monkeypatch) -> None:
+    calls: list[tuple[str, bool]] = []
+
+    class _FakeMessage:
+        tool_calls = None
+        content = "OPENROUTER_TEXT_OK"
+
+        def model_dump(self, exclude_none: bool = True):
+            return {"role": "assistant", "content": "OPENROUTER_TEXT_OK"}
+
+    class _FakeResponse:
+        choices = [SimpleNamespace(finish_reason="stop", message=_FakeMessage())]
+
+    async def fake_acompletion(*, model: str, **kwargs):
+        calls.append((model, "tools" in kwargs))
+        if "tools" in kwargs:
+            raise RuntimeError(
+                'NotFoundError: OpenrouterException - {"error":{"message":"No endpoints found that support '
+                'tool use. Try disabling remember_fact.","code":404}}'
+            )
+        return _FakeResponse()
+
+    monkeypatch.setattr(llm.litellm, "acompletion", fake_acompletion)
+
+    route_context = {
+        "route": "default",
+        "provider_locked": True,
+        "requested_provider": "openrouter",
+        "model": "openrouter/meta-llama/llama-3.1-8b-instruct:free",
+        "cross_provider_fallback": False,
+    }
+
+    chosen_model, response = asyncio.run(
+        llm._acompletion_with_fallback(
+            model="openrouter/meta-llama/llama-3.1-8b-instruct:free",
+            route_context=route_context,
+            messages=[{"role": "user", "content": "test"}],
+            tools=[{"type": "function", "function": {"name": "remember_fact", "parameters": {"type": "object"}}}],
+            tool_choice="auto",
+            stream=False,
+        )
+    )
+
+    assert chosen_model == "openrouter/meta-llama/llama-3.1-8b-instruct:free"
+    assert response.choices[0].message.content == "OPENROUTER_TEXT_OK"
+    assert calls == [
+        ("openrouter/meta-llama/llama-3.1-8b-instruct:free", True),
+        ("openrouter/meta-llama/llama-3.1-8b-instruct:free", False),
+    ]
+
+
 def test_meeting_agent_route_display_exposes_non_secret_model_metadata(monkeypatch) -> None:
     from app.api.routes.chat import rooms
 

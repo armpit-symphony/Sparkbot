@@ -1,0 +1,5 @@
+Sparkbot v1.6.61
+
+- Fixed OpenRouter-routed Windows/local chat and Roundtable responses when the selected OpenRouter endpoint rejects tool use.
+- Sparkbot now retries the same OpenRouter model without the `remember_fact`/tool payload so users get normal text replies instead of provider 404 errors.
+- Advanced backend, frontend, Tauri shell, public downloader, service worker, README, capabilities docs, release notes, and packaging notes to v1.6.61.

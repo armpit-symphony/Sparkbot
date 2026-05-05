@@ -1,5 +1,11 @@
 # Release Notes
 
+## Sparkbot v1.6.61
+
+- Fixed OpenRouter-routed Windows/local chat and Roundtable responses when the selected OpenRouter endpoint does not support tool use.
+- Sparkbot now retries the same OpenRouter model without the tool payload when OpenRouter rejects `remember_fact`/tool use, preserving normal text replies instead of showing a provider 404.
+- Advanced backend, frontend, Tauri shell, public downloader, service worker, README, capabilities docs, release notes, and packaging notes to v1.6.61.
+
 ## Sparkbot v1.6.60
 
 - Smoothed Roundtable into a Seat 1 chaired working session: first-pass ideas, manager assessment, assignments, assigned-work pass, manager summary, and a manager decision to plan, adjust, continue, or ask for operator input.

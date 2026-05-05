@@ -6,7 +6,7 @@ Use it to chat, search, summarize documents, control a browser, run shell comman
 
 **Download:** [armpit-symphony.github.io/Sparkbot](https://armpit-symphony.github.io/Sparkbot/)
 
-**Current release line:** v1.6.60
+**Current release line:** v1.6.61
 
 > Sparkbot stores its app data locally. If you connect a cloud LLM provider or an external service, the text and actions needed for that provider or service are sent to that provider. Local models can run without an LLM cloud account.
 
@@ -602,6 +602,7 @@ User message → Token Guardian → Memory Guardian → LLM
 
 | Version | Date | Highlights |
 |---------|------|-----------|
+| v1.6.61 | May 2026 | Hotfix for OpenRouter-routed Windows/local chat and Roundtable responses: when a selected OpenRouter endpoint rejects Sparkbot's memory/tool payload, Sparkbot now retries the same model without tools so the conversation returns a normal text response instead of surfacing `No endpoints found that support tool use`. Advanced backend, frontend, Tauri shell, public downloader, service worker, README, capabilities docs, release notes, and packaging metadata to v1.6.61. |
 | v1.6.60 | May 2026 | Smoothed Roundtable into a Seat 1 chaired working-session flow with first-pass ideas, manager assessment, assignments, assigned-work pass, and manager summary; stopped automatic meeting-note generation while preserving operator-triggered notes; limited meeting provider readiness checks to assigned room seats; fixed mobile meeting scrolling/resizing; and advanced backend, frontend, Tauri shell, public downloader, service worker, README, capabilities docs, release notes, and packaging metadata to v1.6.60. |
 | v1.6.59 | May 2026 | Release stabilization for memory continuity and model routing: meeting artifacts now roll decisions/actions into shared Guardian work memory visible from main chat, duplicate meeting rollups are suppressed, desktop memory and first-run selector persistence follow `SPARKBOT_DATA_DIR`, `/chat/model` persists the primary route instead of drifting in process memory, meeting agent turns display resolved model routing, and downloader/docs/package metadata advanced to the v1.6.59 desktop line. |
 | v1.6.57 | May 2026 | Public-v1 readiness hardening plus LIMA Robo OS Phase 2 bridge: backend worker defaults reduced to 2, production config fails closed on unsafe auth/CORS, live terminal defaults off, robotics status/tools/command/emergency-stop endpoints and chat `lima_robot_command` are available for replay/simulation while real-hardware motion stays blocked until Guardian runner handoff is complete. |

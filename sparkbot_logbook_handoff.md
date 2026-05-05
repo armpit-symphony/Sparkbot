@@ -1,5 +1,18 @@
 # Sparkbot Logbook Handoff
 
+## v1.6.61 OpenRouter Tool-Use Hotfix
+
+Scope:
+- OpenRouter-routed chat and Roundtable calls now retry without tools when OpenRouter reports no endpoint supports tool use for the selected model.
+- Added regression coverage for the `remember_fact`/tool-use 404 path.
+- Version/public download metadata advanced to v1.6.61.
+
+Verification to run/record:
+- Targeted OpenRouter/model routing tests.
+- Frontend build.
+- Public download packaging for v1.6.61.
+- Desktop release workflow for `desktop-v1.6.61`.
+
 ## v1.6.60 Roundtable Flow Stabilization
 
 Scope:

@@ -1475,6 +1475,17 @@ def _should_retry_without_tools(error: Exception, candidate: str, kwargs: dict[s
     if "tool_choice" in text:
         return True
     provider = model_provider(candidate)
+    if provider == "openrouter" and any(
+        token in text
+        for token in (
+            "no endpoints found that support tool use",
+            "try disabling",
+            "support tool use",
+            "tool use",
+            "remember_fact",
+        )
+    ):
+        return True
     if provider in {"ollama", "minimax"} and any(
         token in text for token in ("bad_request_error", "invalid", "unsupported", "tool", "function")
     ):

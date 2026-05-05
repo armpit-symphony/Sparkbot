@@ -1920,7 +1920,7 @@ curl -b cookies.txt http://localhost:8000/api/v1/chat/system/watcher | python -m
 
 Desktop release tags and app versions are aligned on the `1.6.x` release line.
 
-For `v1.6.60`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release line smooths Roundtable into a Seat 1 chaired working-session flow, keeps generated meeting notes operator-triggered, limits provider readiness checks to assigned room seats, and fixes mobile meeting scrolling. It carries forward the v1.6.59 memory-continuity and model-routing stabilization.
+For `v1.6.61`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release line hotfixes OpenRouter-routed Windows/local chat and Roundtable responses by retrying the same selected OpenRouter model without tools when the endpoint rejects `remember_fact`/tool use. It carries forward the v1.6.60 chaired Roundtable flow, manual-only meeting notes, assigned-provider readiness checks, mobile meeting scrolling, and the v1.6.59 memory-continuity/model-routing stabilization.
 
 ### How to upgrade safely
 
