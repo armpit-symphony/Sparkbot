@@ -18,7 +18,6 @@ from app.crud import (
 )
 from app.models import ChatRoom, ChatUser, UserType
 from app.services.guardian import get_guardian_suite
-from app.services.guardian.meeting_recorder import generate_meeting_notes
 
 
 MEETING_MANIFEST_SOURCE = "meeting_manifest"
@@ -214,7 +213,7 @@ async def run_meeting_heartbeat(
 ) -> dict[str, Any]:
     from app.api.routes.chat.agents import get_agent as _get_agent_info
     from app.api.routes.chat.llm import SYSTEM_PROMPT as LLM_SYSTEM_PROMPT
-    from app.api.routes.chat.llm import get_model, stream_chat_with_tools
+    from app.api.routes.chat.llm import stream_chat_with_tools
 
     room_uuid = uuid.UUID(room_id)
     user_uuid = uuid.UUID(user_id)
@@ -432,7 +431,7 @@ async def run_meeting_heartbeat(
         discussion_history.append({"role": "assistant", "content": f"{label}: {public_text}"})
         return {"content": public_text, "status": meeting_status, "halted": False, "failed": False}
 
-    chair_handle = "sparkbot" if "sparkbot" in participants else participants[0]
+    chair_handle = participants[0]
     specialists = [handle for handle in participants if handle != chair_handle]
     minimum_turns = 2 if not specialists else min(10, max(4, (len(participants) * 2) + 1))
     room_cap = max(int(room.meeting_mode_max_bot_msgs_per_min or 0), 0)
@@ -442,9 +441,9 @@ async def run_meeting_heartbeat(
     opening_result = await _run_agent_turn(
         participant_handle=chair_handle,
         phase_prompt=(
-            "Current phase: heartbeat framing.\n"
-            "Pick up from the current room state, state what changed or remains open, and set the next decision focus. "
-            "Keep it concise and actionable. Do not ask for the next speaker."
+            "Current phase: manager_assessment.\n"
+            "Seat 1 is the meeting manager. Pick up from the current room state, assess what changed or remains open, "
+            "and assign the next focus. Keep it concise and do not ask who should speak next."
         ),
         chair_handle=chair_handle,
     )
@@ -464,9 +463,9 @@ async def run_meeting_heartbeat(
         gather_result = await _run_agent_turn(
             participant_handle=participant_handle,
             phase_prompt=(
-                "Current phase: heartbeat perspective gathering.\n"
-                "Contribute the most useful new view from your role based on the current room state. "
-                "Add only distinct evidence, tradeoffs, or execution detail. End with a concrete takeaway."
+            "Current phase: assigned_work_pass.\n"
+            "Respond to the current assignment or focus from Seat 1. Add only distinct evidence, tradeoffs, "
+            "or execution detail. End with a concrete takeaway."
             ),
             chair_handle=chair_handle,
         )
@@ -483,7 +482,8 @@ async def run_meeting_heartbeat(
     synthesis_result = await _run_agent_turn(
         participant_handle=chair_handle,
         phase_prompt=(
-            "Current phase: heartbeat synthesis.\n"
+            "Current phase: manager_summary.\n"
+            "Seat 1 is the meeting manager. "
             "Assess whether the room should continue or stop. Return exactly in this format:\n"
             "STATUS: <continue|needs_user_input|needs_approval|recommendation_ready|solved|blocked|looping>\n"
             "MESSAGE:\n"
@@ -557,16 +557,6 @@ async def run_meeting_heartbeat(
             final_status = final_result.get("status") or "recommendation_ready"
             final_text = final_result.get("content") or final_text
 
-    notes: dict[str, Any] = {}
-    try:
-        notes = await generate_meeting_notes(
-            session=session,
-            room_id=room_uuid,
-            user_id=current_user.id,
-            model=get_model(str(current_user.id)),
-        )
-    except Exception:
-        notes = {}
     summary = (
         f"Hourly meeting heartbeat completed with status `{final_status}`.\n\n"
         f"{final_text.strip() or '(no summary produced)'}"
@@ -578,5 +568,4 @@ async def run_meeting_heartbeat(
         "terminal": final_status in TERMINAL_MEETING_STATUSES,
         "participants": participants,
         "turns_used": turns_used,
-        "notes_artifact_id": notes.get("id"),
     }

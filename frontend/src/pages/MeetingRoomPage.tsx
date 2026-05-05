@@ -57,6 +57,12 @@ function isTransientMeetingError(error: unknown): boolean {
   return /network|fetch|failed|timeout|temporar|connection|body stream/i.test(message)
 }
 
+function isManualMeetingNotesRequest(content: string): boolean {
+  return /^(?:\/meeting\s+notes|\/notes|generate\s+meeting\s+notes|create\s+meeting\s+notes|make\s+meeting\s+notes)$/i.test(
+    content.trim(),
+  )
+}
+
 async function apiFetchWithTransientRetry(input: string, init: RequestInit, attempts = 2): Promise<Response> {
   let lastError: unknown = null
   for (let attempt = 0; attempt < attempts; attempt += 1) {
@@ -100,8 +106,18 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
     consecutive_failures: number;
   }>>([])
   const [runningTaskId, setRunningTaskId] = useState<string | null>(null)
+  const [isCompactLayout, setIsCompactLayout] = useState(false)
   const streamAbortRef = useRef<AbortController | null>(null)
   const activeStreamIdRef = useRef(0)
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const query = window.matchMedia("(max-width: 820px)")
+    const updateLayout = () => setIsCompactLayout(query.matches)
+    updateLayout()
+    query.addEventListener("change", updateLayout)
+    return () => query.removeEventListener("change", updateLayout)
+  }, [])
 
   useEffect(() => {
     setMeetingMeta(loadMeetingRoomMeta(roomId))
@@ -340,6 +356,11 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
 
   async function handleSendMessage(content: string) {
     if (!content.trim()) return
+    if (isManualMeetingNotesRequest(content)) {
+      setInputValue("")
+      await handleGenerateNotes()
+      return
+    }
 
     // Cancel any in-flight stream
     streamAbortRef.current?.abort()
@@ -428,7 +449,6 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
               setStreamingAgent(null)
               await reloadMessages()
             } else if (evt.type === "done") {
-              await autoGenerateNotesAfterMeeting()
               streamDone = true
               break
             } else if (evt.type === "error") {
@@ -499,21 +519,6 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
     }
   }
 
-  async function autoGenerateNotesAfterMeeting() {
-    try {
-      const res = await apiFetch(`/api/v1/chat/rooms/${roomId}/artifacts/generate`, {
-        method: "POST",
-        credentials: "include",
-      })
-      if (!res.ok) return
-      const artifact = await res.json()
-      setLatestArtifact(artifact)
-      await reloadMessages()
-    } catch {
-      // Best effort only; do not interrupt the room.
-    }
-  }
-
   return (
     <>
       <div
@@ -521,6 +526,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
           minHeight: "100dvh",
           display: "flex",
           flexDirection: "column",
+          overflowY: "auto",
           background:
             "linear-gradient(180deg, rgba(6,10,19,1), rgba(8,14,28,1), rgba(11,17,33,1))",
         }}
@@ -603,10 +609,12 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
         <main
           style={{
             flex: 1,
-            padding: 16,
-            display: "grid",
-            gridTemplateColumns: "320px minmax(0, 1fr)",
-            gap: 16,
+            padding: isCompactLayout ? 10 : 16,
+            display: isCompactLayout ? "flex" : "grid",
+            flexDirection: isCompactLayout ? "column" : undefined,
+            gridTemplateColumns: isCompactLayout ? undefined : "320px minmax(0, 1fr)",
+            gap: isCompactLayout ? 10 : 16,
+            minHeight: 0,
           }}
         >
           <aside
@@ -619,10 +627,11 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
               flexDirection: "column",
               gap: 14,
               alignSelf: "start",
-              position: "sticky",
-              top: 16,
-              maxHeight: "calc(100dvh - 88px)",
-              overflowY: "auto",
+              position: isCompactLayout ? "static" : "sticky",
+              top: isCompactLayout ? undefined : 16,
+              width: isCompactLayout ? "100%" : undefined,
+              maxHeight: isCompactLayout ? "none" : "calc(100dvh - 88px)",
+              overflowY: isCompactLayout ? "visible" : "auto",
             }}
           >
             <div>
@@ -1172,7 +1181,8 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
               overflow: "hidden",
               display: "flex",
               flexDirection: "column",
-              minHeight: 0,
+              minHeight: isCompactLayout ? "70dvh" : 0,
+              width: "100%",
             }}
           >
             <div
@@ -1225,7 +1235,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                   currentUser={currentUser}
                   isLoading={false}
                   typingUsers={[]}
-                  className="flex-1"
+                  className={isCompactLayout ? "min-h-[45dvh] flex-1" : "flex-1"}
                 />
                 {streamError && (
                   <div

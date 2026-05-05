@@ -212,7 +212,7 @@ wheels = [
 
 [[package]]
 name = "app"
-version = "1.6.59"
+version = "1.6.60"
 source = { editable = "backend" }
 dependencies = [
     { name = "alembic" },

@@ -1,0 +1,9 @@
+Sparkbot v1.6.60
+
+Focus: Roundtable meeting flow, manual notes, assigned-provider readiness, and mobile meeting usability.
+
+- Seat 1 now runs Roundtable as the meeting manager with explicit phases: initial_ideas, manager_assessment, assignments, assigned_work_pass, manager_summary, and continue_or_operator_input.
+- Automatic meeting-note generation after meeting turns and heartbeats is disabled. Operators can still generate notes explicitly from the UI or by asking for meeting notes.
+- Meeting provider readiness checks report only providers/models assigned to the room seats and warn concisely when an assigned route is missing or misconfigured.
+- Meeting rooms use a mobile-friendly layout that avoids trapping content offscreen and keeps chat and controls reachable on phone-sized browsers.
+- Advanced backend, frontend, Tauri shell, public downloader, service worker, README, capabilities docs, release notes, and packaging notes to v1.6.60.

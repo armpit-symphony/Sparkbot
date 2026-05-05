@@ -1,5 +1,20 @@
 # Sparkbot Logbook Handoff
 
+## v1.6.60 Roundtable Flow Stabilization
+
+Scope:
+- Roundtable live meeting streams now treat Seat 1 as the meeting manager and run explicit phases: initial ideas, manager assessment, assignments, assigned work, manager summary, and continue/operator-input decision.
+- Automatic generated meeting notes were removed from meeting stream completion and heartbeat continuation. Manual/operator notes remain available through the Generate Meeting Notes button and explicit notes text commands.
+- Meeting provider readiness now checks only assigned room participants/models and emits concise assigned-seat warnings instead of listing unrelated providers.
+- Meeting room layout now switches to a mobile-friendly stacked layout with page scrolling so content and controls remain reachable on phone-sized browsers.
+- Version/public download metadata advanced to v1.6.60.
+
+Verification to run/record:
+- Backend targeted tests for model routing and meeting provider readiness.
+- Frontend build.
+- Public download packaging for v1.6.60.
+- Mobile viewport smoke check for `/meeting/:roomId`.
+
 ## v1.6.59 Release Stabilization
 
 ### What was wrong

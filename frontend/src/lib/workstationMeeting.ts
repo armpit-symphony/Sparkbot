@@ -1,5 +1,5 @@
 import { apiFetch } from "@/lib/apiBase"
-import { fetchControlsConfig } from "@/lib/sparkbotControls"
+import { fetchControlsConfig, providerForModel, type SparkbotControlsConfig } from "@/lib/sparkbotControls"
 
 export const ROUND_TABLE_SEAT_COUNT = 8
 const DEFAULT_MEETING_HEARTBEAT_SCHEDULE = "every:3600"
@@ -54,6 +54,81 @@ export interface WorkstationMeetingRoomMeta {
 export interface LaunchMeetingRoomOptions {
   roomName?: string
   seats: WorkstationMeetingSeatMeta[]
+}
+
+function displayProviderName(providerId: string, config: SparkbotControlsConfig | null): string {
+  return config?.providers.find((provider) => provider.id === providerId)?.label || providerId || "provider"
+}
+
+function displayModelName(modelId: string, config: SparkbotControlsConfig | null): string {
+  return config?.model_labels?.[modelId] || modelId
+}
+
+function modelForSeat(
+  seat: WorkstationMeetingSeatMeta,
+  config: SparkbotControlsConfig | null,
+): string {
+  const handle = slugifyMeetingHandle(seat.agentHandle || seat.label || seat.stationId, seat.stationId)
+  return (
+    seat.modelId
+    || config?.agent_overrides?.[handle]?.model
+    || config?.default_selection?.model
+    || config?.active_model
+    || config?.stack?.primary
+    || ""
+  ).trim()
+}
+
+function providerReadyForSeat(
+  seat: WorkstationMeetingSeatMeta,
+  modelId: string,
+  config: SparkbotControlsConfig | null,
+): boolean {
+  if (seat.inviteApiKey?.trim()) return true
+  const providerId = providerForModel(modelId)
+  const provider = config?.providers.find((item) => item.id === providerId)
+  if (!provider) return false
+  if (providerId === "ollama") {
+    return provider.models_available === true || (provider.configured && provider.reachable === true)
+  }
+  return provider.configured || provider.models_available === true
+}
+
+export function buildAssignedProviderReadinessSummary(
+  seats: WorkstationMeetingSeatMeta[],
+  config: SparkbotControlsConfig | null,
+): string {
+  const assigned = seats.filter((seat) => seat.agentHandle || seat.modelId || seat.inviteApiKey)
+  if (assigned.length === 0) return "Assigned provider check: no assigned model seats."
+  const providers = new Set<string>()
+  for (const seat of assigned) {
+    const modelId = modelForSeat(seat, config)
+    if (modelId) providers.add(displayProviderName(providerForModel(modelId), config))
+  }
+  const providerList = Array.from(providers).filter(Boolean).join(", ") || "default route"
+  return `Assigned provider check: ${assigned.length} seat${assigned.length === 1 ? "" : "s"} ready (${providerList}).`
+}
+
+function assertAssignedProvidersReady(
+  seats: WorkstationMeetingSeatMeta[],
+  config: SparkbotControlsConfig | null,
+): void {
+  const missing: string[] = []
+  for (const seat of seats) {
+    const modelId = modelForSeat(seat, config)
+    const seatLabel = `Seat ${seat.seatIndex + 1} ${seat.label}`.trim()
+    if (!modelId) {
+      missing.push(`${seatLabel}: no assigned or default model`)
+      continue
+    }
+    if (!providerReadyForSeat(seat, modelId, config)) {
+      const providerId = providerForModel(modelId)
+      missing.push(`${seatLabel}: ${displayProviderName(providerId, config)} for ${displayModelName(modelId, config)}`)
+    }
+  }
+  if (missing.length > 0) {
+    throw new Error(`Meeting provider check failed: ${missing.join("; ")}. Configure only those assigned seats in Controls.`)
+  }
 }
 
 function buildMeetingManifestMeta(
@@ -214,6 +289,7 @@ async function ensureMeetingAgentOverrides(seats: WorkstationMeetingSeatMeta[]):
 export async function prepareMeetingSeats(seats: WorkstationMeetingSeatMeta[]): Promise<WorkstationMeetingSeatMeta[]> {
   const config = await fetchControlsConfig()
   const enrichedSeats = enrichMeetingSeats(seats, config?.stack)
+  assertAssignedProvidersReady(enrichedSeats, config)
   await ensureMeetingSeatAgents(enrichedSeats)
   await ensureInviteAgentRoutes(enrichedSeats)
   await ensureMeetingAgentOverrides(enrichedSeats)
@@ -311,6 +387,7 @@ export async function launchMeetingRoom({
   seats,
 }: LaunchMeetingRoomOptions): Promise<WorkstationMeetingRoomMeta> {
   const preparedSeats = await prepareMeetingSeats(seats)
+  const readinessSummary = buildAssignedProviderReadinessSummary(preparedSeats, await fetchControlsConfig())
   const protocolLabel = "Autonomous meeting"
   const description = "Launched from Sparkbot Workstation. Autonomous meeting mode."
   const createRes = await apiFetch("/api/v1/chat/rooms/", {
@@ -334,9 +411,9 @@ export async function launchMeetingRoom({
       description,
       meeting_mode_enabled: true,
       meeting_mode_bots_mention_only: true,
-      meeting_mode_max_bot_msgs_per_min: 7,
+      meeting_mode_max_bot_msgs_per_min: 20,
       persona:
-        "Roundtable mode. After the owner kickoff, the room works autonomously. One participant speaks at a time, but the handoff is automatic. Stop only when the issue is solved, blocked, looping, or when owner approval or missing input is needed.",
+        "Roundtable mode. Seat 1 is the meeting manager. After the owner kickoff, run a chaired working session: first ideas from every participant, manager assessment, manager assignments, assigned work from every participant, manager summary, then plan, adjust, continue with another assignment/pass, or ask the owner for input. Do not discuss unrelated provider availability.",
     }),
   })
   if (!patchRes.ok) {
@@ -351,7 +428,7 @@ export async function launchMeetingRoom({
     headers: { "Content-Type": "application/json" },
     credentials: "include",
     body: JSON.stringify({
-      content: `Roundtable launched from Workstation.\n\nAutonomous meeting mode is on.\nThe owner can interrupt at any time, but the room should continue without waiting between turns.\n\nSeated participants:\n${participantLines}`,
+      content: `Roundtable launched from Workstation.\n\n${readinessSummary}\n\nSeat 1 is the meeting manager. After the owner kickoff, the room runs ideas, assessment, assignments, assigned work, summary, then either plans, adjusts, continues, or asks for owner input.\n\nSeated participants:\n${participantLines}`,
     }),
   }).catch(() => {})
 
@@ -427,6 +504,7 @@ export async function launchTaskMeeting({
   seats: WorkstationMeetingSeatMeta[]
 }): Promise<WorkstationMeetingRoomMeta> {
   const preparedSeats = await prepareMeetingSeats(seats)
+  const readinessSummary = buildAssignedProviderReadinessSummary(preparedSeats, await fetchControlsConfig())
   const roomName = `Project: ${task.name}`
   const protocolLabel = "Project meeting"
   const description = `Workstation project meeting for task: ${task.name} (${task.tool_name})`
@@ -456,11 +534,11 @@ export async function launchTaskMeeting({
       description,
       meeting_mode_enabled: true,
       meeting_mode_bots_mention_only: true,
-      meeting_mode_max_bot_msgs_per_min: 7,
+      meeting_mode_max_bot_msgs_per_min: 20,
       persona:
         "Project meeting mode. The team is working on a specific task. " +
-        "After the owner defines the goal, participants work autonomously: one at a time, " +
-        "no waiting between turns. Stop only when blocked, looped, or when owner input is needed.",
+        "Seat 1 is the meeting manager. After the owner defines the goal, run first ideas, " +
+        "manager assessment, assignments, assigned work, manager summary, then plan, adjust, continue, or ask for owner input.",
     }),
   })
   if (!patchRes.ok) throw new Error("Could not configure project meeting room.")
@@ -481,7 +559,9 @@ export async function launchTaskMeeting({
         `**Schedule:** ${task.schedule}`,
         `**Status:** ${statusNote}`,
         ``,
-        `Autonomous meeting mode is on. Define your goal below to begin.`,
+        readinessSummary,
+        ``,
+        `Seat 1 is the meeting manager. Define your goal below to begin the chaired meeting flow.`,
         ``,
         `Seated team:`,
         participantLines,

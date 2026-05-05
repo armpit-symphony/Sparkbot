@@ -317,6 +317,23 @@ def _looks_like_self_inspection_query(content: str) -> bool:
     return any(re.search(pattern, normalized) for pattern in patterns)
 
 
+def _looks_like_provider_readiness_query(content: str) -> bool:
+    normalized = (content or "").strip().lower()
+    if not normalized:
+        return False
+    return any(
+        re.search(pattern, normalized)
+        for pattern in (
+            r"\bprovider(?:s)?\b",
+            r"\bmodel(?:s)?\b",
+            r"\bready\b",
+            r"\bgood to go\b",
+            r"\bavailability\b",
+            r"\bconfigured\b",
+        )
+    )
+
+
 def _render_runtime_state_markdown(runtime_state: dict[str, Any]) -> str:
     app_version = str(runtime_state.get("app_version") or "").strip()
     backend_version = str(runtime_state.get("backend_version") or "").strip()
@@ -383,6 +400,73 @@ def _render_runtime_state_markdown(runtime_state: dict[str, Any]) -> str:
         lines.append(f"- global Computer Control TTL remaining: `{int(global_control.get('ttl_remaining') or 0)}` seconds")
 
     lines.extend(["", "## Agent Overrides", *override_lines, "", "## Provider Status", *(provider_lines or ["- none"])])
+    return "\n".join(lines)
+
+
+def _render_meeting_provider_readiness_markdown(
+    runtime_state: dict[str, Any],
+    participants: list[str],
+) -> str:
+    """Render concise provider readiness for assigned meeting participants only."""
+    from app.api.routes.chat.llm import model_label, model_provider
+
+    providers = runtime_state.get("providers") or {}
+    agent_overrides = runtime_state.get("agent_overrides") or {}
+    model_stack = runtime_state.get("model_stack") or {}
+    default_selection = runtime_state.get("default_selection") or {}
+    active_model = str(runtime_state.get("active_model") or "").strip()
+    fallback_model = (
+        str(default_selection.get("model") or "").strip()
+        or active_model
+        or str(model_stack.get("primary") or "").strip()
+    )
+
+    seen: set[str] = set()
+    lines: list[str] = ["## Meeting Provider Readiness"]
+    missing: list[str] = []
+    checked = 0
+
+    for raw_handle in participants:
+        handle = str(raw_handle or "").strip().lower()
+        if not handle or handle in seen:
+            continue
+        seen.add(handle)
+        override = agent_overrides.get(handle) or {}
+        model_name = str((override or {}).get("model") or fallback_model).strip()
+        if not model_name:
+            missing.append(f"- `@{handle}`: no assigned or default model")
+            continue
+        provider_name = model_provider(model_name)
+        provider_state = providers.get(provider_name) or {}
+        ready = bool(provider_state.get("configured")) or provider_state.get("models_available") is True
+        if provider_name == "ollama":
+            ready = provider_state.get("models_available") is True or (
+                bool(provider_state.get("configured")) and provider_state.get("reachable") is True
+            )
+        checked += 1
+        label = model_label(model_name)
+        if ready:
+            lines.append(f"- `@{handle}`: `{label}` via `{provider_name}` ready")
+        else:
+            missing.append(f"- `@{handle}`: `{label}` via `{provider_name}` is not configured or reachable")
+
+    if not checked and not missing:
+        return "## Meeting Provider Readiness\n- No assigned meeting participants were provided."
+
+    if missing:
+        return "\n".join(
+            [
+                *lines,
+                "",
+                "Warning: required assigned model routes need attention.",
+                *missing,
+                "",
+                "Configure the listed assigned seats in Controls before starting the meeting.",
+            ]
+        )
+
+    lines.append("")
+    lines.append(f"Assigned provider check passed for {checked} seat{'s' if checked != 1 else ''}.")
     return "\n".join(lines)
 
 
@@ -1246,7 +1330,17 @@ async def stream_room_message(
         async def runtime_state_stream():
             yield f"data: {json.dumps({'type': 'human_message', 'message_id': human_msg_id})}\n\n"
             runtime_state = await build_safe_runtime_state(current_user)
-            runtime_text = _render_runtime_state_markdown(runtime_state)
+            meeting_participants = [
+                p.strip().lower()
+                for p in (message_in.participants or [])
+                if p and p.strip()
+            ]
+            if room.meeting_mode_enabled and meeting_participants and _looks_like_provider_readiness_query(agent_content):
+                runtime_text = _render_meeting_provider_readiness_markdown(runtime_state, meeting_participants)
+                meta_json = {"meeting_provider_readiness": True}
+            else:
+                runtime_text = _render_runtime_state_markdown(runtime_state)
+                meta_json = {"safe_runtime_state": True}
             bot_user = _get_or_create_agent_bot_user(session, "sparkbot")
             bot_msg = create_chat_message(
                 session=session,
@@ -1255,7 +1349,7 @@ async def stream_room_message(
                 content=runtime_text,
                 sender_type="BOT",
                 reply_to_id=human_msg_uuid,
-                meta_json={"safe_runtime_state": True},
+                meta_json=meta_json,
             )
             try:
                 remember_chat_message(
@@ -1591,6 +1685,7 @@ async def stream_room_message(
             objective: str,
             phase_prompt: str,
             chair_handle: str,
+            meeting_phase: str,
             parse_status: bool = False,
             default_status: str = "recommendation_ready",
         ) -> dict[str, Any]:
@@ -1625,7 +1720,7 @@ async def stream_room_message(
             label = _agent_label(participant_handle, agent_info)
             route_display = _agent_route_display(user_id=user_id_str, agent_name=participant_handle)
             emitted_events = [
-                f"data: {json.dumps({'type': 'agent_start', 'agent': participant_handle, 'label': label, **route_display})}\n\n"
+                f"data: {json.dumps({'type': 'agent_start', 'agent': participant_handle, 'label': label, 'phase': meeting_phase, **route_display})}\n\n"
             ]
 
             agent_full_text = ""
@@ -1710,7 +1805,7 @@ async def stream_room_message(
 
             try:
                 bot_user = _get_or_create_agent_bot_user(db2, participant_handle)
-                meta_json: dict[str, Any] = {"agent": participant_handle}
+                meta_json: dict[str, Any] = {"agent": participant_handle, "meeting_phase": meeting_phase}
                 if agent_routing_payload:
                     meta_json["token_guardian"] = agent_routing_payload
                 if meeting_status:
@@ -1745,6 +1840,7 @@ async def stream_room_message(
                             meta_json={
                                 "source": "autonomous_meeting",
                                 "agent": participant_handle,
+                                "meeting_phase": meeting_phase,
                                 "meeting_status": meeting_status,
                             },
                         )
@@ -1772,81 +1868,127 @@ async def stream_room_message(
         async def autonomous_meeting_stream(valid_participants: list[str]):
             yield f"data: {json.dumps({'type': 'human_message', 'message_id': human_msg_id})}\n\n"
 
-            chair_handle = "sparkbot" if "sparkbot" in valid_participants else valid_participants[0]
-            specialists = [handle for handle in valid_participants if handle != chair_handle]
+            chair_handle = valid_participants[0]
             discussion_history = list(openai_history)
             objective = agent_content.strip() or message_in.content.strip()
-            minimum_turns = 2 if not specialists else min(10, max(4, (len(valid_participants) * 2) + 1))
+            required_turns = (len(valid_participants) * 2) + 3
             room_cap = max(int(room.meeting_mode_max_bot_msgs_per_min or 0), 0)
-            max_bot_turns = min(10, max(minimum_turns, room_cap))
+            max_bot_turns = min(24, max(required_turns, room_cap))
             turns_used = 0
 
-            opening_prompt = (
-                "Current phase: initial framing.\n"
-                "Frame the problem, define the working objective, and explain how the room should approach it. "
-                "Keep it concise and actionable. Do not ask for the next speaker."
+            first_pass_prompt = (
+                "Current phase: initial_ideas.\n"
+                "First pass: throw out your best ideas for the owner's task from your assigned role. "
+                "Add concrete options, constraints, risks, or opportunities. If you are Seat 1, contribute ideas only; "
+                "do not assess, assign work, or summarize yet."
             )
-            opening_result = await _run_agent_turn(
-                participant_handle=chair_handle,
-                discussion_history=discussion_history,
-                objective=objective,
-                phase_prompt=opening_prompt,
-                chair_handle=chair_handle,
-            )
-            for event in opening_result["events"]:
-                yield event
-            turns_used += 1
-            if opening_result.get("halted"):
-                yield f"data: {json.dumps({'type': 'done'})}\n\n"
-                return
-
-            for participant_handle in specialists:
-                if turns_used >= max_bot_turns - 1:
+            for participant_handle in valid_participants:
+                if turns_used >= max_bot_turns:
                     break
-                gather_prompt = (
-                    "Current phase: perspective gathering.\n"
-                    "Contribute the most useful view from your role. Add distinct evidence, options, tradeoffs, "
-                    "or implementation guidance that has not already been said. End with a concrete takeaway. "
-                    "Do not ask for another speaker and do not repeat the objective."
-                )
-                gather_result = await _run_agent_turn(
+                initial_result = await _run_agent_turn(
                     participant_handle=participant_handle,
                     discussion_history=discussion_history,
                     objective=objective,
-                    phase_prompt=gather_prompt,
+                    phase_prompt=first_pass_prompt,
                     chair_handle=chair_handle,
+                    meeting_phase="initial_ideas",
                 )
-                for event in gather_result["events"]:
+                for event in initial_result["events"]:
                     yield event
                 turns_used += 1
-                if gather_result.get("halted"):
+                if initial_result.get("halted"):
                     yield f"data: {json.dumps({'type': 'done'})}\n\n"
                     return
 
-            synthesis_prompt = (
-                "Current phase: synthesis.\n"
-                "Assess whether the room should continue or stop. Return exactly in this format:\n"
+            assessment_prompt = (
+                "Current phase: manager_assessment.\n"
+                "Seat 1 is the meeting manager. Assess the first-pass ideas. Identify the strongest direction, "
+                "weak assumptions, missing information, and what each participant should focus on next. "
+                "Do not write final meeting notes."
+            )
+            assessment_result = await _run_agent_turn(
+                participant_handle=chair_handle,
+                discussion_history=discussion_history,
+                objective=objective,
+                phase_prompt=assessment_prompt,
+                chair_handle=chair_handle,
+                meeting_phase="manager_assessment",
+            )
+            for event in assessment_result["events"]:
+                yield event
+            turns_used += 1
+            if assessment_result.get("halted"):
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                return
+
+            assignment_prompt = (
+                "Current phase: assignments.\n"
+                "Seat 1 is the meeting manager. Assign a specific job to every participant by @handle, including yourself. "
+                "Each assignment must say what to analyze or produce during the second pass. Keep it short and operational."
+            )
+            assignment_result = await _run_agent_turn(
+                participant_handle=chair_handle,
+                discussion_history=discussion_history,
+                objective=objective,
+                phase_prompt=assignment_prompt,
+                chair_handle=chair_handle,
+                meeting_phase="assignments",
+            )
+            for event in assignment_result["events"]:
+                yield event
+            turns_used += 1
+            if assignment_result.get("halted"):
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                return
+
+            assigned_work_prompt = (
+                "Current phase: assigned_work_pass.\n"
+                "Second pass: respond to the specific job Seat 1 assigned to you. Produce the requested work, "
+                "name any blocker, and end with one concrete contribution to the room's plan. Do not summarize the whole meeting."
+            )
+            for participant_handle in valid_participants:
+                if turns_used >= max_bot_turns - 1:
+                    break
+                work_result = await _run_agent_turn(
+                    participant_handle=participant_handle,
+                    discussion_history=discussion_history,
+                    objective=objective,
+                    phase_prompt=assigned_work_prompt,
+                    chair_handle=chair_handle,
+                    meeting_phase="assigned_work_pass",
+                )
+                for event in work_result["events"]:
+                    yield event
+                turns_used += 1
+                if work_result.get("halted"):
+                    yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                    return
+
+            summary_prompt = (
+                "Current phase: manager_summary.\n"
+                "Seat 1 is the meeting manager. Summarize the second pass and decide the next move. "
+                "Return exactly in this format:\n"
                 "STATUS: <continue|needs_user_input|needs_approval|recommendation_ready|solved|blocked|looping>\n"
                 "MESSAGE:\n"
-                "## Recommendation\n"
-                "<one clear recommendation>\n\n"
-                "## Action Plan\n"
-                "- [ ] <step 1>\n"
-                "- [ ] <step 2>\n"
-                "- [ ] <step 3>\n\n"
-                "## Owner Input Or Approval\n"
-                "- <single approval, decision, or 'none'>\n\n"
-                "## Stop Reason\n"
-                "- <why continue or stop now>\n\n"
-                "Choose continue only if another round is likely to add substantial value. If approval or missing "
-                "owner input is needed, state that explicitly. Do not write generic discussion summaries."
+                "## Summary\n"
+                "<what the room learned>\n\n"
+                "## Plan Or Adjustment\n"
+                "- [ ] <specific next step>\n"
+                "- [ ] <specific next step>\n"
+                "- [ ] <specific next step>\n\n"
+                "## Continue Or Operator Input\n"
+                "- <continue with another assignment/pass, adjust the plan, or ask the owner for a specific input>\n\n"
+                "## Owners\n"
+                "- <owner> - <responsibility>\n\n"
+                "Choose continue only when another assigned pass is likely to materially improve the result."
             )
             synthesis_result = await _run_agent_turn(
                 participant_handle=chair_handle,
                 discussion_history=discussion_history,
                 objective=objective,
-                phase_prompt=synthesis_prompt,
+                phase_prompt=summary_prompt,
                 chair_handle=chair_handle,
+                meeting_phase="manager_summary",
                 parse_status=True,
                 default_status="recommendation_ready",
             )
@@ -1858,47 +2000,44 @@ async def stream_room_message(
                 return
 
             status = synthesis_result.get("status") or "recommendation_ready"
-            can_refine = status == "continue" and specialists and turns_used < max_bot_turns
-            final_prompt = (
-                "Current phase: final synthesis.\n"
-                "Return exactly in this format:\n"
-                "STATUS: <needs_user_input|needs_approval|recommendation_ready|solved|blocked|looping>\n"
-                "MESSAGE:\n"
-                "## Recommendation\n"
-                "<best recommendation>\n\n"
-                "## Action Plan\n"
-                "- [ ] <specific next action>\n"
-                "- [ ] <specific next action>\n"
-                "- [ ] <specific next action>\n\n"
-                "## Owners\n"
-                "- <owner> — <responsibility>\n\n"
-                "## Open Questions / Approval Needed\n"
-                "- <item or 'none'>\n\n"
-                "## Stop Reason\n"
-                "- <why the room is stopping>\n\n"
-                "Do not choose continue in this phase. Do not ask for the next speaker. Produce a real plan, not generic advice."
-            )
-            if can_refine:
-                for participant_handle in specialists:
+            continuation_rounds = 0
+            while status == "continue" and continuation_rounds < 1 and turns_used + len(valid_participants) + 1 <= max_bot_turns:
+                continuation_rounds += 1
+                continue_prompt = (
+                    "Current phase: continue_or_operator_input.\n"
+                    "Seat 1 chose to continue. State the adjusted plan and assign one focused follow-up job to every participant. "
+                    "Do not ask the owner for input unless the room is genuinely blocked."
+                )
+                continue_result = await _run_agent_turn(
+                    participant_handle=chair_handle,
+                    discussion_history=discussion_history,
+                    objective=objective,
+                    phase_prompt=continue_prompt,
+                    chair_handle=chair_handle,
+                    meeting_phase="continue_or_operator_input",
+                )
+                for event in continue_result["events"]:
+                    yield event
+                turns_used += 1
+                if continue_result.get("halted"):
+                    yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                    return
+
+                for participant_handle in valid_participants:
                     if turns_used >= max_bot_turns - 1:
                         break
-                    refine_prompt = (
-                        "Current phase: challenge and refinement.\n"
-                        "Focus on weak assumptions, missing constraints, or higher-value alternatives in the current "
-                        "direction. Add only non-duplicative value and keep it tight. If a concrete plan should be "
-                        "rewritten, rewrite it instead of discussing it abstractly."
-                    )
-                    refine_result = await _run_agent_turn(
+                    followup_result = await _run_agent_turn(
                         participant_handle=participant_handle,
                         discussion_history=discussion_history,
                         objective=objective,
-                        phase_prompt=refine_prompt,
+                        phase_prompt=assigned_work_prompt,
                         chair_handle=chair_handle,
+                        meeting_phase="assigned_work_pass",
                     )
-                    for event in refine_result["events"]:
+                    for event in followup_result["events"]:
                         yield event
                     turns_used += 1
-                    if refine_result.get("halted"):
+                    if followup_result.get("halted"):
                         yield f"data: {json.dumps({'type': 'done'})}\n\n"
                         return
 
@@ -1906,29 +2045,45 @@ async def stream_room_message(
                     participant_handle=chair_handle,
                     discussion_history=discussion_history,
                     objective=objective,
-                    phase_prompt=final_prompt,
+                    phase_prompt=summary_prompt,
                     chair_handle=chair_handle,
+                    meeting_phase="manager_summary",
                     parse_status=True,
                     default_status="recommendation_ready",
                 )
                 for event in final_result["events"]:
                     yield event
+                turns_used += 1
                 if final_result.get("halted"):
                     yield f"data: {json.dumps({'type': 'done'})}\n\n"
                     return
-            elif status == "continue":
-                final_result = await _run_agent_turn(
+                status = final_result.get("status") or "recommendation_ready"
+            if status == "continue" and turns_used < max_bot_turns:
+                stop_prompt = (
+                    "Current phase: continue_or_operator_input.\n"
+                    "The current meeting pass has reached its turn budget. Seat 1 must convert the work so far into "
+                    "either a short adjusted plan or a specific operator input request. Do not choose continue. "
+                    "Return exactly in this format:\n"
+                    "STATUS: <needs_user_input|needs_approval|recommendation_ready|solved|blocked|looping>\n"
+                    "MESSAGE:\n"
+                    "## Plan Or Operator Input\n"
+                    "- <next action or specific question for the operator>\n\n"
+                    "## Why Stop Now\n"
+                    "- <brief reason>"
+                )
+                stop_result = await _run_agent_turn(
                     participant_handle=chair_handle,
                     discussion_history=discussion_history,
                     objective=objective,
-                    phase_prompt=final_prompt,
+                    phase_prompt=stop_prompt,
                     chair_handle=chair_handle,
+                    meeting_phase="continue_or_operator_input",
                     parse_status=True,
-                    default_status="recommendation_ready",
+                    default_status="needs_user_input",
                 )
-                for event in final_result["events"]:
+                for event in stop_result["events"]:
                     yield event
-                if final_result.get("halted"):
+                if stop_result.get("halted"):
                     yield f"data: {json.dumps({'type': 'done'})}\n\n"
                     return
 

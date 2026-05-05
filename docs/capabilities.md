@@ -1134,17 +1134,20 @@ Activated with `/meeting start`. While active, prefix messages with:
 
 ### Roundtable
 
-Launches a fresh multi-agent meeting room. Autonomous chair-led flow:
+Launches a fresh multi-agent meeting room. Seat 1 is the meeting manager and runs this flow:
 
-1. Framing — chair sets the agenda
-2. Specialist perspectives — each seated agent contributes
-3. Synthesis — chair consolidates
-4. Optional refinement round
-5. Final recommendation or action plan
+1. `initial_ideas` - every seated participant throws out ideas for the owner task.
+2. `manager_assessment` - Seat 1 assesses the first pass.
+3. `assignments` - Seat 1 assigns a job/task to every participant.
+4. `assigned_work_pass` - every participant responds based on the assigned job.
+5. `manager_summary` - Seat 1 summarizes and decides whether to plan, adjust, continue, or ask for owner input.
+6. `continue_or_operator_input` - Seat 1 either launches another assigned pass or stops for the owner when input is needed.
 
-The meeting stops when: solved, blocked, looping, ready for approval, or needs owner input.
+Meeting notes are manual-only: use the Generate Meeting Notes button or ask for meeting notes explicitly. Roundtable no longer auto-generates notes after every turn.
 
-The Roundtable UI includes a meetings manager to open, end, or delete ongoing meetings.
+Before launch and during provider-readiness checks, Sparkbot reports only providers/models assigned to the room seats. Missing assigned routes produce concise warnings without listing unrelated providers.
+
+The Roundtable UI includes a meetings manager to open, end, or delete ongoing meetings, and the meeting page is scrollable on mobile browsers.
 
 ---
 
@@ -1917,7 +1920,7 @@ curl -b cookies.txt http://localhost:8000/api/v1/chat/system/watcher | python -m
 
 Desktop release tags and app versions are aligned on the `1.6.x` release line.
 
-For `v1.6.59`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release line stabilizes memory continuity and model routing: meeting artifacts roll decisions/actions/questions into shared Guardian work memory for main-chat retrieval, Memory Guardian uses `SPARKBOT_DATA_DIR` in desktop/local mode, `/chat/model` persists to the same primary route state as Controls, and meeting handoffs expose the resolved agent/model route. It carries forward the v1.6.57 public-v1 safety defaults and LIMA Robo OS bridge work.
+For `v1.6.60`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release line smooths Roundtable into a Seat 1 chaired working-session flow, keeps generated meeting notes operator-triggered, limits provider readiness checks to assigned room seats, and fixes mobile meeting scrolling. It carries forward the v1.6.59 memory-continuity and model-routing stabilization.
 
 ### How to upgrade safely
 

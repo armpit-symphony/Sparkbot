@@ -6,7 +6,7 @@ Use it to chat, search, summarize documents, control a browser, run shell comman
 
 **Download:** [armpit-symphony.github.io/Sparkbot](https://armpit-symphony.github.io/Sparkbot/)
 
-**Current release line:** v1.6.59
+**Current release line:** v1.6.60
 
 > Sparkbot stores its app data locally. If you connect a cloud LLM provider or an external service, the text and actions needed for that provider or service are sent to that provider. Local models can run without an LLM cloud account.
 
@@ -391,7 +391,7 @@ Exports a dated `.md` file with all notes, decisions, and action items.
 
 ### Roundtable
 
-The **Round Table** in the Workstation launches an autonomous multi-agent meeting. New meeting setup preloads `@meetings_manager` into the first seat, but you can change that chair before launch. Click **Auto-fill Stack** to seat your configured models, then start the meeting. The chair frames the problem, specialists contribute, Sparkbot synthesizes the result, and the room can keep moving through a Guardian `meeting_heartbeat` task until it reaches a terminal state such as solved, blocked, recommendation ready, or needs approval. Meeting notes, decisions, action items, and project artifacts are captured so the room behaves like an orchestrator instead of a one-off chat. You can interrupt at any time.
+The **Round Table** in the Workstation launches an autonomous multi-agent meeting. New meeting setup preloads `@meetings_manager` into the first seat, but you can change that chair before launch. Seat 1 is the meeting manager: after the owner kickoff, everyone gives first-pass ideas, the manager assesses, assigns jobs to the room, everyone responds to their assignment, and the manager summarizes with a plan, adjustment, continuation, or a request for owner input. Meeting notes are generated only when the operator explicitly uses the Generate Meeting Notes button or asks for notes by text/voice command. Before launch, Sparkbot checks only the providers/models assigned to the room seats and reports a concise assigned-seat readiness result. You can interrupt at any time.
 
 The Workstation **Specialty Wing** has five office slots backed by the same packaged and custom Agents list used in Controls. The default offices are `@meetings_manager`, `@researcher`, `@analyst`, `@writer`, and `@workstation_backup_1`; each office can be changed from the compact card dropdown or the office detail-panel selector, and the assignment persists locally in the browser. Opening an office shows the selected agent details plus a model selector that saves to the same per-agent model override system as **Controls -> Agents -> Model Overrides**.
 
@@ -602,6 +602,7 @@ User message → Token Guardian → Memory Guardian → LLM
 
 | Version | Date | Highlights |
 |---------|------|-----------|
+| v1.6.60 | May 2026 | Smoothed Roundtable into a Seat 1 chaired working-session flow with first-pass ideas, manager assessment, assignments, assigned-work pass, and manager summary; stopped automatic meeting-note generation while preserving operator-triggered notes; limited meeting provider readiness checks to assigned room seats; fixed mobile meeting scrolling/resizing; and advanced backend, frontend, Tauri shell, public downloader, service worker, README, capabilities docs, release notes, and packaging metadata to v1.6.60. |
 | v1.6.59 | May 2026 | Release stabilization for memory continuity and model routing: meeting artifacts now roll decisions/actions into shared Guardian work memory visible from main chat, duplicate meeting rollups are suppressed, desktop memory and first-run selector persistence follow `SPARKBOT_DATA_DIR`, `/chat/model` persists the primary route instead of drifting in process memory, meeting agent turns display resolved model routing, and downloader/docs/package metadata advanced to the v1.6.59 desktop line. |
 | v1.6.57 | May 2026 | Public-v1 readiness hardening plus LIMA Robo OS Phase 2 bridge: backend worker defaults reduced to 2, production config fails closed on unsafe auth/CORS, live terminal defaults off, robotics status/tools/command/emergency-stop endpoints and chat `lima_robot_command` are available for replay/simulation while real-hardware motion stays blocked until Guardian runner handoff is complete. |
 | v1.6.56 | May 2026 | Added a first-class OpenAI Codex subscription provider that detects the local Codex ChatGPT sign-in and dispatches `openai-codex/gpt-5.3-codex` through the Codex CLI bridge; Controls can set it as the default, Workstation ChatGPT/Codex desks prefill the subscription model, Specialty Wing office detail panels now include an agent selector for packaged or spawned agents, local desktop routing config was moved to the Codex subscription default, and downloader/docs/package metadata advanced to the v1.6.56 desktop line. |

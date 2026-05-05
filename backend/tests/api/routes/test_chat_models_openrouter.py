@@ -319,6 +319,58 @@ def test_meeting_agent_route_display_exposes_non_secret_model_metadata(monkeypat
     assert "api" not in str(display).lower()
 
 
+def test_meeting_provider_readiness_only_reports_assigned_participants() -> None:
+    from app.api.routes.chat import rooms
+
+    runtime_state = {
+        "active_model": "gpt-4o-mini",
+        "default_selection": {"model": "gpt-4o-mini"},
+        "model_stack": {"primary": "gpt-4o-mini"},
+        "agent_overrides": {
+            "researcher": {"route": "openrouter", "model": "openrouter/openai/gpt-4o-mini"},
+            "analyst": {"route": "local", "model": "ollama/qwen2:latest"},
+        },
+        "providers": {
+            "openrouter": {"configured": True, "reachable": None, "models_available": None},
+            "ollama": {"configured": False, "reachable": False, "models_available": False},
+            "anthropic": {"configured": False, "reachable": None, "models_available": None},
+        },
+    }
+
+    text = rooms._render_meeting_provider_readiness_markdown(runtime_state, ["researcher"])
+
+    assert "@researcher" in text
+    assert "openrouter" in text
+    assert "@analyst" not in text
+    assert "anthropic" not in text
+    assert "Assigned provider check passed for 1 seat" in text
+
+
+def test_meeting_provider_readiness_warns_only_for_assigned_missing_provider() -> None:
+    from app.api.routes.chat import rooms
+
+    runtime_state = {
+        "active_model": "gpt-4o-mini",
+        "default_selection": {"model": "gpt-4o-mini"},
+        "model_stack": {"primary": "gpt-4o-mini"},
+        "agent_overrides": {
+            "researcher": {"route": "local", "model": "ollama/qwen2:latest"},
+        },
+        "providers": {
+            "openai": {"configured": True, "reachable": None, "models_available": None},
+            "ollama": {"configured": True, "reachable": False, "models_available": False},
+            "minimax": {"configured": False, "reachable": None, "models_available": None},
+        },
+    }
+
+    text = rooms._render_meeting_provider_readiness_markdown(runtime_state, ["researcher"])
+
+    assert "Warning: required assigned model routes need attention." in text
+    assert "@researcher" in text
+    assert "ollama" in text
+    assert "minimax" not in text
+
+
 def test_tool_manifest_selection_stays_under_provider_limit() -> None:
     tool_definitions = [
         {"type": "function", "function": {"name": f"tool_{idx}", "parameters": {"type": "object"}}}

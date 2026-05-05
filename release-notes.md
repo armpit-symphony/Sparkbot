@@ -1,5 +1,13 @@
 # Release Notes
 
+## Sparkbot v1.6.60
+
+- Smoothed Roundtable into a Seat 1 chaired working session: first-pass ideas, manager assessment, assignments, assigned-work pass, manager summary, and a manager decision to plan, adjust, continue, or ask for operator input.
+- Stopped automatic meeting-note generation after meeting streams and heartbeats. Operator/manual Generate Meeting Notes remains available from the meeting UI and explicit notes commands.
+- Limited meeting provider readiness output to the providers/models assigned to the room seats, with concise warnings for missing assigned routes only.
+- Improved mobile meeting layout so the page can scroll and controls remain reachable on phone-sized browsers.
+- Advanced backend, frontend, Tauri shell, public downloader, service worker, README, capabilities docs, release notes, and packaging notes to v1.6.60.
+
 ## Sparkbot v1.6.59
 
 - Added a shared Guardian work-memory rollup path for meeting artifacts so roundtable decisions, action items, next steps, and open questions can inform main Sparkbot chat outside the meeting room.
