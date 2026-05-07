@@ -342,6 +342,15 @@ def _shared_work_session(user_id: str) -> str:
     return f"work:user:{user_id}"
 
 
+def unified_chat_memory_enabled() -> bool:
+    return os.getenv("SPARKBOT_UNIFIED_CHAT_MEMORY_ENABLED", "true").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
 def _safe_text(value: str, limit: int = 4000) -> str:
     text = " ".join((value or "").split()).strip()
     if not text:
@@ -859,6 +868,36 @@ def remember_chat_message(*, user_id: str, room_id: str, role: str, content: str
                 indexed=bool(last_event.metadata.get("candidate_indexed")),
             )
             _maybe_persist_profile_snapshot(user_id=user_id, room_id=room_id)
+        except Exception:
+            pass
+    if stored and unified_chat_memory_enabled():
+        try:
+            shared_content = _safe_text(content, limit=1200)
+            if shared_content:
+                fingerprint = hashlib.sha256(
+                    "\n".join([user_id, room_id, role, shared_content]).encode("utf-8")
+                ).hexdigest()
+                duplicate = False
+                for event in _guardian().ledger.iter_events(session_id=_shared_work_session(user_id)):
+                    meta = dict(event.metadata or {})
+                    if meta.get("chat_fingerprint") == fingerprint and _is_event_active_for_prompt(event):
+                        duplicate = True
+                        break
+                if not duplicate:
+                    _append_event(
+                        event_type=EventType.MESSAGE,
+                        role=role,
+                        content=f"Chat from room {room_id} ({role}): {shared_content}",
+                        session_id=_shared_work_session(user_id),
+                        metadata={
+                            "user_id": user_id,
+                            "room_id": room_id,
+                            "scope_type": "shared_chat",
+                            "chat_fingerprint": fingerprint,
+                        },
+                        source=f"chat.{role}.shared",
+                        confidence=0.82 if role == "user" else 0.68,
+                    )
         except Exception:
             pass
     return stored

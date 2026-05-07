@@ -665,6 +665,17 @@ def _codex_cli_model(model: str) -> str:
     return aliases.get(normalized, normalized or "gpt-5.3-codex")
 
 
+def _codex_cli_timeout_seconds() -> float | None:
+    raw = os.getenv("SPARKBOT_CODEX_CLI_TIMEOUT_SECONDS", "7200").strip().lower()
+    if raw in {"", "0", "none", "off", "false", "unlimited"}:
+        return None
+    try:
+        parsed = float(raw)
+    except ValueError:
+        parsed = 7200.0
+    return max(30.0, parsed)
+
+
 def _messages_to_codex_prompt(messages: list[dict[str, Any]]) -> str:
     parts: list[str] = [
         "Answer as Sparkbot. Follow the conversation below. Do not modify files or run write actions.",
@@ -725,7 +736,7 @@ async def _codex_cli_acompletion(*, model: str, **kwargs: Any) -> Any:
         output_path,
         "-",
     ]
-    timeout = max(30.0, min(float(os.getenv("SPARKBOT_CODEX_CLI_TIMEOUT_SECONDS", "180")), 600.0))
+    timeout = _codex_cli_timeout_seconds()
     proc = await asyncio.create_subprocess_exec(
         *command,
         stdin=asyncio.subprocess.PIPE,
@@ -733,11 +744,18 @@ async def _codex_cli_acompletion(*, model: str, **kwargs: Any) -> Any:
         stderr=asyncio.subprocess.PIPE,
     )
     try:
-        stdout, stderr = await asyncio.wait_for(proc.communicate(prompt.encode("utf-8")), timeout=timeout)
+        communicate = proc.communicate(prompt.encode("utf-8"))
+        if timeout is None:
+            stdout, stderr = await communicate
+        else:
+            stdout, stderr = await asyncio.wait_for(communicate, timeout=timeout)
     except asyncio.TimeoutError as exc:
         proc.kill()
         await proc.communicate()
-        raise RuntimeError("Codex subscription route timed out waiting for Codex CLI.") from exc
+        raise RuntimeError(
+            f"Codex subscription route timed out after {timeout:.0f} seconds waiting for Codex CLI. "
+            "Set SPARKBOT_CODEX_CLI_TIMEOUT_SECONDS=0 for no Sparkbot-side timeout."
+        ) from exc
 
     text = ""
     try:

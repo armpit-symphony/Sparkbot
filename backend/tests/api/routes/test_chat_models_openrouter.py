@@ -50,6 +50,16 @@ def test_llm_accepts_dynamic_openrouter_and_ollama_models(monkeypatch) -> None:
     assert llm.get_model(agent_name="researcher") == "ollama/custom-local:latest"
 
 
+def test_codex_cli_timeout_defaults_to_long_running(monkeypatch) -> None:
+    monkeypatch.delenv("SPARKBOT_CODEX_CLI_TIMEOUT_SECONDS", raising=False)
+    assert llm._codex_cli_timeout_seconds() == 7200.0
+
+
+def test_codex_cli_timeout_can_be_disabled(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKBOT_CODEX_CLI_TIMEOUT_SECONDS", "0")
+    assert llm._codex_cli_timeout_seconds() is None
+
+
 def test_workstation_stack_agents_lock_to_stack_models(monkeypatch) -> None:
     monkeypatch.setenv("SPARKBOT_MODEL", "openrouter/openai/gpt-4o-mini")
     monkeypatch.setenv("SPARKBOT_BACKUP_MODEL_1", "ollama/qwen2:latest")

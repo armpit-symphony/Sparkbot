@@ -1,5 +1,12 @@
 # Release Notes
 
+## Sparkbot v1.6.63
+
+- Cleaned the GitHub Pages downloader page by repairing broken text encoding and replacing visible symbol glyphs with plain English text.
+- Extended OpenAI Codex subscription routing for difficult projects: the Sparkbot-side Codex CLI timeout now defaults to 2 hours and can be disabled with `SPARKBOT_CODEX_CLI_TIMEOUT_SECONDS=0`.
+- Mirrored useful non-noise chat turns into per-user shared work memory so browser chat, Telegram, Discord, and workstation meeting rooms can recall the same operating context without leaking across users.
+- Advanced backend, frontend, Tauri shell, public downloader, service worker, README, capabilities docs, release notes, and packaging notes to v1.6.63.
+
 ## Sparkbot v1.6.62
 
 - Fixed a REST chat-message recursion bug, escaped message-search wildcards, and restricted chat-user creation to configured operator identities.

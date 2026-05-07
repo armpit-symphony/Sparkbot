@@ -542,7 +542,7 @@ How to get the token:
 
 Sparkbot sends the token via `Authorization: Bearer` with the `anthropic-beta: oauth-2025-04-20` header, so meetings launched through that seat spend against your subscription quota rather than API credits. Tokens expire — paste a fresh one if Anthropic starts rejecting requests.
 
-**Codex with your ChatGPT plan.** Sparkbot has a first-class **OpenAI Codex Subscription** provider. In PowerShell or your shell, run `codex login` (or `codex login --device-auth` on an SSH server), choose **ChatGPT sign-in**, finish the login, then restart Sparkbot. Select `openai-codex/gpt-5.3-codex` in **Controls -> Codex Sub**. Sparkbot detects the local Codex session at `~/.codex/auth.json` on macOS/Linux or `%USERPROFILE%\.codex\auth.json` on Windows and dispatches that provider through read-only `codex exec` instead of requiring an OpenAI Platform API key. If the Controls card still says sign-in is needed after login, set `CODEX_HOME` to the Codex profile directory and optionally `SPARKBOT_CODEX_CLI` to the installed Codex executable, then restart Sparkbot. The **ChatGPT** Invite Wing desk is also the Codex gateway and now preloads the same subscription model for meeting seats.
+**Codex with your ChatGPT plan.** Sparkbot has a first-class **OpenAI Codex Subscription** provider. In PowerShell or your shell, run `codex login` (or `codex login --device-auth` on an SSH server), choose **ChatGPT sign-in**, finish the login, then restart Sparkbot. Select `openai-codex/gpt-5.3-codex` in **Controls -> Codex Sub**. Sparkbot detects the local Codex session at `~/.codex/auth.json` on macOS/Linux or `%USERPROFILE%\.codex\auth.json` on Windows and dispatches that provider through read-only `codex exec` instead of requiring an OpenAI Platform API key. If the Controls card still says sign-in is needed after login, set `CODEX_HOME` to the Codex profile directory and optionally `SPARKBOT_CODEX_CLI` to the installed Codex executable, then restart Sparkbot. The **ChatGPT** Invite Wing desk is also the Codex gateway and now preloads the same subscription model for meeting seats. Long-running Codex tasks default to `SPARKBOT_CODEX_CLI_TIMEOUT_SECONDS=7200`; set it to `0` for no Sparkbot-side CLI timeout.
 
 For Docker/server installs, sign in on the host as the same user that runs Sparkbot, then start with the optional Codex override so the backend container can read only the auth file while keeping its runtime Codex state inside the container:
 
@@ -910,6 +910,7 @@ SPARKBOT_MEMORY_GUARDIAN_ENABLED=true
 SPARKBOT_MEMORY_GUARDIAN_DATA_DIR=./data/memory_guardian
 SPARKBOT_MEMORY_GUARDIAN_MAX_TOKENS=1200
 SPARKBOT_MEMORY_GUARDIAN_RETRIEVE_LIMIT=6
+SPARKBOT_UNIFIED_CHAT_MEMORY_ENABLED=true          # mirror useful room/bridge/meeting turns into per-user shared work memory
 SPARKBOT_MEMORY_GUARDIAN_RETRIEVER=fts             # fts | hybrid (default fts)
 SPARKBOT_MEMORY_GUARDIAN_ENABLE_EMBEDDINGS=false   # set true to enable hybrid embedding rerank
 SPARKBOT_MEMORY_SNAPSHOT_REBUILD_EVERY_N=10
@@ -1293,6 +1294,7 @@ SPARKBOT_MEMORY_GUARDIAN_ENABLED=true
 SPARKBOT_MEMORY_GUARDIAN_DATA_DIR=./data/memory_guardian
 SPARKBOT_MEMORY_GUARDIAN_MAX_TOKENS=1200
 SPARKBOT_MEMORY_GUARDIAN_RETRIEVE_LIMIT=6
+SPARKBOT_UNIFIED_CHAT_MEMORY_ENABLED=true
 ```
 
 ### Task Guardian
@@ -1920,7 +1922,7 @@ curl -b cookies.txt http://localhost:8000/api/v1/chat/system/watcher | python -m
 
 Desktop release tags and app versions are aligned on the `1.6.x` release line.
 
-For `v1.6.62`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release line hardens chat and workstation operations by fixing REST message creation recursion, escaping message-search wildcards, limiting chat-user creation to operator identities, closing WebSocket DB sessions on every exit path, pruning in-memory rate-limit state, removing closed terminal sessions, limiting upload MIME sniffing, and keeping local JWT secrets stable across restarts while production rejects unsafe defaults.
+For `v1.6.63`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release line cleans downloader text to plain English/ASCII, extends Codex subscription routing for long-running work with an unlimited local timeout option, and mirrors useful chat turns into per-user shared work memory so browser, Telegram, Discord, and workstation meeting conversations can inform one another without crossing user boundaries.
 
 ### How to upgrade safely
 

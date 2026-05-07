@@ -6,7 +6,7 @@ Use it to chat, search, summarize documents, control a browser, run shell comman
 
 **Download:** [armpit-symphony.github.io/Sparkbot](https://armpit-symphony.github.io/Sparkbot/)
 
-**Current release line:** v1.6.62
+**Current release line:** v1.6.63
 
 > Sparkbot stores its app data locally. If you connect a cloud LLM provider or an external service, the text and actions needed for that provider or service are sent to that provider. Local models can run without an LLM cloud account.
 
@@ -72,6 +72,7 @@ The desktop app is the easiest path for one person. Docker and systemd deploymen
 - **Spawn agents** — create named agents with custom system prompts and first-class identity metadata from 11 specialty templates
 - **Agent identity + kill switches** — each agent exposes owner, purpose, scopes, allowed tools, expiration, risk tier, and kill-switch state; disabled agents do not route from `@mention`
 - **Persistent memory** — Sparkbot stores facts about you and injects them into every conversation
+- **Unified chat memory** — useful browser, Telegram, Discord, and workstation meeting turns are mirrored into per-user shared work memory for later recall
 - **Memory retrieval controls** — Guardian Memory now defaults to BM25 full-text recall, with optional hybrid embedding rerank gated behind `SPARKBOT_MEMORY_GUARDIAN_ENABLE_EMBEDDINGS=true`
 - **Verified memory writes** — durable facts carry source, confidence, verification state, and redaction metadata; low-confidence facts go to pending approvals instead of being promoted automatically
 - **Memory lifecycle controls** — short chat noise is filtered before ledger writes, nightly consolidation promotes durable facts, old hot-ledger events rotate into month archives, and stale low-weight facts leave the prompt path
@@ -280,6 +281,8 @@ SPARKBOT_CODEX_AUTH_FILE=/absolute/path/to/auth.json \
 ```
 
 After startup, open **Controls → OpenAI Codex Subscription** and choose `openai-codex/gpt-5.3-codex`. Sparkbot dispatches that route through `codex exec --sandbox read-only`.
+
+Long-running Codex subscription tasks default to a 2-hour Sparkbot-side CLI timeout. Set `SPARKBOT_CODEX_CLI_TIMEOUT_SECONDS=0` to remove Sparkbot's local timeout for difficult projects that may run much longer.
 
 For a public or private server install, use [deployment.md](./deployment.md) for Docker, Traefik, and Let's Encrypt, or [docs/systemd-single-node.md](./docs/systemd-single-node.md) for systemd and nginx.
 
@@ -602,6 +605,7 @@ User message → Token Guardian → Memory Guardian → LLM
 
 | Version | Date | Highlights |
 |---------|------|-----------|
+| v1.6.63 | May 2026 | Cleaned the public downloader page so visible text is English/ASCII only, extended Codex subscription CLI routing for long-running work with an unlimited option, and mirrored useful chat turns into per-user shared work memory so browser, Telegram, Discord, and workstation meeting conversations can inform one another without crossing user boundaries. |
 | v1.6.62 | May 2026 | Security maintenance release: fixed REST chat message recursion, escaped message-search wildcards, made chat-user creation operator-only, closed WebSocket DB sessions, removed closed terminal sessions from memory, pruned rate-limit buckets, limited upload MIME sniffing, stabilized local SECRET_KEY defaults while production rejects unsafe secrets, generated local Postgres passwords during setup, moved FastAPI startup/shutdown to lifespan, and advanced downloader/docs/package metadata to v1.6.62. |
 | v1.6.60 | May 2026 | Smoothed Roundtable into a Seat 1 chaired working-session flow with first-pass ideas, manager assessment, assignments, assigned-work pass, and manager summary; stopped automatic meeting-note generation while preserving operator-triggered notes; limited meeting provider readiness checks to assigned room seats; fixed mobile meeting scrolling/resizing; and advanced backend, frontend, Tauri shell, public downloader, service worker, README, capabilities docs, release notes, and packaging metadata to v1.6.60. |
 | v1.6.59 | May 2026 | Release stabilization for memory continuity and model routing: meeting artifacts now roll decisions/actions into shared Guardian work memory visible from main chat, duplicate meeting rollups are suppressed, desktop memory and first-run selector persistence follow `SPARKBOT_DATA_DIR`, `/chat/model` persists the primary route instead of drifting in process memory, meeting agent turns display resolved model routing, and downloader/docs/package metadata advanced to the v1.6.59 desktop line. |

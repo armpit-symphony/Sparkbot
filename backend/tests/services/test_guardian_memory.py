@@ -244,6 +244,51 @@ def test_memory_guardian_builds_learned_profile_and_workflow_summary(monkeypatch
     assert "Sparkbot memory quality this week" in context
 
 
+def test_chat_messages_roll_into_user_shared_work_memory(monkeypatch, tmp_path: Path) -> None:
+    _reset_memory_guardian(monkeypatch, tmp_path)
+    monkeypatch.setenv("SPARKBOT_UNIFIED_CHAT_MEMORY_ENABLED", "true")
+
+    assert memory.remember_chat_message(
+        user_id="user-1",
+        room_id="telegram-room",
+        role="user",
+        content="The Telegram thread decided to ship the long running Codex fix.",
+    )
+
+    context = memory.build_memory_context(
+        user_id="user-1",
+        room_id="main-room",
+        query="What did the Telegram thread decide about Codex?",
+    )
+
+    assert "long running Codex fix" in context
+    recalled = memory.recall_relevant_events(
+        user_id="user-1",
+        room_id="main-room",
+        query="Telegram Codex fix",
+    )
+    assert any(item["session_id"] == memory._shared_work_session("user-1") for item in recalled)
+
+
+def test_shared_chat_memory_stays_user_scoped(monkeypatch, tmp_path: Path) -> None:
+    _reset_memory_guardian(monkeypatch, tmp_path)
+    monkeypatch.setenv("SPARKBOT_UNIFIED_CHAT_MEMORY_ENABLED", "true")
+
+    assert memory.remember_chat_message(
+        user_id="user-1",
+        room_id="meeting-room",
+        role="user",
+        content="Meeting note says project Falcon uses the green deployment lane.",
+    )
+
+    other_context = memory.build_memory_context(
+        user_id="user-2",
+        room_id="main-room",
+        query="project Falcon deployment lane",
+    )
+    assert "green deployment lane" not in other_context
+
+
 def test_memory_guardian_redacts_sensitive_content_from_context(monkeypatch, tmp_path: Path) -> None:
     _reset_memory_guardian(monkeypatch, tmp_path)
 

@@ -1,0 +1,6 @@
+Sparkbot v1.6.63
+
+- Cleaned the public downloader page so visible text is plain English/ASCII with no broken encoding artifacts.
+- Extended OpenAI Codex subscription routing for long-running projects; set SPARKBOT_CODEX_CLI_TIMEOUT_SECONDS=0 for no Sparkbot-side CLI timeout.
+- Mirrored useful browser, Telegram, Discord, and workstation meeting chat turns into per-user shared work memory for unified recall without crossing user boundaries.
+- Advanced backend, frontend, Tauri shell, public downloader, service worker, README, capabilities docs, release notes, and packaging notes to v1.6.63.
