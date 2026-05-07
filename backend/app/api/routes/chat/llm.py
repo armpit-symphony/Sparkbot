@@ -14,11 +14,14 @@ import shutil
 import tempfile
 import time
 import uuid as _uuid_module
+from collections import defaultdict, deque
+from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from typing import Any, AsyncGenerator
+from typing import Any
 
 import litellm
+
 from app.services.guardian import get_guardian_suite
 from app.services.guardian import improvement as guardian_improvement
 
@@ -320,8 +323,6 @@ def discard_pending(confirm_id: str) -> None:
 # ── Per-model latency + error tracking ────────────────────────────────────────
 # Stores the last 10 successful response times (seconds) per model string and
 # rolling success/error counters. Read by /models and /performance endpoints.
-from collections import deque, defaultdict
-
 _MODEL_LATENCIES: dict[str, deque[float]] = {}
 _LATENCY_WINDOW = 10  # keep last N samples per model
 _MODEL_CALL_COUNTS: dict[str, int] = defaultdict(int)
@@ -1881,9 +1882,9 @@ async def stream_chat_with_tools(
     """
     from app.api.routes.chat.tools import (
         TOOL_DEFINITIONS,
-        execute_tool,
         _email_configured_smtp,
         _google_configured,
+        execute_tool,
     )
     guardian_suite = get_guardian_suite()
     try:
@@ -2033,7 +2034,6 @@ async def stream_chat_with_tools(
 
     if db_session is not None and user_id and room_id and route_payload:
         try:
-            import uuid as _uuid
             from app.crud import create_audit_log
 
             mode = str(route_payload.get("mode") or "shadow")
@@ -2048,8 +2048,8 @@ async def stream_chat_with_tools(
                     }
                 ),
                 tool_result=json.dumps(route_payload)[:8000],
-                user_id=_uuid.UUID(user_id),
-                room_id=_uuid.UUID(room_id),
+                user_id=_uuid_module.UUID(user_id),
+                room_id=_uuid_module.UUID(room_id),
                 agent_name=agent_name,
                 model=chosen,
             )
@@ -2174,7 +2174,6 @@ async def stream_chat_with_tools(
 
                     if db_session is not None:
                         try:
-                            import uuid as _uuid
                             from app.crud import create_audit_log
 
                             create_audit_log(
@@ -2187,8 +2186,8 @@ async def stream_chat_with_tools(
                                     }
                                 )[:2000],
                                 tool_result=decision.to_json()[:1000],
-                                user_id=_uuid.UUID(user_id) if user_id else None,
-                                room_id=_uuid.UUID(room_id) if room_id else None,
+                                user_id=_uuid_module.UUID(user_id) if user_id else None,
+                                room_id=_uuid_module.UUID(room_id) if room_id else None,
                                 agent_name=agent_name,
                                 model=chosen,
                             )
@@ -2306,7 +2305,7 @@ async def stream_chat_with_tools(
                             tool_name=tool_name,
                             action_type=decision.action_type,
                             expected_outcome=f"Successful tool execution for {tool_name}",
-                            perform_fn=lambda: execute_tool(
+                            perform_fn=lambda tool_name=tool_name, tool_args=tool_args: execute_tool(
                                 tool_name,
                                 tool_args,
                                 user_id=user_id,
@@ -2362,7 +2361,6 @@ async def stream_chat_with_tools(
                     # Audit log — best-effort, never let it break the chat stream
                     if db_session is not None:
                         try:
-                            import uuid as _uuid
                             from app.crud import create_audit_log
                             redacted_input, redacted_result = redact_tool_call_for_audit(
                                 tool_name, tool_args, result
@@ -2374,8 +2372,8 @@ async def stream_chat_with_tools(
                                 tool_name=tool_name,
                                 tool_input=redacted_input,
                                 tool_result=redacted_result,
-                                user_id=_uuid.UUID(user_id) if user_id else None,
-                                room_id=_uuid.UUID(room_id) if room_id else None,
+                                user_id=_uuid_module.UUID(user_id) if user_id else None,
+                                room_id=_uuid_module.UUID(room_id) if room_id else None,
                                 agent_name=agent_name,
                                 model=chosen,
                             )
