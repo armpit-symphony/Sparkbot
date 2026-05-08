@@ -322,7 +322,7 @@ interface ProviderTokenDrafts {
 }
 
 interface DefaultModelSelectionForm {
-  provider: "openrouter" | "ollama" | "openai" | "openai_codex" | "anthropic" | "google" | "groq" | "minimax" | "xai"
+  provider: "openrouter" | "ollama" | "openai" | "openai_codex" | "claude_sub" | "anthropic" | "google" | "groq" | "minimax" | "xai"
   model: string
 }
 
@@ -1813,7 +1813,7 @@ function SparkbotSettingsDialog({
                     </div>
                   )}
 
-                  {error && (defaultSelection.provider === "openrouter" || defaultSelection.provider === "ollama" || defaultSelection.provider === "openai_codex" || directProviderKeyField[defaultSelection.provider] !== undefined) && (
+                  {error && (defaultSelection.provider === "openrouter" || defaultSelection.provider === "ollama" || defaultSelection.provider === "openai_codex" || defaultSelection.provider === "claude_sub" || directProviderKeyField[defaultSelection.provider] !== undefined) && (
                     <p className="mt-2 text-xs font-medium text-destructive">{error}</p>
                   )}
                   <div className="mt-4 flex justify-end gap-2">

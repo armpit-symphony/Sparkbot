@@ -1564,9 +1564,8 @@
     }
 
     function applyRelease(release) {
-      setText("version-badge", "v" + release.version);
+      // Download version label reflects the actual installer available
       setText("download-version-label", "Version " + release.version);
-      setText("footer-version-label", "Version " + release.version);
       setText("windows-filename-step-1", release.windowsFilename);
       setText("windows-filename-step-2", release.windowsFilename);
       setText("windows-filename-dialog", release.windowsFilename);
@@ -1577,6 +1576,7 @@
       setHref("download-linux-link", release.linuxUrl);
       setHref("footer-macos-link", release.macosUrl);
       setHref("footer-linux-link", release.linuxUrl);
+      // version-badge and footer-version-label stay at the software version (set in HTML)
     }
 
     async function loadLatestDesktopRelease() {
