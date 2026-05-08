@@ -22,5 +22,17 @@ Refined self-inspection positive patterns to require explicit status-request
 verbs (show, check, display, get) or explicit state queries (what stack am I
 using, is ollama active) instead of matching bare keyword mentions.
 
+Removed "why", "how", and "explain" from the simple_qa classifier keywords
+to prevent troubleshooting and reasoning queries from routing to the cheapest
+model. These now correctly hit the reasoning label.
+
+Added Claude Subscription provider (claude_sub): uses the locally signed-in
+Claude Code CLI session (Pro, Max, or Team plan) to route chat through
+Claude models without pasting an Anthropic API key. Available models:
+claude-sub/opus, claude-sub/sonnet, claude-sub/haiku. Added "Claude Sub"
+button in Controls AI setup alongside the existing "Codex Sub" button.
+Environment variables: CLAUDE_HOME, SPARKBOT_CLAUDE_CLI,
+SPARKBOT_CLAUDE_SUBSCRIPTION_MODEL, SPARKBOT_CLAUDE_CLI_TIMEOUT_SECONDS.
+
 Advanced backend, frontend, Tauri shell, public downloader, service worker,
 README, capabilities docs, release notes, and packaging notes to v1.6.64.

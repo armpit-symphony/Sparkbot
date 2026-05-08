@@ -1517,6 +1517,7 @@ function SparkbotSettingsDialog({
                       ["openai", "OpenAI"],
                       ["openai_codex", "Codex Sub"],
                       ["anthropic", "Anthropic"],
+                      ["claude_sub", "Claude Sub"],
                       ["google", "Google"],
                       ["groq", "Groq"],
                       ["minimax", "MiniMax"],
@@ -1642,6 +1643,48 @@ function SparkbotSettingsDialog({
                           Sparkbot runs this provider through read-only{" "}
                           <code className="rounded bg-muted px-1 py-0.5">codex exec</code>. The packaged default is
                           GPT-5.3 Codex Spark.
+                        </p>
+                      </div>
+                    </div>
+                  ) : defaultSelection.provider === "claude_sub" ? (
+                    <div className="space-y-3">
+                      <div className="rounded-md border bg-background px-3 py-2">
+                        <div className="text-xs font-semibold">
+                          {directProviderIsConfigured("claude_sub")
+                            ? "Claude Code sign-in detected"
+                            : "Claude Code sign-in needed"}
+                        </div>
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          This uses your local Claude Code CLI session, not a pasted Anthropic API key.
+                          Run <code className="rounded bg-muted px-1 py-0.5">claude auth login</code>,
+                          finish the browser sign-in, then restart Sparkbot and reopen Controls.
+                        </p>
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          If you signed in but this still says needed, set{" "}
+                          <code className="rounded bg-muted px-1 py-0.5">CLAUDE_HOME=~/.claude</code>{" "}
+                          and, if needed,{" "}
+                          <code className="rounded bg-muted px-1 py-0.5">SPARKBOT_CLAUDE_CLI=/path/to/claude</code>,
+                          then restart Sparkbot.
+                        </p>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-muted-foreground">Default Claude model</label>
+                        <select
+                          value={defaultSelection.model}
+                          onChange={(e) => onDefaultSelectionChange("model", e.target.value)}
+                          className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                        >
+                          <option value="">Choose a Claude subscription model</option>
+                          {directProviderModels("claude_sub").map((model) => (
+                            <option key={model} value={model}>
+                              {modelsConfig?.model_labels?.[model] ?? model}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          Sparkbot runs this provider through{" "}
+                          <code className="rounded bg-muted px-1 py-0.5">claude --print</code>. Your Claude Pro, Max,
+                          or Team subscription is used directly.
                         </p>
                       </div>
                     </div>

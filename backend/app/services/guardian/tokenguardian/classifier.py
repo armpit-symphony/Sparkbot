@@ -64,10 +64,10 @@ class Classifier:
             },
             'simple_qa': {
                 'preferred': 'minimax/MiniMax-M2.1',
-                'keywords': ['what', 'when', 'where', 'who', 'why', 'how',
+                'keywords': ['what', 'when', 'where', 'who',
                            'does', 'is', 'are', 'can', 'should', 'could',
                            'what is', 'what are', 'what does', 'define', 'definition',
-                           'meaning', 'explain', 'time', 'date', 'weather', 'temperature',
+                           'meaning', 'time', 'date', 'weather', 'temperature',
                            'capital', 'population', 'inventor', 'creator', 'author',
                            'location', 'cost', 'price', 'year', 'day', 'called', 'name'],
                 'max_length': 100

@@ -55,6 +55,7 @@ from app.api.routes.chat.llm import (
     model_is_configured,
     model_provider,
     _codex_cli_auth_available,
+    _claude_cli_auth_available,
     set_invite_agent_config,
     set_model,
     set_model_stack,
@@ -90,12 +91,16 @@ def _provider_saved_auth_mode(provider_id: str) -> str:
         return raw if raw in {"api_key", "oauth"} else "api_key"
     if provider_id == "openai_codex":
         return "codex_cli"
+    if provider_id == "claude_sub":
+        return "claude_cli"
     return "api_key"
 
 
 def _provider_configured(provider_id: str, env_key: str) -> bool:
     if provider_id == "openai_codex":
         return _codex_cli_auth_available()
+    if provider_id == "claude_sub":
+        return _claude_cli_auth_available()
     return bool(os.getenv(env_key, "").strip())
 
 
@@ -302,6 +307,7 @@ def _provider_catalog(ollama_status: dict[str, Any] | None = None) -> list[dict[
         ("openai", "OpenAI", "OPENAI_API_KEY"),
         ("openai_codex", "OpenAI Codex Subscription", ""),
         ("anthropic", "Anthropic", "ANTHROPIC_API_KEY"),
+        ("claude_sub", "Claude Subscription", ""),
         ("google", "Google", "GOOGLE_API_KEY"),
         ("groq", "Groq", "GROQ_API_KEY"),
         ("minimax", "MiniMax", "MINIMAX_API_KEY"),
@@ -324,6 +330,8 @@ def _provider_catalog(ollama_status: dict[str, Any] | None = None) -> list[dict[
                     if provider_id == "openai"
                     else ["codex_cli"]
                     if provider_id == "openai_codex"
+                    else ["claude_cli"]
+                    if provider_id == "claude_sub"
                     else ["api_key", "oauth"]
                     if provider_id == "anthropic"
                     else ["api_key"]

@@ -7,6 +7,9 @@
 - Added correction lock: if the user says "that's not an answer", "stop sending state", or similar corrections in recent conversation history, the runtime-state handler is suppressed for subsequent turns in that conversation.
 - Tightened provider-readiness detection (`_looks_like_provider_readiness_query`): bare words like "model" or "configured" no longer trigger the meeting provider-readiness check — requires explicit readiness phrasing.
 - Refined self-inspection positive patterns to require explicit status-request verbs (show, check, display, get) or explicit state queries (what stack am I using, is ollama active) instead of matching bare keyword mentions.
+- Removed `why`, `how`, and `explain` from the `simple_qa` classifier keywords to prevent troubleshooting and reasoning queries from being misclassified as simple factual questions; these now route correctly to the `reasoning` label.
+- Added Claude Subscription provider (`claude_sub`): uses the locally signed-in Claude Code CLI session (Pro, Max, or Team plan) to route chat through Claude models without pasting an Anthropic API key. Models: `claude-sub/opus`, `claude-sub/sonnet`, `claude-sub/haiku`.
+- Added "Claude Sub" button in Controls AI setup alongside the existing "Codex Sub" button.
 - Advanced backend, frontend, Tauri shell, public downloader, service worker, README, capabilities docs, release notes, and packaging notes to v1.6.64.
 
 ## Sparkbot v1.6.63

@@ -236,6 +236,11 @@ AVAILABLE_MODELS: dict[str, str] = {
     "claude-sonnet-4-5":         "Claude Sonnet 4.5 — balanced Anthropic model",
     "claude-sonnet-4-6":         "Claude Sonnet 4.6 — latest balanced Anthropic",
     "claude-opus-4-6":           "Claude Opus 4.6 — most capable Anthropic model",
+    # Claude subscription route. These are dispatched through the locally
+    # signed-in Claude Code CLI when the claude_sub provider is selected.
+    "claude-sub/opus":   "Claude Opus — Claude subscription default",
+    "claude-sub/sonnet": "Claude Sonnet — Claude subscription",
+    "claude-sub/haiku":  "Claude Haiku — Claude subscription",
     # ── Google ─────────────────────────────────────────────────────────────────
     "gemini/gemini-2.0-flash":       "Gemini 2.0 Flash — fast Google model",
     "gemini/gemini-3-flash":         "Gemini 3 Flash — fast Gemini 3 model",
@@ -781,6 +786,141 @@ async def _codex_cli_acompletion(*, model: str, **kwargs: Any) -> Any:
     return _plain_completion_response(text)
 
 
+# ─── Claude Subscription (Claude Code CLI) ───────────────────────────────────
+
+
+def _claude_cli_auth_path() -> pathlib.Path:
+    return pathlib.Path(os.getenv("CLAUDE_HOME", str(pathlib.Path.home() / ".claude")))
+
+
+def _claude_cli_auth_available() -> bool:
+    """Return True if a local Claude Code sign-in with a subscription is detected."""
+    if os.getenv("CLAUDE_SUB_API_KEY", "").strip():
+        return True
+    cli = _claude_cli_executable()
+    try:
+        result = __import__("subprocess").run(
+            [cli, "auth", "status"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            return False
+        payload = json.loads(result.stdout.strip())
+        return bool(payload.get("loggedIn"))
+    except Exception:
+        return False
+
+
+def _claude_cli_executable() -> str:
+    explicit = os.getenv("SPARKBOT_CLAUDE_CLI", "").strip()
+    if explicit:
+        return explicit
+    resolved = shutil.which("claude")
+    if resolved:
+        return resolved
+    local_bin = pathlib.Path.home() / ".local" / "bin" / "claude"
+    if local_bin.is_file():
+        return str(local_bin)
+    npm_cmd = pathlib.Path.home() / "AppData" / "Roaming" / "npm" / "claude.cmd"
+    if npm_cmd.is_file():
+        return str(npm_cmd)
+    return "claude"
+
+
+def _claude_cli_model(model: str) -> str:
+    configured = os.getenv("SPARKBOT_CLAUDE_SUBSCRIPTION_MODEL", "").strip()
+    if configured:
+        return configured
+    normalized = (model or "").strip().removeprefix("claude-sub/")
+    aliases = {
+        "opus": "opus",
+        "sonnet": "sonnet",
+        "haiku": "haiku",
+    }
+    return aliases.get(normalized, normalized or "sonnet")
+
+
+def _claude_cli_timeout_seconds() -> float | None:
+    raw = os.getenv("SPARKBOT_CLAUDE_CLI_TIMEOUT_SECONDS", "7200").strip().lower()
+    if raw in {"", "0", "none", "off", "false", "unlimited"}:
+        return None
+    try:
+        parsed = float(raw)
+    except ValueError:
+        parsed = 7200.0
+    return max(30.0, parsed)
+
+
+async def _claude_cli_acompletion(*, model: str, **kwargs: Any) -> Any:
+    if not _claude_cli_auth_available():
+        raise RuntimeError(
+            "Claude subscription route selected, but no local Claude Code sign-in was found. "
+            "Run `claude auth login`, finish the browser sign-in, then restart Sparkbot. "
+            "If the backend runs under a different user, set CLAUDE_HOME to the signed-in .claude directory "
+            "and optionally SPARKBOT_CLAUDE_CLI to the Claude Code executable."
+        )
+
+    messages = list(kwargs.get("messages") or [])
+    prompt = _messages_to_codex_prompt(messages)
+    if not prompt:
+        raise RuntimeError("Claude subscription route received an empty prompt.")
+
+    with tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8", suffix=".txt") as tmp:
+        output_path = tmp.name
+
+    cli_model = _claude_cli_model(model)
+    command = [
+        _claude_cli_executable(),
+        "--print",
+        "--model", cli_model,
+        "--output-file", output_path,
+    ]
+    timeout = _claude_cli_timeout_seconds()
+    proc = await asyncio.create_subprocess_exec(
+        *command,
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        communicate = proc.communicate(prompt.encode("utf-8"))
+        if timeout is None:
+            stdout, stderr = await communicate
+        else:
+            stdout, stderr = await asyncio.wait_for(communicate, timeout=timeout)
+    except asyncio.TimeoutError as exc:
+        proc.kill()
+        await proc.communicate()
+        raise RuntimeError(
+            f"Claude subscription route timed out after {timeout:.0f} seconds waiting for Claude CLI. "
+            "Set SPARKBOT_CLAUDE_CLI_TIMEOUT_SECONDS=0 for no Sparkbot-side timeout."
+        ) from exc
+
+    text = ""
+    try:
+        text = pathlib.Path(output_path).read_text(encoding="utf-8").strip()
+    except Exception:
+        text = ""
+    try:
+        pathlib.Path(output_path).unlink(missing_ok=True)
+    except Exception:
+        pass
+
+    if proc.returncode != 0:
+        error_text = (stderr or stdout).decode("utf-8", errors="replace").strip()
+        raise RuntimeError(f"Claude CLI failed for subscription route: {error_text[:500]}")
+    if not text:
+        text = stdout.decode("utf-8", errors="replace").strip()
+    if not text:
+        raise RuntimeError("Claude CLI returned an empty response.")
+
+    if kwargs.get("stream"):
+        return _single_chunk_stream(text)
+    return _plain_completion_response(text)
+
+
 def default_cross_provider_fallback_enabled() -> bool:
     raw = os.getenv(DEFAULT_CROSS_PROVIDER_FALLBACK_ENV, "").strip().lower()
     if raw:
@@ -822,7 +962,7 @@ def get_invite_agent_config(agent_name: str) -> dict[str, str]:
     return _invite_agent_configs.get(agent_name.strip().lower(), {})
 
 
-VALID_AGENT_ROUTES = {"default", "openrouter", "local", "openai", "openai_codex", "anthropic", "google", "groq", "minimax", "xai"}
+VALID_AGENT_ROUTES = {"default", "openrouter", "local", "openai", "openai_codex", "claude_sub", "anthropic", "google", "groq", "minimax", "xai"}
 
 
 def get_agent_model_overrides() -> dict[str, dict[str, str]]:
@@ -887,7 +1027,7 @@ def get_agent_route_context(
         chosen_model = override_model or get_openrouter_default_model()
     elif route == "local":
         chosen_model = override_model or get_local_default_model()
-    elif route in {"openai", "openai_codex", "anthropic", "google", "groq", "minimax", "xai"}:
+    elif route in {"openai", "openai_codex", "claude_sub", "anthropic", "google", "groq", "minimax", "xai"}:
         # Provider-specific route: use the override model or find first model for that provider
         if override_model:
             chosen_model = override_model
@@ -923,6 +1063,8 @@ def model_provider(model: str) -> str:
         return "openrouter"
     if normalized.startswith("openai-codex/"):
         return "openai_codex"
+    if normalized.startswith("claude-sub/"):
+        return "claude_sub"
     if normalized.startswith("gpt-") or normalized.startswith("codex-"):
         return "openai"
     if normalized.startswith("claude"):
@@ -948,6 +1090,8 @@ def model_is_configured(model: str) -> bool:
         return bool(os.getenv("OPENAI_API_KEY", "").strip())
     if provider == "openai_codex":
         return _codex_cli_auth_available()
+    if provider == "claude_sub":
+        return _claude_cli_auth_available()
     if provider == "anthropic":
         return bool(os.getenv("ANTHROPIC_API_KEY", "").strip())
     if provider == "google":
@@ -980,6 +1124,8 @@ def _global_provider_auth_config(provider: str) -> tuple[str | None, str]:
         return api_key, auth_mode
     if normalized == "openai_codex":
         return None, "codex_cli"
+    if normalized == "claude_sub":
+        return None, "claude_cli"
     return None, "api_key"
 
 
@@ -1167,6 +1313,12 @@ async def _ensure_locked_route_ready(route_context: dict[str, Any]) -> None:
                 "Codex subscription is forced for this agent, but no local Codex ChatGPT sign-in was found. "
                 "Run `codex login`, choose ChatGPT sign-in, finish the browser login, then restart Sparkbot."
             )
+    if locked_provider == "claude_sub":
+        if not _claude_cli_auth_available():
+            raise RuntimeError(
+                "Claude subscription is forced for this agent, but no local Claude Code sign-in was found. "
+                "Run `claude auth login`, finish the browser sign-in, then restart Sparkbot."
+            )
 
 
 def humanise_chat_error(error: Exception) -> str:
@@ -1222,6 +1374,11 @@ def _format_locked_route_error(route_context: dict[str, Any], error: Exception) 
         return (
             f"Codex subscription is forced for this agent, but model '{model_name}' could not run through the local Codex CLI. "
             f"Confirm `codex login` is signed in with ChatGPT, restart Sparkbot, or change this agent back to Use default. Details: {error}"
+        )
+    if locked_provider == "claude_sub":
+        return (
+            f"Claude subscription is forced for this agent, but model '{model_name}' could not run through the local Claude CLI. "
+            f"Confirm `claude auth login` is signed in, restart Sparkbot, or change this agent back to Use default. Details: {error}"
         )
     return str(error)
 
@@ -1601,6 +1758,18 @@ async def _acompletion_with_fallback(
                 record_latency(candidate, time.perf_counter() - _t0)
                 log.info(
                     "LLM route applied through Codex CLI subscription: route=%s requested_model=%s applied_model=%s latency_s=%.2f",
+                    route_mode,
+                    model,
+                    candidate,
+                    time.perf_counter() - _t0,
+                )
+                return chosen_candidate, response
+            if candidate_provider == "claude_sub":
+                _t0 = time.perf_counter()
+                response = await _claude_cli_acompletion(model=candidate, **call_kwargs)
+                record_latency(candidate, time.perf_counter() - _t0)
+                log.info(
+                    "LLM route applied through Claude CLI subscription: route=%s requested_model=%s applied_model=%s latency_s=%.2f",
                     route_mode,
                     model,
                     candidate,
