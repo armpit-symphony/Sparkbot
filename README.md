@@ -6,7 +6,7 @@ Use it to chat, search, summarize documents, control a browser, run shell comman
 
 **Download:** [armpit-symphony.github.io/Sparkbot](https://armpit-symphony.github.io/Sparkbot/)
 
-**Current release line:** v1.6.64
+**Current release line:** v1.6.65
 
 > Sparkbot stores its app data locally. If you connect a cloud LLM provider or an external service, the text and actions needed for that provider or service are sent to that provider. Local models can run without an LLM cloud account.
 
@@ -605,6 +605,7 @@ User message → Token Guardian → Memory Guardian → LLM
 
 | Version | Date | Highlights |
 |---------|------|-----------|
+| v1.6.65 | May 2026 | Fixed public downloader 404: download links now dynamically resolve the latest desktop release with uploaded assets instead of hardcoding a specific version tag; fallback URLs point at the latest confirmed working build (desktop-v1.6.61). |
 | v1.6.64 | May 2026 | Fixed Command Center intent misrouting that dumped runtime state on troubleshooting prompts instead of answering; added correction lock so the bot won't repeat state-dump behavior after user correction; tightened self-inspection and provider-readiness matchers with negative intent guards; removed why/how/explain from simple_qa classifier to fix reasoning misroutes; added Claude Subscription provider (claude_sub) using locally signed-in Claude Code CLI for Pro/Max/Team plan routing without API keys. |
 | v1.6.63 | May 2026 | Cleaned the public downloader page so visible text is English/ASCII only, extended Codex subscription CLI routing for long-running work with an unlimited option, and mirrored useful chat turns into per-user shared work memory so browser, Telegram, Discord, and workstation meeting conversations can inform one another without crossing user boundaries. |
 | v1.6.62 | May 2026 | Security maintenance release: fixed REST chat message recursion, escaped message-search wildcards, made chat-user creation operator-only, closed WebSocket DB sessions, removed closed terminal sessions from memory, pruned rate-limit buckets, limited upload MIME sniffing, stabilized local SECRET_KEY defaults while production rejects unsafe secrets, generated local Postgres passwords during setup, moved FastAPI startup/shutdown to lifespan, and advanced downloader/docs/package metadata to v1.6.62. |
