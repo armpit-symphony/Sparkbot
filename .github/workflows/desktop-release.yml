@@ -214,7 +214,7 @@ jobs:
   # works on all Macs including Intel ones via Rosetta 2.
   # macos-latest = M-series runner. PyInstaller produces aarch64 binary natively.
   build-macos-arm:
-    runs-on: macos-latest
+    runs-on: macos-14
     timeout-minutes: 60
 
     steps:
@@ -289,7 +289,21 @@ jobs:
         run: node scripts/run-desktop-frontend.mjs build
 
       - name: Build Tauri installer (DMG, Apple Silicon)
-        run: cargo tauri build --config src-tauri/tauri.conf.json --bundles dmg --target aarch64-apple-darwin
+        run: |
+          # Tauri's bundle_dmg.sh can fail silently on newer macOS runners.
+          # Run with RUST_LOG=debug and capture stderr for diagnostics.
+          cargo tauri build --config src-tauri/tauri.conf.json --bundles dmg --target aarch64-apple-darwin 2>&1 || {
+            echo "::group::DMG bundle_dmg.sh debug output"
+            SCRIPT="src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/bundle_dmg.sh"
+            if [ -f "$SCRIPT" ]; then
+              echo "--- bundle_dmg.sh contents ---"
+              cat "$SCRIPT"
+              echo "--- Re-running bundle_dmg.sh with bash -x ---"
+              bash -x "$SCRIPT" 2>&1 || true
+            fi
+            echo "::endgroup::"
+            exit 1
+          }
         # macOS signing: add APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY,
         # APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID env vars here (from GitHub secrets) to enable
         # signing + notarization. Omit them entirely (not just empty) to produce unsigned DMGs.

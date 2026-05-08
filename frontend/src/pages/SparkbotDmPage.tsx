@@ -3536,7 +3536,7 @@ function SparkbotDmPage({ controlsSurface = false }: SparkbotDmPageProps = {}) {
 
   const handleDefaultSelectionChange = useCallback((field: keyof DefaultModelSelectionForm, value: string) => {
     if (field === "provider") {
-      const _validProviders = new Set(["openrouter", "ollama", "openai", "openai_codex", "anthropic", "google", "groq", "minimax", "xai"])
+      const _validProviders = new Set(["openrouter", "ollama", "openai", "openai_codex", "claude_sub", "anthropic", "google", "groq", "minimax", "xai"])
       const nextProvider = (_validProviders.has(value) ? value : "openrouter") as DefaultModelSelectionForm["provider"]
       setDefaultSelection((prev) => {
         let nextModel = ""
@@ -3553,6 +3553,9 @@ function SparkbotDmPage({ controlsSurface = false }: SparkbotDmPageProps = {}) {
         } else if (nextProvider === "openai_codex") {
           nextModel = modelsConfig?.providers?.find((provider) => provider.id === "openai_codex")?.models?.[0]
             ?? "openai-codex/gpt-5.3-codex"
+        } else if (nextProvider === "claude_sub") {
+          nextModel = modelsConfig?.providers?.find((provider) => provider.id === "claude_sub")?.models?.[0]
+            ?? "claude-sub/sonnet"
         }
         return { provider: nextProvider, model: nextModel }
       })
