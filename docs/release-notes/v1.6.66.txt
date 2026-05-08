@@ -1,0 +1,12 @@
+v1.6.66 — Claude Subscription provider fix + desktop build fix
+
+Claude Sub provider:
+  - Fixed "Unknown default provider" error when saving Claude Sub as default
+  - Fixed dead button click — claude_sub was missing from valid providers set
+  - Added Save button inside Claude Sub panel for quick model saves
+  - Updated CLI model list: Sonnet 4.6, Opus 4.7, Haiku 4.5, Opus 4.7 (1M context)
+  - Added claude_sub to agent routing override map
+
+Desktop build:
+  - Pinned macOS runner to macos-14 (Sonoma) — macOS 15 Sequoia breaks Tauri DMG bundler
+  - Added diagnostic bash -x re-run on DMG failure for future debugging

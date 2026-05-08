@@ -238,9 +238,10 @@ AVAILABLE_MODELS: dict[str, str] = {
     "claude-opus-4-6":           "Claude Opus 4.6 — most capable Anthropic model",
     # Claude subscription route. These are dispatched through the locally
     # signed-in Claude Code CLI when the claude_sub provider is selected.
-    "claude-sub/opus":   "Claude Opus — Claude subscription default",
-    "claude-sub/sonnet": "Claude Sonnet — Claude subscription",
-    "claude-sub/haiku":  "Claude Haiku — Claude subscription",
+    "claude-sub/sonnet": "Claude Sonnet 4.6 — best for everyday tasks (subscription)",
+    "claude-sub/opus":   "Claude Opus 4.7 — most capable for complex work (subscription)",
+    "claude-sub/haiku":  "Claude Haiku 4.5 — fastest for quick answers (subscription)",
+    "claude-sub/opus-1m": "Claude Opus 4.7 (1M context) — most capable, extended context (subscription)",
     # ── Google ─────────────────────────────────────────────────────────────────
     "gemini/gemini-2.0-flash":       "Gemini 2.0 Flash — fast Google model",
     "gemini/gemini-3-flash":         "Gemini 3 Flash — fast Gemini 3 model",
@@ -835,9 +836,10 @@ def _claude_cli_model(model: str) -> str:
         return configured
     normalized = (model or "").strip().removeprefix("claude-sub/")
     aliases = {
-        "opus": "opus",
         "sonnet": "sonnet",
+        "opus": "opus",
         "haiku": "haiku",
+        "opus-1m": "opus",  # CLI uses --model opus; 1M context is default for opus
     }
     return aliases.get(normalized, normalized or "sonnet")
 

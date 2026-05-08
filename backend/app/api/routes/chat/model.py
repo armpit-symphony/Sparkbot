@@ -983,7 +983,7 @@ async def update_models_config(
     if body.default_selection is not None:
         provider = str(body.default_selection.get("provider") or "").strip().lower()
         model = str(body.default_selection.get("model") or "").strip()
-        if provider not in {"openrouter", "ollama", "openai", "openai_codex", "anthropic", "google", "groq", "minimax", "xai"}:
+        if provider not in {"openrouter", "ollama", "openai", "openai_codex", "claude_sub", "anthropic", "google", "groq", "minimax", "xai"}:
             raise HTTPException(status_code=400, detail="Unknown default provider.")
         if not is_valid_model(model):
             raise HTTPException(status_code=400, detail=f"Unknown model '{model}'.")
@@ -1047,7 +1047,7 @@ async def update_models_config(
 
     if body.agent_overrides is not None:
         cleaned: dict[str, dict[str, str]] = {}
-        _route_to_provider = {"openrouter": "openrouter", "local": "ollama", "openai": "openai", "openai_codex": "openai_codex", "anthropic": "anthropic", "google": "google", "groq": "groq", "minimax": "minimax", "xai": "xai"}
+        _route_to_provider = {"openrouter": "openrouter", "local": "ollama", "openai": "openai", "openai_codex": "openai_codex", "claude_sub": "claude_sub", "anthropic": "anthropic", "google": "google", "groq": "groq", "minimax": "minimax", "xai": "xai"}
         for agent_name, value in body.agent_overrides.items():
             route = str((value or {}).get("route") or "default").strip().lower()
             model = str((value or {}).get("model") or "").strip()

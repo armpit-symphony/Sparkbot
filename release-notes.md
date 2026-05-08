@@ -1,11 +1,11 @@
 # Release Notes
 
-## Sparkbot v1.6.65
+## Sparkbot v1.6.66
 
 - Fixed public downloader 404: the download page was linking to release assets for `desktop-v1.6.64` which never had a GitHub release created. Download links now dynamically resolve the latest `desktop-v*` release that has uploaded Windows/macOS/Linux assets, regardless of version.
 - Fallback URLs now point at the latest confirmed working build (`desktop-v1.6.61`) instead of a non-existent future tag.
 - The JS release loader no longer hardcodes a single expected tag — it iterates all releases and picks the first non-draft, non-prerelease `desktop-v*` release with a Windows `.exe` asset.
-- Advanced backend, frontend, Tauri shell, public downloader, service worker, README, and release notes to v1.6.65.
+- Advanced backend, frontend, Tauri shell, public downloader, service worker, README, and release notes to v1.6.66.
 
 ## Sparkbot v1.6.64
 
