@@ -370,7 +370,7 @@ export function CommandCenterOperations({ refreshNonce, onRefresh }: CommandCent
   return (
     <div className="space-y-6">
       {message ? (
-        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-700 dark:text-emerald-300">
+        <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-2 text-sm text-blue-700 dark:text-blue-300">
           {message}
         </div>
       ) : null}
@@ -517,7 +517,7 @@ function HealthRow({ label, value, good }: { label: string; value: string; good:
   return (
     <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2">
       <span className="text-xs text-muted-foreground">{label}</span>
-      <span className={good ? "text-xs font-medium text-emerald-600 dark:text-emerald-400" : "text-xs font-medium text-amber-600 dark:text-amber-400"}>
+      <span className={good ? "text-xs font-medium text-blue-600 dark:text-blue-400" : "text-xs font-medium text-amber-600 dark:text-amber-400"}>
         {value}
       </span>
     </div>
@@ -627,7 +627,7 @@ function ComputerControlCard({
         <CardDescription>Existing global control gate with PIN and confirmation guardrails.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className={`rounded-lg border px-3 py-3 ${active ? "border-emerald-500/30 bg-emerald-500/10" : "border-amber-500/30 bg-amber-500/10"}`}>
+        <div className={`rounded-lg border px-3 py-3 ${active ? "border-blue-500/30 bg-blue-500/10" : "border-amber-500/30 bg-amber-500/10"}`}>
           <div className="flex items-center justify-between gap-3">
             <div>
               <div className="text-sm font-semibold">{active ? "Connected for routine actions" : "PIN gated"}</div>

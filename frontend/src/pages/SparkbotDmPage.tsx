@@ -4979,10 +4979,9 @@ function SparkbotDmPage({ controlsSurface = false }: SparkbotDmPageProps = {}) {
         fullScreen={controlsSurface}
         surfaceTabs={
           <SparkbotSurfaceTabs
-            active="controls"
+            active="chat"
             onChat={() => closeControlsPanel()}
             onWorkstation={() => navigate({ to: "/workstation" })}
-            onControls={() => openControlsPanel()}
             onRoboOs={openRoboOsFromTab}
             onSpineOps={() => navigate({ to: "/spine" })}
             onInfo={() => setInfoOpen(true)}
@@ -5113,10 +5112,9 @@ function SparkbotDmPage({ controlsSurface = false }: SparkbotDmPageProps = {}) {
           </div>
           <div className="flex items-center justify-end gap-2">
             <SparkbotSurfaceTabs
-              active={controlsRequested ? "controls" : "chat"}
+              active="chat"
               onChat={() => closeControlsPanel()}
               onWorkstation={() => navigate({ to: "/workstation" })}
-              onControls={() => openControlsPanel()}
               onRoboOs={openRoboOsFromTab}
               onSpineOps={() => navigate({ to: "/spine" })}
               onInfo={() => setInfoOpen(true)}

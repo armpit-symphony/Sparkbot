@@ -1,7 +1,6 @@
 export type SparkbotSurfaceTab =
   | "chat"
   | "workstation"
-  | "controls"
   | "robo_os"
   | "spine_ops"
   | "info"
@@ -10,22 +9,22 @@ interface SparkbotSurfaceTabsProps {
   active?: SparkbotSurfaceTab
   onChat: () => void
   onWorkstation: () => void
-  onControls: () => void
+  onControls?: () => void // kept for backwards compat — redirects to Command Center
   onRoboOs?: () => void
   onSpineOps?: () => void
   onInfo?: () => void
 }
 
-const TAB_BORDER = "rgba(129, 140, 248, 0.16)"
+const TAB_BORDER = "rgba(59, 130, 246, 0.20)"
 const TAB_IDLE_BG = "rgba(7, 13, 28, 0.76)"
 const TAB_ACTIVE_BG =
-  "linear-gradient(135deg, rgba(79,70,229,0.28), rgba(59,130,246,0.16), rgba(168,85,247,0.14))"
-const TAB_ACTIVE_BORDER = "rgba(129, 140, 248, 0.42)"
-const TAB_ACTIVE_SHADOW = "0 10px 24px rgba(49, 46, 129, 0.24)"
+  "linear-gradient(135deg, rgba(37,99,235,0.28), rgba(59,130,246,0.20), rgba(96,165,250,0.14))"
+const TAB_ACTIVE_BORDER = "rgba(59, 130, 246, 0.50)"
+const TAB_ACTIVE_SHADOW = "0 10px 24px rgba(30, 64, 175, 0.24)"
 
 const TAB_CONFIG: Array<{
   id: SparkbotSurfaceTab
-  label: "Chat" | "Workstation" | "Controls" | "Robo OS" | "Command Center" | "Info"
+  label: "Chat" | "Workstation" | "Robo OS" | "Command Center" | "Info"
   onClick: (props: SparkbotSurfaceTabsProps) => void
 }> = [
   {
@@ -37,11 +36,6 @@ const TAB_CONFIG: Array<{
     id: "workstation",
     label: "Workstation",
     onClick: (props) => props.onWorkstation(),
-  },
-  {
-    id: "controls",
-    label: "Controls",
-    onClick: (props) => props.onControls(),
   },
   {
     id: "robo_os",
@@ -86,8 +80,8 @@ export default function SparkbotSurfaceTabs(props: SparkbotSurfaceTabsProps) {
             }}
             className={`inline-flex items-center rounded-full border px-3.5 py-1.5 text-xs font-medium tracking-[0.08em] transition-all ${
               isActive
-                ? "text-indigo-50"
-                : "text-slate-300 hover:text-slate-50 hover:bg-[rgba(79,70,229,0.08)] hover:border-[rgba(129,140,248,0.24)]"
+                ? "text-blue-50"
+                : "text-slate-300 hover:text-slate-50 hover:bg-[rgba(37,99,235,0.08)] hover:border-[rgba(59,130,246,0.24)]"
             }`}
             style={{
               borderColor: isActive ? TAB_ACTIVE_BORDER : TAB_BORDER,

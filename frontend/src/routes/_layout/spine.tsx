@@ -1,10 +1,14 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
 import { Archive, ClipboardList, Database, LoaderCircle, Lock, Plus, RefreshCw, ShieldAlert, Trash2 } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 
 import SparkbotSurfaceInfoDialog from "@/components/Common/SparkbotSurfaceInfoDialog"
 import SparkbotSurfaceTabs from "@/components/Common/SparkbotSurfaceTabs"
 import { CommandCenterOperations } from "@/components/CommandCenter/OperationalPanels"
+import { AISetupPanel, PinSecurityPanel, CommsSetupPanel, AgentsPanel } from "@/components/CommandCenter/SetupPanels"
+import type { SetupPanelProps } from "@/components/CommandCenter/SetupPanels"
+import { useControlsState } from "@/hooks/useControlsState"
+import { apiFetch } from "@/lib/apiBase"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -914,6 +918,132 @@ function SpineOps() {
   const [workloadData, setWorkloadData] = useState<SpineProjectWorkloadEntry[]>([])
   const [infoOpen, setInfoOpen] = useState(false)
 
+  // ── Controls state (merged from /controls) ──────────────────────────────────
+  const [roomId, setRoomId] = useState<string | null>(null)
+  const [statusMessage, setStatusMessage] = useState<string | null>(null)
+
+  // Bootstrap room for controls
+  useEffect(() => {
+    async function bootstrap() {
+      try {
+        const res = await apiFetch("/api/v1/chat/users/bootstrap", { method: "POST", credentials: "include" })
+        if (res.ok) {
+          const boot = await res.json()
+          setRoomId(boot.room_id)
+        }
+      } catch { /* ignore */ }
+    }
+    bootstrap()
+  }, [])
+
+  const onStatusMessage = useCallback((msg: string) => {
+    setStatusMessage(msg)
+    setTimeout(() => setStatusMessage(null), 4000)
+  }, [])
+
+  const controls = useControlsState({ roomId, onStatusMessage })
+
+  // Refresh controls on mount and when refreshKey changes
+  useEffect(() => {
+    if (roomId) controls.refreshControls()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomId, refreshKey])
+
+  // Load OpenRouter models on mount
+  useEffect(() => {
+    controls.loadOpenRouterModels()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Build shared panel props
+  const panelProps: SetupPanelProps = {
+    modelsConfig: controls.modelsConfig,
+    modelStack: controls.modelStack,
+    defaultSelection: controls.defaultSelection,
+    localDefaultModel: controls.localDefaultModel,
+    agentOverrides: controls.agentOverrides,
+    openRouterModels: controls.openRouterModels,
+    providerDrafts: controls.providerDrafts,
+    commsForm: controls.commsForm,
+    commsOpenSection: controls.commsOpenSection,
+    ollamaStatus: controls.ollamaStatus,
+    ollamaBaseUrl: controls.ollamaBaseUrl,
+    ollamaLoading: controls.ollamaLoading,
+    guardianStatus: controls.guardianStatus,
+    controlsDashboard: controls.controlsDashboard,
+    guardianTasks: controls.guardianTasks,
+    guardianRuns: controls.guardianRuns,
+    skills: controls.skills,
+    policyEntries: controls.policyEntries,
+    agents: controls.agents,
+    error: controls.settingsError,
+    tokenGuardianMode: controls.tokenGuardianMode,
+    savingTokenGuardianMode: controls.savingTokenGuardianMode,
+    savingModelStack: controls.savingModelStack,
+    savingProviderTokens: controls.savingProviderTokens,
+    savingDefaultSelection: controls.savingDefaultSelection,
+    savingAgentOverrides: controls.savingAgentOverrides,
+    savingComms: controls.savingComms,
+    loadingOpenRouterModels: controls.loadingOpenRouterModels,
+    openRouterLoadError: controls.openRouterLoadError,
+    savingExecution: controls.savingExecution,
+    executionSaved: controls.executionSaved,
+    executionError: controls.executionError,
+    savingPin: controls.savingPin,
+    pinSaved: controls.pinSaved,
+    pinError: controls.pinError,
+    taskName: controls.taskName,
+    taskToolName: controls.taskToolName,
+    taskSchedule: controls.taskSchedule,
+    taskArgs: controls.taskArgs,
+    taskSaving: controls.taskSaving,
+    roomPersona: controls.roomPersona,
+    savingPersona: controls.savingPersona,
+    personaSaved: controls.personaSaved,
+    spawnTemplate: controls.spawnTemplate,
+    spawnName: controls.spawnName,
+    spawnEmoji: controls.spawnEmoji,
+    spawnDescription: controls.spawnDescription,
+    spawnPrompt: controls.spawnPrompt,
+    spawning: controls.spawning,
+    onRefresh: () => { controls.refreshControls(); setRefreshKey((k) => k + 1) },
+    onDefaultSelectionChange: controls.handleDefaultSelectionChange,
+    onLocalDefaultModelChange: controls.handleLocalDefaultModelChange,
+    onProviderDraftChange: controls.handleProviderDraftChange,
+    onModelStackChange: controls.handleModelStackChange,
+    onAgentOverrideChange: controls.handleAgentOverrideChange,
+    onCommsTextChange: controls.handleCommsTextChange,
+    onCommsToggleChange: controls.handleCommsToggleChange,
+    onCommsOpenSectionChange: controls.setCommsOpenSection,
+    onSaveModelStack: controls.saveModelStack,
+    onSaveProviderTokens: controls.saveProviderTokens,
+    onSaveDefaultSelection: controls.saveDefaultSelection,
+    onSaveAgentOverrides: controls.saveAgentOverrides,
+    onLoadOpenRouterModels: controls.loadOpenRouterModels,
+    onSaveComms: controls.saveComms,
+    onTokenGuardianModeChange: (v: string) => controls.setTokenGuardianMode(v),
+    onSaveTokenGuardianMode: controls.saveTokenGuardianMode,
+    onToggleExecution: controls.toggleExecutionGate,
+    onSavePin: controls.saveOperatorPin,
+    onOllamaBaseUrlChange: controls.setOllamaBaseUrl,
+    onCheckOllamaStatus: controls.checkOllamaStatus,
+    onTaskNameChange: (v: string) => controls.setTaskName(v),
+    onTaskToolChange: (v: string) => controls.setTaskToolName(v),
+    onTaskScheduleChange: (v: string) => controls.setTaskSchedule(v),
+    onTaskArgsChange: (v: string) => controls.setTaskArgs(v),
+    onCreateTask: controls.createGuardianTask,
+    onToggleTask: controls.setGuardianTaskState,
+    onRunTask: controls.runGuardianTask,
+    onPersonaChange: (v: string) => controls.setRoomPersona(v),
+    onSavePersona: controls.savePersona,
+    onSpawnTemplateChange: (v: string) => controls.setSpawnTemplate(v),
+    onSpawnNameChange: (v: string) => controls.setSpawnName(v),
+    onSpawnEmojiChange: (v: string) => controls.setSpawnEmoji(v),
+    onSpawnDescriptionChange: (v: string) => controls.setSpawnDescription(v),
+    onSpawnPromptChange: (v: string) => controls.setSpawnPrompt(v),
+    onSpawnAgent: controls.spawnAgent,
+  }
+
   useEffect(() => {
     setOverviewLoading(true)
     setOverviewError("")
@@ -921,7 +1051,6 @@ function SpineOps() {
       .then(setOverview)
       .catch((e: unknown) => setOverviewError(e instanceof Error ? e.message : "Failed to load overview"))
       .finally(() => setOverviewLoading(false))
-    // Also fetch workload data for the project inspector
     fetchSpineProjectWorkload()
       .then((r) => setWorkloadData(r.projects))
       .catch(() => {/* non-critical */})
@@ -979,7 +1108,7 @@ function SpineOps() {
       <header className="sticky top-0 z-20 border-b bg-background/95 backdrop-blur">
         <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 md:px-6 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-600 dark:text-blue-400">
               Sparkbot operations
             </div>
             <div className="text-lg font-semibold tracking-tight">Command Center</div>
@@ -988,7 +1117,6 @@ function SpineOps() {
             active="spine_ops"
             onChat={() => navigate({ to: "/dm" })}
             onWorkstation={() => navigate({ to: "/workstation" })}
-            onControls={() => navigate({ to: "/controls" })}
             onRoboOs={openRoboOs}
             onSpineOps={() => navigate({ to: "/spine" })}
             onInfo={() => setInfoOpen(true)}
@@ -1011,14 +1139,14 @@ function SpineOps() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <Database className="size-5 text-primary" />
+            <Database className="size-5 text-blue-600" />
             <h1 className="text-2xl font-semibold tracking-tight">Command Center</h1>
-            <Badge variant="outline" className="rounded-full">
+            <Badge variant="outline" className="rounded-full border-blue-500/40 text-blue-600">
               Operator
             </Badge>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            Operational hub for Sparkbot, Guardian, Task, rooms, health, and safe-control workflows.
+            Unified hub for AI setup, security, connectors, agents, operations, and Spine inspector.
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
             Last refreshed {new Date().toLocaleTimeString()}.
@@ -1029,15 +1157,35 @@ function SpineOps() {
             variant="outline"
             size="sm"
             className="gap-1.5"
-            onClick={() => setRefreshKey((k) => k + 1)}
-            disabled={overviewLoading}
+            onClick={() => { setRefreshKey((k) => k + 1); controls.refreshControls() }}
+            disabled={overviewLoading || controls.settingsLoading}
           >
-            <RefreshCw className={`size-3.5 ${overviewLoading ? "animate-spin" : ""}`} />
+            <RefreshCw className={`size-3.5 ${overviewLoading || controls.settingsLoading ? "animate-spin" : ""}`} />
             Refresh
           </Button>
         </div>
       </div>
 
+      {/* Status message toast */}
+      {statusMessage && (
+        <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-2 text-sm text-blue-700 dark:text-blue-300">
+          {statusMessage}
+        </div>
+      )}
+
+      {/* ═══ SETUP ROW: AI Setup + PIN/Security ═══ */}
+      <div className="grid gap-4 lg:grid-cols-[1.4fr_0.6fr]">
+        <AISetupPanel {...panelProps} />
+        <PinSecurityPanel {...panelProps} />
+      </div>
+
+      {/* ═══ COMMS SETUP ═══ */}
+      <CommsSetupPanel {...panelProps} />
+
+      {/* ═══ AGENTS ═══ */}
+      <AgentsPanel {...panelProps} />
+
+      {/* ═══ OPERATIONS (Room Persona, System Health, Token Guardian, Computer Control, Task Guardian) ═══ */}
       <CommandCenterOperations refreshNonce={refreshKey} onRefresh={() => setRefreshKey((k) => k + 1)} />
 
       <div className="flex flex-wrap items-center gap-2">
