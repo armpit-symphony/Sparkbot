@@ -11,7 +11,7 @@ For a release, keep these pieces aligned:
 - `README.md`
 - `docs/release-notes/vX.Y.Z.txt`
 
-The current Sparkbot release is `v1.6.66`.
+The current Sparkbot release is `v1.6.67`.
 
 ## Public install choices
 
@@ -20,8 +20,8 @@ The GitHub Pages download copy should keep the install paths this simple:
 **Windows**
 
 1. Download the installer.
-2. Open Sparkbot Controls.
-3. Add a provider key or choose local Ollama.
+2. Open Sparkbot Command Center.
+3. Use AI Setup to add a provider key or choose local Ollama.
 4. Start chatting.
 
 **Linux local machine**
@@ -133,9 +133,9 @@ If the target directory needs elevated permissions, run the script from a shell 
 
 ```bash
 bash scripts/package-public-download.sh \
-  --ref desktop-v1.6.66 \
-  --artifact-prefix sparkbot-1.6.66 \
-  --output-dir dist/public-download/1.6.66
+  --ref desktop-v1.6.67 \
+  --artifact-prefix sparkbot-1.6.67 \
+  --output-dir dist/public-download/1.6.67
 ```
 
 This ties the package to a specific tag or commit instead of the current `HEAD`.
@@ -144,7 +144,7 @@ This ties the package to a specific tag or commit instead of the current `HEAD`.
 
 ```bash
 bash scripts/package-public-download.sh \
-  --notes-file docs/release-notes/v1.6.66.txt
+  --notes-file docs/release-notes/v1.6.67.txt
 ```
 
 The script always stamps `RELEASE-NOTES.txt` with:

@@ -979,7 +979,7 @@
         <span class="logo-name">Sparkbot</span>
       </div>
 
-      <div class="hero-badge">Free &amp; Open Source &nbsp;-&nbsp; <span id="version-badge">v1.6.66</span></div>
+      <div class="hero-badge">Free &amp; Open Source &nbsp;-&nbsp; <span id="version-badge">v1.6.67</span></div>
       <h1>Your own AI,<br>on your computer</h1>
 
       <p class="hero-tagline">
@@ -1001,7 +1001,7 @@
       <div class="download-primary-wrap">
         <a
           id="download-windows-primary"
-          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.61/Sparkbot.Local_1.6.61_x64-setup.exe"
+          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.66/Sparkbot.Local_1.6.66_x64-setup.exe"
           class="btn-download-windows"
           aria-label="Download Sparkbot for Windows, latest stable version"
         >
@@ -1013,7 +1013,7 @@
         </a>
       </div>
 
-      <p class="download-meta"><span id="download-version-label">Version 1.6.66</span> &nbsp;-&nbsp; Windows 10 &amp; 11 &nbsp;-&nbsp; 64-bit &nbsp;-&nbsp; Free forever</p>
+      <p class="download-meta"><span id="download-version-label">Version 1.6.67</span> &nbsp;-&nbsp; Windows 10 &amp; 11 &nbsp;-&nbsp; 64-bit &nbsp;-&nbsp; Free forever</p>
       <p class="download-meta" style="margin-top:12px; font-size:0.95rem;">
         This page checks GitHub for the latest stable desktop release automatically. If the button does not start a download, open
         <a href="https://github.com/armpit-symphony/Sparkbot/releases" target="_blank" rel="noopener noreferrer">All Releases</a>
@@ -1023,7 +1023,7 @@
       <div class="other-os">
         <a
           id="download-macos-link"
-          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.61/Sparkbot.Local_1.6.61_aarch64.dmg"
+          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.66/Sparkbot.Local_1.6.66_aarch64.dmg"
           class="btn-os-small"
           aria-label="Download Sparkbot for macOS"
         >
@@ -1031,7 +1031,7 @@
         </a>
         <a
           id="download-linux-link"
-          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.61/Sparkbot.Local_1.6.61_amd64.AppImage"
+          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.66/Sparkbot.Local_1.6.66_amd64.AppImage"
           class="btn-os-small"
           aria-label="Download Sparkbot for Linux AppImage"
         >
@@ -1121,51 +1121,51 @@
     =========================== -->
     <section class="section" aria-labelledby="new-heading">
       <div class="container">
-        <h2 class="section-title" id="new-heading">New in v1.6.66: intent routing fix and correction lock</h2>
+        <h2 class="section-title" id="new-heading">New in v1.6.67: unified Command Center</h2>
         <p class="section-subtitle">
-          This update fixes the Command Center intent misrouting bug that caused runtime-state dumps on troubleshooting questions, adds a conversational correction lock, and tightens provider readiness detection.
+          Controls and Command Center are now a single unified hub. AI setup, PIN, comms, agents, operations, and Spine inspector all live in one place with a professional blue theme.
         </p>
 
         <div class="features-grid">
           <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">Fix</span>
-            <h3 class="feature-title">Intent routing fix</h3>
-            <p class="feature-desc">Questions like "token guardian not working?" or "why is ollama failing?" now route to the LLM for diagnosis instead of dumping raw runtime state.</p>
-          </div>
-
-          <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">Chat</span>
-            <h3 class="feature-title">Correction lock</h3>
-            <p class="feature-desc">When you tell Sparkbot "that's not an answer" or "stop sending state", it remembers and won't repeat the same wrong behavior for the rest of that conversation.</p>
-          </div>
-
-          <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">CC</span>
-            <h3 class="feature-title">Tighter state detection</h3>
-            <p class="feature-desc">The self-inspection handler now requires explicit status requests (e.g., "show runtime state", "is ollama active") and won't fire on incidental keyword mentions.</p>
-          </div>
-
-          <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">Meeting</span>
-            <h3 class="feature-title">Provider readiness refined</h3>
-            <p class="feature-desc">Meeting provider-readiness check no longer triggers on bare words like "model" or "configured" - requires explicit readiness phrasing.</p>
-          </div>
-
-          <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">Security</span>
-            <h3 class="feature-title">Negative intent guards</h3>
-            <p class="feature-desc">Troubleshooting signals (not working, broken, why is, how to fix) are now explicitly excluded from the state-dump path before positive matching runs.</p>
+            <span class="feature-icon" role="img" aria-hidden="true">Hub</span>
+            <h3 class="feature-title">Unified Command Center</h3>
+            <p class="feature-desc">AI setup, PIN &amp; security, comms connectors, and agent management now render inline in Command Center instead of a separate Controls page.</p>
           </div>
 
           <div class="feature-card">
             <span class="feature-icon" role="img" aria-hidden="true">AI</span>
-            <h3 class="feature-title">Claude Sub provider</h3>
-            <p class="feature-desc">New "Claude Sub" button in Controls uses your local Claude Code sign-in (Pro, Max, or Team) to route chat through Claude models without pasting an API key.</p>
+            <h3 class="feature-title">AI Setup panel</h3>
+            <p class="feature-desc">Provider selection, API keys, model picker, local Ollama, and four-model stack are all accessible from the top of Command Center.</p>
+          </div>
+
+          <div class="feature-card">
+            <span class="feature-icon" role="img" aria-hidden="true">Security</span>
+            <h3 class="feature-title">PIN &amp; Security panel</h3>
+            <p class="feature-desc">Computer Control toggle, operator PIN management, and break-glass status sit next to AI Setup for quick access.</p>
+          </div>
+
+          <div class="feature-card">
+            <span class="feature-icon" role="img" aria-hidden="true">Comms</span>
+            <h3 class="feature-title">Comms Setup</h3>
+            <p class="feature-desc">Collapsible accordion for Telegram, Discord, WhatsApp, GitHub, Gmail, Calendar, Drive, and Microsoft 365 connectors.</p>
+          </div>
+
+          <div class="feature-card">
+            <span class="feature-icon" role="img" aria-hidden="true">Agents</span>
+            <h3 class="feature-title">Agent management</h3>
+            <p class="feature-desc">Spawn custom agents from templates, configure per-agent model overrides, and review built-in agents &mdash; all from one panel.</p>
+          </div>
+
+          <div class="feature-card">
+            <span class="feature-icon" role="img" aria-hidden="true">Theme</span>
+            <h3 class="feature-title">Blue color scheme</h3>
+            <p class="feature-desc">Professional blue theme across Command Center, surface tabs, and operational panels replaces the previous green/emerald palette.</p>
           </div>
         </div>
 
         <p class="download-meta" style="margin-top:24px;">
-          Root cause of the routing fix: the self-inspection query matcher was too broad, matching on any mention of system keywords rather than requiring explicit status-request phrasing.
+          The /controls route now redirects to /spine. The sidebar Controls entry has been removed in favor of the unified Command Center.
         </p>
       </div>
     </section>
@@ -1186,7 +1186,7 @@
             <div class="step-num" aria-hidden="true">1</div>
             <div class="step-body">
               <h3 class="step-title">Click the big purple "Download for Windows" button above</h3>
-              <p class="step-desc">Your browser will download a file called <strong id="windows-filename-step-1">Sparkbot.Local_1.6.61_x64-setup.exe</strong>. This is the installer. It usually arrives in less than a minute.</p>
+              <p class="step-desc">Your browser will download a file called <strong id="windows-filename-step-1">Sparkbot.Local_1.6.66_x64-setup.exe</strong>. This is the installer. It usually arrives in less than a minute.</p>
             </div>
           </div>
 
@@ -1194,7 +1194,7 @@
             <div class="step-num" aria-hidden="true">2</div>
             <div class="step-body">
               <h3 class="step-title">Find the downloaded file and open it</h3>
-              <p class="step-desc">Look at the bottom of your browser for the downloaded file, or check your <strong>Downloads folder</strong>. Double-click the file named <strong id="windows-filename-step-2">Sparkbot.Local_1.6.61_x64-setup.exe</strong> to start installing.</p>
+              <p class="step-desc">Look at the bottom of your browser for the downloaded file, or check your <strong>Downloads folder</strong>. Double-click the file named <strong id="windows-filename-step-2">Sparkbot.Local_1.6.66_x64-setup.exe</strong> to start installing.</p>
             </div>
           </div>
 
@@ -1218,7 +1218,7 @@
             <div class="step-num" aria-hidden="true">5</div>
             <div class="step-body">
               <h3 class="step-title">Open Sparkbot and connect your AI</h3>
-              <p class="step-desc">Find <strong>Sparkbot</strong> in your Start Menu and open it. A setup panel will appear automatically. The easiest way to get started is with <strong>OpenRouter</strong> - it's free to sign up and gives you access to many AI models. Just create a free account at <strong>openrouter.ai</strong>, copy your API key, and paste it into Sparkbot. You can also use a free local AI that runs entirely on your computer with no account needed - or connect OpenAI, Anthropic, or Google. All of this can be changed any time.</p>
+              <p class="step-desc">Find <strong>Sparkbot</strong> in your Start Menu and open it. Open <strong>Command Center</strong>, then use <strong>AI Setup</strong> to choose a provider. The easiest way to get started is with <strong>OpenRouter</strong> - it's free to sign up and gives you access to many AI models. Just create a free account at <strong>openrouter.ai</strong>, copy your API key, and paste it into Sparkbot. You can also use a free local AI that runs entirely on your computer with no account needed - or connect OpenAI, Anthropic, Google, Claude Sub, Codex Sub, or local Ollama. All of this can be changed any time.</p>
             </div>
           </div>
 
@@ -1264,7 +1264,7 @@
               </div>
 
               <div class="win-info-row">
-                <strong>App:</strong> <span id="windows-filename-dialog">Sparkbot.Local_1.6.61_x64-setup.exe</span>
+                <strong>App:</strong> <span id="windows-filename-dialog">Sparkbot.Local_1.6.66_x64-setup.exe</span>
               </div>
               <div class="win-info-row">
                 <strong>Publisher:</strong> <span>Unknown publisher</span>
@@ -1500,7 +1500,7 @@
       <p>Free. Private. Yours. Download takes less than a minute.</p>
       <a
         id="download-windows-bottom"
-        href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.61/Sparkbot.Local_1.6.61_x64-setup.exe"
+        href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.66/Sparkbot.Local_1.6.66_x64-setup.exe"
         class="btn-download-windows"
         style="display:inline-flex;"
         aria-label="Download Sparkbot for Windows"
@@ -1520,7 +1520,7 @@
   =========================== -->
   <footer>
     <p>
-      <span role="img" aria-hidden="true">Spark</span> <strong>Sparkbot</strong> &nbsp;-&nbsp; <span id="footer-version-label">Version 1.6.66</span> &nbsp;-&nbsp; Free &amp; Open Source
+      <span role="img" aria-hidden="true">Spark</span> <strong>Sparkbot</strong> &nbsp;-&nbsp; <span id="footer-version-label">Version 1.6.67</span> &nbsp;-&nbsp; Free &amp; Open Source
     </p>
     <p style="margin-top:10px;">
       <a href="https://github.com/armpit-symphony/Sparkbot" target="_blank" rel="noopener noreferrer">GitHub</a>
@@ -1531,9 +1531,9 @@
     </p>
     <p style="margin-top:12px; font-size:0.8rem;">
       Other platforms:
-      <a id="footer-macos-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.61/Sparkbot.Local_1.6.61_aarch64.dmg">macOS (all Macs)</a>
+      <a id="footer-macos-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.66/Sparkbot.Local_1.6.66_aarch64.dmg">macOS (all Macs)</a>
       &nbsp;-&nbsp;
-      <a id="footer-linux-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.61/Sparkbot.Local_1.6.61_amd64.AppImage">Linux (AppImage)</a>
+      <a id="footer-linux-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.66/Sparkbot.Local_1.6.66_amd64.AppImage">Linux (AppImage)</a>
     </p>
   </footer>
 
@@ -1542,11 +1542,11 @@
   =========================== -->
   <script>
     var fallbackRelease = {
-      version: "1.6.61",
-      windowsFilename: "Sparkbot.Local_1.6.61_x64-setup.exe",
-      windowsUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.61/Sparkbot.Local_1.6.61_x64-setup.exe",
-      macosUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.61/Sparkbot.Local_1.6.61_aarch64.dmg",
-      linuxUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.61/Sparkbot.Local_1.6.61_amd64.AppImage"
+      version: "1.6.66",
+      windowsFilename: "Sparkbot.Local_1.6.66_x64-setup.exe",
+      windowsUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.66/Sparkbot.Local_1.6.66_x64-setup.exe",
+      macosUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.66/Sparkbot.Local_1.6.66_aarch64.dmg",
+      linuxUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.66/Sparkbot.Local_1.6.66_amd64.AppImage"
     };
 
     function setText(id, value) {
@@ -1622,7 +1622,7 @@
           return /_amd64\.AppImage$/i.test(asset.name || "");
         });
 
-        // Extract version from tag (desktop-v1.6.61 -> 1.6.61)
+        // Extract version from tag (desktop-v1.6.67 -> 1.6.67)
         var tagVersion = String(desktopRelease.tag_name || "").replace(/^desktop-v/i, "");
 
         applyRelease({

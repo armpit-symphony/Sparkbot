@@ -1,0 +1,6 @@
+Sparkbot v1.6.67
+
+- Merged Controls into Command Center as the unified operations hub.
+- Added inline AI Setup, PIN and security, comms setup, and agent management panels inside Command Center.
+- Redirected /controls to /spine and removed the separate Controls sidebar entry.
+- Refreshed Command Center, surface tabs, and operational panels with the blue theme.
