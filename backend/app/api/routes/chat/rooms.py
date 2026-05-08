@@ -295,41 +295,61 @@ def _latest_privileged_pending_approval_id(*, session: Session, room_id: UUID) -
 
 
 def _looks_like_self_inspection_query(content: str) -> bool:
+    """
+    Return True ONLY when the user is explicitly requesting a status/state dump.
+    Must NOT trigger on troubleshooting, diagnostic, or "why" questions.
+    """
     normalized = (content or "").strip().lower()
     if not normalized:
         return False
-    patterns = (
+
+    # ── Negative guards: if the user is asking WHY / diagnosing / complaining,
+    # they want an answer from the LLM, not a state dump.
+    troubleshooting_signals = (
+        r"\b(?:not\s+working|broken|failing|failed|wrong|issue|problem|bug|error)\b",
+        r"\bwhy\s+(?:is|does|isn't|doesn't|won't|can't|are|did)\b",
+        r"\bhow\s+(?:do\s+i|to|can\s+i)\s+fix\b",
+        r"\bstop\s+sending\b",
+        r"\bthat'?s\s+not\s+(?:an?\s+)?answer\b",
+        r"\bdiagnos(?:e|tic|is)\b",
+        r"\bhelp\s+(?:me|with)\b",
+        r"\bwhat\s+(?:went|is\s+going)\s+wrong\b",
+        r"\bcan'?t\s+(?:connect|reach|use|access)\b",
+    )
+    if any(re.search(p, normalized) for p in troubleshooting_signals):
+        return False
+
+    # ── Positive patterns: explicit requests for state/status info
+    status_request_patterns = (
         r"\b(?:what|which)\s+version(?:\s+of)?\s+sparkbot\b",
         r"\bwhat\s+version\s+are\s+you\s+running\b",
         r"\bversion\s+of\s+sparkbot\b",
-        r"\b(ai stack|model stack|runtime state|safe operational state)\b",
-        r"\bwhat (?:ai )?(?:stack|model|provider|route)\b",
-        r"\bwhat are you running\b",
-        r"\btoken guardian\b",
-        r"\bcross[- ]provider fallback\b",
-        r"\bdefault (?:provider|model|route)\b",
-        r"\bagent overrides?\b",
-        r"\bollama\b",
-        r"\bopenrouter\b",
-        r"\bbreakglass|break-glass\b",
-        r"\bprovider/model\b",
+        r"\b(?:show|display|print|dump|give)\s+(?:me\s+)?(?:the\s+)?(?:runtime\s+state|ai\s+stack|model\s+stack|system\s+state|safe\s+operational\s+state)\b",
+        r"\b(?:runtime\s+state|ai\s+stack|model\s+stack|safe\s+operational\s+state)\b",
+        r"\bwhat\s+(?:ai\s+)?(?:stack|model|provider|route)\s+(?:am\s+i|are\s+you|is)\s+(?:using|running|on)\b",
+        r"\bwhat\s+are\s+you\s+running\b",
+        r"\b(?:show|check|get|display)\s+(?:me\s+)?(?:the\s+)?(?:token\s+guardian|breakglass|break-glass|provider)\s+(?:status|state|mode)\b",
+        r"\b(?:show|check|get|display)\s+(?:me\s+)?(?:the\s+)?(?:cross[- ]provider\s+fallback|default\s+(?:provider|model|route)|agent\s+overrides?)\b",
+        r"\b(?:is|are)\s+(?:ollama|openrouter|token\s+guardian|breakglass)\s+(?:on|off|active|enabled|live|running|configured)\b",
+        r"\bstatus\s+(?:of\s+)?(?:token\s+guardian|ollama|openrouter|providers?|breakglass)\b",
     )
-    return any(re.search(pattern, normalized) for pattern in patterns)
+    return any(re.search(p, normalized) for p in status_request_patterns)
 
 
 def _looks_like_provider_readiness_query(content: str) -> bool:
+    """Return True only when the user explicitly asks about provider/model readiness for a meeting."""
     normalized = (content or "").strip().lower()
     if not normalized:
         return False
+    # Require explicit readiness/status phrasing — bare nouns like "model" alone won't match
     return any(
         re.search(pattern, normalized)
         for pattern in (
-            r"\bprovider(?:s)?\b",
-            r"\bmodel(?:s)?\b",
-            r"\bready\b",
-            r"\bgood to go\b",
-            r"\bavailability\b",
-            r"\bconfigured\b",
+            r"\b(?:are|is)\s+(?:the\s+)?(?:provider|model)s?\s+(?:ready|configured|available|good\s+to\s+go)\b",
+            r"\b(?:provider|model)s?\s+(?:readiness|availability|status)\b",
+            r"\b(?:check|verify)\s+(?:the\s+)?(?:provider|model)s?\b",
+            r"\bgood\s+to\s+go\b",
+            r"\b(?:ready\s+to\s+(?:start|begin)|all\s+set)\b",
         )
     )
 
@@ -1324,7 +1344,27 @@ async def stream_room_message(
     except Exception:
         pass
 
+    # ── Correction lock: suppress runtime-state short-circuit when the user
+    # recently corrected the bot for dumping state instead of answering.
+    _correction_lock_active = False
     if _looks_like_self_inspection_query(agent_content):
+        recent_msgs, _, _ = get_chat_messages(session=session, room_id=room_id, limit=6)
+        _correction_phrases = (
+            r"\bthat'?s?\s+not\s+(?:an?\s+)?answer\b",
+            r"\bstop\s+(?:sending|showing|dumping)\s+(?:runtime\s+)?state\b",
+            r"\bdon'?t\s+(?:send|show|dump)\s+(?:runtime\s+)?state\b",
+            r"\bi\s+(?:didn'?t|don'?t)\s+(?:ask|want)\s+(?:for\s+)?(?:the\s+)?(?:state|status|runtime)\b",
+            r"\banswer\s+(?:the|my)\s+question\b",
+            r"\bjust\s+answer\b",
+        )
+        for msg in recent_msgs:
+            if str(msg.sender_type).upper() != "BOT" and msg.content:
+                msg_lower = (msg.content or "").strip().lower()
+                if any(re.search(p, msg_lower) for p in _correction_phrases):
+                    _correction_lock_active = True
+                    break
+
+    if _looks_like_self_inspection_query(agent_content) and not _correction_lock_active:
         from app.api.routes.chat.model import build_safe_runtime_state
 
         async def runtime_state_stream():

@@ -1922,7 +1922,7 @@ curl -b cookies.txt http://localhost:8000/api/v1/chat/system/watcher | python -m
 
 Desktop release tags and app versions are aligned on the `1.6.x` release line.
 
-For `v1.6.63`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release line cleans downloader text to plain English/ASCII, extends Codex subscription routing for long-running work with an unlimited local timeout option, and mirrors useful chat turns into per-user shared work memory so browser, Telegram, Discord, and workstation meeting conversations can inform one another without crossing user boundaries.
+For `v1.6.64`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release line fixes Command Center intent misrouting that dumped runtime state on troubleshooting prompts, adds a conversational correction lock, and tightens self-inspection and provider-readiness matchers with negative intent guards.
 
 ### How to upgrade safely
 

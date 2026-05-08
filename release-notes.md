@@ -1,5 +1,14 @@
 # Release Notes
 
+## Sparkbot v1.6.64
+
+- Fixed Command Center intent misrouting: the self-inspection query matcher (`_looks_like_self_inspection_query`) was over-triggering on troubleshooting prompts like "token guardian not working?" or "why is ollama failing?", returning a runtime-state dump instead of routing to the LLM for an actual answer.
+- Added negative intent guards: troubleshooting signals (not working, broken, why is, how to fix, that's not an answer) now explicitly bypass the state-dump short-circuit before positive pattern matching runs.
+- Added correction lock: if the user says "that's not an answer", "stop sending state", or similar corrections in recent conversation history, the runtime-state handler is suppressed for subsequent turns in that conversation.
+- Tightened provider-readiness detection (`_looks_like_provider_readiness_query`): bare words like "model" or "configured" no longer trigger the meeting provider-readiness check — requires explicit readiness phrasing.
+- Refined self-inspection positive patterns to require explicit status-request verbs (show, check, display, get) or explicit state queries (what stack am I using, is ollama active) instead of matching bare keyword mentions.
+- Advanced backend, frontend, Tauri shell, public downloader, service worker, README, capabilities docs, release notes, and packaging notes to v1.6.64.
+
 ## Sparkbot v1.6.63
 
 - Cleaned the GitHub Pages downloader page by repairing broken text encoding and replacing visible symbol glyphs with plain English text.

@@ -979,7 +979,7 @@
         <span class="logo-name">Sparkbot</span>
       </div>
 
-      <div class="hero-badge">Free &amp; Open Source &nbsp;-&nbsp; <span id="version-badge">v1.6.63</span></div>
+      <div class="hero-badge">Free &amp; Open Source &nbsp;-&nbsp; <span id="version-badge">v1.6.64</span></div>
       <h1>Your own AI,<br>on your computer</h1>
 
       <p class="hero-tagline">
@@ -1001,7 +1001,7 @@
       <div class="download-primary-wrap">
         <a
           id="download-windows-primary"
-          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.63/Sparkbot.Local_1.6.63_x64-setup.exe"
+          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.64/Sparkbot.Local_1.6.64_x64-setup.exe"
           class="btn-download-windows"
           aria-label="Download Sparkbot for Windows, latest stable version"
         >
@@ -1013,7 +1013,7 @@
         </a>
       </div>
 
-      <p class="download-meta"><span id="download-version-label">Version 1.6.63</span> &nbsp;-&nbsp; Windows 10 &amp; 11 &nbsp;-&nbsp; 64-bit &nbsp;-&nbsp; Free forever</p>
+      <p class="download-meta"><span id="download-version-label">Version 1.6.64</span> &nbsp;-&nbsp; Windows 10 &amp; 11 &nbsp;-&nbsp; 64-bit &nbsp;-&nbsp; Free forever</p>
       <p class="download-meta" style="margin-top:12px; font-size:0.95rem;">
         This page checks GitHub for the latest stable desktop release automatically. If the button does not start a download, open
         <a href="https://github.com/armpit-symphony/Sparkbot/releases" target="_blank" rel="noopener noreferrer">All Releases</a>
@@ -1023,7 +1023,7 @@
       <div class="other-os">
         <a
           id="download-macos-link"
-          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.63/Sparkbot.Local_1.6.63_aarch64.dmg"
+          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.64/Sparkbot.Local_1.6.64_aarch64.dmg"
           class="btn-os-small"
           aria-label="Download Sparkbot for macOS"
         >
@@ -1031,7 +1031,7 @@
         </a>
         <a
           id="download-linux-link"
-          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.63/Sparkbot.Local_1.6.63_amd64.AppImage"
+          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.64/Sparkbot.Local_1.6.64_amd64.AppImage"
           class="btn-os-small"
           aria-label="Download Sparkbot for Linux AppImage"
         >
@@ -1121,56 +1121,51 @@
     =========================== -->
     <section class="section" aria-labelledby="new-heading">
       <div class="container">
-        <h2 class="section-title" id="new-heading">New in v1.6.63: long-running work and unified memory</h2>
+        <h2 class="section-title" id="new-heading">New in v1.6.64: intent routing fix and correction lock</h2>
         <p class="section-subtitle">
-          This update cleans the downloader text, lets Codex subscription jobs run much longer, and shares useful chat memory across web, Telegram, Discord, and meeting rooms.
+          This update fixes the Command Center intent misrouting bug that caused runtime-state dumps on troubleshooting questions, adds a conversational correction lock, and tightens provider readiness detection.
         </p>
 
         <div class="features-grid">
           <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">Security</span>
-            <h3 class="feature-title">Downloader text cleanup</h3>
-            <p class="feature-desc">The public download page now uses plain English text without broken character encoding or stray icon symbols.</p>
+            <span class="feature-icon" role="img" aria-hidden="true">Fix</span>
+            <h3 class="feature-title">Intent routing fix</h3>
+            <p class="feature-desc">Questions like "token guardian not working?" or "why is ollama failing?" now route to the LLM for diagnosis instead of dumping raw runtime state.</p>
           </div>
 
           <div class="feature-card">
             <span class="feature-icon" role="img" aria-hidden="true">Chat</span>
-            <h3 class="feature-title">Long Codex runs</h3>
-            <p class="feature-desc">OpenAI Codex subscription routing no longer has the old short Sparkbot-side timeout and can be configured for unlimited local CLI runtime.</p>
+            <h3 class="feature-title">Correction lock</h3>
+            <p class="feature-desc">When you tell Sparkbot "that's not an answer" or "stop sending state", it remembers and won't repeat the same wrong behavior for the rest of that conversation.</p>
           </div>
 
           <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">Dashboard</span>
-            <h3 class="feature-title">Unified chat memory</h3>
-            <p class="feature-desc">Useful chat turns are copied into per-user shared work memory so mobile bridge chats and workstation meetings can inform later conversations.</p>
+            <span class="feature-icon" role="img" aria-hidden="true">CC</span>
+            <h3 class="feature-title">Tighter state detection</h3>
+            <p class="feature-desc">The self-inspection handler now requires explicit status requests (e.g., "show runtime state", "is ollama active") and won't fire on incidental keyword mentions.</p>
           </div>
 
           <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">Workstation</span>
-            <h3 class="feature-title">Mobile continuity</h3>
-            <p class="feature-desc">Telegram and Discord conversations now participate in the same recall path as browser chat without exposing one user's memory to another user.</p>
+            <span class="feature-icon" role="img" aria-hidden="true">Meeting</span>
+            <h3 class="feature-title">Provider readiness refined</h3>
+            <p class="feature-desc">Meeting provider-readiness check no longer triggers on bare words like "model" or "configured" - requires explicit readiness phrasing.</p>
           </div>
 
           <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">Controls</span>
-            <h3 class="feature-title">Operator controls</h3>
-            <p class="feature-desc">Unified chat memory is enabled by default and can be disabled with SPARKBOT_UNIFIED_CHAT_MEMORY_ENABLED=false.</p>
+            <span class="feature-icon" role="img" aria-hidden="true">Security</span>
+            <h3 class="feature-title">Negative intent guards</h3>
+            <p class="feature-desc">Troubleshooting signals (not working, broken, why is, how to fix) are now explicitly excluded from the state-dump path before positive matching runs.</p>
           </div>
 
           <div class="feature-card">
             <span class="feature-icon" role="img" aria-hidden="true">Notes</span>
-            <h3 class="feature-title">Downloader refreshed</h3>
-            <p class="feature-desc">The public download page and package metadata now point at the v1.6.63 desktop build line.</p>
-          </div>
-          <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">CC</span>
-            <h3 class="feature-title">Command Center</h3>
-            <p class="feature-desc">Spine Ops is now the operator-facing Command Center with Room Persona first, shared top navigation, and System Health, Computer Control, Token Guardian, and Task Guardian surfaced there.</p>
+            <h3 class="feature-title">Version bump</h3>
+            <p class="feature-desc">All package metadata and download links updated to v1.6.64 desktop build line.</p>
           </div>
         </div>
 
         <p class="download-meta" style="margin-top:24px;">
-          The Codex Sub provider is the right route when you want Sparkbot to use your ChatGPT plan through Codex CLI without pasting an OpenAI Platform key.
+          Root cause: the self-inspection query matcher was too broad, matching on any mention of system keywords rather than requiring explicit status-request phrasing.
         </p>
       </div>
     </section>
@@ -1191,7 +1186,7 @@
             <div class="step-num" aria-hidden="true">1</div>
             <div class="step-body">
               <h3 class="step-title">Click the big purple "Download for Windows" button above</h3>
-              <p class="step-desc">Your browser will download a file called <strong id="windows-filename-step-1">Sparkbot.Local_1.6.63_x64-setup.exe</strong>. This is the installer. It usually arrives in less than a minute.</p>
+              <p class="step-desc">Your browser will download a file called <strong id="windows-filename-step-1">Sparkbot.Local_1.6.64_x64-setup.exe</strong>. This is the installer. It usually arrives in less than a minute.</p>
             </div>
           </div>
 
@@ -1199,7 +1194,7 @@
             <div class="step-num" aria-hidden="true">2</div>
             <div class="step-body">
               <h3 class="step-title">Find the downloaded file and open it</h3>
-              <p class="step-desc">Look at the bottom of your browser for the downloaded file, or check your <strong>Downloads folder</strong>. Double-click the file named <strong id="windows-filename-step-2">Sparkbot.Local_1.6.63_x64-setup.exe</strong> to start installing.</p>
+              <p class="step-desc">Look at the bottom of your browser for the downloaded file, or check your <strong>Downloads folder</strong>. Double-click the file named <strong id="windows-filename-step-2">Sparkbot.Local_1.6.64_x64-setup.exe</strong> to start installing.</p>
             </div>
           </div>
 
@@ -1269,7 +1264,7 @@
               </div>
 
               <div class="win-info-row">
-                <strong>App:</strong> <span id="windows-filename-dialog">Sparkbot.Local_1.6.63_x64-setup.exe</span>
+                <strong>App:</strong> <span id="windows-filename-dialog">Sparkbot.Local_1.6.64_x64-setup.exe</span>
               </div>
               <div class="win-info-row">
                 <strong>Publisher:</strong> <span>Unknown publisher</span>
@@ -1505,7 +1500,7 @@
       <p>Free. Private. Yours. Download takes less than a minute.</p>
       <a
         id="download-windows-bottom"
-        href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.63/Sparkbot.Local_1.6.63_x64-setup.exe"
+        href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.64/Sparkbot.Local_1.6.64_x64-setup.exe"
         class="btn-download-windows"
         style="display:inline-flex;"
         aria-label="Download Sparkbot for Windows"
@@ -1525,7 +1520,7 @@
   =========================== -->
   <footer>
     <p>
-      <span role="img" aria-hidden="true">Spark</span> <strong>Sparkbot</strong> &nbsp;-&nbsp; <span id="footer-version-label">Version 1.6.63</span> &nbsp;-&nbsp; Free &amp; Open Source
+      <span role="img" aria-hidden="true">Spark</span> <strong>Sparkbot</strong> &nbsp;-&nbsp; <span id="footer-version-label">Version 1.6.64</span> &nbsp;-&nbsp; Free &amp; Open Source
     </p>
     <p style="margin-top:10px;">
       <a href="https://github.com/armpit-symphony/Sparkbot" target="_blank" rel="noopener noreferrer">GitHub</a>
@@ -1536,9 +1531,9 @@
     </p>
     <p style="margin-top:12px; font-size:0.8rem;">
       Other platforms:
-      <a id="footer-macos-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.63/Sparkbot.Local_1.6.63_aarch64.dmg">macOS (all Macs)</a>
+      <a id="footer-macos-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.64/Sparkbot.Local_1.6.64_aarch64.dmg">macOS (all Macs)</a>
       &nbsp;-&nbsp;
-      <a id="footer-linux-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.63/Sparkbot.Local_1.6.63_amd64.AppImage">Linux (AppImage)</a>
+      <a id="footer-linux-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.64/Sparkbot.Local_1.6.64_amd64.AppImage">Linux (AppImage)</a>
     </p>
   </footer>
 
@@ -1547,11 +1542,11 @@
   =========================== -->
   <script>
     var fallbackRelease = {
-      version: "1.6.63",
-      windowsFilename: "Sparkbot.Local_1.6.63_x64-setup.exe",
-      windowsUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.63/Sparkbot.Local_1.6.63_x64-setup.exe",
-      macosUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.63/Sparkbot.Local_1.6.63_aarch64.dmg",
-      linuxUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.63/Sparkbot.Local_1.6.63_amd64.AppImage"
+      version: "1.6.64",
+      windowsFilename: "Sparkbot.Local_1.6.64_x64-setup.exe",
+      windowsUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.64/Sparkbot.Local_1.6.64_x64-setup.exe",
+      macosUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.64/Sparkbot.Local_1.6.64_aarch64.dmg",
+      linuxUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.64/Sparkbot.Local_1.6.64_amd64.AppImage"
     };
 
     function setText(id, value) {

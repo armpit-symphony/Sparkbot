@@ -6,7 +6,7 @@ Use it to chat, search, summarize documents, control a browser, run shell comman
 
 **Download:** [armpit-symphony.github.io/Sparkbot](https://armpit-symphony.github.io/Sparkbot/)
 
-**Current release line:** v1.6.63
+**Current release line:** v1.6.64
 
 > Sparkbot stores its app data locally. If you connect a cloud LLM provider or an external service, the text and actions needed for that provider or service are sent to that provider. Local models can run without an LLM cloud account.
 
@@ -605,6 +605,7 @@ User message → Token Guardian → Memory Guardian → LLM
 
 | Version | Date | Highlights |
 |---------|------|-----------|
+| v1.6.64 | May 2026 | Fixed Command Center intent misrouting that dumped runtime state on troubleshooting prompts instead of answering; added correction lock so the bot won't repeat state-dump behavior after user correction; tightened self-inspection and provider-readiness matchers with negative intent guards; version bump across all packages. |
 | v1.6.63 | May 2026 | Cleaned the public downloader page so visible text is English/ASCII only, extended Codex subscription CLI routing for long-running work with an unlimited option, and mirrored useful chat turns into per-user shared work memory so browser, Telegram, Discord, and workstation meeting conversations can inform one another without crossing user boundaries. |
 | v1.6.62 | May 2026 | Security maintenance release: fixed REST chat message recursion, escaped message-search wildcards, made chat-user creation operator-only, closed WebSocket DB sessions, removed closed terminal sessions from memory, pruned rate-limit buckets, limited upload MIME sniffing, stabilized local SECRET_KEY defaults while production rejects unsafe secrets, generated local Postgres passwords during setup, moved FastAPI startup/shutdown to lifespan, and advanced downloader/docs/package metadata to v1.6.62. |
 | v1.6.60 | May 2026 | Smoothed Roundtable into a Seat 1 chaired working-session flow with first-pass ideas, manager assessment, assignments, assigned-work pass, and manager summary; stopped automatic meeting-note generation while preserving operator-triggered notes; limited meeting provider readiness checks to assigned room seats; fixed mobile meeting scrolling/resizing; and advanced backend, frontend, Tauri shell, public downloader, service worker, README, capabilities docs, release notes, and packaging metadata to v1.6.60. |
