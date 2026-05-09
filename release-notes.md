@@ -1,5 +1,13 @@
 # Release Notes
 
+## Sparkbot v1.6.69
+
+- Token Guardian truthfulness: locked-provider routes and provider-authoritative fallback routes no longer report `live_ready: True` when Token Guardian was bypassed. They now set `live_ready: False`, `tg_bypassed: True`, `tg_bypass_reason: "provider_locked" | "token_guardian_error"`, and surface the underlying exception text in `fallback_reason`. Command Center now sees the truth.
+- Audit log cleanup: locked and provider_default routing payloads are no longer recorded under `tokenguardian_live` / `tokenguardian_shadow`. Those modes are bypass markers, not Token Guardian decisions, so logging them was polluting the dashboard's 24-hour `live_routes_24h` counter. After this fix the counter only counts actual Token Guardian decisions.
+- Token Guardian config readiness: `_model_is_configured` no longer permissively returns True for unknown model prefixes; it returns False instead, with explicit True branches for `claude-sub/`, `openai-codex/`, `ollama/`, and `local/`. Subscription providers use CLI auth, verified at use time, so they're treated as catalogue-configured.
+- Version telemetry: removed the `"1.2.3"` fallback in `backend/app/api/routes/chat/model.py` so the runtime self-inspection never fabricates a fake build number when no version marker is readable; returns empty string instead.
+- Spine reporting paper trail: Token Guardian's `_emit_token_guardian_event` and the chat audit-log writer now log failures at warning / exception level instead of a bare `pass`. Future "errors in spine reporting" investigations will see the underlying causes in `backend.log`.
+
 ## Sparkbot v1.6.68
 
 - Documentation correctness sweep across `release-notes.md`, the README release history table, and `docs/capabilities.md`: each of v1.6.65, v1.6.66, and v1.6.67 had mislabelled or missing entries and now correctly describe what shipped.

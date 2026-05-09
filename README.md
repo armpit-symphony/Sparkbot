@@ -6,7 +6,7 @@ Use it to chat, search, summarize documents, control a browser, run shell comman
 
 **Download:** [armpit-symphony.github.io/Sparkbot](https://armpit-symphony.github.io/Sparkbot/)
 
-**Current release line:** v1.6.68
+**Current release line:** v1.6.69
 
 > Sparkbot stores its app data locally. If you connect a cloud LLM provider or an external service, the text and actions needed for that provider or service are sent to that provider. Local models can run without an LLM cloud account.
 
@@ -604,6 +604,7 @@ User message → Token Guardian → Memory Guardian → LLM
 
 | Version | Date | Highlights |
 |---------|------|-----------|
+| v1.6.69 | May 2026 | Token Guardian truthfulness fixes: locked-provider and provider-authoritative routing payloads no longer claim `live_ready: True` while bypassing Token Guardian — they now set `live_ready: False`, `tg_bypassed: True`, `tg_bypass_reason`, and surface the underlying exception in `fallback_reason`; the chat audit log stops recording bypass payloads under `tokenguardian_live`/`tokenguardian_shadow` so the dashboard's 24h live-routes counter is accurate; Token Guardian's `_model_is_configured` no longer permissively returns True for unknown model prefixes; runtime version telemetry no longer fabricates a `1.2.3` fallback when no version marker can be read; Spine ingest failures from Token Guardian are now logged at warning level instead of silently swallowed. |
 | v1.6.68 | May 2026 | Documentation correctness sweep across `release-notes.md`, the README release history table, and `docs/capabilities.md` so v1.6.65, v1.6.66, and v1.6.67 each describe what actually shipped instead of carrying stale or mislabelled entries; advanced the public downloader fallback URLs and filenames from v1.6.66 to v1.6.68 so the page is internally consistent if the GitHub releases API is briefly unreachable; corrected the desktop-release workflow's first-launch hint from "Sparkbot Controls opens on first launch" to "Sparkbot Command Center opens on first launch" to match the v1.6.67 merge. |
 | v1.6.67 | May 2026 | Merged Controls into Command Center as the unified hub for AI Setup, PIN and security, comms connectors, agent management, operations, and Spine inspection; refreshed Command Center with the blue theme and redirected `/controls` to `/spine`. |
 | v1.6.66 | May 2026 | Fixed Claude Sub provider save ("Unknown default provider" error) and dead AI Setup button by adding `claude_sub` to the valid providers set; added a Save button inside the Claude Sub panel; updated CLI model list to Sonnet 4.6, Opus 4.7, Haiku 4.5, and Opus 4.7 (1M context); added `claude_sub` to the agent routing override map; pinned the macOS runner to `macos-14` to unblock Tauri DMG bundling and added a `bash -x` re-run on DMG failure for diagnostics. |

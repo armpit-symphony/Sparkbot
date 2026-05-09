@@ -164,7 +164,7 @@ def _load_version_markers() -> dict[str, str]:
             markers["desktop_shell_version"]
             or markers["backend_version"]
             or markers["frontend_version"]
-            or "1.2.3"
+            or ""
         )
 
     return markers

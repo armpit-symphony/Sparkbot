@@ -979,7 +979,7 @@
         <span class="logo-name">Sparkbot</span>
       </div>
 
-      <div class="hero-badge">Free &amp; Open Source &nbsp;-&nbsp; <span id="version-badge">v1.6.68</span></div>
+      <div class="hero-badge">Free &amp; Open Source &nbsp;-&nbsp; <span id="version-badge">v1.6.69</span></div>
       <h1>Your own AI,<br>on your computer</h1>
 
       <p class="hero-tagline">
@@ -1001,7 +1001,7 @@
       <div class="download-primary-wrap">
         <a
           id="download-windows-primary"
-          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.68/Sparkbot.Local_1.6.68_x64-setup.exe"
+          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.69/Sparkbot.Local_1.6.69_x64-setup.exe"
           class="btn-download-windows"
           aria-label="Download Sparkbot for Windows, latest stable version"
         >
@@ -1013,7 +1013,7 @@
         </a>
       </div>
 
-      <p class="download-meta"><span id="download-version-label">Version 1.6.68</span> &nbsp;-&nbsp; Windows 10 &amp; 11 &nbsp;-&nbsp; 64-bit &nbsp;-&nbsp; Free forever</p>
+      <p class="download-meta"><span id="download-version-label">Version 1.6.69</span> &nbsp;-&nbsp; Windows 10 &amp; 11 &nbsp;-&nbsp; 64-bit &nbsp;-&nbsp; Free forever</p>
       <p class="download-meta" style="margin-top:12px; font-size:0.95rem;">
         This page checks GitHub for the latest stable desktop release automatically. If the button does not start a download, open
         <a href="https://github.com/armpit-symphony/Sparkbot/releases" target="_blank" rel="noopener noreferrer">All Releases</a>
@@ -1023,7 +1023,7 @@
       <div class="other-os">
         <a
           id="download-macos-link"
-          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.68/Sparkbot.Local_1.6.68_aarch64.dmg"
+          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.69/Sparkbot.Local_1.6.69_aarch64.dmg"
           class="btn-os-small"
           aria-label="Download Sparkbot for macOS"
         >
@@ -1031,7 +1031,7 @@
         </a>
         <a
           id="download-linux-link"
-          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.68/Sparkbot.Local_1.6.68_amd64.AppImage"
+          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.69/Sparkbot.Local_1.6.69_amd64.AppImage"
           class="btn-os-small"
           aria-label="Download Sparkbot for Linux AppImage"
         >
@@ -1121,46 +1121,46 @@
     =========================== -->
     <section class="section" aria-labelledby="new-heading">
       <div class="container">
-        <h2 class="section-title" id="new-heading">New in v1.6.68: release log correctness</h2>
+        <h2 class="section-title" id="new-heading">New in v1.6.69: Token Guardian truthfulness</h2>
         <p class="section-subtitle">
-          Cleanup release. Fixes mislabelled and missing entries for v1.6.65 - v1.6.67 in the public release notes, the README history table, and the capabilities reference, and advances the static fallback links on this download page from v1.6.66 to v1.6.68.
+          Token Guardian no longer claims active routing while bypassing itself. Locked-provider and provider-authoritative paths now report bypass status truthfully, the dashboard's 24-hour live-routes counter stops being polluted by bypass markers, and Spine ingest failures stop being silently swallowed.
         </p>
 
         <div class="features-grid">
           <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">Notes</span>
-            <h3 class="feature-title">Accurate release log</h3>
-            <p class="feature-desc">Each of v1.6.65, v1.6.66, and v1.6.67 now correctly describes what shipped: the downloader 404 fix, the Claude Sub save fix and macOS DMG runner pin, and the Controls into Command Center merge.</p>
+            <span class="feature-icon" role="img" aria-hidden="true">Truth</span>
+            <h3 class="feature-title">Honest routing payloads</h3>
+            <p class="feature-desc">Locked-provider and provider-authoritative routes set live_ready: False, tg_bypassed: True, and a specific tg_bypass_reason instead of misreporting "live" while skipping Token Guardian.</p>
           </div>
 
           <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">Page</span>
-            <h3 class="feature-title">Consistent download page</h3>
-            <p class="feature-desc">Static fallback URLs and filename references on this page advance from v1.6.66 to v1.6.68 so the page stays internally consistent if GitHub's release API is briefly unreachable.</p>
+            <span class="feature-icon" role="img" aria-hidden="true">Stats</span>
+            <h3 class="feature-title">Accurate dashboard counter</h3>
+            <p class="feature-desc">The chat audit log no longer records bypass payloads under tokenguardian_live or tokenguardian_shadow. live_routes_24h on the dashboard now counts only actual Token Guardian decisions.</p>
           </div>
 
           <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">Build</span>
-            <h3 class="feature-title">First-launch hint fixed</h3>
-            <p class="feature-desc">Auto-generated GitHub Release notes now say "Sparkbot Command Center opens on first launch" instead of "Sparkbot Controls", matching the v1.6.67 merge.</p>
+            <span class="feature-icon" role="img" aria-hidden="true">Why</span>
+            <h3 class="feature-title">Visible failure reasons</h3>
+            <p class="feature-desc">When Token Guardian raises and the chat path falls back to provider default, the underlying exception text is now surfaced in fallback_reason instead of vanishing.</p>
           </div>
 
           <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">Hub</span>
-            <h3 class="feature-title">Unified Command Center (still)</h3>
-            <p class="feature-desc">AI setup, PIN, comms connectors, agent management, operations, and Spine inspector continue to render inline in Command Center. The /controls route still redirects to /spine.</p>
+            <span class="feature-icon" role="img" aria-hidden="true">Config</span>
+            <h3 class="feature-title">Safer config readiness</h3>
+            <p class="feature-desc">_model_is_configured no longer returns True for unknown model prefixes. claude-sub/, openai-codex/, ollama/, and local/ are explicitly handled; everything else returns False until you configure it.</p>
           </div>
 
           <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">Sub</span>
-            <h3 class="feature-title">Claude Sub provider (still)</h3>
-            <p class="feature-desc">Use a locally signed-in Claude Code CLI session for Pro/Max/Team plan routing without pasting an Anthropic API key. Sonnet 4.6, Opus 4.7, Haiku 4.5, and Opus 4.7 (1M context) selectable.</p>
+            <span class="feature-icon" role="img" aria-hidden="true">Version</span>
+            <h3 class="feature-title">No fake fallback version</h3>
+            <p class="feature-desc">Runtime self-inspection no longer fabricates a "1.2.3" build number when no version marker can be read. Returns empty string instead so the deployed-version truth is preserved.</p>
           </div>
 
           <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">Loader</span>
-            <h3 class="feature-title">Dynamic asset resolver (still)</h3>
-            <p class="feature-desc">The downloader continues to iterate GitHub releases and pick the latest non-draft, non-prerelease desktop-v* release that has Windows/macOS/Linux assets uploaded.</p>
+            <span class="feature-icon" role="img" aria-hidden="true">Logs</span>
+            <h3 class="feature-title">Spine paper trail</h3>
+            <p class="feature-desc">Token Guardian Spine ingest failures and chat audit-log writes are now logged at warning / exception level instead of a bare pass. Future "errors in spine reporting" investigations have a paper trail in backend.log.</p>
           </div>
         </div>
       </div>
@@ -1182,7 +1182,7 @@
             <div class="step-num" aria-hidden="true">1</div>
             <div class="step-body">
               <h3 class="step-title">Click the big purple "Download for Windows" button above</h3>
-              <p class="step-desc">Your browser will download a file called <strong id="windows-filename-step-1">Sparkbot.Local_1.6.68_x64-setup.exe</strong>. This is the installer. It usually arrives in less than a minute.</p>
+              <p class="step-desc">Your browser will download a file called <strong id="windows-filename-step-1">Sparkbot.Local_1.6.69_x64-setup.exe</strong>. This is the installer. It usually arrives in less than a minute.</p>
             </div>
           </div>
 
@@ -1190,7 +1190,7 @@
             <div class="step-num" aria-hidden="true">2</div>
             <div class="step-body">
               <h3 class="step-title">Find the downloaded file and open it</h3>
-              <p class="step-desc">Look at the bottom of your browser for the downloaded file, or check your <strong>Downloads folder</strong>. Double-click the file named <strong id="windows-filename-step-2">Sparkbot.Local_1.6.68_x64-setup.exe</strong> to start installing.</p>
+              <p class="step-desc">Look at the bottom of your browser for the downloaded file, or check your <strong>Downloads folder</strong>. Double-click the file named <strong id="windows-filename-step-2">Sparkbot.Local_1.6.69_x64-setup.exe</strong> to start installing.</p>
             </div>
           </div>
 
@@ -1260,7 +1260,7 @@
               </div>
 
               <div class="win-info-row">
-                <strong>App:</strong> <span id="windows-filename-dialog">Sparkbot.Local_1.6.68_x64-setup.exe</span>
+                <strong>App:</strong> <span id="windows-filename-dialog">Sparkbot.Local_1.6.69_x64-setup.exe</span>
               </div>
               <div class="win-info-row">
                 <strong>Publisher:</strong> <span>Unknown publisher</span>
@@ -1496,7 +1496,7 @@
       <p>Free. Private. Yours. Download takes less than a minute.</p>
       <a
         id="download-windows-bottom"
-        href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.68/Sparkbot.Local_1.6.68_x64-setup.exe"
+        href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.69/Sparkbot.Local_1.6.69_x64-setup.exe"
         class="btn-download-windows"
         style="display:inline-flex;"
         aria-label="Download Sparkbot for Windows"
@@ -1516,7 +1516,7 @@
   =========================== -->
   <footer>
     <p>
-      <span role="img" aria-hidden="true">Spark</span> <strong>Sparkbot</strong> &nbsp;-&nbsp; <span id="footer-version-label">Version 1.6.68</span> &nbsp;-&nbsp; Free &amp; Open Source
+      <span role="img" aria-hidden="true">Spark</span> <strong>Sparkbot</strong> &nbsp;-&nbsp; <span id="footer-version-label">Version 1.6.69</span> &nbsp;-&nbsp; Free &amp; Open Source
     </p>
     <p style="margin-top:10px;">
       <a href="https://github.com/armpit-symphony/Sparkbot" target="_blank" rel="noopener noreferrer">GitHub</a>
@@ -1527,9 +1527,9 @@
     </p>
     <p style="margin-top:12px; font-size:0.8rem;">
       Other platforms:
-      <a id="footer-macos-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.68/Sparkbot.Local_1.6.68_aarch64.dmg">macOS (all Macs)</a>
+      <a id="footer-macos-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.69/Sparkbot.Local_1.6.69_aarch64.dmg">macOS (all Macs)</a>
       &nbsp;-&nbsp;
-      <a id="footer-linux-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.68/Sparkbot.Local_1.6.68_amd64.AppImage">Linux (AppImage)</a>
+      <a id="footer-linux-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.69/Sparkbot.Local_1.6.69_amd64.AppImage">Linux (AppImage)</a>
     </p>
   </footer>
 
@@ -1538,11 +1538,11 @@
   =========================== -->
   <script>
     var fallbackRelease = {
-      version: "1.6.68",
-      windowsFilename: "Sparkbot.Local_1.6.68_x64-setup.exe",
-      windowsUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.68/Sparkbot.Local_1.6.68_x64-setup.exe",
-      macosUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.68/Sparkbot.Local_1.6.68_aarch64.dmg",
-      linuxUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.68/Sparkbot.Local_1.6.68_amd64.AppImage"
+      version: "1.6.69",
+      windowsFilename: "Sparkbot.Local_1.6.69_x64-setup.exe",
+      windowsUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.69/Sparkbot.Local_1.6.69_x64-setup.exe",
+      macosUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.69/Sparkbot.Local_1.6.69_aarch64.dmg",
+      linuxUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.69/Sparkbot.Local_1.6.69_amd64.AppImage"
     };
 
     function setText(id, value) {
@@ -1618,7 +1618,7 @@
           return /_amd64\.AppImage$/i.test(asset.name || "");
         });
 
-        // Extract version from tag (desktop-v1.6.68 -> 1.6.68)
+        // Extract version from tag (desktop-v1.6.69 -> 1.6.69)
         var tagVersion = String(desktopRelease.tag_name || "").replace(/^desktop-v/i, "");
 
         applyRelease({

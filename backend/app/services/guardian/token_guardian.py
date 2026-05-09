@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import asdict
 from functools import lru_cache
@@ -9,6 +10,8 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+
+log = logging.getLogger(__name__)
 
 from . import improvement
 from .tokenguardian.monitor import Monitor
@@ -114,6 +117,19 @@ def _model_is_configured(model: str) -> bool:
     normalized = (model or "").strip()
     if not normalized:
         return False
+    # Subscription-based providers use local CLI auth, not env vars. The chat
+    # path performs the actual readiness check via _claude_cli_auth_available
+    # and _codex_cli_auth_available before each call. Token Guardian doesn't
+    # route to these — they're locked-provider paths — so report them as
+    # configured for the catalogue and let the chat path verify auth at use.
+    if normalized.startswith("claude-sub/"):
+        return True
+    if normalized.startswith("openai-codex/"):
+        return True
+    if normalized.startswith("openrouter/"):
+        return _env_or_vault_has("OPENROUTER_API_KEY", "api_key_openrouter")
+    if normalized.startswith("ollama/") or normalized.startswith("local/"):
+        return True
     if normalized.startswith("gpt-") or normalized.startswith("codex-"):
         return _env_or_vault_has("OPENAI_API_KEY", "api_key_openai")
     if normalized.startswith("claude"):
@@ -126,9 +142,7 @@ def _model_is_configured(model: str) -> bool:
         return _env_or_vault_has("MINIMAX_API_KEY", "api_key_minimax")
     if normalized.startswith("xai/"):
         return _env_or_vault_has("XAI_API_KEY", "api_key_xai")
-    if normalized.startswith("openrouter/"):
-        return _env_or_vault_has("OPENROUTER_API_KEY", "api_key_openrouter")
-    return True
+    return False
 
 
 def _normalize_model_pool(models: set[str] | list[str] | tuple[str, ...] | None) -> list[str]:
@@ -236,7 +250,7 @@ def _emit_token_guardian_event(event_type: str, content: str, payload: dict) -> 
             ),
         )
     except Exception:
-        pass
+        log.warning("Failed to emit Token Guardian Spine event %s", event_type, exc_info=True)
 
 
 def _record_route_usage(payload: dict[str, Any], applied_model: str) -> None:

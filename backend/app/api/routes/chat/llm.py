@@ -1218,7 +1218,7 @@ def _locked_route_payload(
         "threshold": 1.0,
         "selected_model": model_name,
         "fallback_triggered": False,
-        "fallback_reason": None,
+        "fallback_reason": "Token Guardian was bypassed: this agent has a forced provider lock.",
         "optimization": None,
         "estimated_cost": 0.0,
         "status": "locked",
@@ -1230,7 +1230,9 @@ def _locked_route_payload(
         "would_switch_models": False,
         "configured_models": [model_name],
         "allowed_live_models": [model_name],
-        "live_ready": True,
+        "live_ready": False,
+        "tg_bypassed": True,
+        "tg_bypass_reason": "provider_locked",
         "selected_model_supported": is_valid_model(model_name),
         "selected_model_configured": model_is_configured(model_name),
         "selected_model_allowed": True,
@@ -1249,6 +1251,8 @@ def _provider_authoritative_route_payload(
     *,
     message: str,
     route_context: dict[str, Any],
+    bypass_reason: str = "token_guardian_error",
+    fallback_reason: str | None = None,
 ) -> dict[str, Any]:
     model_name = str(route_context["model"]).strip()
     provider_name = str(route_context["requested_provider"]).strip()
@@ -1260,7 +1264,7 @@ def _provider_authoritative_route_payload(
         "threshold": 1.0,
         "selected_model": model_name,
         "fallback_triggered": False,
-        "fallback_reason": None,
+        "fallback_reason": fallback_reason,
         "optimization": None,
         "estimated_cost": 0.0,
         "status": "provider_default",
@@ -1272,7 +1276,9 @@ def _provider_authoritative_route_payload(
         "would_switch_models": False,
         "configured_models": [model_name],
         "allowed_live_models": [model_name],
-        "live_ready": True,
+        "live_ready": False,
+        "tg_bypassed": True,
+        "tg_bypass_reason": bypass_reason,
         "selected_model_supported": is_valid_model(model_name),
         "selected_model_configured": model_is_configured(model_name),
         "selected_model_allowed": True,
@@ -2116,10 +2122,12 @@ async def stream_chat_with_tools(
                 route_payload["cross_provider_fallback"] = bool(route_context.get("cross_provider_fallback"))
                 route_payload["provider_authoritative"] = not bool(route_context.get("cross_provider_fallback"))
             except Exception as _tg_err:
-                log.debug("Token Guardian route_model raised: %s", _tg_err, exc_info=True)
+                log.warning("Token Guardian route_model raised, falling back to provider default: %s", _tg_err, exc_info=True)
                 route_payload = _provider_authoritative_route_payload(
                     message=latest_user_message,
                     route_context=route_context,
+                    bypass_reason="token_guardian_error",
+                    fallback_reason=f"Token Guardian raised: {_tg_err}",
                 )
                 chosen = route_context["model"]
     else:
@@ -2204,28 +2212,32 @@ async def stream_chat_with_tools(
                 )
 
     if db_session is not None and user_id and room_id and route_payload:
-        try:
-            from app.crud import create_audit_log
+        mode = str(route_payload.get("mode") or "shadow")
+        # Only log Token Guardian decisions (live or shadow). The locked and
+        # provider_default payloads are bypass markers, not TG decisions —
+        # logging them would pollute the dashboard's 24h routing stats.
+        if mode in ("live", "shadow"):
+            try:
+                from app.crud import create_audit_log
 
-            mode = str(route_payload.get("mode") or "shadow")
-            tool_name = "tokenguardian_live" if mode == "live" else "tokenguardian_shadow"
-            create_audit_log(
-                session=db_session,
-                tool_name=tool_name,
-                tool_input=json.dumps(
-                    {
-                        "query": latest_user_message[:500],
-                        "current_model": route_payload.get("current_model", chosen),
-                    }
-                ),
-                tool_result=json.dumps(route_payload)[:8000],
-                user_id=_uuid_module.UUID(user_id),
-                room_id=_uuid_module.UUID(room_id),
-                agent_name=agent_name,
-                model=chosen,
-            )
-        except Exception:
-            pass
+                tool_name = "tokenguardian_live" if mode == "live" else "tokenguardian_shadow"
+                create_audit_log(
+                    session=db_session,
+                    tool_name=tool_name,
+                    tool_input=json.dumps(
+                        {
+                            "query": latest_user_message[:500],
+                            "current_model": route_payload.get("current_model", chosen),
+                        }
+                    ),
+                    tool_result=json.dumps(route_payload)[:8000],
+                    user_id=_uuid_module.UUID(user_id),
+                    room_id=_uuid_module.UUID(room_id),
+                    agent_name=agent_name,
+                    model=chosen,
+                )
+            except Exception:
+                log.exception("Failed to record Token Guardian audit log entry")
 
     tool_usage_counts: dict[str, int] = {}
     _max_tool_rounds = max(5, min(int(os.getenv("SPARKBOT_MAX_TOOL_ROUNDS", "20")), 50))

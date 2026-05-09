@@ -1,0 +1,48 @@
+Sparkbot v1.6.69
+
+Token Guardian truthfulness fixes and Spine reporting cleanup.
+
+Token Guardian no longer claims live status when it was bypassed:
+
+- Locked-provider routes (an agent forced to a specific provider/model)
+  used to mark `live_ready: True` on their routing payload even though
+  Token Guardian was never consulted. They now mark `live_ready: False`,
+  `tg_bypassed: True`, and `tg_bypass_reason: "provider_locked"`. The
+  Command Center now sees the truth.
+
+- Provider-authoritative fallback routes (when Token Guardian raises an
+  exception) used to silently switch to the configured default and mark
+  `live_ready: True`. They now mark `live_ready: False`,
+  `tg_bypassed: True`, `tg_bypass_reason: "token_guardian_error"`, and
+  surface the underlying exception text in `fallback_reason`.
+
+- The chat audit log no longer records locked or provider_default
+  routing payloads under `tokenguardian_live` / `tokenguardian_shadow`.
+  Those modes are bypass markers, not Token Guardian decisions, so
+  logging them was polluting the dashboard's 24-hour live-routes counter.
+  After this fix, `live_routes_24h` only counts actual Token Guardian
+  decisions.
+
+Token Guardian config readiness is no longer permissive for unknown
+model prefixes (`backend/app/services/guardian/token_guardian.py:131`).
+Previously, `_model_is_configured` returned True for any model whose
+prefix it didn't recognise, which silently passed unconfigured models
+through the gate. It now returns False for unknown prefixes and
+explicitly handles the subscription providers (`claude-sub/`,
+`openai-codex/`) and local providers (`ollama/`, `local/`).
+
+Version telemetry no longer fabricates a fallback `1.2.3` build number
+(`backend/app/api/routes/chat/model.py:167`). When no version marker can
+be read from `pyproject.toml`, `package.json`, or `tauri.conf.json`, the
+runtime state now returns an empty string instead of a fake version.
+
+Spine ingest failures from Token Guardian are now logged at warning
+level instead of being silently swallowed
+(`backend/app/services/guardian/token_guardian.py:_emit_token_guardian_event`).
+Failed Token Guardian audit-log writes also now log via
+`log.exception` instead of a bare pass. Both surface in `backend.log`
+so future "errors in spine reporting" investigations have a paper trail.
+
+Advanced backend, frontend, Tauri shell, public downloader, service
+worker cache key, README, capabilities docs, release notes, and
+packaging notes to v1.6.69.
