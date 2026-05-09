@@ -1,0 +1,28 @@
+Sparkbot v1.6.68
+
+Documentation correctness sweep: the public release-notes log, the README
+release history table, and the capabilities reference doc all carried
+mislabelled or missing entries for v1.6.65 through v1.6.67. They now
+correctly describe what each release shipped:
+
+- v1.6.65 was the public downloader 404 fix.
+- v1.6.66 was the Claude Sub provider save fix, the dead-button click fix,
+  the CLI model list refresh, and the macos-14 runner pin that unblocked
+  the DMG bundle.
+- v1.6.67 was the Controls into Command Center merge, the new inline
+  Setup Panels, the /controls -> /spine redirect, and the blue theme.
+
+Public download page: the static fallback links and filename references
+have been advanced from v1.6.66 to v1.6.68 so the page is internally
+consistent even if GitHub's release API is briefly unreachable. The
+existing dynamic loader still resolves the latest desktop-v* release that
+has uploaded assets.
+
+Desktop release workflow: the first-launch hint at the bottom of the
+auto-generated GitHub Release notes now says "Sparkbot Command Center
+opens on first launch" instead of "Sparkbot Controls", reflecting the
+v1.6.67 merge.
+
+Advanced backend, frontend, Tauri shell, public downloader, service
+worker cache key, README, capabilities docs, release notes, and packaging
+notes to v1.6.68.

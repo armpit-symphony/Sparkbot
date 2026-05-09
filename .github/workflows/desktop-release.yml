@@ -504,7 +504,7 @@ jobs:
 
           ### First launch
 
-          Sparkbot Controls opens on first launch for provider and model setup.
+          Sparkbot Command Center opens on first launch for provider and model setup.
           EOF
 
       - name: Create GitHub Release

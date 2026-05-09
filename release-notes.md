@@ -1,11 +1,30 @@
 # Release Notes
 
+## Sparkbot v1.6.68
+
+- Documentation correctness sweep across `release-notes.md`, the README release history table, and `docs/capabilities.md`: each of v1.6.65, v1.6.66, and v1.6.67 had mislabelled or missing entries and now correctly describe what shipped.
+- Public download page: static fallback links and filenames advanced to v1.6.68 so the page is internally consistent if the GitHub releases API is briefly unreachable. The dynamic loader still resolves the latest `desktop-v*` release with uploaded assets.
+- Desktop release workflow: the first-launch hint at the bottom of the auto-generated GitHub Release notes now says "Sparkbot Command Center opens on first launch" instead of "Sparkbot Controls", matching the v1.6.67 merge.
+- Advanced backend, frontend, Tauri shell, public downloader, service worker cache key, README, capabilities docs, release notes, and packaging notes to v1.6.68.
+
+## Sparkbot v1.6.67
+
+- Merged Controls into Command Center as the unified operations hub: AI Setup, PIN and security, comms connectors, agent management, operations, and the Spine inspector all render inline from one page.
+- Redirected `/controls` to `/spine` and removed the separate Controls sidebar entry.
+- Refreshed Command Center, surface tabs, and operational panels with a professional blue theme replacing the previous green/emerald palette.
+
 ## Sparkbot v1.6.66
 
-- Fixed public downloader 404: the download page was linking to release assets for `desktop-v1.6.64` which never had a GitHub release created. Download links now dynamically resolve the latest `desktop-v*` release that has uploaded Windows/macOS/Linux assets, regardless of version.
-- Fallback URLs now point at the latest confirmed working build (`desktop-v1.6.61`) instead of a non-existent future tag.
+- Fixed Claude Sub provider save: setting `claude_sub` as default no longer trips the "Unknown default provider" error, and the AI Setup button is no longer dead — `claude_sub` was missing from the valid providers set.
+- Added a Save button inside the Claude Sub panel for quick model saves, and added `claude_sub` to the agent routing override map.
+- Updated the Claude subscription model list to Sonnet 4.6, Opus 4.7, Haiku 4.5, and Opus 4.7 (1M context).
+- Pinned the macOS runner to `macos-14` (Sonoma) — macOS 15 Sequoia broke the Tauri DMG bundler — and added a `bash -x` re-run on DMG failure so future bundle errors print actionable output.
+
+## Sparkbot v1.6.65
+
+- Fixed public downloader 404: the download page was linking to release assets for `desktop-v1.6.64`, a tag that never had a GitHub release created. Download links now dynamically resolve the latest `desktop-v*` release that has uploaded Windows/macOS/Linux assets, regardless of version.
+- Fallback URLs now point at the latest confirmed working build instead of a non-existent future tag.
 - The JS release loader no longer hardcodes a single expected tag — it iterates all releases and picks the first non-draft, non-prerelease `desktop-v*` release with a Windows `.exe` asset.
-- Advanced backend, frontend, Tauri shell, public downloader, service worker, README, and release notes to v1.6.66.
 
 ## Sparkbot v1.6.64
 

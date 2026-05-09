@@ -1922,7 +1922,7 @@ curl -b cookies.txt http://localhost:8000/api/v1/chat/system/watcher | python -m
 
 Desktop release tags and app versions are aligned on the `1.6.x` release line.
 
-For `v1.6.67`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release line fixes the public downloader 404 by dynamically resolving the latest desktop release with uploaded assets instead of hardcoding a specific version tag.
+For `v1.6.68`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release line cleans up the v1.6.65 - v1.6.67 release log so the public release notes, the README history table, and this capabilities reference describe what each version actually shipped (downloader 404 fix in v1.6.65, Claude Sub save fix and macOS DMG runner pin in v1.6.66, Controls into Command Center merge in v1.6.67), and advances the static fallback links on the GitHub Pages downloader from v1.6.66 to v1.6.68 so the page stays consistent if the GitHub releases API is briefly unreachable.
 
 ### How to upgrade safely
 

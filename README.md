@@ -6,7 +6,7 @@ Use it to chat, search, summarize documents, control a browser, run shell comman
 
 **Download:** [armpit-symphony.github.io/Sparkbot](https://armpit-symphony.github.io/Sparkbot/)
 
-**Current release line:** v1.6.67
+**Current release line:** v1.6.68
 
 > Sparkbot stores its app data locally. If you connect a cloud LLM provider or an external service, the text and actions needed for that provider or service are sent to that provider. Local models can run without an LLM cloud account.
 
@@ -604,8 +604,10 @@ User message → Token Guardian → Memory Guardian → LLM
 
 | Version | Date | Highlights |
 |---------|------|-----------|
+| v1.6.68 | May 2026 | Documentation correctness sweep across `release-notes.md`, the README release history table, and `docs/capabilities.md` so v1.6.65, v1.6.66, and v1.6.67 each describe what actually shipped instead of carrying stale or mislabelled entries; advanced the public downloader fallback URLs and filenames from v1.6.66 to v1.6.68 so the page is internally consistent if the GitHub releases API is briefly unreachable; corrected the desktop-release workflow's first-launch hint from "Sparkbot Controls opens on first launch" to "Sparkbot Command Center opens on first launch" to match the v1.6.67 merge. |
 | v1.6.67 | May 2026 | Merged Controls into Command Center as the unified hub for AI Setup, PIN and security, comms connectors, agent management, operations, and Spine inspection; refreshed Command Center with the blue theme and redirected `/controls` to `/spine`. |
-| v1.6.66 | May 2026 | Fixed public downloader 404: download links now dynamically resolve the latest desktop release with uploaded assets instead of hardcoding a specific version tag; fallback URLs point at the latest confirmed working build. |
+| v1.6.66 | May 2026 | Fixed Claude Sub provider save ("Unknown default provider" error) and dead AI Setup button by adding `claude_sub` to the valid providers set; added a Save button inside the Claude Sub panel; updated CLI model list to Sonnet 4.6, Opus 4.7, Haiku 4.5, and Opus 4.7 (1M context); added `claude_sub` to the agent routing override map; pinned the macOS runner to `macos-14` to unblock Tauri DMG bundling and added a `bash -x` re-run on DMG failure for diagnostics. |
+| v1.6.65 | May 2026 | Fixed public downloader 404: download links now dynamically resolve the latest desktop release with uploaded assets instead of hardcoding a specific version tag; fallback URLs point at the latest confirmed working build; the JS release loader iterates all releases and picks the first non-draft, non-prerelease `desktop-v*` release with a Windows `.exe` asset. |
 | v1.6.64 | May 2026 | Fixed Command Center intent misrouting that dumped runtime state on troubleshooting prompts instead of answering; added correction lock so the bot won't repeat state-dump behavior after user correction; tightened self-inspection and provider-readiness matchers with negative intent guards; removed why/how/explain from simple_qa classifier to fix reasoning misroutes; added Claude Subscription provider (claude_sub) using locally signed-in Claude Code CLI for Pro/Max/Team plan routing without API keys. |
 | v1.6.63 | May 2026 | Cleaned the public downloader page so visible text is English/ASCII only, extended Codex subscription CLI routing for long-running work with an unlimited option, and mirrored useful chat turns into per-user shared work memory so browser, Telegram, Discord, and workstation meeting conversations can inform one another without crossing user boundaries. |
 | v1.6.62 | May 2026 | Security maintenance release: fixed REST chat message recursion, escaped message-search wildcards, made chat-user creation operator-only, closed WebSocket DB sessions, removed closed terminal sessions from memory, pruned rate-limit buckets, limited upload MIME sniffing, stabilized local SECRET_KEY defaults while production rejects unsafe secrets, generated local Postgres passwords during setup, moved FastAPI startup/shutdown to lifespan, and advanced downloader/docs/package metadata to v1.6.62. |
