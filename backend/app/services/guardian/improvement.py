@@ -26,9 +26,18 @@ def improvement_loop_enabled() -> bool:
 
 
 def _data_dir() -> Path:
+    # Precedence: per-feature override → guardian-wide umbrella → default.
+    # The default lives under the package directory which, in a PyInstaller
+    # frozen build, resolves into sys._MEIPASS — wiped on every desktop
+    # restart. desktop_launcher.py sets SPARKBOT_GUARDIAN_DATA_DIR so the
+    # store lands in %APPDATA%\Sparkbot\guardian-data instead. Server
+    # installs that already set SPARKBOT_IMPROVEMENT_DATA_DIR keep working.
     configured = os.getenv("SPARKBOT_IMPROVEMENT_DATA_DIR", "").strip()
     if configured:
         return Path(configured).expanduser()
+    umbrella = os.getenv("SPARKBOT_GUARDIAN_DATA_DIR", "").strip()
+    if umbrella:
+        return Path(umbrella).expanduser() / "improvement_loop"
     return _DEFAULT_DATA_DIR
 
 

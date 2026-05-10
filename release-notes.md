@@ -1,5 +1,14 @@
 # Release Notes
 
+## Sparkbot v1.6.72
+
+- Implements both v1.6.71 improvement proposals (operator-approved via the new Improvement tab).
+- **Autonomous-turn pacing**: new `backend/app/services/guardian/autonomous_turn_pacing.py` records per-(room, agent) outcomes. On 4xx provider failures (e.g. MiniMax error 2013 from a tool-incompatible model) the next attempt sleeps 2^N seconds capped at 64, and after 8 consecutive 4xx within a 5-minute sliding window the pair is paused. 5xx and connection errors increment the counter but stay on the existing immediate-retry path because those are transient infra. The pacing layer is wired into `rooms.py:_run_agent_turn` (both pre-dispatch skip check and post-dispatch outcome recording). This stops the runaway retry loop that was starving SQLite writes and surfacing as "Connection error" in the Tauri webview.
+- **Operator-controlled resume**: two new routes (`GET /spine/operator/autonomous-pauses`, `POST .../resume`) back a new card in the Task Guardian tab listing paused pairs with failure count, last 4xx status, and pause reason. Pairs currently in backoff (not yet paused) appear in a separate "Backing off" section so the operator can see the loop healing in real time.
+- **Durable Guardian sidecar state**: new `SPARKBOT_GUARDIAN_DATA_DIR` umbrella env var. `improvement.py`, `correction_lock.py`, and `autonomous_turn_pacing.py` all consult it before the package-default path. `desktop_launcher.py` points it at `%APPDATA%\Sparkbot\guardian-data` so proposals, correction locks, and pacing state survive desktop restarts instead of being wiped with the PyInstaller temp dir.
+- **First-launch migration**: `_migrate_guardian_sidecar_data` runs once at launcher startup. It seeds the umbrella from the freshest non-empty pre-umbrella source (legacy stable path or `_MEI*/data/<feature>` PyInstaller temp), idempotent — if the umbrella file already has content nothing is copied. v1.6.71 proposals and locks carry forward.
+- **Tests**: 12 new for pacing, 5 new for migration, 4 new for umbrella precedence on the existing modules. Full guardian/services suite: 179 passed, no regressions. Frontend builds clean.
+
 ## Sparkbot v1.6.71
 
 - Durable correction lock: `backend/app/services/guardian/correction_lock.py` is a new per-room sidecar store that persists intent-suppression flags. When the user corrects a misroute ("that's not an answer", "stop dumping state", "just answer"), `backend/app/api/routes/chat/rooms.py` now records the correction durably so the suppression survives past the 6-message lookback window and across sessions; the same misroute does not repeat the next turn. The router also clears the lock when the user explicitly asks for state again ("yes show me the runtime state", "actually display the stack", "I do want the runtime status") so the short-circuit can fire normally. Tunable via `SPARKBOT_CORRECTION_LOCK_DATA_DIR` and `SPARKBOT_CORRECTION_LOCK_ENABLED`.

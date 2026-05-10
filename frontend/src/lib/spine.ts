@@ -263,6 +263,44 @@ export function rejectImprovementProposal(proposalId: string): Promise<{ proposa
   )
 }
 
+// ── Autonomous turn pacing (paused agents) ────────────────────────────────────
+
+export interface AutonomousTurnPair {
+  room_id: string
+  agent_handle: string
+  consecutive_failures: number
+  first_failure_at: string
+  last_failure_at: string
+  last_failure_status: number | null
+  last_failure_error: string
+  next_attempt_at: string
+  paused: boolean
+  paused_at: string
+  paused_reason: string
+  resumed_at: string
+  resumed_by: string
+}
+
+export interface AutonomousPausesResult {
+  paused: AutonomousTurnPair[]
+  backing_off: AutonomousTurnPair[]
+  count_paused: number
+  count_backing_off: number
+}
+
+export function fetchAutonomousPauses(): Promise<AutonomousPausesResult> {
+  return spineGet<AutonomousPausesResult>(`${SPINE_BASE}/autonomous-pauses`)
+}
+
+export function resumeAutonomousPause(
+  roomId: string,
+  agentHandle: string,
+): Promise<{ pair: AutonomousTurnPair }> {
+  return spinePost<{ pair: AutonomousTurnPair }>(
+    `${SPINE_BASE}/autonomous-pauses/${encodeURIComponent(roomId)}/${encodeURIComponent(agentHandle)}/resume`,
+  )
+}
+
 // ── Guardian operator API helpers ─────────────────────────────────────────────
 
 const GUARDIAN_BASE = "/api/v1/chat/guardian"

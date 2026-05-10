@@ -65,6 +65,27 @@ def test_update_proposal_status_invalid_inputs(monkeypatch, tmp_path: Path) -> N
     assert improvement.update_proposal_status(proposal_id="does-not-exist", new_status="approved") is None
 
 
+def test_guardian_data_dir_umbrella_routes_improvement_loop(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("SPARKBOT_IMPROVEMENT_LOOP_ENABLED", "true")
+    monkeypatch.delenv("SPARKBOT_IMPROVEMENT_DATA_DIR", raising=False)
+    monkeypatch.setenv("SPARKBOT_GUARDIAN_DATA_DIR", str(tmp_path / "guardian-data"))
+
+    proposal = improvement.propose_improvement(user_id="u", room_id="r", summary="x")
+    assert proposal is not None
+    expected = tmp_path / "guardian-data" / "improvement_loop" / "outcomes.json"
+    assert expected.exists()
+
+
+def test_per_feature_improvement_dir_wins_over_umbrella(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("SPARKBOT_IMPROVEMENT_LOOP_ENABLED", "true")
+    monkeypatch.setenv("SPARKBOT_IMPROVEMENT_DATA_DIR", str(tmp_path / "per_feature"))
+    monkeypatch.setenv("SPARKBOT_GUARDIAN_DATA_DIR", str(tmp_path / "umbrella"))
+
+    improvement.propose_improvement(user_id="u", room_id="r", summary="x")
+    assert (tmp_path / "per_feature" / "outcomes.json").exists()
+    assert not (tmp_path / "umbrella" / "improvement_loop" / "outcomes.json").exists()
+
+
 def test_improvement_records_outcomes_and_promotes_patterns(monkeypatch, tmp_path: Path) -> None:
     _reset_improvement(monkeypatch, tmp_path)
 

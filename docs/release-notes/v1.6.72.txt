@@ -1,0 +1,116 @@
+Sparkbot v1.6.72
+
+Implements both v1.6.71 improvement proposals (operator-approved):
+autonomous-turn pacing and durable Guardian sidecar state.
+
+### Background
+
+v1.6.71 surfaced two issues. The user reported "Connection error" on
+every chat turn after installing v1.6.71 on Windows. Investigation in
+backend.log showed:
+
+  1. Autonomous meeting agents (`meetings_manager`, `minimax`) were
+     pinned to MiniMax, which 4xxs with "invalid chat setting (2013)".
+     The autonomous-turn loop retried at ~3-second intervals and
+     starved SQLite writes. The chat write itself eventually timed
+     out, and the Tauri webview rendered "Connection error".
+
+  2. While filing the proposal for #1, we noticed both v1.6.71 sidecar
+     stores (improvement_loop and correction_locks) resolved their data
+     dir relative to __file__, which under PyInstaller is sys._MEIPASS
+     — wiped on every desktop restart. So proposals AND correction
+     locks would not survive across launches. 30+ stale `_MEI*/data/`
+     directories on the user's box confirmed it.
+
+Both proposals were approved via the v1.6.71 Improvement tab. v1.6.72
+implements them.
+
+### Proposal #2 first (low risk, isolated)
+
+  * `backend/app/services/guardian/improvement.py` and
+    `backend/app/services/guardian/correction_lock.py` now consult
+    `SPARKBOT_GUARDIAN_DATA_DIR` (umbrella) before falling to the
+    package-default path. Per-feature overrides
+    (`SPARKBOT_IMPROVEMENT_DATA_DIR`,
+    `SPARKBOT_CORRECTION_LOCK_DATA_DIR`) still win when set.
+  * `backend/desktop_launcher.py` defaults the umbrella to
+    `%APPDATA%\Sparkbot\guardian-data` (or the launcher-resolved
+    `SPARKBOT_DATA_DIR` subdir on server installs).
+  * `_migrate_guardian_sidecar_data` runs once at launcher startup
+    before the FastAPI app imports. It seeds the new umbrella from
+    the freshest non-empty pre-umbrella source: the legacy
+    `<DATA_DIR>/<feature>/<file>` path used briefly during v1.6.71
+    testing, or the most-recently-modified
+    `_MEI*/data/<feature>/<file>` path. Idempotent: if the umbrella
+    file already has content, nothing is copied.
+  * 5 new tests for the migration helper. 4 new tests verify the
+    umbrella-precedence on `improvement.py` and `correction_lock.py`.
+
+### Proposal #1 (medium risk, scoped to the autonomous-turn dispatcher)
+
+  * New `backend/app/services/guardian/autonomous_turn_pacing.py`
+    sidecar (under the umbrella). Tracks (room_id, agent_handle)
+    pairs:
+      - `record_success` clears any pending failure counter.
+      - `record_failure(status_code=...)` schedules
+        `next_attempt_at = now + 2^min(failures, 6)` seconds when the
+        failure is 4xx. After 8 consecutive 4xx within a 5-minute
+        sliding window, the pair is marked paused.
+      - 5xx and connection errors increment the counter but do NOT
+        schedule backoff and do NOT count toward the pause threshold;
+        those are transient infra and stay on the existing immediate-
+        retry path.
+      - `should_skip` returns True with a reason when the pair is
+        paused or still inside a backoff sleep window.
+      - `pause` / `resume` for operator control.
+  * `backend/app/api/routes/chat/rooms.py:_run_agent_turn` now
+    consults `should_skip` before dispatching, emits an
+    `agent_skipped` SSE event when paced, calls `record_failure` on
+    the existing failure path with the litellm exception's status
+    code, and calls `record_success` on the success path.
+  * Two new operator routes in `backend/app/api/routes/chat/spine.py`:
+      GET  /api/v1/chat/spine/operator/autonomous-pauses
+      POST /api/v1/chat/spine/operator/autonomous-pauses/{room}/{agent}/resume
+  * `frontend/src/lib/spine.ts` adds `AutonomousTurnPair`,
+    `fetchAutonomousPauses`, and `resumeAutonomousPause` (all routed
+    through the v1.6.70 apiFetch bridge).
+  * `frontend/src/routes/_layout/spine.tsx` adds an
+    `AutonomousPausesCard` to the Task Guardian tab. It lists paused
+    pairs with failure count, last 4xx status code, and pause reason
+    plus a Resume button. Pairs that are currently in backoff (not
+    yet paused) appear in a separate "Backing off" section so the
+    operator can see the loop healing in real time.
+  * 12 new tests cover the pacing module (clean state, 4xx backoff,
+    5xx ignored, threshold pause, below-threshold not paused, success
+    clears counters, resume clears pause, pair scoping, sliding-window
+    reset, disabled-flag no-op, umbrella routing, exponential growth
+    capped at 64s).
+
+### Why this fixes the v1.6.71 user report
+
+After installing v1.6.72 with `SPARKBOT_AGENT_MODEL_OVERRIDES_JSON`
+unchanged (still pinning `meetings_manager` and `minimax` agents to
+`minimax/MiniMax-M2.7`):
+
+  - First failure: 1s backoff scheduled.
+  - 8th consecutive failure within 5 minutes: pair is paused.
+  - Subsequent autonomous turns for that pair return immediately with
+    an `agent_skipped` SSE event and do not call the LLM.
+  - SQLite writes stop being held, the user's chat write goes through,
+    no more "Connection error".
+  - The user can fix the provider config (or accept that MiniMax
+    rejects our tool manifest) and click Resume in Command Center
+    when ready.
+
+### Tests
+
+  - `backend/tests/services/test_autonomous_turn_pacing.py`        (12)
+  - `backend/tests/services/test_correction_lock.py`               (+2 umbrella)
+  - `backend/tests/services/test_guardian_improvement.py`          (+2 umbrella)
+  - `backend/tests/test_desktop_launcher_migration.py`             ( 5)
+  - Full guardian/services suite: 179 passed, no regressions.
+  - Frontend: builds clean (TypeScript + Vite).
+
+Advanced backend, frontend, Tauri shell, public downloader, service
+worker cache key, README, capabilities docs, release notes, and
+packaging notes to v1.6.72.

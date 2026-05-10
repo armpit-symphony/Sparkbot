@@ -3,8 +3,71 @@ Desktop launcher for Sparkbot backend.
 Bundled by PyInstaller and sideloaded by the Tauri shell.
 Starts a local uvicorn server on 127.0.0.1:8765.
 """
+import json
 import os
+import shutil
 import sys
+from pathlib import Path
+
+
+# ── Guardian sidecar migration ────────────────────────────────────────────────
+# Both improvement_loop and correction_lock store JSON in
+# Path(__file__).resolve().parents[3] / "data" / <feature> by default. Under a
+# PyInstaller frozen build that path resolves into sys._MEIPASS, which gets
+# recreated on every launch — so proposals and correction locks would be wiped
+# on every desktop restart unless we redirect the data dir. This helper runs
+# once at launch, before app modules are imported.
+_GUARDIAN_SIDECAR_FEATURES = (
+    ("improvement_loop", "outcomes.json"),
+    ("correction_locks", "locks.json"),
+)
+
+
+def _migrate_guardian_sidecar_data(umbrella_dir: str) -> None:
+    """Seed the umbrella data dir from any non-empty pre-umbrella source.
+
+    Sources are checked in this order; the freshest non-empty one wins:
+      1. <DATA_DIR>/<feature>/<file>  — the legacy pre-umbrella stable path
+         (used briefly during v1.6.71 testing before this fix landed).
+      2. <APPDATA>/Sparkbot/pyi-runtime/_MEI*/data/<feature>/<file>  — the
+         transient PyInstaller default that we are migrating away from.
+
+    Idempotent: if the umbrella file already exists with content, nothing is
+    copied. We keep this purely additive so it cannot lose data.
+    """
+    umbrella = Path(umbrella_dir).expanduser()
+    appdata = Path(os.environ.get("APPDATA") or os.path.expanduser("~"))
+    legacy_root = Path(os.environ.get("SPARKBOT_DATA_DIR") or umbrella.parent)
+    pyi_runtime = appdata / "Sparkbot" / "pyi-runtime"
+
+    for feature, filename in _GUARDIAN_SIDECAR_FEATURES:
+        target = umbrella / feature / filename
+        if target.exists() and target.stat().st_size > 0:
+            continue
+
+        candidates: list[Path] = []
+        legacy = legacy_root / feature / filename
+        if legacy.exists() and legacy.stat().st_size > 0 and legacy.resolve() != target.resolve():
+            candidates.append(legacy)
+        if pyi_runtime.exists():
+            for mei in pyi_runtime.glob("_MEI*"):
+                candidate = mei / "data" / feature / filename
+                if candidate.exists() and candidate.stat().st_size > 0:
+                    candidates.append(candidate)
+        if not candidates:
+            continue
+
+        candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        for source in candidates:
+            try:
+                payload = json.loads(source.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if not isinstance(payload, dict):
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
+            break
 
 # Inject required env vars before any app module is imported.
 # Settings() runs at module-level in app.core.config, so these must be set first.
@@ -47,6 +110,15 @@ if getattr(sys, "frozen", False):
     # Point alembic / SQLite to a writable location beside the exe
     exe_dir = os.path.dirname(sys.executable)
     os.environ.setdefault("SPARKBOT_DATA_DIR", exe_dir)
+    # Guardian sidecar stores (improvement loop, correction lock, future
+    # autonomous-turn pacing) need a writable location that survives across
+    # desktop restarts. The module defaults resolve into sys._MEIPASS, which
+    # PyInstaller wipes on every launch, so route them through the data dir.
+    os.environ.setdefault(
+        "SPARKBOT_GUARDIAN_DATA_DIR",
+        os.path.join(os.environ["SPARKBOT_DATA_DIR"], "guardian-data"),
+    )
+    _migrate_guardian_sidecar_data(os.environ["SPARKBOT_GUARDIAN_DATA_DIR"])
     # Persist SECRET_KEY so JWT sessions survive app restarts.
     # Without this, every restart generates a new secret and all existing
     # login cookies become invalid, forcing re-login every session.

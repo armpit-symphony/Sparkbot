@@ -16,6 +16,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import {
   type BreakglassStatus,
   type GuardianStatus,
+  type AutonomousTurnPair,
   type ImprovementProposal,
   type ImprovementProposalStatus,
   type SpineApproval,
@@ -33,6 +34,8 @@ import {
   addVaultSecret,
   approveImprovementProposal,
   archiveProject,
+  fetchAutonomousPauses,
+  resumeAutonomousPause,
   createProject,
   deactivateBreakglass,
   deleteVaultSecret,
@@ -1780,7 +1783,148 @@ function TaskGuardianTab() {
           </div>
         </CardContent>
       </Card>
+
+      <AutonomousPausesCard />
     </div>
+  )
+}
+
+// ─── Autonomous turn pauses card ──────────────────────────────────────────────
+
+function AutonomousPausesCard() {
+  const [paused, setPaused] = useState<AutonomousTurnPair[]>([])
+  const [backingOff, setBackingOff] = useState<AutonomousTurnPair[]>([])
+  const [loading, setLoading] = useState(true)
+  const [err, setErr] = useState("")
+  const [resuming, setResuming] = useState<string | null>(null)
+
+  const reload = useCallback(async () => {
+    setLoading(true)
+    setErr("")
+    try {
+      const result = await fetchAutonomousPauses()
+      setPaused(result.paused)
+      setBackingOff(result.backing_off)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e))
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    reload()
+  }, [reload])
+
+  async function handleResume(roomId: string, agentHandle: string) {
+    const key = `${roomId}::${agentHandle}`
+    setResuming(key)
+    setErr("")
+    try {
+      await resumeAutonomousPause(roomId, agentHandle)
+      await reload()
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e))
+    } finally {
+      setResuming(null)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <ShieldAlert className="size-4" />
+              Autonomous turn pacing
+            </CardTitle>
+            <CardDescription>
+              Per-(room, agent) pacing for autonomous meeting turns. Sustained 4xx provider
+              failures trigger exponential backoff, then a pause after 8 failures within 5
+              minutes. This stops a misconfigured provider from looping on retries and starving
+              SQLite writes.
+            </CardDescription>
+          </div>
+          <Button size="sm" variant="outline" className="gap-1.5" onClick={reload}>
+            <RefreshCw className="size-3.5" />
+            Refresh
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {err && <ErrorBox message={err} />}
+        {loading ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <LoaderCircle className="size-4 animate-spin" />
+            Loading pacing state...
+          </div>
+        ) : paused.length === 0 && backingOff.length === 0 ? (
+          <div className="rounded-lg border border-dashed px-3 py-3 text-xs text-muted-foreground">
+            No autonomous-turn pauses or backoffs active. Rooms and agents are running normally.
+          </div>
+        ) : (
+          <>
+            {paused.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Paused ({paused.length})
+                </div>
+                {paused.map((pair) => {
+                  const key = `${pair.room_id}::${pair.agent_handle}`
+                  return (
+                    <div key={key} className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="font-medium text-foreground">
+                            @{pair.agent_handle} <span className="text-muted-foreground">in room {pair.room_id}</span>
+                          </div>
+                          <div className="mt-0.5 text-muted-foreground">{pair.paused_reason}</div>
+                          <div className="mt-1 flex flex-wrap gap-2 text-[10px] uppercase tracking-wide text-muted-foreground">
+                            <span>failures: {pair.consecutive_failures}</span>
+                            {pair.last_failure_status !== null && <span>last status: {pair.last_failure_status}</span>}
+                            <span>paused: {formatRelativeTime(pair.paused_at)}</span>
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="default"
+                          onClick={() => handleResume(pair.room_id, pair.agent_handle)}
+                          disabled={resuming === key}
+                        >
+                          Resume
+                        </Button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+            {backingOff.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Backing off ({backingOff.length})
+                </div>
+                {backingOff.map((pair) => (
+                  <div key={`${pair.room_id}::${pair.agent_handle}`} className="rounded-lg border px-3 py-2 text-xs">
+                    <div className="font-medium text-foreground">
+                      @{pair.agent_handle} <span className="text-muted-foreground">in room {pair.room_id}</span>
+                    </div>
+                    <div className="mt-0.5 text-muted-foreground">
+                      next attempt: {formatRelativeTime(pair.next_attempt_at)}
+                    </div>
+                    <div className="mt-1 flex flex-wrap gap-2 text-[10px] uppercase tracking-wide text-muted-foreground">
+                      <span>failures: {pair.consecutive_failures}</span>
+                      {pair.last_failure_status !== null && <span>last status: {pair.last_failure_status}</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 

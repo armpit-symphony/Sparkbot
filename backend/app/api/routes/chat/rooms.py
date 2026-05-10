@@ -56,7 +56,7 @@ from app.schemas.chat import (
     RoomResponse,
     RoomUpdate,
 )
-from app.services.guardian import correction_lock, get_guardian_suite
+from app.services.guardian import autonomous_turn_pacing, correction_lock, get_guardian_suite
 
 router = APIRouter(prefix="/rooms", tags=["chat-rooms"])
 
@@ -1810,6 +1810,32 @@ async def stream_room_message(
                 f"data: {json.dumps({'type': 'agent_start', 'agent': participant_handle, 'label': label, 'phase': meeting_phase, **route_display})}\n\n"
             ]
 
+            # Pacing gate: skip this turn if the (room, agent) pair is paused
+            # or still inside an exponential-backoff sleep window. Without
+            # this, a provider that 4xxs (e.g. MiniMax error 2013 for
+            # tool-incompatible models) sends the autonomous-turn loop into
+            # a tight retry that holds SQLite write locks long enough that
+            # unrelated chat writes time out.
+            try:
+                _skip, _skip_reason = autonomous_turn_pacing.should_skip(
+                    room_id=str(room_id),
+                    agent_handle=participant_handle,
+                )
+            except Exception:
+                _skip, _skip_reason = False, None
+                log.warning("autonomous_turn_pacing.should_skip failed", exc_info=True)
+            if _skip:
+                emitted_events.append(
+                    f"data: {json.dumps({'type': 'agent_skipped', 'agent': participant_handle, 'reason': _skip_reason or 'paced'})}\n\n"
+                )
+                return {
+                    "content": "",
+                    "status": None,
+                    "halted": False,
+                    "skipped": True,
+                    "events": emitted_events,
+                }
+
             agent_full_text = ""
             agent_routing_payload = None
             stop_event = None
@@ -1866,10 +1892,33 @@ async def stream_room_message(
             if last_error is not None:
                 from app.api.routes.chat.llm import humanise_chat_error
                 log.exception("autonomous meeting turn failed for %s", participant_handle)
+                # Record the failure so repeated 4xx hits accumulate toward
+                # exponential backoff and the eventual pause threshold.
+                _status_code = getattr(last_error, "status_code", None)
+                if _status_code is None:
+                    _status_code = getattr(last_error, "code", None)
+                try:
+                    autonomous_turn_pacing.record_failure(
+                        room_id=str(room_id),
+                        agent_handle=participant_handle,
+                        status_code=int(_status_code) if isinstance(_status_code, int) or (isinstance(_status_code, str) and _status_code.isdigit()) else None,
+                        error=str(last_error)[:600],
+                    )
+                except Exception:
+                    log.warning("autonomous_turn_pacing.record_failure failed", exc_info=True)
                 emitted_events.append(
                     f"data: {json.dumps({'type': 'error', 'error': humanise_chat_error(last_error), 'detail': str(last_error)[:400], 'agent': participant_handle, 'fatal': False})}\n\n"
                 )
                 return {"content": "", "status": "blocked", "halted": False, "failed": True, "events": emitted_events}
+
+            # Successful dispatch — clear any prior failure streak / backoff.
+            try:
+                autonomous_turn_pacing.record_success(
+                    room_id=str(room_id),
+                    agent_handle=participant_handle,
+                )
+            except Exception:
+                log.warning("autonomous_turn_pacing.record_success failed", exc_info=True)
 
             if stop_event:
                 if db2:

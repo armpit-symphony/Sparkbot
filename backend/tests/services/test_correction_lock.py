@@ -107,3 +107,24 @@ def test_missing_room_or_intent_is_no_op(monkeypatch, tmp_path: Path) -> None:
     assert correction_lock.record_correction(room_id="room-A", intent_kind="") is None
     assert correction_lock.is_suppressed(room_id="", intent_kind="self_inspection") is False
     assert correction_lock.is_suppressed(room_id="room-A", intent_kind="") is False
+
+
+def test_guardian_data_dir_umbrella_takes_effect(monkeypatch, tmp_path: Path) -> None:
+    # Simulate the desktop launcher: per-feature env unset, umbrella set.
+    monkeypatch.setenv("SPARKBOT_CORRECTION_LOCK_ENABLED", "true")
+    monkeypatch.delenv("SPARKBOT_CORRECTION_LOCK_DATA_DIR", raising=False)
+    monkeypatch.setenv("SPARKBOT_GUARDIAN_DATA_DIR", str(tmp_path / "guardian-data"))
+
+    correction_lock.record_correction(room_id="room-A", intent_kind="self_inspection", trigger_phrase="x")
+    assert (tmp_path / "guardian-data" / "correction_locks" / "locks.json").exists()
+    assert correction_lock.is_suppressed(room_id="room-A", intent_kind="self_inspection") is True
+
+
+def test_per_feature_env_wins_over_umbrella(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("SPARKBOT_CORRECTION_LOCK_ENABLED", "true")
+    monkeypatch.setenv("SPARKBOT_CORRECTION_LOCK_DATA_DIR", str(tmp_path / "per_feature"))
+    monkeypatch.setenv("SPARKBOT_GUARDIAN_DATA_DIR", str(tmp_path / "umbrella"))
+
+    correction_lock.record_correction(room_id="room-A", intent_kind="self_inspection", trigger_phrase="y")
+    assert (tmp_path / "per_feature" / "locks.json").exists()
+    assert not (tmp_path / "umbrella" / "correction_locks" / "locks.json").exists()

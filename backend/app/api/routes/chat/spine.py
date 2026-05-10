@@ -1110,3 +1110,57 @@ def reject_operator_improvement_proposal(
     if updated is None:
         raise HTTPException(status_code=404, detail="Improvement proposal not found.")
     return {"proposal": updated}
+
+
+# ── Autonomous turn pacing (paused agents) ────────────────────────────────────
+
+@router.get("/spine/operator/autonomous-pauses", response_model=dict)
+def read_operator_autonomous_pauses(
+    current_user: CurrentChatUser,
+) -> dict[str, Any]:
+    """List (room, agent) pairs whose autonomous turns are paused or backing off.
+
+    Pauses fire after a sustained run of 4xx provider failures (the
+    autonomous-turn pacer in v1.6.72). Each entry includes the consecutive-
+    failure count, the last 4xx status code seen, and when the next attempt
+    is scheduled — so the operator can see exactly why the loop is paused
+    and resume manually after fixing the underlying provider config.
+    """
+    _require_operator(current_user)
+    from app.services.guardian import autonomous_turn_pacing
+
+    state = autonomous_turn_pacing.list_state()
+    paused = [item for item in state if bool(item.get("paused"))]
+    backing_off = [
+        item for item in state
+        if not bool(item.get("paused")) and (item.get("next_attempt_at") or "")
+    ]
+    return {
+        "paused": paused,
+        "backing_off": backing_off,
+        "count_paused": len(paused),
+        "count_backing_off": len(backing_off),
+    }
+
+
+@router.post(
+    "/spine/operator/autonomous-pauses/{room_id}/{agent_handle}/resume",
+    response_model=dict,
+)
+def resume_operator_autonomous_pause(
+    room_id: str,
+    agent_handle: str,
+    current_user: CurrentChatUser,
+) -> dict[str, Any]:
+    """Resume autonomous turns for a previously-paused (room, agent) pair."""
+    _require_operator(current_user)
+    from app.services.guardian import autonomous_turn_pacing
+
+    updated = autonomous_turn_pacing.resume(
+        room_id=room_id,
+        agent_handle=agent_handle,
+        operator_id=str(getattr(current_user, "username", "") or ""),
+    )
+    if updated is None:
+        raise HTTPException(status_code=404, detail="No paused autonomous-turn entry found for that pair.")
+    return {"pair": updated}
