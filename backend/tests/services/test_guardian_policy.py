@@ -28,6 +28,68 @@ def test_policy_requires_pin_when_computer_control_is_off(monkeypatch: pytest.Mo
     assert "Computer Control is off" in decision.reason
 
 
+def test_breakglass_bypasses_execution_gate_for_gated_tools(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Active break-glass session must allow gated read commands.
+
+    Regression for the v1.6.73 bug where the requires_execution_gate branch
+    short-circuited before the is_privileged check, so server_read_command,
+    ssh_read_command, and other gated tools stayed locked even with break-
+    glass active. The user's reported symptom: "Live diagnostics are
+    policy-blocked in this environment; all PowerShell checks were rejected"
+    when running a self-diagnostic with break-glass on.
+    """
+    monkeypatch.setenv("SPARKBOT_GUARDIAN_POLICY_ENABLED", "true")
+    decision = decide_tool_use(
+        "server_read_command",
+        {"command": "service_status", "service": "self"},
+        room_execution_allowed=False,
+        is_operator=True,
+        is_privileged=True,
+    )
+    assert decision.action == "allow"
+    assert "break-glass" in decision.reason.lower()
+
+
+def test_breakglass_bypasses_gate_for_other_gated_tools(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Same behaviour applies to every requires_execution_gate=True tool."""
+    monkeypatch.setenv("SPARKBOT_GUARDIAN_POLICY_ENABLED", "true")
+    for tool in ("ssh_read_command", "server_manage_service", "browser_click"):
+        decision = decide_tool_use(
+            tool,
+            {"command": "ls"} if "ssh" in tool or "server" in tool else {"session_id": "abc", "target": "x"},
+            room_execution_allowed=False,
+            is_operator=True,
+            is_privileged=True,
+        )
+        assert decision.action == "allow", f"{tool} should be allowed with break-glass active"
+
+
+def test_inactive_breakglass_still_prompts_for_pin(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Without an active break-glass session the existing prompt path remains."""
+    monkeypatch.setenv("SPARKBOT_GUARDIAN_POLICY_ENABLED", "true")
+    decision = decide_tool_use(
+        "server_read_command",
+        {"command": "service_status"},
+        room_execution_allowed=False,
+        is_operator=True,
+        is_privileged=False,
+    )
+    assert decision.action == "privileged"
+    assert "/breakglass" in decision.reason
+
+
+def test_non_operator_without_breakglass_still_denied(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SPARKBOT_GUARDIAN_POLICY_ENABLED", "true")
+    decision = decide_tool_use(
+        "server_read_command",
+        {"command": "service_status"},
+        room_execution_allowed=False,
+        is_operator=False,
+        is_privileged=False,
+    )
+    assert decision.action == "deny"
+
+
 def test_policy_treats_service_status_as_read_only(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SPARKBOT_GUARDIAN_POLICY_ENABLED", "true")
     decision = decide_tool_use(

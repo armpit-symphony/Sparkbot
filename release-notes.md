@@ -1,5 +1,10 @@
 # Release Notes
 
+## Sparkbot v1.6.73
+
+- Break-glass policy fix: `backend/app/services/guardian/policy.py:decide_tool_use` was returning `action="privileged"` (i.e. "enter your operator PIN with /breakglass") for gated tools like `server_read_command`, `ssh_read_command`, `server_manage_service`, write-like `shell_run`, and browser writes — even when break-glass was already active. The active-break-glass branch lower in the function was unreachable because the gated-tool branch returned `privileged` first. Surfaced when the user triggered break-glass, asked Sparkbot to run a self-diagnostic audit, and the bot replied "FAIL: Live diagnostics are policy-blocked in this environment; all PowerShell checks were rejected" instead of running the diagnostics. Fixed by checking `is_privileged` before `is_operator` in the gated-tool branch and short-circuiting to `allow` with an audit-friendly reason. The existing operator-prompt and deny branches stay intact for the non-break-glass paths.
+- Tests: 4 new in `test_guardian_policy.py` covering break-glass-active gated tools, the multi-tool case (`ssh_read_command`, `server_manage_service`, `browser_click`), inactive-break-glass still prompts for PIN, and non-operator without break-glass still denies. Full guardian/services suite: 183 passed.
+
 ## Sparkbot v1.6.72
 
 - Implements both v1.6.71 improvement proposals (operator-approved via the new Improvement tab).

@@ -526,6 +526,21 @@ def decide_tool_use(
         )
 
     if policy.requires_execution_gate and not room_execution_allowed:
+        # Break-glass: an active PIN session is the documented way to bypass
+        # the execution gate without flipping Computer Control on globally.
+        # Without this branch the operator hits "Enter your operator PIN with
+        # /breakglass" even when they already have, because the privileged-
+        # check below at line ~561 was unreachable for gated tools.
+        if is_privileged:
+            return PolicyDecision(
+                tool_name=tool_name,
+                scope=policy.scope,
+                resource=policy.resource,
+                action="allow",
+                action_type=policy.action_type,
+                high_risk=policy.high_risk,
+                reason="Break-glass PIN session is active; execution gate is bypassed for this action.",
+            )
         if is_operator:
             return PolicyDecision(
                 tool_name=tool_name,

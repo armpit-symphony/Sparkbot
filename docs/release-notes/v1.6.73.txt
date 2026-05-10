@@ -1,0 +1,77 @@
+Sparkbot v1.6.73
+
+One-line policy fix: break-glass now bypasses the execution gate.
+
+### Reported symptom
+
+User triggered break-glass and asked Sparkbot to run a self-diagnostic
+audit. The bot replied:
+
+  PASS: No write actions were attempted.
+  FAIL: Live diagnostics are policy-blocked in this environment;
+        all PowerShell checks were rejected.
+  BLOCKED: I could not verify host/user/time, process/runtime state,
+           repo presence, or deployed version markers from live commands.
+  STATUS: Current live system health is not verifiable from this sandbox run.
+
+User's expectation: "Sparkbot is able to do anything in any environment
+when break-glass is triggered." It was not.
+
+### Root cause
+
+In ``backend/app/services/guardian/policy.py:decide_tool_use``, the
+branch handling tools with ``requires_execution_gate=True`` (which
+covers ``server_read_command``, ``ssh_read_command``,
+``server_manage_service``, ``shell_run`` write-like commands, robot
+commands, browser writes) checked operator status but never checked
+whether break-glass was active. The active-break-glass branch lower
+in the function (lines ~561–569) was unreachable for any gated tool
+because the earlier branch returned ``privileged`` first — telling
+the operator to enter their PIN even though they already had.
+
+Reproduced before fix:
+
+    decide_tool_use(
+        "server_read_command",
+        {"command": "service_status"},
+        room_execution_allowed=False,
+        is_operator=True,
+        is_privileged=True,   # break-glass active
+    )
+    # → action="privileged",
+    #   reason="Computer Control is off for this room. Enter your
+    #           operator PIN with /breakglass to authorize this local
+    #           machine action."
+
+After fix:
+
+    # → action="allow",
+    #   reason="Break-glass PIN session is active; execution gate is
+    #           bypassed for this action."
+
+### Fix
+
+In ``backend/app/services/guardian/policy.py``, inside the
+``policy.requires_execution_gate and not room_execution_allowed`` block,
+check ``is_privileged`` before ``is_operator`` and short-circuit to
+``allow`` with an audit-friendly reason. The existing operator-prompt
+and deny branches stay intact for the non-break-glass paths.
+
+### Tests
+
+- ``test_breakglass_bypasses_execution_gate_for_gated_tools`` — direct
+  regression test for ``server_read_command``.
+- ``test_breakglass_bypasses_gate_for_other_gated_tools`` — covers
+  ``ssh_read_command``, ``server_manage_service``, ``browser_click``.
+- ``test_inactive_breakglass_still_prompts_for_pin`` — confirms the
+  existing PIN-prompt path still fires when break-glass is NOT active.
+- ``test_non_operator_without_breakglass_still_denied`` — confirms
+  non-operators still get denied when neither the gate nor break-glass
+  is open.
+
+Full guardian/services suite: 183 passed, no regressions. Frontend
+unchanged at this version (no UI surface change).
+
+Advanced backend, frontend, Tauri shell, public downloader, service
+worker cache key, README, capabilities docs, release notes, and
+packaging notes to v1.6.73.
