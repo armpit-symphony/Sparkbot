@@ -1,3 +1,5 @@
+import logging
+import os
 import sentry_sdk
 import asyncio
 from contextlib import asynccontextmanager
@@ -11,6 +13,38 @@ from app.api.deps import get_db
 from app.api.routes.chat.reminders import reminder_scheduler
 from app.core.config import settings
 from app.services.guardian import get_guardian_suite
+
+
+def _quiet_litellm_logging() -> None:
+    """Quiet litellm's own loggers so prompts, tool schemas, and memory
+    excerpts do not land in backend.log at DEBUG level.
+
+    The library logs full ``Params passed to completion()`` payloads at
+    DEBUG, which on Sparkbot meant every system prompt, every room-memory
+    excerpt, and every tool-definition manifest landed in plaintext on
+    disk. v1.6.74 sets the litellm logger family to WARNING by default;
+    operators can override for explicit debugging by exporting
+    ``SPARKBOT_LITELLM_LOG_LEVEL=debug``.
+    """
+    requested = os.getenv("SPARKBOT_LITELLM_LOG_LEVEL", "warning").strip().upper()
+    level = getattr(logging, requested, logging.WARNING)
+    if not isinstance(level, int):
+        level = logging.WARNING
+    for logger_name in ("LiteLLM", "litellm", "litellm.utils", "litellm.router", "litellm.proxy"):
+        logging.getLogger(logger_name).setLevel(level)
+    try:
+        import litellm  # type: ignore[import-not-found]
+
+        if hasattr(litellm, "set_verbose"):
+            litellm.set_verbose = level <= logging.DEBUG  # type: ignore[attr-defined]
+        if hasattr(litellm, "suppress_debug_info"):
+            litellm.suppress_debug_info = level > logging.DEBUG  # type: ignore[attr-defined]
+    except Exception:
+        # Don't fail startup if a different litellm version omits these knobs.
+        pass
+
+
+_quiet_litellm_logging()
 
 
 

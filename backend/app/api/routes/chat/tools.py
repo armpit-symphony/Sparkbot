@@ -1262,7 +1262,11 @@ TOOL_DEFINITIONS = [
             "description": (
                 "Run an approved read-only diagnostic command on the local server. "
                 "Use for checking uptime, disk, memory, network listeners, top processes, "
-                "service status, or recent service logs. "
+                "service status, recent service logs, host identity (hostname/user/OS/time), "
+                "and installed toolchain versions (python/git/node/docker). "
+                "For a full self-diagnostic audit, call this with command=host_identity, "
+                "command=toolchain_versions, and command=system_overview in sequence — "
+                "do NOT report the host as 'not verifiable' before doing so. "
                 "If the user asks to show the status of a service or show logs, use this tool, not service management. "
                 "Never use this for writing or destructive actions."
             ),
@@ -1279,8 +1283,15 @@ TOOL_DEFINITIONS = [
                             "process_snapshot",
                             "service_status",
                             "service_logs",
+                            "host_identity",
+                            "toolchain_versions",
                         ],
-                        "description": "Approved diagnostic profile to run on the local server",
+                        "description": (
+                            "Approved diagnostic profile. Use host_identity for "
+                            "hostname/user/OS/time, toolchain_versions for installed "
+                            "binaries (python/git/node/docker), and system_overview "
+                            "for uptime/disk/memory."
+                        ),
                     },
                     "service": {
                         "type": "string",
@@ -4148,6 +4159,11 @@ _SERVER_READ_COMMANDS = {
     "process_snapshot": "process_snapshot",
     "service_status": "service_status",
     "service_logs": "service_logs",
+    # v1.6.74: profiles for self-diagnostic audits. Without these, the LLM
+    # was asking for host info / tool versions as raw shell arguments, hitting
+    # the enum gate, and narrating "policy-blocked" instead of using a tool.
+    "host_identity": "host_identity",
+    "toolchain_versions": "toolchain_versions",
 }
 _SERVER_SERVICE_ACTIONS = {"start", "stop", "restart"}
 
@@ -4229,9 +4245,54 @@ def _ops_profile_commands(
 ) -> tuple[Optional[list[tuple[str, list[str]]]], Optional[str]]:
     profile = (command or "").strip()
     if profile not in _SERVER_READ_COMMANDS:
-        return None, f"Unsupported server command. Allowed: {', '.join(sorted(_SERVER_READ_COMMANDS))}"
+        return None, (
+            f"Not a supported profile name. Use one of these curated profiles "
+            f"(this is a parameter validation error, not a policy denial): "
+            f"{', '.join(sorted(_SERVER_READ_COMMANDS))}. "
+            "For self-diagnostic audits combine host_identity, toolchain_versions, "
+            "and system_overview."
+        )
 
     _is_windows = sys.platform == "win32"
+
+    if profile == "host_identity":
+        if _is_windows:
+            return [
+                ("hostname", ["powershell", "-NoProfile", "-Command", "[System.Net.Dns]::GetHostName()"]),
+                ("current_user", ["powershell", "-NoProfile", "-Command", "[System.Security.Principal.WindowsIdentity]::GetCurrent().Name"]),
+                ("os", ["powershell", "-NoProfile", "-Command",
+                    "$os=gcim Win32_OperatingSystem; "
+                    "[PSCustomObject]@{Name=$os.Caption;Version=$os.Version;Arch=$os.OSArchitecture} | Format-List"]),
+                ("current_time", ["powershell", "-NoProfile", "-Command",
+                    "Get-Date -Format 'yyyy-MM-ddTHH:mm:sszzz'"]),
+            ], None
+        return [
+            ("hostname", ["hostname"]),
+            ("current_user", ["whoami"]),
+            ("os", ["uname", "-a"]),
+            ("current_time", ["date", "-Iseconds"]),
+        ], None
+
+    if profile == "toolchain_versions":
+        # Each version probe runs even if the prior one fails; missing tools
+        # report "Command not found" via _run_exec rather than aborting the
+        # whole audit. The LLM can read the result line-by-line.
+        if _is_windows:
+            return [
+                ("python", ["powershell", "-NoProfile", "-Command", "python --version 2>&1"]),
+                ("git", ["powershell", "-NoProfile", "-Command", "git --version 2>&1"]),
+                ("node", ["powershell", "-NoProfile", "-Command", "node --version 2>&1"]),
+                ("npm", ["powershell", "-NoProfile", "-Command", "npm --version 2>&1"]),
+                ("docker", ["powershell", "-NoProfile", "-Command", "docker --version 2>&1"]),
+                ("powershell", ["powershell", "-NoProfile", "-Command", "$PSVersionTable.PSVersion.ToString()"]),
+            ], None
+        return [
+            ("python", ["python3", "--version"]),
+            ("git", ["git", "--version"]),
+            ("node", ["node", "--version"]),
+            ("npm", ["npm", "--version"]),
+            ("docker", ["docker", "--version"]),
+        ], None
 
     if profile == "system_overview":
         if _is_windows:

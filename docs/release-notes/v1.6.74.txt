@@ -1,0 +1,111 @@
+Sparkbot v1.6.74
+
+Self-diagnostic profiles + log hygiene.
+
+### Reported symptom
+
+After v1.6.73 unstuck the policy gate, the user asked Sparkbot for a
+self-diagnostic audit. The bot replied:
+
+  PASS: No write actions were attempted.
+  FAIL: Live diagnostics are policy-blocked in this environment;
+        all attempted PowerShell read commands were rejected.
+  BLOCKED: I could not verify host/time/user, process/runtime state,
+           repo presence, or toolchain status from live commands.
+
+The bot then narrated:
+
+  "This runtime still rejects several live commands by policy,
+   including Get-Date, hostname, whoami, git --version,
+   docker --version, and Get-Process."
+
+### Root cause
+
+The bot was misreading the rejection. ``server_read_command``'s
+``command`` parameter is JSON-schema-enum-constrained to a curated list
+of named profiles ("system_overview", "service_status", etc.). When
+the bot asked for "Get-Date" or "hostname" as the command value, the
+server-side validator returned
+
+  "Unsupported server command. Allowed: ..."
+
+— which is a parameter-validation error, not a policy denial. The bot
+treated it as policy-blocked.
+
+Two compounding gaps:
+
+  1. The catalog had no profile that returned host identity (hostname,
+     user, OS, time) or toolchain versions (python, git, docker, node).
+     A self-diagnostic should reasonably want both.
+
+  2. The rejection wording was easy to misread as a policy decision.
+
+### Fix
+
+  * New profile ``host_identity``: returns hostname, current user,
+    OS name/version/arch, and current ISO time as a single bundle.
+    Windows uses GetHostName / WindowsIdentity / Win32_OperatingSystem;
+    Linux uses hostname / whoami / uname / date.
+  * New profile ``toolchain_versions``: probes python, git, node, npm,
+    docker, and (on Windows) powershell version each in turn. Missing
+    tools report "Command not found" via _run_exec rather than
+    aborting the whole audit, so the bot reads the result line-by-line.
+  * Rejection message now leads with "this is a parameter validation
+    error, not a policy denial" and lists every curated profile so the
+    LLM has a recovery path.
+  * Tool description in the JSON schema explicitly tells the LLM:
+    "For a full self-diagnostic audit, call this with command=host_identity,
+    command=toolchain_versions, and command=system_overview in sequence —
+    do NOT report the host as 'not verifiable' before doing so."
+
+### Log hygiene
+
+While auditing, the bot also flagged that litellm was logging
+"Params passed to completion()" at DEBUG, which dumped every system
+prompt, every room-memory excerpt, and every tool-definition manifest
+into ``backend.log`` in plaintext.
+
+  * ``app/main.py`` now sets the litellm logger family to WARNING by
+    default at import time. Operators can override with
+    ``SPARKBOT_LITELLM_LOG_LEVEL=debug`` for explicit troubleshooting.
+  * Also flips ``litellm.set_verbose=False`` and
+    ``litellm.suppress_debug_info=True`` defensively, with a try/except
+    so a different litellm version omitting these knobs does not break
+    startup.
+
+### Skill dedup
+
+  * ``backend/skills/calendar_create_event.py`` and
+    ``backend/skills/calendar_list_events.py`` were shadowed by native
+    definitions in ``backend/app/api/routes/chat/tools.py`` and dropped
+    at startup with "Duplicate tool definition ignored" warnings. They
+    were never reachable. Both files removed; warnings stop firing.
+
+### Test cleanup
+
+  * ``test_server_read_command_service_logs_uses_allowed_service`` was
+    Linux-only (asserted ``journalctl`` argv) and had been silently
+    failing on Windows since well before this release. Split into
+    ``..._linux`` (skipif win32) and ``..._windows`` (skipif not win32)
+    so the suite runs cleanly on both platforms.
+  * 4 new tests for the unsupported-profile message wording, the
+    host_identity dispatch, the toolchain_versions dispatch, and the
+    profile registry containing both new profiles.
+
+### Tests
+
+  * Full guardian/services suite + server_ops + migration: 190 passed,
+    1 skipped (the Linux-only journalctl test on Windows).
+  * Frontend unchanged at this version (no UI surface change).
+
+### Out of scope (filed for a follow-up)
+
+The bot's audit also flagged a recurring "MiniMax-M2.7 model not
+mapped" error in litellm and three frontend PIN-entry forms that
+all POST to the same backend endpoint. Both are real but out of
+scope for v1.6.74; they will be filed as improvement proposals so
+the operator can review and approve before they ship.
+
+Advanced backend, frontend, Tauri shell, public downloader, service
+worker cache key, README, capabilities docs, release notes, and
+packaging notes to v1.6.74.
