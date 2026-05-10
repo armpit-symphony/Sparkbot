@@ -27,6 +27,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { LoadingButton } from "@/components/ui/loading-button"
 import useAuth, { hasChatSession } from "@/hooks/useAuth"
+import { apiFetch } from "@/lib/apiBase"
 
 export const Route = createFileRoute("/_layout/")({
   component: Dashboard,
@@ -328,7 +329,7 @@ function Dashboard() {
     try {
       setLoading(true)
       setError("")
-      const res = await fetch("/api/v1/chat/dashboard/summary", {
+      const res = await apiFetch("/api/v1/chat/dashboard/summary", {
         credentials: "include",
       })
       if (!res.ok) {
@@ -351,7 +352,7 @@ function Dashboard() {
     try {
       setActioningApprovalId(confirmId)
       setError("")
-      const res = await fetch(`/api/v1/chat/dashboard/approvals/${confirmId}/${action}`, {
+      const res = await apiFetch(`/api/v1/chat/dashboard/approvals/${confirmId}/${action}`, {
         method: "POST",
         credentials: "include",
       })

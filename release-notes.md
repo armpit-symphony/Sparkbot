@@ -1,5 +1,12 @@
 # Release Notes
 
+## Sparkbot v1.6.70
+
+- Command Center Inspector fix: every Spine and Guardian panel at the bottom of Command Center (Overview, Queues, Projects, Events, Producers, Security, Vault, Task Guardian, Project workload, Task distribution) was returning `Unexpected token '<', "<!DOCTYPE "... is not valid JSON` in the Tauri desktop app. The Spine/Guardian client helpers in `frontend/src/lib/spine.ts` (`spineGet`, `guardianFetch`, `roomsFetch`) used raw `fetch()` against `window.location.origin`, which in the desktop build is `tauri://localhost` — the Tauri webview returned the SPA `index.html` fallback instead of hitting the backend at `127.0.0.1:8000`. All three helpers now route through `apiFetch` from `apiBase.ts`, which resolves the correct backend origin and injects the chat session as a Bearer header (cross-origin can't send the HttpOnly cookie from the Tauri webview).
+- Token Guardian "not registering" in Command Center was a side-effect of the same bug — `fetchGuardianStatus` was failing silently, so `task_guardian_enabled`, `pin_configured`, and `breakglass.active` never reached the SystemHealth, Computer Control, and Task Guardian cards. With Guardian status loading again, the Token Guardian card, Vault list, breakglass toggle, and Task Guardian write-mode toggle all show real values in the desktop build.
+- Home dashboard route (`frontend/src/routes/_layout/index.tsx`) had the same raw-fetch pattern for the dashboard summary and approval action endpoints; both replaced with `apiFetch` so the home page no longer breaks in the desktop app.
+- Server-mode behaviour is unchanged: `apiFetch` returns same-origin relative paths when `getApiBase()` is empty, so hosted server installs continue to use the cookie-based session.
+
 ## Sparkbot v1.6.69
 
 - Token Guardian truthfulness: locked-provider routes and provider-authoritative fallback routes no longer report `live_ready: True` when Token Guardian was bypassed. They now set `live_ready: False`, `tg_bypassed: True`, `tg_bypass_reason: "provider_locked" | "token_guardian_error"`, and surface the underlying exception text in `fallback_reason`. Command Center now sees the truth.

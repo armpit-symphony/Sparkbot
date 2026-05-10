@@ -1,6 +1,8 @@
 // Guardian Spine operator API client
 // All endpoints require superuser authentication (cookie-first).
 
+import { apiFetch, apiUrl } from "./apiBase"
+
 export interface SpineTask {
   task_id: string
   title: string
@@ -154,15 +156,23 @@ export type SpineQueueName =
 const SPINE_BASE = "/api/v1/chat/spine/operator"
 
 async function spineGet<T>(path: string, params?: Record<string, string | number>): Promise<T> {
-  const url = new URL(path, window.location.origin)
+  // Build the path + query, then let apiFetch resolve to the backend origin.
+  // In the Tauri desktop build window.location.origin is tauri://localhost, so
+  // the previous raw-fetch path returned the SPA index.html (the "<!DOCTYPE"
+  // JSON parse error). apiFetch routes to http://127.0.0.1:8000 and injects
+  // the Bearer chat_token (cross-origin won't send the HttpOnly cookie).
+  let pathWithQuery = path
   if (params) {
+    const search = new URLSearchParams()
     for (const [k, v] of Object.entries(params)) {
-      url.searchParams.set(k, String(v))
+      search.set(k, String(v))
     }
+    const qs = search.toString()
+    if (qs) pathWithQuery = `${path}?${qs}`
   }
-  const res = await fetch(url.toString(), { credentials: "include" })
+  const res = await apiFetch(pathWithQuery, { credentials: "include" })
   if (!res.ok) {
-    throw new Error(`Spine API error ${res.status}: ${url.pathname}`)
+    throw new Error(`Spine API error ${res.status}: ${apiUrl(pathWithQuery)}`)
   }
   return res.json() as Promise<T>
 }
@@ -205,7 +215,7 @@ async function guardianFetch<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
-  const res = await fetch(path, { credentials: "include", ...init })
+  const res = await apiFetch(path, { credentials: "include", ...init })
   if (!res.ok) {
     const text = await res.text().catch(() => "")
     throw new Error(`Guardian API ${res.status}: ${text || path}`)
@@ -298,7 +308,7 @@ export function setTaskGuardianWriteMode(enabled: boolean): Promise<{ write_enab
 const ROOMS_BASE = "/api/v1/chat/rooms"
 
 async function roomsFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, { credentials: "include", ...init })
+  const res = await apiFetch(path, { credentials: "include", ...init })
   if (!res.ok) {
     const text = await res.text().catch(() => "")
     throw new Error(`Projects API ${res.status}: ${text || path}`)

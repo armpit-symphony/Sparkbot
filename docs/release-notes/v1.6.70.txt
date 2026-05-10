@@ -1,0 +1,54 @@
+Sparkbot v1.6.70
+
+Command Center Inspector fix: Spine and Guardian panels now load
+correctly inside the desktop app.
+
+Reported symptoms: in the Command Center, every Spine and Guardian
+operations panel at the bottom of the page (Overview, Queues, Projects,
+Events, Producers, Security, Vault, Task Guardian, Project workload,
+Task distribution) returned the error
+"Unexpected token '<', '<!DOCTYPE '... is not valid JSON". Token
+Guardian appeared to not be registering and the Guardian status row in
+the System Health card showed "read-only or unavailable" even when
+Token Guardian was enabled.
+
+Root cause: the Spine and Guardian client helpers in
+frontend/src/lib/spine.ts (`spineGet`, `guardianFetch`, `roomsFetch`)
+were using raw `fetch()` against `window.location.origin`. In the Tauri
+desktop build the frontend origin is `tauri://localhost`, not the
+backend at `127.0.0.1:8000`, so each request hit the Tauri webview
+instead of the backend. The webview returned the SPA `index.html`
+fallback (which starts with `<!DOCTYPE html>`) and the JSON parser
+choked. The Token Guardian "not registering" complaint was a
+side-effect: `fetchGuardianStatus` failed silently, so the Command
+Center never received `task_guardian_enabled`, `pin_configured`, or
+`breakglass.active` and the dashboard cards fell back to "off" /
+"unavailable" placeholders.
+
+Fixes:
+
+- frontend/src/lib/spine.ts: route `spineGet`, `guardianFetch`, and
+  `roomsFetch` through `apiFetch` from `apiBase.ts`. `apiFetch` already
+  resolves desktop origins to `http://127.0.0.1:8000` via `getApiBase`
+  and injects the `chat_token` from sessionStorage as a Bearer header
+  (the HttpOnly cookie cannot be sent cross-origin from the Tauri
+  webview, so the Bearer fallback is required).
+
+- frontend/src/routes/_layout/index.tsx: the home dashboard route had
+  the same pattern (raw `fetch()` against the dashboard summary and
+  approvals endpoints) and was broken in the desktop app for the same
+  reason. Replaced with `apiFetch`.
+
+After these changes:
+
+- Inspector panels load real data.
+- Token Guardian, Computer Control, Task Guardian, and SystemHealth
+  cards in Command Center display real Guardian status.
+- Vault list, breakglass, and Task Guardian write-mode toggles work in
+  the desktop app.
+- Server-mode behaviour is unchanged — `apiFetch` returns same-origin
+  paths when `getApiBase()` is empty, which is the server case.
+
+Advanced backend, frontend, Tauri shell, public downloader, service
+worker cache key, README, capabilities docs, release notes, and
+packaging notes to v1.6.70.
