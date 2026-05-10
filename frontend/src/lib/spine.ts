@@ -207,6 +207,62 @@ export function fetchSpineTaskDetail(taskId: string): Promise<SpineTaskLineage> 
   return spineGet<SpineTaskLineage>(`${SPINE_BASE}/tasks/${taskId}/detail`)
 }
 
+// ── Improvement proposals (operator review) ───────────────────────────────────
+
+export type ImprovementProposalStatus = "proposed" | "approved" | "rejected"
+
+export interface ImprovementProposal {
+  id: string
+  status: ImprovementProposalStatus
+  approval_required: boolean
+  summary: string
+  evidence: string
+  suggested_change: string
+  risk: "low" | "medium" | "high"
+  source: string
+  user_id: string
+  room_id: string
+  created_at: string
+  updated_at: string
+  approved_at?: string
+  approved_by?: string
+  rejected_at?: string
+  rejected_by?: string
+}
+
+export function fetchImprovementProposals(
+  status: ImprovementProposalStatus | "all" = "proposed",
+  limit = 25,
+): Promise<{ proposals: ImprovementProposal[]; count: number }> {
+  return spineGet<{ proposals: ImprovementProposal[]; count: number }>(
+    `${SPINE_BASE}/improvement/proposals`,
+    { status, limit },
+  )
+}
+
+async function spinePost<T>(path: string): Promise<T> {
+  // Operator-only POSTs (approve/reject). Reuses apiFetch so the desktop
+  // origin and Bearer auth are handled the same as spineGet.
+  const res = await apiFetch(path, { credentials: "include", method: "POST" })
+  if (!res.ok) {
+    const text = await res.text().catch(() => "")
+    throw new Error(`Spine API ${res.status}: ${text || apiUrl(path)}`)
+  }
+  return res.json() as Promise<T>
+}
+
+export function approveImprovementProposal(proposalId: string): Promise<{ proposal: ImprovementProposal }> {
+  return spinePost<{ proposal: ImprovementProposal }>(
+    `${SPINE_BASE}/improvement/proposals/${encodeURIComponent(proposalId)}/approve`,
+  )
+}
+
+export function rejectImprovementProposal(proposalId: string): Promise<{ proposal: ImprovementProposal }> {
+  return spinePost<{ proposal: ImprovementProposal }>(
+    `${SPINE_BASE}/improvement/proposals/${encodeURIComponent(proposalId)}/reject`,
+  )
+}
+
 // ── Guardian operator API helpers ─────────────────────────────────────────────
 
 const GUARDIAN_BASE = "/api/v1/chat/guardian"

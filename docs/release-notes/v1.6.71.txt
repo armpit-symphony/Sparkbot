@@ -1,0 +1,80 @@
+Sparkbot v1.6.71
+
+Self-learning loop tightened: durable correction lock + Improvement
+Proposals review surface in Command Center.
+
+Background: Sparkbot's "self-learning" runs in three layers — memory
+updates, pattern promotion, and improvement proposals. Layer 1 was
+solid, layer 2 was wired but invisible, and layer 3 had structure but
+no UI affordance. The "learn and adapt immediately" execution was also
+weak: corrections like "that's not an answer" only fired the
+suppression for the current message and faded after six turns of
+history. v1.6.71 closes both gaps without rewriting the loop.
+
+### Durable correction lock
+
+`backend/app/services/guardian/correction_lock.py` is a new sidecar
+store (mirrors the improvement_loop pattern) that persists per-room
+intent-suppression flags. The chat router in
+`backend/app/api/routes/chat/rooms.py` now:
+
+- Records a correction record whenever the user message matches one of
+  the existing correction phrases (`that's not an answer`,
+  `stop dumping state`, `just answer`, etc.) — independent of whether
+  the current message looked like a self-inspection query. The record
+  is keyed by (room_id, intent_kind) and is idempotent across hits.
+- Consults the durable lock in addition to the original 6-message
+  recent-window regex when deciding whether to suppress the
+  self-inspection short-circuit. Either signal blocks it. The durable
+  signal survives past the 6-message window and across sessions.
+- Lifts the lock when the user explicitly asks for state ("yes show me
+  the state", "actually display the stack", "I do want the runtime
+  status") — so the short-circuit can fire again normally.
+
+The store can be relocated via `SPARKBOT_CORRECTION_LOCK_DATA_DIR` and
+disabled via `SPARKBOT_CORRECTION_LOCK_ENABLED=false` (matches the
+improvement-loop env var pattern).
+
+### Improvement proposals visible in Command Center
+
+`backend/app/api/routes/chat/spine.py` adds three operator-only routes:
+
+- GET /api/v1/chat/spine/operator/improvement/proposals
+  — list with status filter (proposed | approved | rejected | all)
+- POST /api/v1/chat/spine/operator/improvement/proposals/{id}/approve
+- POST /api/v1/chat/spine/operator/improvement/proposals/{id}/reject
+
+`backend/app/services/guardian/improvement.py` gains
+`update_proposal_status` to back the approve/reject endpoints. Status
+transitions stamp `approved_at` / `approved_by` or `rejected_at` /
+`rejected_by` so the loop has a paper trail.
+
+`frontend/src/lib/spine.ts` exports new types
+(ImprovementProposal, ImprovementProposalStatus) and client functions
+(fetchImprovementProposals, approveImprovementProposal,
+rejectImprovementProposal). All go through `apiFetch` (so the desktop
+origin and Bearer auth bridge from v1.6.70 still apply).
+
+`frontend/src/routes/_layout/spine.tsx` adds an "Improvement" tab to
+the Spine and Guardian Inspector at the bottom of Command Center. The
+panel renders each proposal with status, risk, summary, suggested
+change, evidence, and Approve / Reject controls. Approving here
+records operator intent only — code, config, or workflow changes
+still require an explicit follow-up action with the appropriate
+tools.
+
+### Tests
+
+- `backend/tests/services/test_correction_lock.py` — 9 tests covering
+  record, room scoping, intent scoping, idempotent hit count,
+  persistence across fresh load, clear, clear-without-intent,
+  disabled flag, missing-input no-op.
+- `backend/tests/services/test_guardian_improvement.py` — 2 new tests
+  for `update_proposal_status` (approve and reject roundtrips +
+  invalid inputs), in addition to the prior 4 tests.
+- Full guardian/services test suite: 158 passed, no regressions.
+- Frontend: builds clean (TypeScript + Vite).
+
+Advanced backend, frontend, Tauri shell, public downloader, service
+worker cache key, README, capabilities docs, release notes, and
+packaging notes to v1.6.71.

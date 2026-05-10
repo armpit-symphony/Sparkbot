@@ -56,7 +56,7 @@ from app.schemas.chat import (
     RoomResponse,
     RoomUpdate,
 )
-from app.services.guardian import get_guardian_suite
+from app.services.guardian import correction_lock, get_guardian_suite
 
 router = APIRouter(prefix="/rooms", tags=["chat-rooms"])
 
@@ -1345,24 +1345,71 @@ async def stream_room_message(
         pass
 
     # ── Correction lock: suppress runtime-state short-circuit when the user
-    # recently corrected the bot for dumping state instead of answering.
+    # has corrected the bot for dumping state instead of answering. Two layers:
+    #   1. Recent-window regex (the original 6-message lookback) catches the
+    #      correction within the same conversation turn it was issued.
+    #   2. Durable per-room lock persisted in correction_lock.py — once the
+    #      user has pushed back, the suppression survives past the 6-message
+    #      window and across sessions until they explicitly ask for state.
     _correction_lock_active = False
+    _correction_lock_intent = "self_inspection"
+    _agent_content_lower = (agent_content or "").strip().lower()
+    _correction_phrases = (
+        r"\bthat'?s?\s+not\s+(?:an?\s+)?answer\b",
+        r"\bstop\s+(?:sending|showing|dumping)\s+(?:runtime\s+)?state\b",
+        r"\bdon'?t\s+(?:send|show|dump)\s+(?:runtime\s+)?state\b",
+        r"\bi\s+(?:didn'?t|don'?t)\s+(?:ask|want)\s+(?:for\s+)?(?:the\s+)?(?:state|status|runtime)\b",
+        r"\banswer\s+(?:the|my)\s+question\b",
+        r"\bjust\s+answer\b",
+    )
+    _matched_correction_phrase = next(
+        (p for p in _correction_phrases if re.search(p, _agent_content_lower)),
+        None,
+    )
+    if _matched_correction_phrase:
+        try:
+            correction_lock.record_correction(
+                room_id=str(room_id),
+                intent_kind=_correction_lock_intent,
+                trigger_phrase=_agent_content_lower[:200],
+                user_id=str(getattr(current_user, "id", "") or ""),
+            )
+        except Exception:
+            log.warning("correction_lock.record_correction failed", exc_info=True)
+
+    # Positive-clear: if the user is now explicitly asking for runtime state,
+    # they want it. Lift any prior lock for this intent in this room so the
+    # short-circuit can fire normally on this turn and going forward.
+    _explicit_state_request_patterns = (
+        r"\b(?:please|now)\s+(?:show|display|give|dump)\s+(?:me\s+)?(?:the\s+)?(?:runtime\s+state|state|status|stack)\b",
+        r"\b(?:yes|actually)[,\s]+(?:show|display|give|dump)\s+(?:me\s+)?(?:the\s+)?(?:runtime\s+state|state|status|stack)\b",
+        r"\bi\s+(?:do|actually)\s+want\s+(?:the\s+)?(?:runtime\s+)?(?:state|status)\b",
+    )
+    if any(re.search(p, _agent_content_lower) for p in _explicit_state_request_patterns):
+        try:
+            correction_lock.clear_correction(
+                room_id=str(room_id),
+                intent_kind=_correction_lock_intent,
+            )
+        except Exception:
+            log.warning("correction_lock.clear_correction failed", exc_info=True)
+
     if _looks_like_self_inspection_query(agent_content):
         recent_msgs, _, _ = get_chat_messages(session=session, room_id=room_id, limit=6)
-        _correction_phrases = (
-            r"\bthat'?s?\s+not\s+(?:an?\s+)?answer\b",
-            r"\bstop\s+(?:sending|showing|dumping)\s+(?:runtime\s+)?state\b",
-            r"\bdon'?t\s+(?:send|show|dump)\s+(?:runtime\s+)?state\b",
-            r"\bi\s+(?:didn'?t|don'?t)\s+(?:ask|want)\s+(?:for\s+)?(?:the\s+)?(?:state|status|runtime)\b",
-            r"\banswer\s+(?:the|my)\s+question\b",
-            r"\bjust\s+answer\b",
-        )
         for msg in recent_msgs:
             if str(msg.sender_type).upper() != "BOT" and msg.content:
                 msg_lower = (msg.content or "").strip().lower()
                 if any(re.search(p, msg_lower) for p in _correction_phrases):
                     _correction_lock_active = True
                     break
+        if not _correction_lock_active:
+            try:
+                _correction_lock_active = correction_lock.is_suppressed(
+                    room_id=str(room_id),
+                    intent_kind=_correction_lock_intent,
+                )
+            except Exception:
+                log.warning("correction_lock.is_suppressed failed", exc_info=True)
 
     if _looks_like_self_inspection_query(agent_content) and not _correction_lock_active:
         from app.api.routes.chat.model import build_safe_runtime_state

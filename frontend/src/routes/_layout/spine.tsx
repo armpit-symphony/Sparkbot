@@ -16,6 +16,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import {
   type BreakglassStatus,
   type GuardianStatus,
+  type ImprovementProposal,
+  type ImprovementProposalStatus,
   type SpineApproval,
   type SpineEvent,
   type SpineHandoff,
@@ -29,12 +31,14 @@ import {
   type VaultEntry,
   activateBreakglass,
   addVaultSecret,
+  approveImprovementProposal,
   archiveProject,
   createProject,
   deactivateBreakglass,
   deleteVaultSecret,
   fetchBreakglassStatus,
   fetchGuardianStatus,
+  fetchImprovementProposals,
   fetchSpineProjectWorkload,
   fetchSpineProducers,
   fetchSpineProjects,
@@ -43,6 +47,7 @@ import {
   fetchSpineTMOverview,
   fetchSpineTaskDetail,
   fetchVaultList,
+  rejectImprovementProposal,
   setTaskGuardianWriteMode,
 } from "@/lib/spine"
 
@@ -910,7 +915,7 @@ function SpineOps() {
   const [overview, setOverview] = useState<SpineTMOverview | null>(null)
   const [overviewLoading, setOverviewLoading] = useState(true)
   const [overviewError, setOverviewError] = useState("")
-  const [activeTab, setActiveTab] = useState<"overview" | "queues" | "projects" | "events" | "producers" | "security" | "vault" | "task-guardian">("overview")
+  const [activeTab, setActiveTab] = useState<"overview" | "queues" | "projects" | "events" | "producers" | "security" | "vault" | "task-guardian" | "improvement">("overview")
   const [activeQueue, setActiveQueue] = useState<SpineQueueName>("open")
   const [eventsLimit, setEventsLimit] = useState(25)
   const [refreshKey, setRefreshKey] = useState(0)
@@ -1210,7 +1215,7 @@ function SpineOps() {
 
       {/* Tabs */}
       <div className="flex flex-wrap gap-1 border-b pb-0">
-        {(["overview", "queues", "projects", "events", "producers", "security", "vault", "task-guardian"] as const).map((tab) => (
+        {(["overview", "queues", "projects", "events", "producers", "security", "vault", "task-guardian", "improvement"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -1220,7 +1225,7 @@ function SpineOps() {
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            {tab === "task-guardian" ? "Task Guardian" : tab}
+            {tab === "task-guardian" ? "Task Guardian" : tab === "improvement" ? "Improvement" : tab}
           </button>
         ))}
       </div>
@@ -1346,6 +1351,7 @@ function SpineOps() {
       {activeTab === "security" && <SecurityTab />}
       {activeTab === "vault" && <VaultTab />}
       {activeTab === "task-guardian" && <TaskGuardianTab />}
+      {activeTab === "improvement" && <ImprovementProposalsTab refreshKey={refreshKey} onRefresh={() => setRefreshKey((k) => k + 1)} />}
       </main>
       <SparkbotSurfaceInfoDialog
         open={infoOpen}
@@ -1775,5 +1781,164 @@ function TaskGuardianTab() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+// ─── Improvement proposals tab ────────────────────────────────────────────────
+
+function ImprovementProposalsTab({
+  refreshKey,
+  onRefresh,
+}: {
+  refreshKey: number
+  onRefresh: () => void
+}) {
+  const [proposals, setProposals] = useState<ImprovementProposal[]>([])
+  const [statusFilter, setStatusFilter] = useState<ImprovementProposalStatus | "all">("proposed")
+  const [loading, setLoading] = useState(false)
+  const [err, setErr] = useState("")
+  const [acting, setActing] = useState<string | null>(null)
+
+  const reload = useCallback(async () => {
+    setLoading(true)
+    setErr("")
+    try {
+      const result = await fetchImprovementProposals(statusFilter, 50)
+      setProposals(result.proposals)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e))
+    } finally {
+      setLoading(false)
+    }
+  }, [statusFilter])
+
+  useEffect(() => {
+    reload()
+  }, [reload, refreshKey])
+
+  async function handleAction(id: string, action: "approve" | "reject") {
+    setActing(id)
+    setErr("")
+    try {
+      if (action === "approve") {
+        await approveImprovementProposal(id)
+      } else {
+        await rejectImprovementProposal(id)
+      }
+      await reload()
+      onRefresh()
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e))
+    } finally {
+      setActing(null)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <CardTitle className="text-base">Improvement proposals</CardTitle>
+            <CardDescription>
+              Self-improvement proposals recorded by the assistant when it detects repeated failures
+              or pattern opportunities. Approving here records operator intent only — code, config,
+              or workflow changes still require an explicit follow-up action.
+            </CardDescription>
+          </div>
+          <div className="flex gap-1">
+            {(["proposed", "approved", "rejected", "all"] as const).map((option) => (
+              <button
+                key={option}
+                onClick={() => setStatusFilter(option)}
+                className={`rounded border px-2 py-1 text-xs capitalize transition-colors ${
+                  statusFilter === option
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {err && <ErrorBox message={err} />}
+        {loading ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <LoaderCircle className="size-4 animate-spin" />
+            Loading proposals...
+          </div>
+        ) : proposals.length === 0 ? (
+          <div className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+            No {statusFilter === "all" ? "" : statusFilter} improvement proposals yet. The assistant
+            will record one here when it sees a repeated failure pattern worth correcting.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {proposals.map((proposal) => (
+              <div key={proposal.id} className="rounded-lg border bg-card px-4 py-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <Badge variant={proposal.status === "proposed" ? "default" : "secondary"} className="capitalize">
+                        {proposal.status}
+                      </Badge>
+                      <Badge variant="outline" className="capitalize text-xs">
+                        risk: {proposal.risk}
+                      </Badge>
+                      <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                        {formatRelativeTime(proposal.created_at)}
+                      </span>
+                    </div>
+                    <h4 className="mt-2 text-sm font-semibold">{proposal.summary}</h4>
+                    {proposal.suggested_change && (
+                      <p className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground">
+                        <span className="font-medium text-foreground">Suggested change: </span>
+                        {proposal.suggested_change}
+                      </p>
+                    )}
+                    {proposal.evidence && (
+                      <p className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground">
+                        <span className="font-medium text-foreground">Evidence: </span>
+                        {proposal.evidence}
+                      </p>
+                    )}
+                    <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-muted-foreground">
+                      <span>id: {proposal.id}</span>
+                      {proposal.room_id && <span>room: {proposal.room_id}</span>}
+                      {proposal.source && <span>source: {proposal.source}</span>}
+                      {proposal.approved_by && <span>approved by: {proposal.approved_by}</span>}
+                      {proposal.rejected_by && <span>rejected by: {proposal.rejected_by}</span>}
+                    </div>
+                  </div>
+                  {proposal.status === "proposed" && (
+                    <div className="flex shrink-0 gap-2">
+                      <Button
+                        size="sm"
+                        variant="default"
+                        onClick={() => handleAction(proposal.id, "approve")}
+                        disabled={acting === proposal.id}
+                      >
+                        Approve
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleAction(proposal.id, "reject")}
+                        disabled={acting === proposal.id}
+                      >
+                        Reject
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }

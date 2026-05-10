@@ -10,6 +10,61 @@ def _reset_improvement(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("SPARKBOT_IMPROVEMENT_DATA_DIR", str(tmp_path / "improvement_loop"))
 
 
+def test_proposal_status_approve_and_reject(monkeypatch, tmp_path: Path) -> None:
+    _reset_improvement(monkeypatch, tmp_path)
+
+    proposal = improvement.propose_improvement(
+        user_id="user-1",
+        room_id="room-1",
+        summary="Memoize provider readiness check to cut Command Center latency",
+        evidence="Observed 3 redundant provider scans in last 5 minutes",
+        suggested_change="Cache provider readiness for 30 seconds in get_provider_readiness",
+        risk="low",
+    )
+    assert proposal is not None
+    proposal_id = proposal["id"]
+
+    rows = improvement.list_improvement_proposals(status="proposed", limit=10)
+    assert any(item["id"] == proposal_id for item in rows)
+
+    updated = improvement.update_proposal_status(
+        proposal_id=proposal_id, new_status="approved", operator_id="op-1"
+    )
+    assert updated is not None
+    assert updated["status"] == "approved"
+    assert updated["approved_by"] == "op-1"
+    assert "approved_at" in updated
+
+    proposed = improvement.list_improvement_proposals(status="proposed", limit=10)
+    assert all(item["id"] != proposal_id for item in proposed)
+    approved = improvement.list_improvement_proposals(status="approved", limit=10)
+    assert any(item["id"] == proposal_id for item in approved)
+
+    rejected_proposal = improvement.propose_improvement(
+        user_id="user-1",
+        room_id="room-1",
+        summary="Add a redundant retry layer to the chat router",
+    )
+    assert rejected_proposal is not None
+    rejected_id = rejected_proposal["id"]
+
+    after_reject = improvement.update_proposal_status(
+        proposal_id=rejected_id, new_status="rejected", operator_id="op-1"
+    )
+    assert after_reject is not None
+    assert after_reject["status"] == "rejected"
+
+
+def test_update_proposal_status_invalid_inputs(monkeypatch, tmp_path: Path) -> None:
+    _reset_improvement(monkeypatch, tmp_path)
+    proposal = improvement.propose_improvement(user_id="u", room_id="r", summary="x")
+    assert proposal is not None
+
+    assert improvement.update_proposal_status(proposal_id="", new_status="approved") is None
+    assert improvement.update_proposal_status(proposal_id=proposal["id"], new_status="garbage") is None
+    assert improvement.update_proposal_status(proposal_id="does-not-exist", new_status="approved") is None
+
+
 def test_improvement_records_outcomes_and_promotes_patterns(monkeypatch, tmp_path: Path) -> None:
     _reset_improvement(monkeypatch, tmp_path)
 

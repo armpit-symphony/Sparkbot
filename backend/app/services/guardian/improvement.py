@@ -552,6 +552,47 @@ def propose_improvement(
     return proposal
 
 
+_VALID_PROPOSAL_STATUSES = {"proposed", "approved", "rejected"}
+
+
+def update_proposal_status(
+    *,
+    proposal_id: str,
+    new_status: str,
+    operator_id: str | None = None,
+) -> dict[str, Any] | None:
+    """Move a proposal to ``approved`` or ``rejected``. Returns the updated record."""
+    if not improvement_loop_enabled():
+        return None
+    pid = (proposal_id or "").strip()
+    status = (new_status or "").strip().lower()
+    if not pid or status not in _VALID_PROPOSAL_STATUSES:
+        return None
+
+    store = _load_store()
+    proposals = store.get("improvement_proposals", [])
+    if not isinstance(proposals, list):
+        return None
+
+    now_iso = _utc_now_iso()
+    for item in proposals:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("id") or "").strip() != pid:
+            continue
+        item["status"] = status
+        item["updated_at"] = now_iso
+        if status == "approved":
+            item["approved_at"] = now_iso
+            item["approved_by"] = (operator_id or "").strip()
+        elif status == "rejected":
+            item["rejected_at"] = now_iso
+            item["rejected_by"] = (operator_id or "").strip()
+        _save_store(store)
+        return dict(item)
+    return None
+
+
 def list_improvement_proposals(
     *,
     user_id: str | None = None,

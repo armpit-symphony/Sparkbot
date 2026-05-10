@@ -1042,3 +1042,71 @@ def read_operator_spine_projects_unclear_status(
     _require_operator(current_user)
     rows = project_executive.projects_with_unclear_status(limit=limit)
     return {"projects": rows, "count": len(rows)}
+
+
+# ── Improvement proposals (operator review) ──────────────────────────────────
+
+@router.get("/spine/operator/improvement/proposals", response_model=dict)
+def read_operator_improvement_proposals(
+    current_user: CurrentChatUser,
+    status: str | None = "proposed",
+    limit: int = 25,
+) -> dict[str, Any]:
+    """Self-improvement proposals recorded by the assistant via guardian_propose_improvement.
+
+    Returns a queue the operator can review. Status filter accepts
+    ``proposed``, ``approved``, ``rejected``, or empty string for all.
+    """
+    _require_operator(current_user)
+    from app.services.guardian import improvement as improvement_module
+
+    status_filter = (status or "").strip().lower()
+    if status_filter == "all":
+        status_filter = ""
+    rows = improvement_module.list_improvement_proposals(
+        status=status_filter or None,
+        limit=max(1, min(int(limit or 25), 100)),
+    )
+    return {"proposals": rows, "count": len(rows)}
+
+
+@router.post("/spine/operator/improvement/proposals/{proposal_id}/approve", response_model=dict)
+def approve_operator_improvement_proposal(
+    proposal_id: str,
+    current_user: CurrentChatUser,
+) -> dict[str, Any]:
+    """Mark an improvement proposal as approved.
+
+    This records operator intent only — code, config, or workflow changes
+    still require an explicit follow-up action with the appropriate tools.
+    """
+    _require_operator(current_user)
+    from app.services.guardian import improvement as improvement_module
+
+    updated = improvement_module.update_proposal_status(
+        proposal_id=proposal_id,
+        new_status="approved",
+        operator_id=str(getattr(current_user, "username", "") or ""),
+    )
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Improvement proposal not found.")
+    return {"proposal": updated}
+
+
+@router.post("/spine/operator/improvement/proposals/{proposal_id}/reject", response_model=dict)
+def reject_operator_improvement_proposal(
+    proposal_id: str,
+    current_user: CurrentChatUser,
+) -> dict[str, Any]:
+    """Mark an improvement proposal as rejected so it stops surfacing in the queue."""
+    _require_operator(current_user)
+    from app.services.guardian import improvement as improvement_module
+
+    updated = improvement_module.update_proposal_status(
+        proposal_id=proposal_id,
+        new_status="rejected",
+        operator_id=str(getattr(current_user, "username", "") or ""),
+    )
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Improvement proposal not found.")
+    return {"proposal": updated}
