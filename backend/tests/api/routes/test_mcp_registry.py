@@ -56,7 +56,8 @@ def test_mcp_registry_returns_policy_manifests(client: TestClient) -> None:
     assert payload["health"]["sparkbotApiLive"] is True
 
 
-def test_mcp_explain_plan_returns_policy_dry_run(client: TestClient) -> None:
+def test_mcp_explain_plan_returns_policy_dry_run(client: TestClient, monkeypatch) -> None:
+    monkeypatch.setenv("SPARKBOT_GUARDIAN_POLICY_ENABLED", "true")
     response = client.post(
         f"{settings.API_V1_STR}/chat/mcp/explain-plan",
         headers=_chat_headers(),
