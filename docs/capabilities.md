@@ -137,12 +137,12 @@ Command Center is the operator-facing page for Sparkbot operations. It replaces 
 
 - Uses the same top header/navigation flow as Chat, Workstation, Controls, and Robo OS.
 - Puts **Room Persona** at the top so the active room/persona context is visible before actions.
-- Surfaces **System Health**, **Security/PIN controls**, **Token Guardian**, and **Task Guardian** from the existing Controls/backend sources.
+- Surfaces **System Health**, **Security / Operator controls**, **Token Guardian**, and **Task Guardian** from backend-enforced sources.
 - Keeps the existing Guardian Spine queues, events, security, vault, and Task Guardian inspector panels below the main operator flow.
 - Leaves **Controls** focused on setup/configuration: provider keys, model stack, comms, agents, and routing configuration.
 - Marks actions with incomplete backend context as disabled, read-only, coming soon, or not configured instead of showing dead controls.
 
-Room Persona saves through the existing room update path. Security mode and operator PIN use the same guarded model config and Guardian PIN APIs as before. Token Guardian mode saves through the shared model config endpoint. Task Guardian reads and operates room jobs through the existing room Guardian APIs, and write mode remains runtime-scoped.
+Room Persona saves through the existing room update path. Security mode still uses the guarded model config path, while the Security / Operator controls read posture from `GET /api/v1/chat/security/status` and route write actions through `/api/v1/chat/security/passphrase`, `/operator-users`, `/operator-pin`, `/features`, and `/fix-permissions`. Those write routes require an authenticated operator identity, active break-glass where appropriate, allowlisted setting names, and audit logging. Token Guardian mode saves through the shared model config endpoint. Task Guardian reads and operates room jobs through the existing room Guardian APIs, and write mode remains runtime-scoped.
 
 ---
 
@@ -1480,6 +1480,17 @@ PUBLIC_URL=
 | `POST` | `/api/v1/chat/users/login` | Login with passphrase → sets HttpOnly `chat_token` cookie |
 | `DELETE` | `/api/v1/chat/users/session` | Logout → clears session cookie |
 
+### Security / Operator Control
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/chat/security/status` | Backend-enforced security posture: passphrase strength, operators, PIN, break-glass, CORS, exposure, env permissions, headers, feature toggles, and provider-key hints |
+| `POST` | `/api/v1/chat/security/passphrase` | Rotate `SPARKBOT_PASSPHRASE`; requires operator identity, active break-glass, strength check, and audit log |
+| `POST` | `/api/v1/chat/security/operator-users` | Set explicit `SPARKBOT_OPERATOR_USERNAMES`; requires operator identity, active break-glass, current operator retained, and audit log |
+| `POST` | `/api/v1/chat/security/operator-pin` | Set or change the 6-digit operator PIN; changing an existing PIN requires active break-glass |
+| `POST` | `/api/v1/chat/security/features` | Update allowlisted risky feature env toggles; requires operator identity, active break-glass, and audit log |
+| `POST` | `/api/v1/chat/security/fix-permissions` | Chmod managed `.env` files to `600` when writable from the backend runtime |
+
 ### Chat
 
 | Method | Path | Description |
@@ -1931,6 +1942,8 @@ curl -b cookies.txt http://localhost:8000/api/v1/chat/system/watcher | python -m
 | Desktop release tag | `desktop-v{major}.{minor}.{patch}` |
 
 Desktop release tags and app versions are aligned on the `1.6.x` release line.
+
+For `v1.6.77`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release adds the first backend-enforced Security / Operator Control foundation in Command Center. `GET /api/v1/chat/security/status` reports passphrase strength, operator mode, operator PIN state, active break-glass state, CORS origins, frontend/backend exposure, managed `.env` permissions, frontend security headers, risky feature toggles, provider-key storage hints, and operator-owned deployment guidance. Guarded write routes now cover rotating `SPARKBOT_PASSPHRASE`, setting explicit `SPARKBOT_OPERATOR_USERNAMES`, setting/changing the operator PIN, updating allowlisted risky features, and fixing managed `.env` files to mode `600`. Every write route requires authenticated operator identity, active break-glass where appropriate, allowlisted setting names, and audit logging; the UI only exposes state the backend enforces. The first Command Center actions are rotate passphrase, save explicit operators, and fix `.env` permissions. The frontend nginx server now emits baseline security headers so hosted/server mode can report the header posture directly.
 
 For `v1.6.76`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release changes Computer Control from a global blocker into owner-controlled Security guardrails. With Security off, routine local machine, server, browser, terminal, SSH, and communication read tools can run by default; high-risk actions still require confirmation/PIN, including edits, deletes, external sends, browser writes, service control, code changes, and Vault reveal/write paths. Command Center now labels the old break-glass/PIN box as **Security**, and checking it enables the stricter Guardian behavior, including service/SSH allowlists and per-tool input guardrails. Owners can save custom blockers (`tool:...`, `regex:...`, or plain text) that apply while Security is on. Service-name and SSH allowlists now enforce only in Security-on mode, so owner-run server installs can inspect local bot services without predeclaring every service name.
 

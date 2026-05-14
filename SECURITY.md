@@ -75,6 +75,12 @@ Command Center exposes a **Security** checkbox beside the PIN/break-glass contro
 
 When Security is checked, Sparkbot enables the stricter Guardian guardrails: service and SSH allowlists are enforced, per-tool input guardrails run, and owner-saved custom blockers apply. Custom blockers can be exact tool names, regex patterns, or plain text phrases.
 
+### Security / Operator Control Panel
+
+Command Center also reads backend security posture from `/api/v1/chat/security/status`. The status payload covers passphrase strength, explicit operator usernames, operator PIN and break-glass state, CORS origins, frontend/backend exposure, managed `.env` file permissions, frontend security headers, risky feature toggles, masked provider-key storage hints, and operator-owned hardening tasks such as DNS, TLS, firewall, SSH, Docker socket, and provider-side key rotation.
+
+Write actions are backend-enforced; the UI does not own security state. The guarded routes can rotate `SPARKBOT_PASSPHRASE`, set `SPARKBOT_OPERATOR_USERNAMES`, set/change the operator PIN, update allowlisted risky feature toggles, and fix managed `.env` permissions to `600`. Writes require an authenticated operator identity, active break-glass where appropriate, allowlisted setting names, and an audit log entry.
+
 ### Executive Guardian
 
 High-risk executions (external writes, service control, server/SSH) are wrapped in a decision journal. Every action writes a structured log entry under `data/guardian/executive/decisions/` before and after execution. This provides a non-repudiable record that is separate from the main audit trail.

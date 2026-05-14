@@ -979,7 +979,7 @@
         <span class="logo-name">Sparkbot</span>
       </div>
 
-      <div class="hero-badge">Free &amp; Open Source &nbsp;-&nbsp; <span id="version-badge">v1.6.76</span></div>
+      <div class="hero-badge">Free &amp; Open Source &nbsp;-&nbsp; <span id="version-badge">v1.6.77</span></div>
       <h1>Your own AI,<br>on your computer</h1>
 
       <p class="hero-tagline">
@@ -1001,7 +1001,7 @@
       <div class="download-primary-wrap">
         <a
           id="download-windows-primary"
-          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.76/Sparkbot.Local_1.6.76_x64-setup.exe"
+          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.77/Sparkbot.Local_1.6.77_x64-setup.exe"
           class="btn-download-windows"
           aria-label="Download Sparkbot for Windows, latest stable version"
         >
@@ -1013,7 +1013,7 @@
         </a>
       </div>
 
-      <p class="download-meta"><span id="download-version-label">Version 1.6.76</span> &nbsp;-&nbsp; Windows 10 &amp; 11 &nbsp;-&nbsp; 64-bit &nbsp;-&nbsp; Free forever</p>
+      <p class="download-meta"><span id="download-version-label">Version 1.6.77</span> &nbsp;-&nbsp; Windows 10 &amp; 11 &nbsp;-&nbsp; 64-bit &nbsp;-&nbsp; Free forever</p>
       <p class="download-meta" style="margin-top:12px; font-size:0.95rem;">
         This page checks GitHub for the latest stable desktop release automatically. If the button does not start a download, open
         <a href="https://github.com/armpit-symphony/Sparkbot/releases" target="_blank" rel="noopener noreferrer">All Releases</a>
@@ -1023,7 +1023,7 @@
       <div class="other-os">
         <a
           id="download-macos-link"
-          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.76/Sparkbot.Local_1.6.76_aarch64.dmg"
+          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.77/Sparkbot.Local_1.6.77_aarch64.dmg"
           class="btn-os-small"
           aria-label="Download Sparkbot for macOS"
         >
@@ -1031,7 +1031,7 @@
         </a>
         <a
           id="download-linux-link"
-          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.76/Sparkbot.Local_1.6.76_amd64.AppImage"
+          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.77/Sparkbot.Local_1.6.77_amd64.AppImage"
           class="btn-os-small"
           aria-label="Download Sparkbot for Linux AppImage"
         >
@@ -1121,46 +1121,46 @@
     =========================== -->
     <section class="section" aria-labelledby="new-heading">
       <div class="container">
-        <h2 class="section-title" id="new-heading">New in v1.6.76: owner-controlled Security</h2>
+        <h2 class="section-title" id="new-heading">New in v1.6.77: Security / Operator controls</h2>
         <p class="section-subtitle">
-          Sparkbot now defaults to an owner-local working mode for routine machine and server reads, while the Security switch turns strict Guardian guardrails back on and lets owners save custom blockers.
+          Command Center now shows backend-enforced security posture and gives operators guarded controls for passphrase rotation, explicit operators, and managed .env permissions.
         </p>
 
         <div class="features-grid">
           <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">Open</span>
-            <h3 class="feature-title">Routine reads run by default</h3>
-            <p class="feature-desc">Local/server inspection no longer gets stuck behind service and SSH allowlists when Security guardrails are off. Sparkbot can inspect running processes, listeners, and service status on the machine it runs on.</p>
+            <span class="feature-icon" role="img" aria-hidden="true">Status</span>
+            <h3 class="feature-title">Security posture dashboard</h3>
+            <p class="feature-desc">The Security card now reports passphrase strength, operator mode, PIN and break-glass state, CORS, exposure, frontend headers, feature toggles, and .env permissions from backend checks.</p>
           </div>
 
           <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">Ask</span>
-            <h3 class="feature-title">Risky changes still ask</h3>
-            <p class="feature-desc">Deletes, edits, sends, browser writes, service control, code changes, and other high-risk operations still go through the confirmation flow before execution.</p>
+            <span class="feature-icon" role="img" aria-hidden="true">Keys</span>
+            <h3 class="feature-title">Rotate passphrase safely</h3>
+            <p class="feature-desc">Operators can rotate SPARKBOT_PASSPHRASE from Command Center. The backend requires operator identity, an active break-glass session, strength checks, and an audit entry.</p>
           </div>
 
           <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">Shield</span>
-            <h3 class="feature-title">Security switch in Command Center</h3>
-            <p class="feature-desc">The old break-glass box is now Security. Checking it enables the stricter Guardian policy path, including the existing PIN, break-glass, allowlist, and guardrail behavior.</p>
+            <span class="feature-icon" role="img" aria-hidden="true">Users</span>
+            <h3 class="feature-title">Explicit operator users</h3>
+            <p class="feature-desc">Set SPARKBOT_OPERATOR_USERNAMES so human users are no longer implicitly treated as operators. The current operator must remain in the allowlist.</p>
           </div>
 
           <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">Rules</span>
-            <h3 class="feature-title">Owner custom blockers</h3>
-            <p class="feature-desc">Command Center adds a custom guardrails box with a Save button. Add tool-name blockers, regex blockers, or plain text phrases that should be denied when Security is on.</p>
+            <span class="feature-icon" role="img" aria-hidden="true">Files</span>
+            <h3 class="feature-title">Fix .env permissions</h3>
+            <p class="feature-desc">Sparkbot checks managed env files and can chmod writable ones to 600 after break-glass approval, while leaving operator-owned host hardening steps visible as guidance.</p>
           </div>
 
           <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">Ops</span>
-            <h3 class="feature-title">Server ops friction reduced</h3>
-            <p class="feature-desc">Service-name and SSH allowlists still work when Security is on, but Security-off mode lets owner-run server installs inspect local workloads without predeclaring every bot service.</p>
+            <span class="feature-icon" role="img" aria-hidden="true">Header</span>
+            <h3 class="feature-title">Frontend headers</h3>
+            <p class="feature-desc">The frontend nginx config now emits baseline CSP, frame, content-type, referrer, and permissions headers so hosted installs can verify their public surface.</p>
           </div>
 
           <div class="feature-card">
             <span class="feature-icon" role="img" aria-hidden="true">Tests</span>
-            <h3 class="feature-title">Policy regression coverage</h3>
-            <p class="feature-desc">Backend tests now cover Security-off read access, confirmation for high-risk tools, strict allowlists when Security is on, and saved custom guardrails.</p>
+            <h3 class="feature-title">Backend enforcement coverage</h3>
+            <p class="feature-desc">New tests cover posture reporting, break-glass enforcement, first PIN setup, passphrase/operator writes, and permission repair.</p>
           </div>
         </div>
       </div>
@@ -1182,7 +1182,7 @@
             <div class="step-num" aria-hidden="true">1</div>
             <div class="step-body">
               <h3 class="step-title">Click the big purple "Download for Windows" button above</h3>
-              <p class="step-desc">Your browser will download a file called <strong id="windows-filename-step-1">Sparkbot.Local_1.6.76_x64-setup.exe</strong>. This is the installer. It usually arrives in less than a minute.</p>
+              <p class="step-desc">Your browser will download a file called <strong id="windows-filename-step-1">Sparkbot.Local_1.6.77_x64-setup.exe</strong>. This is the installer. It usually arrives in less than a minute.</p>
             </div>
           </div>
 
@@ -1190,7 +1190,7 @@
             <div class="step-num" aria-hidden="true">2</div>
             <div class="step-body">
               <h3 class="step-title">Find the downloaded file and open it</h3>
-              <p class="step-desc">Look at the bottom of your browser for the downloaded file, or check your <strong>Downloads folder</strong>. Double-click the file named <strong id="windows-filename-step-2">Sparkbot.Local_1.6.76_x64-setup.exe</strong> to start installing.</p>
+              <p class="step-desc">Look at the bottom of your browser for the downloaded file, or check your <strong>Downloads folder</strong>. Double-click the file named <strong id="windows-filename-step-2">Sparkbot.Local_1.6.77_x64-setup.exe</strong> to start installing.</p>
             </div>
           </div>
 
@@ -1260,7 +1260,7 @@
               </div>
 
               <div class="win-info-row">
-                <strong>App:</strong> <span id="windows-filename-dialog">Sparkbot.Local_1.6.76_x64-setup.exe</span>
+                <strong>App:</strong> <span id="windows-filename-dialog">Sparkbot.Local_1.6.77_x64-setup.exe</span>
               </div>
               <div class="win-info-row">
                 <strong>Publisher:</strong> <span>Unknown publisher</span>
@@ -1496,7 +1496,7 @@
       <p>Free. Private. Yours. Download takes less than a minute.</p>
       <a
         id="download-windows-bottom"
-        href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.76/Sparkbot.Local_1.6.76_x64-setup.exe"
+        href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.77/Sparkbot.Local_1.6.77_x64-setup.exe"
         class="btn-download-windows"
         style="display:inline-flex;"
         aria-label="Download Sparkbot for Windows"
@@ -1516,7 +1516,7 @@
   =========================== -->
   <footer>
     <p>
-      <span role="img" aria-hidden="true">Spark</span> <strong>Sparkbot</strong> &nbsp;-&nbsp; <span id="footer-version-label">Version 1.6.76</span> &nbsp;-&nbsp; Free &amp; Open Source
+      <span role="img" aria-hidden="true">Spark</span> <strong>Sparkbot</strong> &nbsp;-&nbsp; <span id="footer-version-label">Version 1.6.77</span> &nbsp;-&nbsp; Free &amp; Open Source
     </p>
     <p style="margin-top:10px;">
       <a href="https://github.com/armpit-symphony/Sparkbot" target="_blank" rel="noopener noreferrer">GitHub</a>
@@ -1527,9 +1527,9 @@
     </p>
     <p style="margin-top:12px; font-size:0.8rem;">
       Other platforms:
-      <a id="footer-macos-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.76/Sparkbot.Local_1.6.76_aarch64.dmg">macOS (all Macs)</a>
+      <a id="footer-macos-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.77/Sparkbot.Local_1.6.77_aarch64.dmg">macOS (all Macs)</a>
       &nbsp;-&nbsp;
-      <a id="footer-linux-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.76/Sparkbot.Local_1.6.76_amd64.AppImage">Linux (AppImage)</a>
+      <a id="footer-linux-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.77/Sparkbot.Local_1.6.77_amd64.AppImage">Linux (AppImage)</a>
     </p>
   </footer>
 
@@ -1538,11 +1538,11 @@
   =========================== -->
   <script>
     var fallbackRelease = {
-      version: "1.6.76",
-      windowsFilename: "Sparkbot.Local_1.6.76_x64-setup.exe",
-      windowsUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.76/Sparkbot.Local_1.6.76_x64-setup.exe",
-      macosUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.76/Sparkbot.Local_1.6.76_aarch64.dmg",
-      linuxUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.76/Sparkbot.Local_1.6.76_amd64.AppImage"
+      version: "1.6.77",
+      windowsFilename: "Sparkbot.Local_1.6.77_x64-setup.exe",
+      windowsUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.77/Sparkbot.Local_1.6.77_x64-setup.exe",
+      macosUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.77/Sparkbot.Local_1.6.77_aarch64.dmg",
+      linuxUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.77/Sparkbot.Local_1.6.77_amd64.AppImage"
     };
 
     function setText(id, value) {
@@ -1618,7 +1618,7 @@
           return /_amd64\.AppImage$/i.test(asset.name || "");
         });
 
-        // Extract version from tag (desktop-v1.6.76 -> 1.6.76)
+        // Extract version from tag (desktop-v1.6.77 -> 1.6.77)
         var tagVersion = String(desktopRelease.tag_name || "").replace(/^desktop-v/i, "");
 
         applyRelease({

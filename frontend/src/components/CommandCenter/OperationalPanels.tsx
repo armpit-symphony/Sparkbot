@@ -82,6 +82,58 @@ interface HealthCheck {
   status?: string
 }
 
+interface SecurityStatus {
+  operator: {
+    mode: "open" | "explicit"
+    username?: string
+    usernames: string[]
+    pin_configured: boolean
+    breakglass_active: boolean
+    breakglass_ttl_remaining: number
+  }
+  passphrase: {
+    configured: boolean
+    length: number
+    weak_default: boolean
+    score: number
+    label: "weak" | "fair" | "strong"
+  }
+  features: Record<string, { env_key: string; enabled: boolean }>
+  cors: { origins: string[]; has_wildcard: boolean }
+  exposure: {
+    frontend_bind_host: string
+    frontend_port: string
+    frontend_public: boolean
+    backend_bind: string
+  }
+  env_files: Array<{
+    path: string
+    exists: boolean
+    manageable: boolean
+    mode?: string
+    secure?: boolean
+    error?: string
+  }>
+  frontend_headers: {
+    checked: boolean
+    ok: boolean
+    url?: string
+    present: string[]
+    missing: string[]
+    note?: string
+  }
+  provider_secrets: Array<{
+    provider: string
+    env_key: string
+    configured_in_env: boolean
+    masked: string
+    vault_alias: string
+    configured_in_vault: boolean
+  }>
+  security_modes: Array<{ id: string; label: string; description: string }>
+  operator_guidance: Array<{ area: string; operator_action: string }>
+}
+
 type TokenGuardianSummary = NonNullable<NonNullable<DashboardSummary["today"]>["token_guardian"]>
 
 interface CommandCenterOperationsProps {
@@ -134,6 +186,7 @@ export function CommandCenterOperations({ refreshNonce, onRefresh }: CommandCent
   const [customGuardrailsDraft, setCustomGuardrailsDraft] = useState("")
   const [config, setConfig] = useState<SparkbotControlsConfig | null>(null)
   const [guardianStatus, setGuardianStatus] = useState<GuardianStatus | null>(null)
+  const [securityStatus, setSecurityStatus] = useState<SecurityStatus | null>(null)
   const [dashboard, setDashboard] = useState<DashboardSummary | null>(null)
   const [health, setHealth] = useState<HealthCheck | null>(null)
   const [tasks, setTasks] = useState<GuardianTaskRecord[]>([])
@@ -148,10 +201,11 @@ export function CommandCenterOperations({ refreshNonce, onRefresh }: CommandCent
     async function load() {
       setLoading(true)
       setError("")
-      const [roomResult, configResult, guardianResult, dashboardResult, healthResult] = await Promise.all([
+      const [roomResult, configResult, guardianResult, securityResult, dashboardResult, healthResult] = await Promise.all([
         loadRoom(),
         fetchControlsConfig(),
         fetchGuardianStatus().catch(() => null),
+        readJson<SecurityStatus>("/api/v1/chat/security/status"),
         readJson<DashboardSummary>("/api/v1/chat/dashboard/summary"),
         readJson<HealthCheck>("/api/v1/utils/health-check/"),
       ])
@@ -162,6 +216,7 @@ export function CommandCenterOperations({ refreshNonce, onRefresh }: CommandCent
       setCustomGuardrailsDraft(configResult?.custom_guardrails ?? "")
       setConfig(configResult)
       setGuardianStatus(guardianResult)
+      setSecurityStatus(securityResult)
       setDashboard(dashboardResult)
       setHealth(healthResult)
 
@@ -287,7 +342,7 @@ export function CommandCenterOperations({ refreshNonce, onRefresh }: CommandCent
   async function setPin(currentPin: string, pin: string, pinConfirm: string) {
     setMessage("")
     setError("")
-    const response = await apiFetch("/api/v1/chat/guardian/pin", {
+    const response = await apiFetch("/api/v1/chat/security/operator-pin", {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
@@ -299,6 +354,57 @@ export function CommandCenterOperations({ refreshNonce, onRefresh }: CommandCent
       return
     }
     await reloadWithStatus("Operator PIN saved.")
+  }
+
+  async function rotatePassphrase(passphrase: string) {
+    setMessage("")
+    setError("")
+    const response = await apiFetch("/api/v1/chat/security/passphrase", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ passphrase }),
+    })
+    if (!response.ok) {
+      const data = await response.json().catch(() => null)
+      setError(data?.detail ?? "Sparkbot passphrase could not be rotated.")
+      return false
+    }
+    await reloadWithStatus("Sparkbot passphrase rotated.")
+    return true
+  }
+
+  async function saveOperatorUsers(usernames: string[]) {
+    setMessage("")
+    setError("")
+    const response = await apiFetch("/api/v1/chat/security/operator-users", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ usernames }),
+    })
+    if (!response.ok) {
+      const data = await response.json().catch(() => null)
+      setError(data?.detail ?? "Operator usernames could not be saved.")
+      return false
+    }
+    await reloadWithStatus("Operator usernames saved.")
+    return true
+  }
+
+  async function fixEnvPermissions() {
+    setMessage("")
+    setError("")
+    const response = await apiFetch("/api/v1/chat/security/fix-permissions", {
+      method: "POST",
+      credentials: "include",
+    })
+    if (!response.ok) {
+      const data = await response.json().catch(() => null)
+      setError(data?.detail ?? ".env permissions could not be fixed.")
+      return
+    }
+    await reloadWithStatus(".env permissions fixed where Sparkbot can manage them.")
   }
 
   async function setTaskEnabled(taskId: string, enabled: boolean) {
@@ -413,12 +519,16 @@ export function CommandCenterOperations({ refreshNonce, onRefresh }: CommandCent
         <SecurityCard
           active={securityGuardrailsActive}
           customGuardrails={customGuardrailsDraft}
+          securityStatus={securityStatus}
           onCustomGuardrailsChange={setCustomGuardrailsDraft}
           onSaveCustomGuardrails={saveCustomGuardrails}
           room={room}
           guardianStatus={guardianStatus}
           onToggle={toggleSecurityGuardrails}
           onSetPin={setPin}
+          onRotatePassphrase={rotatePassphrase}
+          onSaveOperatorUsers={saveOperatorUsers}
+          onFixEnvPermissions={fixEnvPermissions}
         />
       </div>
 
@@ -615,27 +725,52 @@ function Metric({ label, value }: { label: string; value: string }) {
 function SecurityCard({
   active,
   customGuardrails,
+  securityStatus,
   onCustomGuardrailsChange,
   onSaveCustomGuardrails,
   room,
   guardianStatus,
   onToggle,
   onSetPin,
+  onRotatePassphrase,
+  onSaveOperatorUsers,
+  onFixEnvPermissions,
 }: {
   active: boolean
   customGuardrails: string
+  securityStatus: SecurityStatus | null
   onCustomGuardrailsChange: (value: string) => void
   onSaveCustomGuardrails: () => void
   room: RoomInfo | null
   guardianStatus: GuardianStatus | null
   onToggle: () => void
   onSetPin: (currentPin: string, pin: string, pinConfirm: string) => void
+  onRotatePassphrase: (passphrase: string) => Promise<boolean>
+  onSaveOperatorUsers: (usernames: string[]) => Promise<boolean>
+  onFixEnvPermissions: () => void
 }) {
   const [currentPin, setCurrentPin] = useState("")
   const [pin, setPin] = useState("")
   const [pinConfirm, setPinConfirm] = useState("")
-  const pinConfigured = Boolean(guardianStatus?.pin_configured)
+  const [passphraseDraft, setPassphraseDraft] = useState("")
+  const [operatorsDraft, setOperatorsDraft] = useState("")
+  const pinConfigured = Boolean(securityStatus?.operator.pin_configured ?? guardianStatus?.pin_configured)
+  const breakglassActive = Boolean(securityStatus?.operator.breakglass_active ?? guardianStatus?.breakglass.active)
   const canSavePin = /^\d{6}$/.test(pin) && pin === pinConfirm && (!pinConfigured || currentPin.length === 6)
+  const insecureEnvFiles = securityStatus?.env_files.filter((file) => file.exists && file.secure === false) ?? []
+  const enabledRiskyFeatures = Object.entries(securityStatus?.features ?? {}).filter(([, feature]) => feature.enabled)
+  const providerEnvKeys = securityStatus?.provider_secrets.filter((secret) => secret.configured_in_env) ?? []
+
+  useEffect(() => {
+    if (securityStatus) {
+      setOperatorsDraft(securityStatus.operator.usernames.join(", "))
+    }
+  }, [securityStatus])
+
+  const operatorUsernames = operatorsDraft
+    .split(/[\n,]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
 
   return (
     <Card>
@@ -644,9 +779,47 @@ function SecurityCard({
           <Shield className="size-4" />
           Security
         </CardTitle>
-        <CardDescription>Owner-enabled guardrails, custom blockers, and operator PIN.</CardDescription>
+        <CardDescription>Backend-enforced posture, guardrails, and operator controls.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
+        <div className="grid gap-2 text-xs sm:grid-cols-2">
+          <StatusPill
+            label="Passphrase"
+            value={securityStatus?.passphrase.label ?? "unknown"}
+            good={securityStatus?.passphrase.label === "strong"}
+          />
+          <StatusPill
+            label="Operators"
+            value={
+              securityStatus
+                ? securityStatus.operator.mode === "explicit"
+                  ? `${securityStatus.operator.usernames.length} explicit`
+                  : "open to humans"
+                : "unavailable"
+            }
+            good={securityStatus?.operator.mode === "explicit"}
+          />
+          <StatusPill
+            label="Frontend"
+            value={securityStatus ? securityStatus.exposure.frontend_public ? "public bind" : "local bind" : "unavailable"}
+            good={Boolean(securityStatus && !securityStatus.exposure.frontend_public)}
+          />
+          <StatusPill
+            label="Headers"
+            value={securityStatus?.frontend_headers.ok ? "present" : "missing"}
+            good={Boolean(securityStatus?.frontend_headers.ok)}
+          />
+          <StatusPill
+            label="CORS"
+            value={securityStatus ? securityStatus.cors.has_wildcard ? "wildcard" : `${securityStatus.cors.origins.length} origins` : "unavailable"}
+            good={Boolean(securityStatus && !securityStatus.cors.has_wildcard)}
+          />
+          <StatusPill
+            label=".env files"
+            value={insecureEnvFiles.length ? `${insecureEnvFiles.length} loose` : "600 or missing"}
+            good={insecureEnvFiles.length === 0}
+          />
+        </div>
         <div className={`rounded-lg border px-3 py-3 ${active ? "border-blue-500/30 bg-blue-500/10" : "bg-muted/20"}`}>
           <div className="flex items-center justify-between gap-3">
             <label className="flex min-w-0 items-start gap-3">
@@ -695,7 +868,60 @@ function SecurityCard({
             good={active ? Boolean(room?.execution_allowed) : true}
           />
           <StatusPill label="Operator PIN" value={pinConfigured ? "configured" : "required"} good={pinConfigured} />
-          <StatusPill label="Break-glass" value={guardianStatus?.breakglass.active ? "active" : "inactive"} good={Boolean(guardianStatus?.breakglass.active)} />
+          <StatusPill label="Break-glass" value={breakglassActive ? "active" : "inactive"} good={breakglassActive} />
+        </div>
+        <div className="rounded-lg border bg-muted/20 p-3">
+          <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+            <KeyRound className="size-3.5" />
+            Rotate Sparkbot passphrase
+          </div>
+          <input
+            type="password"
+            value={passphraseDraft}
+            onChange={(event) => setPassphraseDraft(event.target.value)}
+            placeholder="New passphrase, 16+ characters"
+            className="w-full rounded-md border bg-background px-3 py-2 text-xs"
+            autoComplete="new-password"
+          />
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs text-muted-foreground">
+              Write action requires active break-glass. Stored value is never shown here.
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!breakglassActive || passphraseDraft.trim().length < 16}
+              onClick={async () => {
+                const saved = await onRotatePassphrase(passphraseDraft.trim())
+                if (saved) setPassphraseDraft("")
+              }}
+            >
+              Rotate
+            </Button>
+          </div>
+        </div>
+        <div className="rounded-lg border bg-muted/20 p-3">
+          <div className="mb-2 text-xs font-semibold text-muted-foreground">Explicit operator usernames</div>
+          <textarea
+            value={operatorsDraft}
+            onChange={(event) => setOperatorsDraft(event.target.value)}
+            placeholder="username1, username2"
+            rows={2}
+            className="w-full resize-none rounded-md border bg-background px-3 py-2 text-xs"
+          />
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs text-muted-foreground">
+              Include your current username before saving or the backend rejects the change.
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!breakglassActive || operatorUsernames.length === 0}
+              onClick={() => onSaveOperatorUsers(operatorUsernames)}
+            >
+              Save operators
+            </Button>
+          </div>
         </div>
         <div className="rounded-lg border bg-muted/20 p-3">
           <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-muted-foreground">
@@ -747,6 +973,45 @@ function SecurityCard({
           >
             Save PIN
           </Button>
+        </div>
+        <div className="rounded-lg border bg-muted/20 p-3 text-xs">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div className="font-semibold text-foreground">Managed .env permissions</div>
+              <div className="mt-1 text-muted-foreground">
+                {insecureEnvFiles.length
+                  ? insecureEnvFiles.map((file) => `${file.path} (${file.mode ?? "unknown"})`).join(", ")
+                  : "No loose managed .env permissions detected."}
+              </div>
+            </div>
+            <Button size="sm" variant="outline" disabled={!breakglassActive} onClick={onFixEnvPermissions}>
+              Fix permissions
+            </Button>
+          </div>
+        </div>
+        <div className="grid gap-2 text-xs">
+          <div className="rounded-lg border px-3 py-2">
+            <div className="font-semibold text-foreground">Risky features</div>
+            <div className="mt-1 text-muted-foreground">
+              {enabledRiskyFeatures.length
+                ? enabledRiskyFeatures.map(([name, feature]) => `${name} (${feature.env_key})`).join(", ")
+                : "No risky feature toggles are currently enabled."}
+            </div>
+          </div>
+          <div className="rounded-lg border px-3 py-2">
+            <div className="font-semibold text-foreground">Provider keys</div>
+            <div className="mt-1 text-muted-foreground">
+              {providerEnvKeys.length
+                ? providerEnvKeys.map((secret) => `${secret.provider}: ${secret.masked || "env configured"}`).join(", ")
+                : "No provider keys detected in plain environment variables."}
+            </div>
+          </div>
+          <div className="rounded-lg border px-3 py-2">
+            <div className="font-semibold text-foreground">Operator-managed items</div>
+            <div className="mt-1 text-muted-foreground">
+              {securityStatus?.operator_guidance.map((item) => item.area).join(", ") ?? "DNS, TLS, firewall, SSH, Docker, provider rotation, and port bindings."}
+            </div>
+          </div>
         </div>
         <div className="rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground">
           Rules apply when Security is on. Vault, destructive edits, deletes, and external sends still use the existing approval and break-glass protections.

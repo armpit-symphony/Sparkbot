@@ -1,5 +1,15 @@
 # Release Notes
 
+## Sparkbot v1.6.77
+
+- Security posture API: added `GET /api/v1/chat/security/status` so Command Center can display passphrase strength, operator mode, operator PIN state, break-glass state, CORS origins, frontend/backend exposure, health status, managed `.env` permissions, frontend security headers, risky feature toggles, and masked provider-key storage hints from the backend.
+- Guarded operator actions: added backend write routes for rotating `SPARKBOT_PASSPHRASE`, setting explicit `SPARKBOT_OPERATOR_USERNAMES`, setting/changing the operator PIN, updating allowlisted risky feature toggles, and fixing managed `.env` files to mode `600`.
+- Backend enforcement: security write routes require authenticated operator identity, active break-glass where appropriate, allowlisted setting names, and audit log entries. First-time PIN creation remains possible for an operator without an existing PIN.
+- Command Center Security panel: the existing Security card now shows backend posture and exposes the first three safe controls: rotate Sparkbot passphrase, save explicit operator usernames, and fix `.env` permissions.
+- Frontend hardening: the nginx frontend now emits baseline security headers, including CSP, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, and `Permissions-Policy`.
+- Tests: added focused backend coverage for status posture, break-glass enforcement, first PIN creation, passphrase/operator updates, and `.env` permission repair.
+- Release metadata: backend, frontend, Tauri shell, package lock, public downloader fallback links, service worker cache key, README, capabilities docs, public-download docs, and release notes advanced to v1.6.77.
+
 ## Sparkbot v1.6.76
 
 - Owner-local Security default: routine local machine, server, browser, terminal, SSH, and communication read tools can run without the old Computer Control and allowlist blockers when Security guardrails are off.

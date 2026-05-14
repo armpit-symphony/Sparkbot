@@ -1,0 +1,10 @@
+Sparkbot v1.6.77
+
+- Added a backend-enforced Security / Operator Control foundation in Command Center.
+- New status route reports passphrase strength, operator mode, PIN and break-glass state, CORS, exposure, managed .env permissions, frontend headers, risky feature toggles, and masked provider-key storage hints.
+- New guarded write routes rotate SPARKBOT_PASSPHRASE, set explicit SPARKBOT_OPERATOR_USERNAMES, set/change the operator PIN, update allowlisted risky feature toggles, and chmod managed .env files to 600.
+- Security writes require operator identity, break-glass where appropriate, allowlisted setting names, and audit log entries.
+- The first UI actions are rotate passphrase, save explicit operators, and fix .env permissions.
+- Frontend nginx now emits baseline CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, and Permissions-Policy headers.
+- Added focused backend tests for posture status, break-glass enforcement, first PIN creation, operator/passphrase writes, and permission repair.
+- Release metadata advanced to v1.6.77.
