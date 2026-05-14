@@ -33,5 +33,5 @@ Recommended operator practice:
 
 - Use `/memory` and memory tools to inspect or remove user memory.
 - Use the dashboard approval inbox to approve or deny pending actions.
-- Use Computer Control and break-glass settings to decide when Sparkbot can touch the local machine, browser, terminal, services, Vault, or comms sends.
+- Use Command Center Security, custom guardrails, confirmations, and break-glass settings to decide when Sparkbot can perform strict-guarded local machine, browser, terminal, service, Vault, or comms actions.
 - Use agent identity metadata and kill switches to disable agents that should not run.

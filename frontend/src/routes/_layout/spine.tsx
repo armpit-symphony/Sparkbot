@@ -997,6 +997,7 @@ function SpineOps() {
     savingExecution: controls.savingExecution,
     executionSaved: controls.executionSaved,
     executionError: controls.executionError,
+    customGuardrails: controls.customGuardrails,
     savingPin: controls.savingPin,
     pinSaved: controls.pinSaved,
     pinError: controls.pinError,
@@ -1032,6 +1033,8 @@ function SpineOps() {
     onTokenGuardianModeChange: (v: string) => controls.setTokenGuardianMode(v),
     onSaveTokenGuardianMode: controls.saveTokenGuardianMode,
     onToggleExecution: controls.toggleExecutionGate,
+    onCustomGuardrailsChange: controls.setCustomGuardrails,
+    onSaveCustomGuardrails: controls.saveCustomGuardrails,
     onSavePin: controls.saveOperatorPin,
     onOllamaBaseUrlChange: controls.setOllamaBaseUrl,
     onCheckOllamaStatus: controls.checkOllamaStatus,
@@ -1359,10 +1362,10 @@ function SpineOps() {
       <SparkbotSurfaceInfoDialog
         open={infoOpen}
         title="Command Center"
-        subtitle="The operational hub for Sparkbot health, room persona, Computer Control, Token Guardian, Task Guardian, and Guardian Spine work state."
+        subtitle="The operational hub for Sparkbot health, room persona, Security, Token Guardian, Task Guardian, and Guardian Spine work state."
         bullets={[
           "Room Persona stays at the top so the active room context is visible before operational actions.",
-          "Computer Control, Token Guardian, System Health, and Task Guardian use the same backend paths as Controls.",
+          "Security, Token Guardian, System Health, and Task Guardian use the same backend paths as Controls.",
           "Spine and Guardian inspector tabs remain available below the command workflow for queues, events, security, vault, and diagnostics.",
         ]}
         onClose={() => setInfoOpen(false)}

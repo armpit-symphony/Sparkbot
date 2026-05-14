@@ -45,6 +45,8 @@ export interface ModelsControlsConfig {
   global_computer_control?: boolean
   global_computer_control_expires_at?: number | null
   global_computer_control_ttl_remaining?: number | null
+  security_guardrails_enabled?: boolean
+  custom_guardrails?: string
   agent_overrides: Record<string, { route: string; model?: string }>
   available_agents: Array<{
     name: string
@@ -212,6 +214,8 @@ export interface GuardianStatus {
   operator: { username: string; usernames_configured: boolean; open_mode: boolean }
   pin_configured: boolean
   vault_configured: boolean
+  security_guardrails_enabled?: boolean
+  custom_guardrails?: string
   memory_guardian_enabled: boolean
   task_guardian_enabled: boolean
   task_guardian_write_enabled: boolean
@@ -417,6 +421,7 @@ export function useControlsState({ roomId, onStatusMessage }: UseControlsStateOp
   const [savingExecution, setSavingExecution] = useState(false)
   const [executionSaved, setExecutionSaved] = useState(false)
   const [executionError, setExecutionError] = useState("")
+  const [customGuardrails, setCustomGuardrails] = useState("")
   const [savingPin, setSavingPin] = useState(false)
   const [pinSaved, setPinSaved] = useState(false)
   const [pinError, setPinError] = useState("")
@@ -435,6 +440,7 @@ export function useControlsState({ roomId, onStatusMessage }: UseControlsStateOp
     if (!config?.default_selection) return
     setModelsConfig(config)
     setTokenGuardianMode(config.token_guardian_mode || "shadow")
+    setCustomGuardrails(config.custom_guardrails ?? "")
     setModelStack(prev => config.stack ?? prev)
     const validProviders = new Set(["openrouter", "ollama", "openai", "anthropic", "google", "groq", "minimax", "xai"])
     const savedProvider = config.default_selection?.provider ?? "openrouter"
@@ -638,46 +644,55 @@ export function useControlsState({ roomId, onStatusMessage }: UseControlsStateOp
     setExecutionError("")
     setExecutionSaved(false)
     try {
-      const globalRes = await apiFetch("/api/v1/chat/models/config", {
+      const securityRes = await apiFetch("/api/v1/chat/models/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ global_computer_control: enabled }),
+        body: JSON.stringify({ security_guardrails_enabled: enabled }),
       })
-      if (!globalRes.ok) {
-        const data = await globalRes.json().catch(() => ({ detail: "Could not update Computer Control." }))
-        setExecutionError(data.detail ?? "Could not update Computer Control.")
+      if (!securityRes.ok) {
+        const data = await securityRes.json().catch(() => ({ detail: "Could not update Security guardrails." }))
+        setExecutionError(data.detail ?? "Could not update Security guardrails.")
         return
       }
-      const globalData = await globalRes.json().catch(() => null)
-      if (globalData) {
-        setModelsConfig((prev) => prev ? {
-          ...prev,
-          global_computer_control: Boolean(globalData.global_computer_control ?? enabled),
-          global_computer_control_expires_at: globalData.global_computer_control_expires_at ?? null,
-          global_computer_control_ttl_remaining: globalData.global_computer_control_ttl_remaining ?? null,
-        } : prev)
-      }
-      if (roomId) {
-        const res = await apiFetch(`/api/v1/chat/rooms/${roomId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ execution_allowed: enabled }),
-        })
-        if (res.ok) {
-          const data = await res.json()
-          setRoomInfo(data)
-        }
-      }
+      const securityData = await securityRes.json().catch(() => null)
+      if (securityData) applyControlsConfig(securityData)
       setExecutionSaved(true)
+      notify(enabled ? "Security guardrails enabled." : "Security guardrails disabled.")
       setTimeout(() => setExecutionSaved(false), 3000)
     } catch {
-      setExecutionError("Could not update Computer Control.")
+      setExecutionError("Could not update Security guardrails.")
     } finally {
       setSavingExecution(false)
     }
-  }, [roomId])
+  }, [applyControlsConfig, notify])
+
+  const saveCustomGuardrails = useCallback(async () => {
+    setSavingExecution(true)
+    setExecutionError("")
+    setExecutionSaved(false)
+    try {
+      const res = await apiFetch("/api/v1/chat/models/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ custom_guardrails: customGuardrails }),
+      })
+      const data = await res.json().catch(() => ({ detail: "Could not save custom guardrails." }))
+      if (!res.ok) {
+        setExecutionError(data.detail ?? "Could not save custom guardrails.")
+        return
+      }
+      applyControlsConfig(data)
+      setExecutionSaved(true)
+      notify("Custom Security guardrails saved.")
+      setTimeout(() => setExecutionSaved(false), 3000)
+    } catch {
+      setExecutionError("Could not save custom guardrails.")
+    } finally {
+      setSavingExecution(false)
+    }
+  }, [applyControlsConfig, customGuardrails, notify])
 
   const saveOperatorPin = useCallback(async (currentPin: string, pin: string, pinConfirm: string) => {
     setSavingPin(true)
@@ -1261,6 +1276,7 @@ export function useControlsState({ roomId, onStatusMessage }: UseControlsStateOp
     controlsDashboard,
     // Execution gate
     savingExecution, executionSaved, executionError, toggleExecutionGate,
+    customGuardrails, setCustomGuardrails, saveCustomGuardrails,
     // PIN
     savingPin, pinSaved, pinError, saveOperatorPin,
     // Agents

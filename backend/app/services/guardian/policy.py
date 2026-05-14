@@ -9,8 +9,70 @@ from typing import Any, Literal
 
 
 def _policy_enabled() -> bool:
-    """Return True when Computer Control / PIN policy restrictions are enabled."""
-    return os.getenv("SPARKBOT_GUARDIAN_POLICY_ENABLED", "true").lower() not in ("false", "0", "no", "off")
+    """Return True when owner-enabled Security guardrails should be enforced."""
+    return os.getenv("SPARKBOT_GUARDIAN_POLICY_ENABLED", "false").lower() in ("1", "true", "yes", "on")
+
+
+CUSTOM_GUARDRAILS_ENV = "SPARKBOT_CUSTOM_GUARDRAILS"
+
+
+def security_guardrails_enabled() -> bool:
+    """Public status helper used by tools, APIs, and UI config."""
+    return _policy_enabled()
+
+
+def custom_guardrails_text() -> str:
+    """Return the owner-authored custom guardrail rules as newline-separated text."""
+    raw = os.getenv(CUSTOM_GUARDRAILS_ENV, "").strip()
+    if not raw:
+        return ""
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, list):
+            return "\n".join(str(item).strip() for item in parsed if str(item).strip())
+    except Exception:
+        pass
+    return raw.replace("||", "\n")
+
+
+def _custom_guardrail_rules() -> list[str]:
+    return [
+        line.strip()
+        for line in custom_guardrails_text().splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+
+
+def _custom_guardrail_match(tool_name: str, args: dict[str, Any] | None) -> str | None:
+    if not _policy_enabled():
+        return None
+    rules = _custom_guardrail_rules()
+    if not rules:
+        return None
+    try:
+        args_text = json.dumps(args or {}, sort_keys=True, default=str)
+    except Exception:
+        args_text = str(args or {})
+    haystack = f"{tool_name}\n{args_text}".lower()
+    for rule in rules:
+        if rule.lower().startswith("tool:"):
+            blocked_tool = rule.split(":", 1)[1].strip().lower()
+            if blocked_tool and blocked_tool == tool_name.lower():
+                return f"Custom Security guardrail blocked tool '{tool_name}'."
+            continue
+        if rule.lower().startswith("regex:"):
+            pattern = rule.split(":", 1)[1].strip()
+            if not pattern:
+                continue
+            try:
+                if re.search(pattern, f"{tool_name}\n{args_text}", re.IGNORECASE):
+                    return f"Custom Security guardrail matched regex rule '{pattern[:120]}'."
+            except re.error:
+                continue
+            continue
+        if rule.lower() in haystack:
+            return f"Custom Security guardrail matched rule '{rule[:120]}'."
+    return None
 
 
 GLOBAL_COMPUTER_CONTROL_TTL_SECONDS = 24 * 60 * 60
@@ -457,6 +519,61 @@ def decide_tool_use(
             reason="Vault tools are restricted to configured Sparkbot operators.",
         )
 
+    custom_block_reason = _custom_guardrail_match(tool_name, args if isinstance(args, dict) else {})
+    if custom_block_reason:
+        return PolicyDecision(
+            tool_name=tool_name,
+            scope=policy.scope,
+            resource=policy.resource,
+            action="deny",
+            action_type=policy.action_type,
+            high_risk=True,
+            reason=custom_block_reason,
+        )
+
+    # Vault secrecy remains gated even in the default permissive owner-local mode.
+    if tool_name.startswith("vault_"):
+        if policy.default_action == "privileged":
+            if is_privileged:
+                return PolicyDecision(
+                    tool_name=tool_name,
+                    scope=policy.scope,
+                    resource=policy.resource,
+                    action="allow",
+                    action_type=policy.action_type,
+                    high_risk=policy.high_risk,
+                    reason=f"Privileged access to {policy.resource} is allowed (break-glass active).",
+                )
+            return PolicyDecision(
+                tool_name=tool_name,
+                scope=policy.scope,
+                resource=policy.resource,
+                action="privileged",
+                action_type=policy.action_type,
+                high_risk=policy.high_risk,
+                reason=f"'{tool_name}' requires break-glass privileged mode. Use /breakglass to authenticate.",
+            )
+        if policy.default_action == "privileged_reveal":
+            if is_privileged:
+                return PolicyDecision(
+                    tool_name=tool_name,
+                    scope=policy.scope,
+                    resource=policy.resource,
+                    action="confirm",
+                    action_type=policy.action_type,
+                    high_risk=policy.high_risk,
+                    reason=f"Destructive vault operation on {policy.resource} requires explicit confirmation.",
+                )
+            return PolicyDecision(
+                tool_name=tool_name,
+                scope=policy.scope,
+                resource=policy.resource,
+                action="privileged_reveal",
+                action_type=policy.action_type,
+                high_risk=policy.high_risk,
+                reason=f"'{tool_name}' requires break-glass privileged mode. Use /breakglass to authenticate.",
+            )
+
     # Global Computer Control bypass: routine non-vault diagnostics and actions
     # run across all rooms. High-risk edits/deletes/sends still require the
     # standard yes/no confirmation, and vault remains governed below.
@@ -475,17 +592,39 @@ def decide_tool_use(
             ),
         )
 
-    # Personal mode (default): no gates, no confirms, no denials — everything runs freely.
-    # Switch to office mode by setting SPARKBOT_GUARDIAN_POLICY_ENABLED=true.
+    # Personal mode (default): routine local/server/browser reads run without
+    # blockers. Write-like actions, sends, service control, memory compaction,
+    # and destructive operations still require explicit yes/no confirmation.
+    # Switch on Command Center Security, or set
+    # SPARKBOT_GUARDIAN_POLICY_ENABLED=true, to enforce the strict guide rails.
     if not _policy_enabled():
+        if policy.default_action == "deny":
+            action: PolicyAction = "deny"
+        else:
+            action = (
+                "confirm"
+                if (
+                    policy.default_action in {"confirm", "privileged", "privileged_reveal"}
+                    or policy.scope in {"write", "admin"}
+                    or (
+                        policy.scope == "execute"
+                        and policy.high_risk
+                        and tool_name not in {"server_read_command", "ssh_read_command"}
+                    )
+                )
+                else "allow"
+            )
         return PolicyDecision(
             tool_name=tool_name,
             scope=policy.scope,
             resource=policy.resource,
-            action="allow",
+            action=action,
             action_type=policy.action_type,
             high_risk=policy.high_risk,
-            reason="Guardian policy restrictions disabled by environment.",
+            reason=(
+                "Security guardrails are off; routine actions are allowed. "
+                "Writes, deletes, sends, service control, and critical changes still require yes/no confirmation."
+            ),
         )
 
     if tool_name == "shell_run" and policy.default_action == "confirm":

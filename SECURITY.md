@@ -1,6 +1,6 @@
 # Sparkbot Security Architecture
 
-> **tl;dr** — Sparkbot is built on a "policy before autonomy" principle. Every tool the LLM can call is classified, gated, audited, and logged before it touches anything external. The LLM cannot email, post to Slack, create GitHub issues, or run server commands without explicit human confirmation. This is architecture, not a config flag.
+> **tl;dr** — Sparkbot is built on a "policy before autonomy" principle. Every tool the LLM can call is classified, audited, and logged. Routine owner-local reads can run by default, but the LLM cannot email, post to Slack, create GitHub issues, edit/delete files, control services, perform browser writes, or reveal/write Vault secrets without explicit human confirmation or the operator PIN path.
 
 ---
 
@@ -53,15 +53,15 @@ Every tool is classified into one of four scopes before it can run:
 | `read` | allow | web search, list tasks, read calendar, fetch inbox |
 | `write` (internal) | allow | create task, set reminder, store memory |
 | `write` (external) | **confirm** | send email, post to Slack, create GitHub issue, create calendar event |
-| `execute` | confirm + execution gate | server commands, SSH, service control |
+| `execute` | allow routine reads; confirm high-risk actions | diagnostics, SSH reads, service control |
 
 The policy decision is recorded as a `policy_decision` audit entry on every tool call — allow, confirm, or deny — regardless of outcome.
 
-Operators can also ask Sparkbot to run `guardian_simulate_policy` before enabling an automation. The simulator returns the tool classification, current or requested Computer Control/operator context, and the resulting policy action without executing the target tool.
+Operators can also ask Sparkbot to run `guardian_simulate_policy` before enabling an automation. The simulator returns the tool classification, current or requested Security/operator context, and the resulting policy action without executing the target tool.
 
 ### Tool Guardrails
 
-Per-tool input guardrails run immediately before execution. They reject malformed payloads, empty high-risk messages, missing recipients/titles/start times, and secret-looking arguments that should be stored in Guardian Vault instead. Output guardrails run after LLM/dashboard execution and can reject unexpectedly large output or high-risk output that appears to contain secret-like material.
+Per-tool input guardrails run immediately before execution when strict Security guardrails are enabled. They reject malformed payloads, empty high-risk messages, missing recipients/titles/start times, and secret-looking arguments that should be stored in Guardian Vault instead. Output guardrails run after LLM/dashboard execution and can reject unexpectedly large output or high-risk output that appears to contain secret-like material.
 
 ### Write-Tool Confirmation Gate
 
@@ -69,9 +69,11 @@ Any action that touches an external system (email, Slack, GitHub, Notion, Conflu
 
 Pending confirmations are persisted in the Guardian approval store and can be approved or denied from the dashboard, Telegram, GitHub, and bridge surfaces. Approval consumes the stored tool payload and resumes that exact action; denial discards it.
 
-### Computer Control
+### Security Mode
 
-Local machine, browser-write, service, server, SSH, Vault, and comms-send operations require the room's `execution_allowed` flag to be explicitly enabled by the room owner or a break-glass operator PIN session. The flag defaults to `false` on every room. Even with Computer Control enabled, individual actions still go through the policy layer and confirmation modal when their policy requires it.
+Command Center exposes a **Security** checkbox beside the PIN/break-glass controls. It defaults off for owner-local installs so routine local machine, server, browser, terminal, SSH, and communication read tools can run without service/SSH allowlist blockers. Risky actions still require explicit yes/no confirmation or the operator PIN path: file edits, deletes, code changes, external sends, browser writes, service control, Vault reveal/write paths, and critical admin operations.
+
+When Security is checked, Sparkbot enables the stricter Guardian guardrails: service and SSH allowlists are enforced, per-tool input guardrails run, and owner-saved custom blockers apply. Custom blockers can be exact tool names, regex patterns, or plain text phrases.
 
 ### Executive Guardian
 
@@ -150,7 +152,7 @@ Sparkbot v2 has completed a full internal security audit across five phases:
 2. **Confirm before mutation.** Any action that changes state in an external system requires human confirmation.
 3. **Audit everything.** Every tool call — allowed or denied — is logged with a redacted record.
 4. **Default deny.** Unknown tools are denied, not allowed. Unknown scopes resolve to `admin/deny`.
-5. **Computer Control defaults off.** Local machine, server, SSH, browser-write, Vault, and comms-send access must be explicitly enabled per room by the room owner or unlocked with operator break-glass.
+5. **Security is owner-controlled.** Strict allowlists and custom blockers are enabled from Command Center Security; routine owner-local reads run by default, while risky writes, sends, service control, Vault reveal/write paths, and critical changes still require confirmation or operator PIN.
 6. **Least privilege.** Read-only access is always preferred. The Task Guardian only schedules read-only tools.
 7. **Secrets never in logs.** Audit redaction runs before every log write, not as a post-processing step.
 8. **Simulate before enabling.** Risky automations should be previewed with `guardian_simulate_policy` before users schedule or approve them.

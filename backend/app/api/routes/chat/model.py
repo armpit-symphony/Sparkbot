@@ -25,8 +25,11 @@ from app.api.routes.chat.agents import BUILT_IN_AGENTS, get_all_agents, register
 from app.core.config import settings
 from app.services.guardian import get_guardian_suite
 from app.services.guardian.policy import (
+    CUSTOM_GUARDRAILS_ENV,
     GLOBAL_COMPUTER_CONTROL_TTL_SECONDS,
+    custom_guardrails_text,
     global_bypass_status,
+    security_guardrails_enabled,
 )
 from app.api.routes.chat.llm import (
     AGENT_MODEL_OVERRIDES_ENV,
@@ -460,6 +463,8 @@ async def _build_controls_config(current_user: CurrentChatUser, notices: list[st
         "global_computer_control": global_control["active"],
         "global_computer_control_expires_at": global_control["expires_at"],
         "global_computer_control_ttl_remaining": global_control["ttl_remaining"],
+        "security_guardrails_enabled": security_guardrails_enabled(),
+        "custom_guardrails": custom_guardrails_text(),
         "agent_overrides": get_agent_model_overrides(),
         "available_agents": [
             {
@@ -533,6 +538,7 @@ async def build_safe_runtime_state(current_user: CurrentChatUser) -> dict[str, A
         "default_route_mode": "local" if default_provider == "ollama" else "cloud",
         "routing_policy": config.get("routing_policy") or {},
         "token_guardian_mode": str(config.get("token_guardian_mode") or "unknown"),
+        "security_guardrails_enabled": bool(config.get("security_guardrails_enabled")),
         "agent_overrides": config.get("agent_overrides") or {},
         "ollama_status": config.get("ollama_status") or {},
         "openrouter_configured": bool((provider_flags.get("openrouter") or {}).get("configured")),
@@ -650,6 +656,8 @@ class ControlsConfigUpdate(BaseModel):
     comms: CommsConfigInput | None = None
     token_guardian_mode: str | None = Field(default=None, pattern="^(off|shadow|live)$")
     global_computer_control: bool | None = None
+    security_guardrails_enabled: bool | None = None
+    custom_guardrails: str | None = Field(default=None, max_length=4000)
 
 
 def _global_computer_control_enabled() -> bool:
@@ -1044,6 +1052,40 @@ async def update_models_config(
             notices.append("Global Computer Control is ON for 24 hours. Vault tools remain PIN-protected; edits/deletes/critical changes still ask yes/no.")
         else:
             notices.append("Global Computer Control is OFF. Agents ask for PIN authorization before gated actions.")
+
+    if body.security_guardrails_enabled is not None:
+        new_state = bool(body.security_guardrails_enabled)
+        prior_state = security_guardrails_enabled()
+        env_updates["SPARKBOT_GUARDIAN_POLICY_ENABLED"] = "true" if new_state else "false"
+        if new_state != prior_state:
+            try:
+                from app.crud import create_audit_log
+                create_audit_log(
+                    session=session,
+                    tool_name="security_guardrails_on" if new_state else "security_guardrails_off",
+                    tool_input=json.dumps({"operator": str(current_user.username or current_user.id)}),
+                    tool_result="enabled" if new_state else "disabled",
+                    user_id=current_user.id,
+                    room_id=None,
+                    model=None,
+                )
+            except Exception:
+                pass
+        if new_state:
+            notices.append("Security guardrails are ON. Strict Security, PIN, allowlist, and custom block rules are enforced.")
+        else:
+            notices.append("Security guardrails are OFF. Routine actions run freely; writes, deletes, sends, service control, and critical changes still ask yes/no.")
+
+    if body.custom_guardrails is not None:
+        raw_rules = str(body.custom_guardrails or "")
+        rules = [
+            line.strip()
+            for line in raw_rules.replace("\r", "\n").split("\n")
+            if line.strip()
+        ][:100]
+        rules = [rule[:300] for rule in rules]
+        env_updates[CUSTOM_GUARDRAILS_ENV] = json.dumps(rules, separators=(",", ":"))
+        notices.append(f"Saved {len(rules)} custom Security guardrail rule{'s' if len(rules) != 1 else ''}.")
 
     if body.agent_overrides is not None:
         cleaned: dict[str, dict[str, str]] = {}

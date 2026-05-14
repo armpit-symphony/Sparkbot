@@ -340,6 +340,8 @@ export interface GuardianStatus {
   operator: { username: string; usernames_configured: boolean; open_mode: boolean }
   pin_configured: boolean
   vault_configured: boolean
+  security_guardrails_enabled?: boolean
+  custom_guardrails?: string
   memory_guardian_enabled: boolean
   task_guardian_enabled: boolean
   task_guardian_write_enabled: boolean

@@ -137,18 +137,20 @@ Command Center is the operator-facing page for Sparkbot operations. It replaces 
 
 - Uses the same top header/navigation flow as Chat, Workstation, Controls, and Robo OS.
 - Puts **Room Persona** at the top so the active room/persona context is visible before actions.
-- Surfaces **System Health**, **Computer Control**, **Token Guardian**, and **Task Guardian** from the existing Controls/backend sources.
+- Surfaces **System Health**, **Security/PIN controls**, **Token Guardian**, and **Task Guardian** from the existing Controls/backend sources.
 - Keeps the existing Guardian Spine queues, events, security, vault, and Task Guardian inspector panels below the main operator flow.
 - Leaves **Controls** focused on setup/configuration: provider keys, model stack, comms, agents, and routing configuration.
 - Marks actions with incomplete backend context as disabled, read-only, coming soon, or not configured instead of showing dead controls.
 
-Room Persona saves through the existing room update path. Computer Control and operator PIN use the same guarded model config and Guardian PIN APIs as before. Token Guardian mode saves through the shared model config endpoint. Task Guardian reads and operates room jobs through the existing room Guardian APIs, and write mode remains runtime-scoped.
+Room Persona saves through the existing room update path. Security mode and operator PIN use the same guarded model config and Guardian PIN APIs as before. Token Guardian mode saves through the shared model config endpoint. Task Guardian reads and operates room jobs through the existing room Guardian APIs, and write mode remains runtime-scoped.
 
 ---
 
 ## Computer Control
 
-Sparkbot can control the local machine it is running on. These capabilities are available in the desktop app and on any self-hosted server where Computer Control is enabled or a break-glass PIN session is active.
+Sparkbot can control the local machine it is running on. These capabilities are available in the desktop app and on self-hosted servers. By default, Sparkbot runs in an owner-local working mode: routine local machine, server, browser, terminal, SSH, and communication read tools can run without service/SSH allowlist blockers. Obvious risky actions still ask yes/no before execution, including file edits, deletes, code changes, external sends, browser writes, service control, Vault reveal/write paths, and critical admin operations.
+
+The Command Center box is labeled **Security**. Checking it enables the stricter Guardian guardrails, including the existing PIN, break-glass, service/SSH allowlist, and tool-input guardrail behavior. Owners can also save custom blockers in that panel. Supported custom guardrail entries are exact tool names (`tool:gmail_send`), regex blockers (`regex:rm\s+-rf`), and plain text phrases. Custom guardrails are enforced only while Security is enabled.
 
 ### Shell (`shell_run`)
 
@@ -157,7 +159,7 @@ Sparkbot can control the local machine it is running on. These capabilities are 
 - Output capped: 16 KB stdout + 4 KB stderr
 - Default timeout: 30 seconds (max 300 seconds)
 - Disable with `SPARKBOT_SHELL_DISABLE=true`
-- In Guardian policy mode, write-like shell commands such as file changes, package installs, builds, destructive commands, and git mutations require confirmation before execution
+- Write-like shell commands such as file changes, package installs, builds, destructive commands, and git mutations require confirmation before execution
 
 **Example prompts:**
 - *"Run `git status` in my project folder"*
@@ -210,12 +212,14 @@ Default timeout: 30 seconds (max 120 seconds). Disable with `SPARKBOT_CODE_DISAB
 | Tool | Description |
 |------|-------------|
 | `server_read_command` | Read-only diagnostics: system overview, memory, disk, listeners, processes, service status, recent logs |
-| `server_manage_service` | Start/stop/restart an approved systemd service |
-| `ssh_read_command` | Read-only diagnostics on an approved SSH host alias |
+| `server_manage_service` | Start/stop/restart a safe service name; service allowlists are enforced when Security is enabled |
+| `ssh_read_command` | Read-only diagnostics on an SSH host alias; host/service allowlists are enforced when Security is enabled |
 
 Configuration:
 ```env
 SPARKBOT_ALLOWED_SERVICES=sparkbot-v2
+SPARKBOT_GUARDIAN_POLICY_ENABLED=false
+SPARKBOT_CUSTOM_GUARDRAILS=
 SPARKBOT_SERVICE_USE_SUDO=false
 SPARKBOT_SERVER_COMMAND_TIMEOUT_SECONDS=20
 SPARKBOT_SSH_ALLOWED_HOSTS=
@@ -659,12 +663,14 @@ Opening a Specialty Wing office keeps the existing agent breakdown and adds both
 
 ### Computer Control Panel
 
+The panel reflects Command Center Security state. Security off means routine owner-local reads can run by default; risky commands, edits, browser writes, Vault access, service control, and comms sends still ask yes/no. Security on means stricter Guardian guardrails, allowlists, custom blockers, and PIN paths are active.
+
 Three capability cards visible in the Workstation:
 - **Shell** — run PowerShell/bash commands via chat
 - **Terminal** — interactive terminal panel (click Connect to start session)
 - **Browser** — open URLs, fill forms, click, save sessions
 
-The Workstation Computer Control card mirrors Sparkbot Controls: **Always on** means the room checkbox is enabled, and **PIN gated** means Sparkbot will ask for break-glass PIN authorization before risky commands, edits, browser writes, vault access, or comms sends.
+The legacy **Always on** wording is replaced by Security status in current Command Center and Workstation builds.
 
 ---
 
@@ -830,7 +836,7 @@ Proposals are durable and mirrored into Guardian Spine as awaiting approval. Spa
 
 ### Policy Simulator
 
-Use `guardian_simulate_policy` to test a proposed tool call before enabling an automation. The simulator returns the tool classification, current or requested Computer Control/operator context, and the resulting action: `allow`, `confirm`, `deny`, `privileged`, or `privileged_reveal`.
+Use `guardian_simulate_policy` to test a proposed tool call before enabling an automation. The simulator returns the tool classification, current or requested Security/operator context, and the resulting action: `allow`, `confirm`, `deny`, `privileged`, or `privileged_reveal`.
 
 Example:
 
@@ -863,8 +869,9 @@ User message → Token Guardian → Memory Guardian → LLM
 |---------|---------|
 | **Policy layer** | Every tool classified read / write / execute / admin; unknown tools denied by default |
 | **Policy simulator** | `guardian_simulate_policy` previews policy outcomes without executing the target tool |
-| **Write-tool gate** | LLM cannot email/Slack/GitHub/Notion/Confluence/Calendar/Drive autonomously unless Computer Control is on or the operator PIN has opened break-glass |
-| **Computer Control** | Room-level always-on control for shell, terminal, browser writes, service actions, and comms sends; when off, these actions require the 6-digit operator PIN |
+| **Write-tool gate** | LLM cannot email/Slack/GitHub/Notion/Confluence/Calendar/Drive, mutate files, control services, or perform browser writes without explicit confirmation or an operator PIN path |
+| **Security mode** | Command Center checkbox that turns strict Guardian guardrails on; when off, routine owner-local reads can run by default while risky writes and service actions still require confirmation |
+| **Custom guardrails** | Owner-saved exact tool, regex, or plain text blockers enforced while Security is enabled |
 | **Approval inbox** | Confirmation-gated actions are persisted and can be approved/denied from the dashboard, Telegram, GitHub, and comms bridges |
 | **Self-improvement gate** | Sparkbot can propose its own improvements, but applying code/config/docs/workflow changes requires explicit approval |
 | **Truth/confidence rule** | Statements under 90% confidence must say what could be wrong and what information or verification is missing |
@@ -882,7 +889,7 @@ User message → Token Guardian → Memory Guardian → LLM
 
 PIN-gated privileged mode for operator workflows.
 
-1. Set the 6-digit operator PIN once in Sparkbot Controls
+1. Set the 6-digit operator PIN once in Command Center Security
 2. Type `/breakglass` in chat
 3. Enter your operator PIN when prompted
 4. Sparkbot resumes the waiting privileged action
@@ -1282,7 +1289,8 @@ For public v1, `WORKSTATION_LIVE_TERMINAL_ENABLED` defaults to `false`. Enabling
 SPARKBOT_OPERATOR_USERNAMES=            # blank = open mode (any user is operator)
 SPARKBOT_OPERATOR_PIN_HASH=             # optional; Controls can create/change the local PIN hash
 SPARKBOT_VAULT_KEY=                     # generate: see .env.example
-SPARKBOT_GUARDIAN_POLICY_ENABLED=true   # true = Computer Control/PIN policy enforced
+SPARKBOT_GUARDIAN_POLICY_ENABLED=false  # true = strict Security guardrails and allowlists enforced
+SPARKBOT_CUSTOM_GUARDRAILS=             # JSON list or newline text of custom blockers, used when Security is on
 SPARKBOT_EXECUTIVE_GUARDIAN_ENABLED=true
 SPARKBOT_GUARDIAN_DATA_DIR=./data/guardian
 ```
@@ -1335,6 +1343,8 @@ SPARKBOT_SYSTEM_PROMPT_FILE=./prompts/system.md   # override default system prom
 
 ```env
 SPARKBOT_ALLOWED_SERVICES=sparkbot-v2
+SPARKBOT_GUARDIAN_POLICY_ENABLED=false
+SPARKBOT_CUSTOM_GUARDRAILS=
 SPARKBOT_SERVICE_USE_SUDO=false
 SPARKBOT_SERVER_COMMAND_TIMEOUT_SECONDS=20
 SPARKBOT_SSH_ALLOWED_HOSTS=
@@ -1921,6 +1931,8 @@ curl -b cookies.txt http://localhost:8000/api/v1/chat/system/watcher | python -m
 | Desktop release tag | `desktop-v{major}.{minor}.{patch}` |
 
 Desktop release tags and app versions are aligned on the `1.6.x` release line.
+
+For `v1.6.76`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release changes Computer Control from a global blocker into owner-controlled Security guardrails. With Security off, routine local machine, server, browser, terminal, SSH, and communication read tools can run by default; high-risk actions still require confirmation/PIN, including edits, deletes, external sends, browser writes, service control, code changes, and Vault reveal/write paths. Command Center now labels the old break-glass/PIN box as **Security**, and checking it enables the stricter Guardian behavior, including service/SSH allowlists and per-tool input guardrails. Owners can save custom blockers (`tool:...`, `regex:...`, or plain text) that apply while Security is on. Service-name and SSH allowlists now enforce only in Security-on mode, so owner-run server installs can inspect local bot services without predeclaring every service name.
 
 For `v1.6.75`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release fixes the Claude Subscription route used by chats and Workstation seats: Sparkbot was launching Claude Code with `--output-file`, but Claude Code v2.1.128 rejects that option, causing every `claude-sub/*` turn to fail even when `claude auth status` reported a valid subscription. Sparkbot now launches Claude Code in non-interactive text mode, reads stdout directly, and was smoke-tested with a live `OK` response. Workstation Claude invite desks now prefill `claude-sonnet-4-6` so saved seats carry an explicit Claude route instead of passing readiness with a key/token and falling back to the active default model. Local/desktop SQLite connections now apply `check_same_thread=False`, a 30-second DBAPI timeout, `PRAGMA busy_timeout=30000`, WAL journal mode, normal sync, and foreign keys to reduce Roundtable, meeting heartbeat, reminders, and bridge-save lock collisions that surfaced as `sqlite3.OperationalError: database is locked`. Added focused tests for the Claude CLI command contract and SQLite pragmas.
 

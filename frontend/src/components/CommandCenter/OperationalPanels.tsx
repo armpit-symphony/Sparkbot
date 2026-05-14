@@ -4,10 +4,10 @@ import {
   ClipboardList,
   KeyRound,
   LoaderCircle,
-  MonitorCog,
   RefreshCw,
   Route,
   ShieldCheck,
+  Shield,
   UserRoundCog,
 } from "lucide-react"
 
@@ -131,6 +131,7 @@ async function loadRoom(): Promise<RoomInfo | null> {
 export function CommandCenterOperations({ refreshNonce, onRefresh }: CommandCenterOperationsProps) {
   const [room, setRoom] = useState<RoomInfo | null>(null)
   const [personaDraft, setPersonaDraft] = useState("")
+  const [customGuardrailsDraft, setCustomGuardrailsDraft] = useState("")
   const [config, setConfig] = useState<SparkbotControlsConfig | null>(null)
   const [guardianStatus, setGuardianStatus] = useState<GuardianStatus | null>(null)
   const [dashboard, setDashboard] = useState<DashboardSummary | null>(null)
@@ -158,6 +159,7 @@ export function CommandCenterOperations({ refreshNonce, onRefresh }: CommandCent
       if (!alive) return
       setRoom(roomResult)
       setPersonaDraft(roomResult?.persona ?? "")
+      setCustomGuardrailsDraft(configResult?.custom_guardrails ?? "")
       setConfig(configResult)
       setGuardianStatus(guardianResult)
       setDashboard(dashboardResult)
@@ -192,13 +194,7 @@ export function CommandCenterOperations({ refreshNonce, onRefresh }: CommandCent
   const readyProviders = config?.providers?.filter(
     (provider) => provider.configured || provider.models_available === true,
   ).length ?? 0
-  const globalControlActive = Boolean(config?.global_computer_control)
-  const globalControlTtl = Number(config?.global_computer_control_ttl_remaining ?? 0)
-  const globalControlHours = Math.floor(globalControlTtl / 3600)
-  const globalControlMinutes = Math.floor((globalControlTtl % 3600) / 60)
-  const globalControlTimeLabel = globalControlActive
-    ? `${globalControlHours}h ${globalControlMinutes}m left`
-    : "Off"
+  const securityGuardrailsActive = Boolean(config?.security_guardrails_enabled ?? guardianStatus?.security_guardrails_enabled)
   const tokenGuardian = dashboard?.today?.token_guardian
   const tokenMode = config?.token_guardian_mode ?? dashboard?.summary?.token_guardian_mode ?? tokenGuardian?.mode ?? "off"
   const enabledTasks = useMemo(() => tasks.filter((task) => task.enabled).length, [tasks])
@@ -243,31 +239,49 @@ export function CommandCenterOperations({ refreshNonce, onRefresh }: CommandCent
     await reloadWithStatus(`Token Guardian set to ${nextMode}.`)
   }
 
-  async function toggleComputerControl() {
-    const next = !globalControlActive
+  async function toggleSecurityGuardrails() {
+    const next = !securityGuardrailsActive
     setMessage("")
     setError("")
-    const globalResponse = await apiFetch("/api/v1/chat/models/config", {
+    const response = await apiFetch("/api/v1/chat/models/config", {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ global_computer_control: next }),
+      body: JSON.stringify({ security_guardrails_enabled: next }),
     })
-    if (!globalResponse.ok) {
-      const data = await globalResponse.json().catch(() => null)
-      setError(data?.detail ?? "Computer Control could not be updated.")
+    if (!response.ok) {
+      const data = await response.json().catch(() => null)
+      setError(data?.detail ?? "Security guardrails could not be updated.")
       return
     }
-
-    if (room) {
-      await apiFetch(`/api/v1/chat/rooms/${room.id}`, {
-        method: "PATCH",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ execution_allowed: next }),
-      }).catch(() => null)
+    const data = await response.json().catch(() => null)
+    if (data) {
+      setConfig(data as SparkbotControlsConfig)
+      setCustomGuardrailsDraft((data as SparkbotControlsConfig).custom_guardrails ?? customGuardrailsDraft)
     }
-    await reloadWithStatus(next ? "Computer Control enabled for 24 hours." : "Computer Control disabled.")
+    await reloadWithStatus(next ? "Security guardrails enabled." : "Security guardrails disabled.")
+  }
+
+  async function saveCustomGuardrails() {
+    setMessage("")
+    setError("")
+    const response = await apiFetch("/api/v1/chat/models/config", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ custom_guardrails: customGuardrailsDraft }),
+    })
+    if (!response.ok) {
+      const data = await response.json().catch(() => null)
+      setError(data?.detail ?? "Custom guardrails could not be saved.")
+      return
+    }
+    const data = await response.json().catch(() => null)
+    if (data) {
+      setConfig(data as SparkbotControlsConfig)
+      setCustomGuardrailsDraft((data as SparkbotControlsConfig).custom_guardrails ?? customGuardrailsDraft)
+    }
+    await reloadWithStatus("Custom Security guardrails saved.")
   }
 
   async function setPin(currentPin: string, pin: string, pinConfirm: string) {
@@ -396,12 +410,14 @@ export function CommandCenterOperations({ refreshNonce, onRefresh }: CommandCent
           tokenGuardian={tokenGuardian}
           onSaveMode={saveTokenMode}
         />
-        <ComputerControlCard
-          active={globalControlActive}
-          ttlLabel={globalControlTimeLabel}
+        <SecurityCard
+          active={securityGuardrailsActive}
+          customGuardrails={customGuardrailsDraft}
+          onCustomGuardrailsChange={setCustomGuardrailsDraft}
+          onSaveCustomGuardrails={saveCustomGuardrails}
           room={room}
           guardianStatus={guardianStatus}
-          onToggle={toggleComputerControl}
+          onToggle={toggleSecurityGuardrails}
           onSetPin={setPin}
         />
       </div>
@@ -596,16 +612,20 @@ function Metric({ label, value }: { label: string; value: string }) {
   )
 }
 
-function ComputerControlCard({
+function SecurityCard({
   active,
-  ttlLabel,
+  customGuardrails,
+  onCustomGuardrailsChange,
+  onSaveCustomGuardrails,
   room,
   guardianStatus,
   onToggle,
   onSetPin,
 }: {
   active: boolean
-  ttlLabel: string
+  customGuardrails: string
+  onCustomGuardrailsChange: (value: string) => void
+  onSaveCustomGuardrails: () => void
   room: RoomInfo | null
   guardianStatus: GuardianStatus | null
   onToggle: () => void
@@ -621,27 +641,59 @@ function ComputerControlCard({
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <MonitorCog className="size-4" />
-          Computer Control
+          <Shield className="size-4" />
+          Security
         </CardTitle>
-        <CardDescription>Existing global control gate with PIN and confirmation guardrails.</CardDescription>
+        <CardDescription>Owner-enabled guardrails, custom blockers, and operator PIN.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className={`rounded-lg border px-3 py-3 ${active ? "border-blue-500/30 bg-blue-500/10" : "border-amber-500/30 bg-amber-500/10"}`}>
+        <div className={`rounded-lg border px-3 py-3 ${active ? "border-blue-500/30 bg-blue-500/10" : "bg-muted/20"}`}>
           <div className="flex items-center justify-between gap-3">
-            <div>
-              <div className="text-sm font-semibold">{active ? "Connected for routine actions" : "PIN gated"}</div>
+            <label className="flex min-w-0 items-start gap-3">
+              <input
+                type="checkbox"
+                checked={active}
+                onChange={() => onToggle()}
+                className="mt-0.5 h-4 w-4"
+              />
+              <div>
+              <div className="text-sm font-semibold">Security {active ? "on" : "off"}</div>
               <div className="mt-1 text-xs text-muted-foreground">
-                {active ? `Auto-resets in ${ttlLabel}.` : "Risky local actions require explicit approval and PIN."}
+                {active
+                  ? "Strict Security guardrails, PIN prompts, service allowlists, and custom blockers are active."
+                  : "Default owner mode: routine actions run; writes, deletes, sends, and service changes still ask yes/no."}
               </div>
-            </div>
+              </div>
+            </label>
             <Button size="sm" variant={active ? "outline" : "default"} onClick={onToggle}>
               {active ? "Turn off" : "Turn on"}
             </Button>
           </div>
         </div>
+        <div className="rounded-lg border bg-muted/20 p-3">
+          <div className="mb-2 flex items-center justify-between gap-2 text-xs font-semibold text-muted-foreground">
+            <span>Custom blockers</span>
+            <span>{customGuardrails.length}/4000</span>
+          </div>
+          <textarea
+            value={customGuardrails}
+            onChange={(event) => onCustomGuardrailsChange(event.target.value.slice(0, 4000))}
+            placeholder={"One rule per line. Examples:\ntool:gmail_send\nregex:rm\\s+-rf\nkalshi-live-trading"}
+            rows={4}
+            className="w-full resize-none rounded-md border bg-background px-3 py-2 font-mono text-xs"
+          />
+          <div className="mt-2 flex justify-end">
+            <Button size="sm" variant="outline" onClick={onSaveCustomGuardrails}>
+              Save guardrails
+            </Button>
+          </div>
+        </div>
         <div className="grid gap-2 text-xs">
-          <StatusPill label="Room execution" value={room?.execution_allowed ? "enabled" : "gated"} good={Boolean(room?.execution_allowed)} />
+          <StatusPill
+            label="Room execution"
+            value={!active ? "not enforced" : room?.execution_allowed ? "enabled" : "gated"}
+            good={active ? Boolean(room?.execution_allowed) : true}
+          />
           <StatusPill label="Operator PIN" value={pinConfigured ? "configured" : "required"} good={pinConfigured} />
           <StatusPill label="Break-glass" value={guardianStatus?.breakglass.active ? "active" : "inactive"} good={Boolean(guardianStatus?.breakglass.active)} />
         </div>
@@ -697,7 +749,7 @@ function ComputerControlCard({
           </Button>
         </div>
         <div className="rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground">
-          Vault, destructive edits, deletes, and external sends still use the existing approval and break-glass protections.
+          Rules apply when Security is on. Vault, destructive edits, deletes, and external sends still use the existing approval and break-glass protections.
         </div>
       </CardContent>
     </Card>

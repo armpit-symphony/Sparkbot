@@ -30,6 +30,8 @@ export interface SparkbotControlsConfig {
   global_computer_control?: boolean
   global_computer_control_expires_at?: number | null
   global_computer_control_ttl_remaining?: number | null
+  security_guardrails_enabled?: boolean
+  custom_guardrails?: string
   agent_overrides: Record<
     string,
     {

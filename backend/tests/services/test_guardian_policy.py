@@ -4,14 +4,42 @@ from app.services.guardian.policy import decide_tool_use, simulate_tool_policy
 
 # ── Personal mode (default, SPARKBOT_GUARDIAN_POLICY_ENABLED unset / false) ──
 
-def test_computer_control_on_allows_reads_and_confirms_high_risk_tools_by_default() -> None:
+def test_security_off_allows_reads_and_confirms_high_risk_tools_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     """Computer Control allows routine work while high-risk writes still confirm."""
-    read_decision = decide_tool_use("server_read_command", {}, room_execution_allowed=True)
+    monkeypatch.delenv("SPARKBOT_GUARDIAN_POLICY_ENABLED", raising=False)
+    read_decision = decide_tool_use("server_read_command", {}, room_execution_allowed=False)
     assert read_decision.action == "allow"
 
-    for tool in ("browser_click", "gmail_send", "slack_send_message"):
+    for tool in ("browser_click", "gmail_send", "slack_send_message", "server_manage_service"):
         decision = decide_tool_use(tool, {}, room_execution_allowed=True)
         assert decision.action == "confirm", f"{tool} should still confirm when Computer Control is on"
+
+
+def test_custom_security_guardrail_denies_matching_tool(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SPARKBOT_GUARDIAN_POLICY_ENABLED", "true")
+    monkeypatch.setenv("SPARKBOT_CUSTOM_GUARDRAILS", '["tool:gmail_send"]')
+
+    decision = decide_tool_use("gmail_send", {"to": "person@example.com"}, room_execution_allowed=True)
+
+    assert decision.action == "deny"
+    assert "Custom Security guardrail" in decision.reason
+
+
+def test_custom_security_guardrail_ignored_when_security_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SPARKBOT_GUARDIAN_POLICY_ENABLED", "false")
+    monkeypatch.setenv("SPARKBOT_CUSTOM_GUARDRAILS", '["tool:gmail_send"]')
+
+    decision = decide_tool_use("gmail_send", {"to": "person@example.com"}, room_execution_allowed=True)
+
+    assert decision.action == "confirm"
+
+
+def test_unknown_tools_stay_denied_when_security_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SPARKBOT_GUARDIAN_POLICY_ENABLED", "false")
+
+    decision = decide_tool_use("not_a_real_tool", {}, room_execution_allowed=False)
+
+    assert decision.action == "deny"
 
 
 # ── Office mode (SPARKBOT_GUARDIAN_POLICY_ENABLED=true) ──

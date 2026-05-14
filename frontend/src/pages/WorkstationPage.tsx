@@ -142,6 +142,7 @@ interface WorkstationOverview {
 
 interface ComputerControlRoomStatus {
   enabled: boolean | null
+  securityGuardrailsActive: boolean | null
   pinConfigured: boolean | null
   breakglassActive: boolean
   breakglassTtl: number | null
@@ -2786,9 +2787,10 @@ interface ComputerControlPanelProps {
 function ComputerControlPanel({ onClose, onOpenTerminal, status }: ComputerControlPanelProps) {
   const ACCENT = "#38bdf8"
   const enabled = status.enabled === true
+  const securityOff = status.securityGuardrailsActive === false
   const bgActive = status.breakglassActive === true
-  const effectivelyUnlocked = enabled || bgActive
-  const badgeText = enabled ? "Always on" : bgActive ? "Break-glass active" : "PIN gated"
+  const effectivelyUnlocked = securityOff || enabled || bgActive
+  const badgeText = securityOff ? "Security off" : enabled ? "Security on" : bgActive ? "Break-glass active" : "PIN gated"
   const badgeColor = effectivelyUnlocked ? "#4ade80" : "#fbbf24"
 
   const cap = (
@@ -2910,7 +2912,7 @@ function ComputerControlPanel({ onClose, onOpenTerminal, status }: ComputerContr
         <MonitorCog size={15} style={{ color: ACCENT }} />
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: ACCENT, letterSpacing: "0.06em", textTransform: "uppercase" }}>
-            Computer Control
+            Security & Computer Control
           </div>
           <div style={{ fontSize: 10, color: "#6b7280", marginTop: 1 }}>
             Shell · Terminal · Browser
@@ -2939,7 +2941,7 @@ function ComputerControlPanel({ onClose, onOpenTerminal, status }: ComputerContr
       <div style={{ flex: 1, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
         <p style={{ fontSize: 11, color: "#64748b", margin: 0, lineHeight: 1.65 }}>
           Sparkbot can control your local machine. Just ask it in chat — or use the terminal panel
-          to interact live. This follows the Computer Control state in Command Center.
+          to interact live. This follows the Security state in Command Center.
         </p>
 
         <div
@@ -2952,20 +2954,22 @@ function ComputerControlPanel({ onClose, onOpenTerminal, status }: ComputerContr
         >
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
             <span style={{ fontSize: 10, color: "#94a3b8", letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700 }}>
-              Controls status
+              Security status
             </span>
             <span style={{ fontSize: 9, color: badgeColor, border: `1px solid ${badgeColor}44`, borderRadius: 3, padding: "1px 7px", letterSpacing: "0.08em", textTransform: "uppercase" }}>
               {badgeText}
             </span>
           </div>
           <p style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.6, margin: "8px 0 0" }}>
-            {enabled
-              ? "Computer Control is on across chats and meetings. Diagnostics and routine actions can run; edits, deletes, sends, and critical changes still ask yes/no."
+            {securityOff
+              ? "Security guardrails are off. Routine diagnostics and actions can run; edits, deletes, sends, service control, and critical changes still ask yes/no."
+              : enabled
+              ? "Security guardrails are on. Room execution is enabled; service allowlists and custom blockers apply, and risky changes still ask yes/no."
               : bgActive
                 ? `Break-glass is active — all tools are unlocked except vault writes/reveals. ${status.breakglassTtl != null ? `Expires in ${Math.ceil(status.breakglassTtl / 60)} min.` : ""}`
                 : status.pinConfigured === false
-                  ? "Computer Control is off and no PIN is configured yet. Open Command Center to set the 6-digit PIN before privileged actions."
-                  : "Computer Control is off. Sparkbot will ask for the break-glass PIN before commands, edits, browser writes, vault access, or comms sends."}
+                  ? "Security guardrails are on and no PIN is configured yet. Open Command Center to set the 6-digit PIN before privileged actions."
+                  : "Security guardrails are on. Sparkbot will ask for the break-glass PIN before gated commands, edits, browser writes, vault access, or comms sends."}
           </p>
           {bgActive && (
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
@@ -4279,6 +4283,7 @@ export default function WorkstationPage() {
   const [creatingProject, setCreatingProject] = useState(false)
   const [computerControlStatus, setComputerControlStatus] = useState<ComputerControlRoomStatus>({
     enabled: null,
+    securityGuardrailsActive: null,
     pinConfigured: null,
     breakglassActive: false,
     breakglassTtl: null,
@@ -4315,6 +4320,12 @@ export default function WorkstationPage() {
       const bgTtl = typeof guardianStatusRes?.breakglass?.ttl_remaining === "number" ? guardianStatusRes.breakglass.ttl_remaining : null
       setComputerControlStatus({
         enabled: roomEnabled,
+        securityGuardrailsActive:
+          typeof configRes?.security_guardrails_enabled === "boolean"
+            ? configRes.security_guardrails_enabled
+            : typeof guardianStatusRes?.security_guardrails_enabled === "boolean"
+              ? guardianStatusRes.security_guardrails_enabled
+              : null,
         pinConfigured: typeof guardianStatusRes?.pin_configured === "boolean" ? guardianStatusRes.pin_configured : null,
         breakglassActive: bgActive,
         breakglassTtl: bgTtl,
@@ -4953,7 +4964,7 @@ export default function WorkstationPage() {
                   isSelected={panel?.kind === "terminal" && panel.station.id === localTerminalDesk.id}
                   compact
                 />
-                {/* Computer Control hub card */}
+                {/* Security / Computer Control hub card */}
                 <button
                   onClick={() => setPanel(panel?.kind === "computercontrol" ? null : { kind: "computercontrol" })}
                   style={{
@@ -4972,7 +4983,7 @@ export default function WorkstationPage() {
                   <MonitorCog size={15} style={{ color: "#38bdf8", flexShrink: 0 }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 11, fontWeight: 700, color: "#38bdf8", letterSpacing: "0.06em", textTransform: "uppercase" }}>
-                      Computer Control
+                      Security Control
                     </div>
                     <div style={{ fontSize: 10, color: "#64748b", marginTop: 1 }}>
                       Shell · Terminal · Browser
@@ -4983,8 +4994,8 @@ export default function WorkstationPage() {
                       &#x2713; Unlocked
                     </span>
                   )}
-                  <span style={{ fontSize: 9, color: computerControlStatus.enabled || computerControlStatus.breakglassActive ? "#4ade80" : "#fbbf24", border: `1px solid ${computerControlStatus.enabled || computerControlStatus.breakglassActive ? "#4ade80" : "#fbbf24"}44`, borderRadius: 3, padding: "1px 6px", letterSpacing: "0.08em", textTransform: "uppercase" }}>
-                    {computerControlStatus.enabled ? "Always on" : computerControlStatus.breakglassActive ? "Break-glass" : "PIN gated"}
+                  <span style={{ fontSize: 9, color: computerControlStatus.securityGuardrailsActive === false || computerControlStatus.enabled || computerControlStatus.breakglassActive ? "#4ade80" : "#fbbf24", border: `1px solid ${computerControlStatus.securityGuardrailsActive === false || computerControlStatus.enabled || computerControlStatus.breakglassActive ? "#4ade80" : "#fbbf24"}44`, borderRadius: 3, padding: "1px 6px", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                    {computerControlStatus.securityGuardrailsActive === false ? "Security off" : computerControlStatus.enabled ? "Security on" : computerControlStatus.breakglassActive ? "Break-glass" : "PIN gated"}
                   </span>
                 </button>
                 <button

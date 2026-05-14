@@ -244,6 +244,18 @@ _BROWSER_SESSION_LOCK = asyncio.Lock()
 _NAMED_SESSIONS: dict[str, str] = {}
 
 
+def _security_guardrails_enabled() -> bool:
+    try:
+        return bool(get_guardian_suite().policy.security_guardrails_enabled())
+    except Exception:
+        return os.getenv("SPARKBOT_GUARDIAN_POLICY_ENABLED", "false").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+
+
 def _browser_data_dir() -> Path:
     """Resolve the directory for persisted browser session state files."""
     root = os.getenv("SPARKBOT_DATA_DIR", "").strip()
@@ -1260,7 +1272,7 @@ TOOL_DEFINITIONS = [
         "function": {
             "name": "server_read_command",
             "description": (
-                "Run an approved read-only diagnostic command on the local server. "
+                "Run a read-only diagnostic command on the local server. "
                 "Use for checking uptime, disk, memory, network listeners, top processes, "
                 "service status, recent service logs, host identity (hostname/user/OS/time), "
                 "and installed toolchain versions (python/git/node/docker). "
@@ -1295,7 +1307,7 @@ TOOL_DEFINITIONS = [
                     },
                     "service": {
                         "type": "string",
-                        "description": "Required for service_status or service_logs; must be an allowed systemd unit name",
+                        "description": "Required for service_status or service_logs; when Security guardrails are on, must be in the allowed service list",
                     },
                     "lines": {
                         "type": "integer",
@@ -1311,7 +1323,7 @@ TOOL_DEFINITIONS = [
         "function": {
             "name": "server_manage_service",
             "description": (
-                "Start, stop, or restart an approved local system service. "
+                "Start, stop, or restart a local system service. "
                 "Use this only for explicit service control requests such as restart, stop, or start. "
                 "Do not use this for status, logs, or diagnostics. "
                 "Always confirm the target service and action with the user before calling this tool."
@@ -1321,7 +1333,7 @@ TOOL_DEFINITIONS = [
                 "properties": {
                     "service": {
                         "type": "string",
-                        "description": "Allowed local systemd service name, for example 'sparkbot-v2'",
+                        "description": "Local system service name; when Security guardrails are on, must be in the allowed service list",
                     },
                     "action": {
                         "type": "string",
@@ -1338,8 +1350,8 @@ TOOL_DEFINITIONS = [
         "function": {
             "name": "ssh_read_command",
             "description": (
-                "Run an approved read-only diagnostic command on a configured SSH host alias. "
-                "Use when asked to inspect a remote server or PC. Host must be in the SSH allowlist."
+                "Run a read-only diagnostic command on an SSH host alias. "
+                "Use when asked to inspect a remote server or PC. When Security guardrails are on, the host must be in the SSH allowlist."
             ),
             "parameters": {
                 "type": "object",
@@ -4209,15 +4221,21 @@ async def _run_exec(argv: list[str], timeout: int) -> tuple[int, str]:
     return process.returncode, _truncate_tool_output(output)
 
 
-def _validate_service_name(service: str, allowed_services: set[str]) -> tuple[Optional[str], Optional[str]]:
+def _validate_service_name(
+    service: str,
+    allowed_services: set[str],
+    *,
+    enforce_allowlist: bool | None = None,
+) -> tuple[Optional[str], Optional[str]]:
     unit = (service or "").strip()
     if not unit:
         return None, "Missing required field: service."
     if not _SAFE_SERVICE_RE.fullmatch(unit):
         return None, "Invalid service name."
-    if unit not in allowed_services:
+    enforce = _security_guardrails_enabled() if enforce_allowlist is None else enforce_allowlist
+    if enforce and unit not in allowed_services:
         return None, (
-            "Service is not allowed. Configure SPARKBOT_ALLOWED_SERVICES or "
+            "Security guardrails are on. Service is not allowed. Configure SPARKBOT_ALLOWED_SERVICES or "
             f"SPARKBOT_SSH_ALLOWED_SERVICES. Allowed: {_format_allowed_list(allowed_services)}"
         )
     return unit, None
@@ -4227,11 +4245,12 @@ def _validate_ssh_host(host: str) -> tuple[Optional[str], Optional[str]]:
     target = (host or "").strip()
     if not target:
         return None, "Missing required field: host."
-    if not _ALLOWED_SSH_HOSTS:
+    enforce = _security_guardrails_enabled()
+    if enforce and not _ALLOWED_SSH_HOSTS:
         return None, "SSH access is not configured. Set SPARKBOT_SSH_ALLOWED_HOSTS to approved SSH host aliases."
     if not _SAFE_SSH_HOST_RE.fullmatch(target):
         return None, "Invalid SSH host alias."
-    if target not in _ALLOWED_SSH_HOSTS:
+    if enforce and target not in _ALLOWED_SSH_HOSTS:
         return None, f"SSH host is not allowed. Allowed hosts: {_format_allowed_list(_ALLOWED_SSH_HOSTS)}"
     return target, None
 

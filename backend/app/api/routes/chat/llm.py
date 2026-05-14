@@ -2053,7 +2053,11 @@ async def stream_chat_with_tools(
     )
     guardian_suite = get_guardian_suite()
     try:
-        effective_execution_allowed = bool(room_execution_allowed) or bool(guardian_suite.policy.global_bypass_enabled())
+        effective_execution_allowed = (
+            bool(room_execution_allowed)
+            or bool(guardian_suite.policy.global_bypass_enabled())
+            or not bool(guardian_suite.policy.security_guardrails_enabled())
+        )
     except Exception:
         effective_execution_allowed = bool(room_execution_allowed)
 
@@ -2364,6 +2368,26 @@ async def stream_chat_with_tools(
                             )
                         except Exception:
                             pass
+
+                    try:
+                        security_guardrails_on = bool(guardian_suite.policy.security_guardrails_enabled())
+                    except Exception:
+                        security_guardrails_on = False
+                    if security_guardrails_on:
+                        input_guardrail = guardian_suite.tool_guardrails.validate_tool_input(
+                            tool_name,
+                            tool_args if isinstance(tool_args, dict) else {},
+                        )
+                        if not input_guardrail.allowed:
+                            result = f"TOOL GUARDRAIL REJECTED: {input_guardrail.reason}"
+                            yield {"type": "tool_start", "tool": tool_name, "input": tool_args}
+                            yield {"type": "tool_done", "tool": tool_name, "result": result[:300]}
+                            msgs.append({
+                                "role": "tool",
+                                "tool_call_id": tc.id,
+                                "content": result,
+                            })
+                            continue
 
                     if decision.action == "deny":
                         result = f"POLICY DENIED: {decision.reason}"

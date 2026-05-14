@@ -505,6 +505,7 @@ def guardian_status(current_user: CurrentChatUser) -> dict[str, Any]:
     import os
     from app.services.guardian.auth import get_active_session, operator_usernames
     from app.services.guardian import task_guardian as tg
+    from app.services.guardian.policy import custom_guardrails_text, security_guardrails_enabled
 
     priv_session = get_active_session(str(current_user.id))
     configured_usernames = operator_usernames()
@@ -521,6 +522,8 @@ def guardian_status(current_user: CurrentChatUser) -> dict[str, Any]:
         },
         "pin_configured": get_guardian_suite().auth.pin_configured(),
         "vault_configured": bool(os.getenv("SPARKBOT_VAULT_KEY", "").strip()),
+        "security_guardrails_enabled": security_guardrails_enabled(),
+        "custom_guardrails": custom_guardrails_text(),
         "memory_guardian_enabled": os.getenv("SPARKBOT_MEMORY_GUARDIAN_ENABLED", "true").strip().lower() not in {"0", "false", "no", "off"},
         "task_guardian_enabled": os.getenv("SPARKBOT_TASK_GUARDIAN_ENABLED", "true").strip().lower() not in {"0", "false", "no", "off"},
         "task_guardian_write_enabled": tg.TASK_GUARDIAN_WRITE_ENABLED,

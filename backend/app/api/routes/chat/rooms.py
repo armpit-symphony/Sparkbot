@@ -1504,11 +1504,18 @@ async def stream_room_message(
     if room.description and room.description.strip():
         _room_ctx_parts.append(f"Purpose: {room.description.strip()}")
     try:
-        from app.services.guardian.policy import global_bypass_status as _global_bypass_status
+        from app.services.guardian.policy import (
+            global_bypass_status as _global_bypass_status,
+            security_guardrails_enabled as _security_guardrails_enabled,
+        )
         global_control_active = bool(_global_bypass_status().get("active"))
+        security_guardrails_on = bool(_security_guardrails_enabled())
     except Exception:
         global_control_active = False
-    if global_control_active:
+        security_guardrails_on = False
+    if not security_guardrails_on:
+        control_context = "Security: OFF - routine local machine, server, browser, terminal, SSH, and comms tools are available; edits, deletes, sends, service control, and critical changes still ask yes/no"
+    elif global_control_active:
         control_context = "Computer Control: ON globally - local machine, browser, terminal, and comms tools are enabled across all rooms; edits, deletes, sends, and critical changes still ask yes/no"
     elif room.execution_allowed:
         control_context = "Computer Control: ON - local machine, browser, terminal, and comms tools are enabled; edits, deletes, sends, and critical changes still ask yes/no"

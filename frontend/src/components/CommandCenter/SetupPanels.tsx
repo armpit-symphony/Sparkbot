@@ -66,6 +66,7 @@ export interface SetupPanelProps {
   savingExecution: boolean
   executionSaved: boolean
   executionError: string
+  customGuardrails: string
   savingPin: boolean
   pinSaved: boolean
   pinError: string
@@ -105,6 +106,8 @@ export interface SetupPanelProps {
   onTokenGuardianModeChange: (value: string) => void
   onSaveTokenGuardianMode: () => void
   onToggleExecution: (enabled: boolean) => void
+  onCustomGuardrailsChange: (value: string) => void
+  onSaveCustomGuardrails: () => void
   onSavePin: (currentPin: string, pin: string, pinConfirm: string) => void
   onOllamaBaseUrlChange: (url: string) => void
   onCheckOllamaStatus: () => void
@@ -184,13 +187,7 @@ function useSetupHelpers(props: SetupPanelProps) {
   const ollamaProvider = modelsConfig?.providers?.find((p) => p.id === "ollama")
   const routingAgents = modelsConfig?.available_agents ?? []
   const pinConfigured = Boolean(guardianStatus?.pin_configured)
-  const globalControlActive = Boolean(modelsConfig?.global_computer_control)
-  const globalControlTtl = Number(modelsConfig?.global_computer_control_ttl_remaining ?? 0)
-  const globalControlHours = Math.floor(globalControlTtl / 3600)
-  const globalControlMinutes = Math.floor((globalControlTtl % 3600) / 60)
-  const globalControlTimeLabel = globalControlActive
-    ? `${globalControlHours}h ${globalControlMinutes}m left`
-    : "Off"
+  const securityGuardrailsActive = Boolean(modelsConfig?.security_guardrails_enabled ?? guardianStatus?.security_guardrails_enabled)
   const readyProviderCount = modelsConfig?.providers?.filter(
     (p) => p.configured || p.models_available === true,
   ).length ?? 0
@@ -209,7 +206,7 @@ function useSetupHelpers(props: SetupPanelProps) {
     localModelOptions, stackModelGroups, modelOptionLabel, hasOpenRouterConfigured,
     directProviderLabel, directProviderKeyField, directProviderAuthModes,
     directProviderIsConfigured, directProviderModels, ollamaProvider, routingAgents,
-    pinConfigured, globalControlActive, globalControlTimeLabel,
+    pinConfigured, securityGuardrailsActive,
     readyProviderCount, enabledChannelCount,
   }
 }
@@ -607,12 +604,13 @@ export function AISetupPanel(props: SetupPanelProps) {
 export function PinSecurityPanel(props: SetupPanelProps) {
   const {
     guardianStatus,
+    customGuardrails,
     savingExecution, executionSaved, executionError,
     savingPin, pinSaved, pinError,
-    onToggleExecution, onSavePin, onRefresh,
+    onToggleExecution, onCustomGuardrailsChange, onSaveCustomGuardrails, onSavePin, onRefresh,
   } = props
 
-  const { pinConfigured, globalControlActive, globalControlTimeLabel } = useSetupHelpers(props)
+  const { pinConfigured, securityGuardrailsActive } = useSetupHelpers(props)
 
   const [currentPinDraft, setCurrentPinDraft] = useState("")
   const [pinDraft, setPinDraft] = useState("")
@@ -628,36 +626,72 @@ export function PinSecurityPanel(props: SetupPanelProps) {
     <div className="rounded-xl border border-blue-500/20 bg-card p-5 space-y-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold">PIN & Security</h2>
-          <p className="text-xs text-muted-foreground">Computer Control and operator PIN management</p>
+          <h2 className="text-sm font-semibold">Security</h2>
+          <p className="text-xs text-muted-foreground">Owner-enabled guardrails, custom blockers, and operator PIN management</p>
         </div>
         <button onClick={onRefresh} className="rounded border px-1.5 py-0.5 text-[10px] hover:bg-muted" type="button">
           <span className="inline-flex items-center gap-1"><RefreshCw className="size-3" /> Refresh</span>
         </button>
       </div>
 
-      {/* Computer Control toggle */}
-      <div className={`rounded-lg border px-3 py-3 ${globalControlActive ? "border-blue-500/30 bg-blue-500/10" : "border-amber-500/30 bg-amber-500/10"}`}>
+      {/* Security guardrails toggle */}
+      <div className={`rounded-lg border px-3 py-3 ${securityGuardrailsActive ? "border-blue-500/30 bg-blue-500/10" : "border-muted bg-muted/20"}`}>
         <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="text-xs font-semibold">{globalControlActive ? "Computer Control ON" : "Computer Control OFF"}</div>
-            <div className="mt-1 text-[10px] text-muted-foreground">
-              {globalControlActive
-                ? `Active in every chat. Auto-resets in ${globalControlTimeLabel}.`
-                : "Agents ask yes + PIN before gated local actions."}
+          <label className="flex min-w-0 items-start gap-3">
+            <input
+              type="checkbox"
+              checked={securityGuardrailsActive}
+              disabled={savingExecution}
+              onChange={(event) => onToggleExecution(event.target.checked)}
+              className="mt-0.5 h-4 w-4"
+            />
+            <div>
+              <div className="text-xs font-semibold">Security {securityGuardrailsActive ? "ON" : "OFF"}</div>
+              <div className="mt-1 text-[10px] text-muted-foreground">
+                {securityGuardrailsActive
+                  ? "Strict Security guardrails, PIN prompts, service allowlists, and custom blockers are active."
+                  : "Default owner mode: routine actions run; writes, deletes, sends, and service changes still ask yes/no."}
+              </div>
             </div>
-          </div>
-          <button type="button" disabled={savingExecution} onClick={() => onToggleExecution(!globalControlActive)}
+          </label>
+          <button type="button" disabled={savingExecution} onClick={() => onToggleExecution(!securityGuardrailsActive)}
             className={`min-w-24 rounded-md border px-3 py-2 text-xs font-semibold transition-colors ${
-              globalControlActive
+              securityGuardrailsActive
                 ? "border-blue-500/40 bg-blue-600 text-white"
-                : "border-amber-500/40 bg-background text-amber-700 hover:bg-amber-500/10"
+                : "border-muted bg-background hover:bg-muted"
             }`}>
-            {savingExecution ? "Saving..." : globalControlActive ? "Turn Off" : "Turn On"}
+            {savingExecution ? "Saving..." : securityGuardrailsActive ? "Turn Off" : "Turn On"}
           </button>
         </div>
         {executionSaved && <p className="mt-1 text-[10px] font-medium text-blue-600">Saved.</p>}
         {executionError && <p className="mt-1 text-[10px] font-medium text-destructive">{executionError}</p>}
+      </div>
+
+      {/* Custom guardrails */}
+      <div className="rounded-md border bg-muted/20 p-3">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Custom blockers
+          </span>
+          <span className="text-[10px] text-muted-foreground">{customGuardrails.length}/4000</span>
+        </div>
+        <textarea
+          className="mt-2 h-28 w-full resize-none rounded border bg-background px-2 py-1.5 font-mono text-xs"
+          value={customGuardrails}
+          onChange={(event) => onCustomGuardrailsChange(event.target.value.slice(0, 4000))}
+          placeholder={"One rule per line. Examples:\ntool:gmail_send\nregex:rm\\s+-rf\nkalshi-live-trading"}
+        />
+        <div className="mt-2 flex justify-end">
+          <button type="button"
+            className="rounded-md border px-2 py-1 text-[10px] font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={savingExecution}
+            onClick={onSaveCustomGuardrails}>
+            {savingExecution ? "Saving..." : "Save guardrails"}
+          </button>
+        </div>
+        <p className="mt-1 text-[10px] text-muted-foreground">
+          Rules apply when Security is on. Use plain text, tool:name, or regex:pattern.
+        </p>
       </div>
 
       {/* PIN management */}

@@ -6,7 +6,7 @@ Use it to chat, search, summarize documents, control a browser, run shell comman
 
 **Download:** [armpit-symphony.github.io/Sparkbot](https://armpit-symphony.github.io/Sparkbot/)
 
-**Current release line:** v1.6.75
+**Current release line:** v1.6.76
 
 > Sparkbot stores its app data locally. If you connect a cloud LLM provider or an external service, the text and actions needed for that provider or service are sent to that provider. Local models can run without an LLM cloud account.
 
@@ -91,7 +91,7 @@ The desktop app is the easiest path for one person. Docker and systemd deploymen
 ### Workstation
 - **Office floor** — visual grid of all your AI desks: Sparkbot, model stack companions, agents, invite seats, terminal
 - **Unified top tabs** — Chat, Workstation, Robo OS, Command Center, and Info stay visible from the main app surfaces
-- **Command Center** — Sparkbot's unified operational hub now includes AI Setup, PIN and security, comms connectors, agent management, Room Persona, System Health, Computer Control, Token Guardian, Task Guardian, and Spine/Guardian queues
+- **Command Center** — Sparkbot's unified operational hub now includes AI Setup, Security/PIN controls, comms connectors, agent management, Room Persona, System Health, Token Guardian, Task Guardian, and Spine/Guardian queues
 - **Phone access** — the full workstation now opens on phone-sized screens as a horizontally scrollable operations map instead of blocking mobile users
 - **Robo OS** — Workstation button for the unified MCP control plane, LIMA Robotics OS manifests, policy tags, no-hardware replay/simulation commands, and robot-skill safety posture
 - **Invite Wing** — seat any model with its own API key and model ID; routes directly to that provider. The **Claude** desk supports API key or subscription token setup, the **ChatGPT/Codex** desk defaults to the local Codex subscription bridge, and the third desk is preset for **xAI Grok**
@@ -122,8 +122,8 @@ The desktop app is the easiest path for one person. Docker and systemd deploymen
 
 ### Security
 - **Policy layer** — every tool classified read / write / execute / admin; unknown tools denied by default
-- **Computer Control** — room-level always-on device control; when off, commands, edits, browser writes, comms sends, Vault, and break-glass actions require the 6-digit operator PIN
-- **Write-tool confirmation** — confirmation and break-glass flows stop risky writes unless Computer Control is explicitly on
+- **Security controls** — strict Guardian guardrails are owner-enabled from Command Center; routine local/server reads work by default while risky changes still ask yes/no
+- **Write-tool confirmation** — confirmation and break-glass flows stop risky writes, deletes, sends, browser writes, service control, and Vault reveal/write paths
 - **Run timeline** — dashboard trace endpoint shows policy/tool events with model, agent, decision, summary, and audit hash
 - **Connector health** — dashboard endpoint reports setup state, read/write scopes, setup tests, and audit metadata
 - **Workflow templates + evals** — governed workflow templates and deterministic agent-behavior evals ship with the Guardian dashboard
@@ -337,9 +337,11 @@ Type `/` in the input to open the command menu.
 | `/perf` | Model + tool latency, call counts, and last error this session |
 | `/clear` | Clear view (history preserved on server) |
 
-### Computer Control
+### Computer Control And Security
 
-Computer Control capabilities are shown in **Command Center** and mirrored in the **Workstation → Computer Control** panel. Command Center keeps the existing approval, break-glass, and 6-digit PIN guardrails.
+Computer Control capabilities are shown in **Command Center** and mirrored in the **Workstation → Computer Control** panel. Sparkbot now defaults to an owner-local working mode where routine local machine, server, browser, terminal, SSH, and comms read tools can run without service/SSH allowlist blockers. Obvious risky actions still ask yes/no before execution: file edits, deletes, code changes, external sends, browser writes, service control, Vault reveal/write paths, and critical admin operations.
+
+The Command Center box is labeled **Security**. Checking it turns the stricter Guardian guardrails on, including the existing PIN, break-glass, service/SSH allowlist, and tool-input guardrail behavior. The same panel includes a custom guardrails editor with a Save button; owners can add exact tool blockers (`tool:gmail_send`), regex blockers (`regex:rm\s+-rf`), or plain text phrases that should be denied while Security is enabled.
 
 **Shell commands** — just ask:
 ```
@@ -371,7 +373,7 @@ Type `@` in the input to get the autocomplete picker. Create custom agents in **
 
 ### Command Center
 
-Open **Command Center** from the top tabs or `/spine` (alias: `/command-center`). It is the official operator page for Room Persona, System Health, Computer Control, Token Guardian, Task Guardian, and Guardian Spine queues/logs. The page uses the same top navigation pattern as Chat, Workstation, and Controls, with the old Spine Ops internals preserved behind the route/component names where needed.
+Open **Command Center** from the top tabs or `/spine` (alias: `/command-center`). It is the official operator page for Room Persona, System Health, Security/PIN controls, Token Guardian, Task Guardian, and Guardian Spine queues/logs. The page uses the same top navigation pattern as Chat, Workstation, and Controls, with the old Spine Ops internals preserved behind the route/component names where needed.
 
 Controls is now configuration-focused: providers, model stack, comms, agents, and model routing setup stay there, while operational status/actions live in Command Center. Planned actions without complete backend wiring are disabled or marked as not configured/read-only instead of appearing as live controls.
 
@@ -604,6 +606,7 @@ User message → Token Guardian → Memory Guardian → LLM
 
 | Version | Date | Highlights |
 |---------|------|-----------|
+| v1.6.76 | May 2026 | Owner-controlled Security mode. Sparkbot now defaults to an owner-local working mode where routine local machine/server/browser/terminal/SSH/comms read tools can run without the old Computer Control and service allowlist blockers; risky actions still require confirmation/PIN, including edits, deletes, sends, browser writes, service control, code changes, and Vault reveal/write paths. Command Center relabels the old break-glass/PIN box as Security; checking it turns the stricter Guardian guardrails back on. Added a custom guardrails editor with a Save button for exact tool blockers, regex blockers, and plain text blockers while Security is enabled. Service and SSH allowlists now apply only when Security is enabled, so owner-run server installs can inspect local workloads such as trading bots without predeclaring every service. Downloader, package metadata, README, capabilities docs, security docs, service worker, public-download docs, and release notes advanced to v1.6.76. |
 | v1.6.75 | May 2026 | Claude Sub + Roundtable lock reliability. Fixed the Claude Subscription route used by chats and Workstation seats: Sparkbot was launching Claude Code with an unsupported `--output-file` flag, so the installed Claude CLI rejected every `claude-sub/*` turn even though `claude auth status` showed a valid subscription. The route now reads Claude CLI stdout directly with non-interactive text output, and a live smoke test returned `OK`. Workstation Claude invite desks now prefill an explicit Claude model so saved meeting seats do not accidentally fall back to the active default model. SQLite local/desktop engine setup now enables `busy_timeout=30000`, WAL journal mode, normal sync, foreign keys, and `check_same_thread=False`, reducing Roundtable, Telegram, reminder, and meeting heartbeat lock collisions that surfaced as `database is locked` during multi-agent saves. Added focused tests for the Claude CLI command contract and SQLite pragmas; downloader, package metadata, README, capabilities docs, service worker, and release notes advanced to v1.6.75. |
 | v1.6.74 | May 2026 | Self-diagnostic profiles + log hygiene. After v1.6.73 unstuck the policy gate, the bot still returned "Live diagnostics are policy-blocked" when asked for a self-diagnostic audit because it was trying to pass raw shell commands (`Get-Date`, `hostname`, `whoami`, `git --version`) as the `command` value of `server_read_command` — but that parameter is enum-constrained to curated profiles, and the validator's "Unsupported server command. Allowed: ..." message was being misnarrated as a policy block. Added two new profiles: `host_identity` (hostname + user + OS + ISO time) and `toolchain_versions` (python/git/node/npm/docker, missing tools don't abort the audit). Tightened the rejection wording to lead with "this is a parameter validation error, not a policy denial" and list curated profiles. Updated the tool description so the LLM has a self-diagnostic recipe. Also: litellm was logging system prompts, room memory excerpts, and tool-definition manifests in plaintext to `backend.log` at DEBUG — `app/main.py` now sets the litellm logger family to WARNING by default; override with `SPARKBOT_LITELLM_LOG_LEVEL=debug`. Removed two unreachable duplicate calendar skill plugins (`backend/skills/calendar_create_event.py`, `backend/skills/calendar_list_events.py`) that fired "Duplicate tool definition ignored" warnings on every launch. Split the pre-existing Windows-failing `service_logs` test into Linux/Windows variants. 4 new tests, 190 passed + 1 skipped overall. |
 | v1.6.73 | May 2026 | Break-glass policy fix: `decide_tool_use` was returning `action="privileged"` (i.e. "enter your PIN with /breakglass") for tools with `requires_execution_gate=True` (`server_read_command`, `ssh_read_command`, `server_manage_service`, write-like `shell_run`, browser writes) even when break-glass was already active. The lower active-break-glass branch was unreachable because the gated-tool branch short-circuited first. Surfaced when the user triggered break-glass, asked for a self-diagnostic audit, and got "FAIL: Live diagnostics are policy-blocked in this environment; all PowerShell checks were rejected" instead of actual diagnostics. Fixed by checking `is_privileged` before `is_operator` in the gated-tool branch. 4 new regression tests, 183 services tests pass overall. |

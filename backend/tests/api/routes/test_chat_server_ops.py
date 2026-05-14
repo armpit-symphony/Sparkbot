@@ -6,7 +6,8 @@ import pytest
 from app.api.routes.chat import tools
 
 
-def test_server_manage_service_rejects_unapproved_service(monkeypatch) -> None:
+def test_server_manage_service_rejects_unapproved_service_when_security_on(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKBOT_GUARDIAN_POLICY_ENABLED", "true")
     monkeypatch.setattr(tools, "_ALLOWED_LOCAL_SERVICES", {"sparkbot-v2"})
 
     result = asyncio.run(tools._server_manage_service("nginx", "restart"))
@@ -14,7 +15,26 @@ def test_server_manage_service_rejects_unapproved_service(monkeypatch) -> None:
     assert "Service is not allowed" in result
 
 
-def test_ssh_read_command_requires_configured_hosts(monkeypatch) -> None:
+def test_server_manage_service_allows_safe_service_names_when_security_off(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    async def fake_run_exec(argv, timeout):
+        captured["argv"] = argv
+        captured["timeout"] = timeout
+        return 0, "ok"
+
+    monkeypatch.setenv("SPARKBOT_GUARDIAN_POLICY_ENABLED", "false")
+    monkeypatch.setattr(tools, "_ALLOWED_LOCAL_SERVICES", {"sparkbot-v2"})
+    monkeypatch.setattr(tools, "_run_exec", fake_run_exec)
+
+    result = asyncio.run(tools._server_manage_service("kalshi-bot-1", "restart"))
+
+    assert "SUCCESS" in result
+    assert "kalshi-bot-1" in " ".join(captured["argv"])
+
+
+def test_ssh_read_command_requires_configured_hosts_when_security_on(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKBOT_GUARDIAN_POLICY_ENABLED", "true")
     monkeypatch.setattr(tools, "_ALLOWED_SSH_HOSTS", set())
 
     result = asyncio.run(tools._ssh_read_command("office-pc", "system_overview"))

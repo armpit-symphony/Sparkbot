@@ -1,5 +1,15 @@
 # Release Notes
 
+## Sparkbot v1.6.76
+
+- Owner-local Security default: routine local machine, server, browser, terminal, SSH, and communication read tools can run without the old Computer Control and allowlist blockers when Security guardrails are off.
+- Risky operations still require explicit approval: deletes, edits, sends, browser writes, service control, code changes, Vault reveal/write paths, and critical admin actions continue to use the confirmation/PIN path.
+- Command Center now labels the old break-glass/PIN box as Security. Checking it turns the stricter Guardian guardrails back on, including service/SSH allowlists and per-tool input guardrails.
+- Added owner custom guardrails in Command Center with a Save button. Custom entries can block exact tool names (`tool:gmail_send`), regex patterns (`regex:rm\s+-rf`), or plain text phrases while Security is enabled.
+- Server operations are less brittle for owner-run installs: service-name and SSH allowlists are enforced only when Security is enabled, so Sparkbot can inspect local services such as trading bots without every service being predeclared.
+- Tests: added coverage for Security-off read access, high-risk confirmation fallback, strict service/SSH allowlists when Security is on, and custom guardrail enforcement.
+- Release metadata: backend, frontend, Tauri shell, package lock, public downloader fallback links, service worker cache key, README, capabilities docs, security docs, public-download docs, and release notes advanced to v1.6.76.
+
 ## Sparkbot v1.6.75
 
 - Claude Sub route fix: the installed Claude Code CLI reports a valid Pro subscription, but Sparkbot was invoking it with `--output-file`, which Claude Code v2.1.128 rejects. Chats and Workstation seats using `claude-sub/*` therefore failed immediately with "unknown option '--output-file'." Sparkbot now invokes Claude Code in non-interactive text mode and reads stdout directly. A live smoke test with the fixed command returned `OK`.
