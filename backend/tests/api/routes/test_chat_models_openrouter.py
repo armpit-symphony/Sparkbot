@@ -60,6 +60,41 @@ def test_codex_cli_timeout_can_be_disabled(monkeypatch) -> None:
     assert llm._codex_cli_timeout_seconds() is None
 
 
+def test_claude_cli_subscription_reads_stdout_without_output_file(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeProc:
+        returncode = 0
+
+        async def communicate(self, stdin: bytes):
+            captured["stdin"] = stdin
+            return b"Claude response\n", b""
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return FakeProc()
+
+    monkeypatch.setattr(llm, "_claude_cli_auth_available", lambda: True)
+    monkeypatch.setattr(llm, "_claude_cli_executable", lambda: "claude")
+    monkeypatch.setattr(llm.asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+
+    response = asyncio.run(
+        llm._claude_cli_acompletion(
+            model="claude-sub/sonnet",
+            messages=[{"role": "user", "content": "Hello"}],
+        )
+    )
+
+    args = tuple(captured["args"])  # type: ignore[arg-type]
+    stdin = captured["stdin"]
+    assert isinstance(stdin, bytes)
+    assert "--output-file" not in args
+    assert "--output-format" in args
+    assert "Claude response" == response.choices[0].message.content
+    assert b"USER:\nHello" in stdin
+
+
 def test_workstation_stack_agents_lock_to_stack_models(monkeypatch) -> None:
     monkeypatch.setenv("SPARKBOT_MODEL", "openrouter/openai/gpt-4o-mini")
     monkeypatch.setenv("SPARKBOT_BACKUP_MODEL_1", "ollama/qwen2:latest")

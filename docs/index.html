@@ -979,7 +979,7 @@
         <span class="logo-name">Sparkbot</span>
       </div>
 
-      <div class="hero-badge">Free &amp; Open Source &nbsp;-&nbsp; <span id="version-badge">v1.6.74</span></div>
+      <div class="hero-badge">Free &amp; Open Source &nbsp;-&nbsp; <span id="version-badge">v1.6.75</span></div>
       <h1>Your own AI,<br>on your computer</h1>
 
       <p class="hero-tagline">
@@ -1001,7 +1001,7 @@
       <div class="download-primary-wrap">
         <a
           id="download-windows-primary"
-          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.74/Sparkbot.Local_1.6.74_x64-setup.exe"
+          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.75/Sparkbot.Local_1.6.75_x64-setup.exe"
           class="btn-download-windows"
           aria-label="Download Sparkbot for Windows, latest stable version"
         >
@@ -1013,7 +1013,7 @@
         </a>
       </div>
 
-      <p class="download-meta"><span id="download-version-label">Version 1.6.74</span> &nbsp;-&nbsp; Windows 10 &amp; 11 &nbsp;-&nbsp; 64-bit &nbsp;-&nbsp; Free forever</p>
+      <p class="download-meta"><span id="download-version-label">Version 1.6.75</span> &nbsp;-&nbsp; Windows 10 &amp; 11 &nbsp;-&nbsp; 64-bit &nbsp;-&nbsp; Free forever</p>
       <p class="download-meta" style="margin-top:12px; font-size:0.95rem;">
         This page checks GitHub for the latest stable desktop release automatically. If the button does not start a download, open
         <a href="https://github.com/armpit-symphony/Sparkbot/releases" target="_blank" rel="noopener noreferrer">All Releases</a>
@@ -1023,7 +1023,7 @@
       <div class="other-os">
         <a
           id="download-macos-link"
-          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.74/Sparkbot.Local_1.6.74_aarch64.dmg"
+          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.75/Sparkbot.Local_1.6.75_aarch64.dmg"
           class="btn-os-small"
           aria-label="Download Sparkbot for macOS"
         >
@@ -1031,7 +1031,7 @@
         </a>
         <a
           id="download-linux-link"
-          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.74/Sparkbot.Local_1.6.74_amd64.AppImage"
+          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.75/Sparkbot.Local_1.6.75_amd64.AppImage"
           class="btn-os-small"
           aria-label="Download Sparkbot for Linux AppImage"
         >
@@ -1121,46 +1121,46 @@
     =========================== -->
     <section class="section" aria-labelledby="new-heading">
       <div class="container">
-        <h2 class="section-title" id="new-heading">New in v1.6.74: Self-diagnostic profiles + log hygiene</h2>
+        <h2 class="section-title" id="new-heading">New in v1.6.75: Claude Sub + Roundtable reliability</h2>
         <p class="section-subtitle">
-          When you ran "do a self-diagnostic audit" the bot couldn't ask for hostname, current user, current time, or installed tool versions because they weren't curated profiles, hit the enum gate, and got narrated as "policy-blocked." Two new profiles plus tighter rejection wording fix that. While in there: prompts and tool schemas no longer leak into backend.log at DEBUG, and two unreachable duplicate calendar skills are removed.
+          Claude Sub now works through the installed Claude Code CLI, Workstation Claude seats keep an explicit Claude model, and local SQLite waits through short write bursts instead of dropping Roundtable saves with "database is locked."
         </p>
 
         <div class="features-grid">
           <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">Host</span>
-            <h3 class="feature-title">host_identity profile</h3>
-            <p class="feature-desc">New server_read_command=host_identity returns hostname, current user, OS version/arch, and current ISO time as a single bundle. Windows uses Get-HostName / Windows Identity / Win32_OperatingSystem; Linux uses hostname / whoami / uname / date. Cures the "BLOCKED: I could not verify host/user/time" symptom.</p>
+            <span class="feature-icon" role="img" aria-hidden="true">CLI</span>
+            <h3 class="feature-title">Claude Sub command fixed</h3>
+            <p class="feature-desc">Sparkbot no longer passes the unsupported --output-file flag to Claude Code. The Claude Sub route now runs Claude Code in non-interactive text mode and reads stdout directly.</p>
           </div>
 
           <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">Tool</span>
-            <h3 class="feature-title">toolchain_versions profile</h3>
-            <p class="feature-desc">New server_read_command=toolchain_versions probes python, git, node, npm, docker, and powershell version each in turn. Missing tools report "Command not found" rather than aborting. The bot can read each line and tell the operator what is and is not installed.</p>
+            <span class="feature-icon" role="img" aria-hidden="true">OK</span>
+            <h3 class="feature-title">Live Claude smoke test</h3>
+            <p class="feature-desc">The fixed Claude command was tested against the signed-in local Claude account and returned OK. If Claude auth is valid, chats and Workstation seats can use claude-sub models again.</p>
           </div>
 
           <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">Msg</span>
-            <h3 class="feature-title">Honest rejection text</h3>
-            <p class="feature-desc">When the bot asks for an unsupported profile (e.g. "Get-Date", "hostname"), the reply now leads with "this is a parameter validation error, not a policy denial" and lists the curated profiles. Prevents the bot from misnarrating an enum miss as a Guardian policy block.</p>
+            <span class="feature-icon" role="img" aria-hidden="true">Seat</span>
+            <h3 class="feature-title">Claude seats keep their model</h3>
+            <p class="feature-desc">The Claude invite desk now preloads claude-sonnet-4-6. A saved Claude meeting seat carries an explicit Claude model instead of falling back to whichever default model is active.</p>
           </div>
 
           <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">Quiet</span>
-            <h3 class="feature-title">No more prompt leaks in backend.log</h3>
-            <p class="feature-desc">litellm logged "Params passed to completion()" at DEBUG, dumping every system prompt, room memory excerpt, and tool definition manifest in plaintext to backend.log. Sparkbot now sets the litellm logger family to WARNING by default; SPARKBOT_LITELLM_LOG_LEVEL=debug re-enables explicitly when troubleshooting.</p>
+            <span class="feature-icon" role="img" aria-hidden="true">DB</span>
+            <h3 class="feature-title">SQLite WAL mode</h3>
+            <p class="feature-desc">Local desktop SQLite now uses WAL journal mode, normal sync, foreign keys, a 30-second DBAPI timeout, and a 30-second busy_timeout for concurrent chat and meeting writes.</p>
           </div>
 
           <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">Dedup</span>
-            <h3 class="feature-title">Duplicate calendar skills removed</h3>
-            <p class="feature-desc">backend/skills/calendar_create_event.py and backend/skills/calendar_list_events.py shadowed native definitions in tools.py and were dropped at startup with "Duplicate tool definition ignored" warnings. They were unreachable; now deleted. Catalog is clean on launch.</p>
+            <span class="feature-icon" role="img" aria-hidden="true">Wait</span>
+            <h3 class="feature-title">Roundtable save lock hardening</h3>
+            <p class="feature-desc">Meeting turns, reminders, heartbeats, Telegram lookups, and chat saves now wait through short write bursts instead of immediately surfacing sqlite3.OperationalError: database is locked.</p>
           </div>
 
           <div class="feature-card">
             <span class="feature-icon" role="img" aria-hidden="true">Tests</span>
-            <h3 class="feature-title">Four new tests + Windows test fix</h3>
-            <p class="feature-desc">Tests for the host_identity profile, toolchain_versions profile, the new rejection wording, and that both new profiles are registered. Existing service_logs test split into Linux/Windows variants with platform skip markers, fixing a long-standing Windows test failure unrelated to this release. 190 passed, 1 skipped.</p>
+            <h3 class="feature-title">Focused regression tests</h3>
+            <p class="feature-desc">New backend tests cover the Claude CLI command contract and SQLite connection pragmas. The focused test run passed before the release metadata was advanced.</p>
           </div>
         </div>
       </div>
@@ -1182,7 +1182,7 @@
             <div class="step-num" aria-hidden="true">1</div>
             <div class="step-body">
               <h3 class="step-title">Click the big purple "Download for Windows" button above</h3>
-              <p class="step-desc">Your browser will download a file called <strong id="windows-filename-step-1">Sparkbot.Local_1.6.74_x64-setup.exe</strong>. This is the installer. It usually arrives in less than a minute.</p>
+              <p class="step-desc">Your browser will download a file called <strong id="windows-filename-step-1">Sparkbot.Local_1.6.75_x64-setup.exe</strong>. This is the installer. It usually arrives in less than a minute.</p>
             </div>
           </div>
 
@@ -1190,7 +1190,7 @@
             <div class="step-num" aria-hidden="true">2</div>
             <div class="step-body">
               <h3 class="step-title">Find the downloaded file and open it</h3>
-              <p class="step-desc">Look at the bottom of your browser for the downloaded file, or check your <strong>Downloads folder</strong>. Double-click the file named <strong id="windows-filename-step-2">Sparkbot.Local_1.6.74_x64-setup.exe</strong> to start installing.</p>
+              <p class="step-desc">Look at the bottom of your browser for the downloaded file, or check your <strong>Downloads folder</strong>. Double-click the file named <strong id="windows-filename-step-2">Sparkbot.Local_1.6.75_x64-setup.exe</strong> to start installing.</p>
             </div>
           </div>
 
@@ -1260,7 +1260,7 @@
               </div>
 
               <div class="win-info-row">
-                <strong>App:</strong> <span id="windows-filename-dialog">Sparkbot.Local_1.6.74_x64-setup.exe</span>
+                <strong>App:</strong> <span id="windows-filename-dialog">Sparkbot.Local_1.6.75_x64-setup.exe</span>
               </div>
               <div class="win-info-row">
                 <strong>Publisher:</strong> <span>Unknown publisher</span>
@@ -1496,7 +1496,7 @@
       <p>Free. Private. Yours. Download takes less than a minute.</p>
       <a
         id="download-windows-bottom"
-        href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.74/Sparkbot.Local_1.6.74_x64-setup.exe"
+        href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.75/Sparkbot.Local_1.6.75_x64-setup.exe"
         class="btn-download-windows"
         style="display:inline-flex;"
         aria-label="Download Sparkbot for Windows"
@@ -1516,7 +1516,7 @@
   =========================== -->
   <footer>
     <p>
-      <span role="img" aria-hidden="true">Spark</span> <strong>Sparkbot</strong> &nbsp;-&nbsp; <span id="footer-version-label">Version 1.6.74</span> &nbsp;-&nbsp; Free &amp; Open Source
+      <span role="img" aria-hidden="true">Spark</span> <strong>Sparkbot</strong> &nbsp;-&nbsp; <span id="footer-version-label">Version 1.6.75</span> &nbsp;-&nbsp; Free &amp; Open Source
     </p>
     <p style="margin-top:10px;">
       <a href="https://github.com/armpit-symphony/Sparkbot" target="_blank" rel="noopener noreferrer">GitHub</a>
@@ -1527,9 +1527,9 @@
     </p>
     <p style="margin-top:12px; font-size:0.8rem;">
       Other platforms:
-      <a id="footer-macos-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.74/Sparkbot.Local_1.6.74_aarch64.dmg">macOS (all Macs)</a>
+      <a id="footer-macos-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.75/Sparkbot.Local_1.6.75_aarch64.dmg">macOS (all Macs)</a>
       &nbsp;-&nbsp;
-      <a id="footer-linux-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.74/Sparkbot.Local_1.6.74_amd64.AppImage">Linux (AppImage)</a>
+      <a id="footer-linux-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.75/Sparkbot.Local_1.6.75_amd64.AppImage">Linux (AppImage)</a>
     </p>
   </footer>
 
@@ -1538,11 +1538,11 @@
   =========================== -->
   <script>
     var fallbackRelease = {
-      version: "1.6.74",
-      windowsFilename: "Sparkbot.Local_1.6.74_x64-setup.exe",
-      windowsUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.74/Sparkbot.Local_1.6.74_x64-setup.exe",
-      macosUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.74/Sparkbot.Local_1.6.74_aarch64.dmg",
-      linuxUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.74/Sparkbot.Local_1.6.74_amd64.AppImage"
+      version: "1.6.75",
+      windowsFilename: "Sparkbot.Local_1.6.75_x64-setup.exe",
+      windowsUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.75/Sparkbot.Local_1.6.75_x64-setup.exe",
+      macosUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.75/Sparkbot.Local_1.6.75_aarch64.dmg",
+      linuxUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.75/Sparkbot.Local_1.6.75_amd64.AppImage"
     };
 
     function setText(id, value) {
@@ -1618,7 +1618,7 @@
           return /_amd64\.AppImage$/i.test(asset.name || "");
         });
 
-        // Extract version from tag (desktop-v1.6.74 -> 1.6.74)
+        // Extract version from tag (desktop-v1.6.75 -> 1.6.75)
         var tagVersion = String(desktopRelease.tag_name || "").replace(/^desktop-v/i, "");
 
         applyRelease({

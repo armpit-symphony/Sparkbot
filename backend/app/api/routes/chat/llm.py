@@ -869,15 +869,14 @@ async def _claude_cli_acompletion(*, model: str, **kwargs: Any) -> Any:
     if not prompt:
         raise RuntimeError("Claude subscription route received an empty prompt.")
 
-    with tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8", suffix=".txt") as tmp:
-        output_path = tmp.name
-
     cli_model = _claude_cli_model(model)
     command = [
         _claude_cli_executable(),
         "--print",
         "--model", cli_model,
-        "--output-file", output_path,
+        "--output-format", "text",
+        "--no-session-persistence",
+        "--permission-mode", "dontAsk",
     ]
     timeout = _claude_cli_timeout_seconds()
     proc = await asyncio.create_subprocess_exec(
@@ -900,21 +899,10 @@ async def _claude_cli_acompletion(*, model: str, **kwargs: Any) -> Any:
             "Set SPARKBOT_CLAUDE_CLI_TIMEOUT_SECONDS=0 for no Sparkbot-side timeout."
         ) from exc
 
-    text = ""
-    try:
-        text = pathlib.Path(output_path).read_text(encoding="utf-8").strip()
-    except Exception:
-        text = ""
-    try:
-        pathlib.Path(output_path).unlink(missing_ok=True)
-    except Exception:
-        pass
-
     if proc.returncode != 0:
         error_text = (stderr or stdout).decode("utf-8", errors="replace").strip()
         raise RuntimeError(f"Claude CLI failed for subscription route: {error_text[:500]}")
-    if not text:
-        text = stdout.decode("utf-8", errors="replace").strip()
+    text = stdout.decode("utf-8", errors="replace").strip()
     if not text:
         raise RuntimeError("Claude CLI returned an empty response.")
 

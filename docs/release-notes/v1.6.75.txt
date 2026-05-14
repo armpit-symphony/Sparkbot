@@ -1,0 +1,47 @@
+Sparkbot v1.6.75
+
+Claude Sub + Roundtable lock reliability.
+
+### Reported symptoms
+
+Claude Sub showed as connected, but chats and Workstation meeting seats using
+`claude-sub/*` failed instead of responding.
+
+Roundtable meetings could also fail during later passes with errors like:
+
+  Save failed for meetings_manager: (sqlite3.OperationalError) database is locked
+  [SQL: SELECT chat_users.id, chat_users.username, ...]
+
+### Root causes
+
+Claude Code CLI v2.1.128 does not support the `--output-file` option that
+Sparkbot was passing. The local account was signed in correctly; the subprocess
+command was wrong.
+
+The local desktop SQLite engine also used the default connection settings. With
+autonomous meeting turns, meeting heartbeat tasks, reminders, and chat bridges
+writing at the same time, short write bursts could trip SQLite's default lock
+timeout and surface as save failures.
+
+### Fixes
+
+- Claude Sub now calls Claude Code in non-interactive text mode and reads stdout
+  directly.
+- A live smoke test of the fixed Claude command returned `OK`.
+- Workstation Claude invite desks now prefill `claude-sonnet-4-6`, so a saved
+  Claude seat keeps an explicit Claude route instead of falling back to the
+  active default model.
+- SQLite local/desktop connections now use `check_same_thread=False`, a
+  30-second DBAPI timeout, `PRAGMA busy_timeout=30000`, WAL journal mode,
+  normal sync, and foreign keys.
+
+### Tests
+
+- Added a backend regression test proving Claude Sub no longer passes
+  `--output-file` and reads stdout.
+- Added SQLite connection tests for busy timeout, WAL, and sync pragmas.
+- Focused backend tests passed.
+
+Advanced backend, frontend, Tauri shell, public downloader, service worker
+cache key, README, capabilities docs, public-download docs, release notes, and
+packaging metadata to v1.6.75.

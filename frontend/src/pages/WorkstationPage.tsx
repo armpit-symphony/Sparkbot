@@ -818,6 +818,12 @@ const MODEL_ID_PLACEHOLDER: Record<string, string> = {
   Custom: "e.g. openrouter/openai/gpt-4o",
 }
 
+const DEFAULT_INVITE_MODELS: Record<string, string> = {
+  Anthropic: "claude-sonnet-4-6",
+  OpenAI: "openai-codex/gpt-5.3-codex",
+  xAI: "xai/grok-4.20-multi-agent-0309",
+}
+
 function InviteConfigModal({ station, onSave, onCancel }: InviteConfigModalProps) {
   const [label, setLabel] = useState(
     station.label === "Add Agent" ? "" : station.label,
@@ -830,11 +836,13 @@ function InviteConfigModal({ station, onSave, onCancel }: InviteConfigModalProps
   const [provider, setProvider] = useState(defaultProvider)
   const [description, setDescription] = useState("")
   const [modelId, setModelId] = useState(
-    station.id === "invite-gpt"
-      ? "openai-codex/gpt-5.3-codex"
-      : station.id === "invite-custom"
-        ? "xai/grok-4.20-multi-agent-0309"
-        : "",
+    station.id === "invite-claude"
+      ? DEFAULT_INVITE_MODELS.Anthropic
+      : station.id === "invite-gpt"
+        ? DEFAULT_INVITE_MODELS.OpenAI
+        : station.id === "invite-custom"
+          ? DEFAULT_INVITE_MODELS.xAI
+          : "",
   )
   const [apiKey, setApiKey] = useState("")
   const [authMode, setAuthMode] = useState<InviteAuthMode>(
@@ -853,6 +861,12 @@ function InviteConfigModal({ station, onSave, onCancel }: InviteConfigModalProps
       : ["api_key"]
   const effectiveAuthMode: InviteAuthMode =
     supportsClaudeOAuth || supportsCodexSub ? authMode : "api_key"
+
+  useEffect(() => {
+    const fallbackModel = DEFAULT_INVITE_MODELS[provider]
+    if (!fallbackModel) return
+    setModelId((current) => current.trim() || fallbackModel)
+  }, [provider])
 
   const handleSave = useCallback(() => {
     if (!canSave) return

@@ -1,5 +1,13 @@
 # Release Notes
 
+## Sparkbot v1.6.75
+
+- Claude Sub route fix: the installed Claude Code CLI reports a valid Pro subscription, but Sparkbot was invoking it with `--output-file`, which Claude Code v2.1.128 rejects. Chats and Workstation seats using `claude-sub/*` therefore failed immediately with "unknown option '--output-file'." Sparkbot now invokes Claude Code in non-interactive text mode and reads stdout directly. A live smoke test with the fixed command returned `OK`.
+- Workstation Claude invite reliability: Claude invite desks now prefill `claude-sonnet-4-6`, so configured Claude seats carry an explicit Claude model instead of passing readiness with a token/key and then falling back to the active default model during meeting launch.
+- SQLite local/desktop lock hardening: the SQLModel engine now applies SQLite desktop-safe settings: `check_same_thread=False`, a 30-second DBAPI timeout, `PRAGMA busy_timeout=30000`, WAL journal mode, normal sync, and foreign keys. This gives Roundtable saves, meeting heartbeats, reminders, and chat bridge lookups room to wait through short write bursts instead of surfacing `sqlite3.OperationalError: database is locked`.
+- Tests: added regression coverage for the Claude CLI command contract and the SQLite connection pragmas. Focused tests passed.
+- Release metadata: backend, frontend, Tauri shell, public downloader fallback links, service worker cache key, README, capabilities docs, public-download docs, and release notes advanced to v1.6.75.
+
 ## Sparkbot v1.6.74
 
 - Self-diagnostic profiles: when the user asked Sparkbot for a self-diagnostic audit, the bot tried to run `Get-Date`, `hostname`, `whoami`, `git --version`, `docker --version`, etc. as the `command` value of `server_read_command` — but that parameter is enum-constrained to a curated list of named profiles. The validator returned "Unsupported server command. Allowed: ..." and the bot misnarrated this as a policy block. Added two new profiles: `host_identity` (hostname + current user + OS + current time) and `toolchain_versions` (python/git/node/npm/docker/powershell versions, each probed independently so missing tools don't abort the audit). Tightened the rejection wording to explicitly say "this is a parameter validation error, not a policy denial" and list every curated profile. Updated the tool description so the LLM has a clear self-diagnostic recipe.
