@@ -86,12 +86,6 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.toml') }}
           restore-keys: ${{ runner.os }}-cargo-
 
-      - name: Cache Tauri CLI binary
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/bin
-          key: cargo-bin-${{ runner.os }}-${{ runner.arch }}-tauri-cli-2
-
       - name: Install cargo-binstall
         uses: cargo-bins/cargo-binstall@main
 
@@ -253,12 +247,6 @@ jobs:
           key: ${{ runner.os }}-arm64-cargo-${{ hashFiles('src-tauri/Cargo.toml') }}
           restore-keys: ${{ runner.os }}-arm64-cargo-
 
-      - name: Cache Tauri CLI binary
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/bin
-          key: cargo-bin-${{ runner.os }}-aarch64-tauri-cli-2
-
       - name: Install cargo-binstall
         uses: cargo-bins/cargo-binstall@main
 
@@ -365,12 +353,6 @@ jobs:
             ~/.cargo/git
           key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.toml') }}
           restore-keys: ${{ runner.os }}-cargo-
-
-      - name: Cache Tauri CLI binary
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/bin
-          key: cargo-bin-${{ runner.os }}-${{ runner.arch }}-tauri-cli-2
 
       - name: Install cargo-binstall
         uses: cargo-bins/cargo-binstall@main
