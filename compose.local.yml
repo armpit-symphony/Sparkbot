@@ -90,6 +90,8 @@ services:
       # Persist saved API keys and runtime .env to the data volume so they survive container restarts
       - SPARKBOT_DATA_DIR=/app/backend/data
       - SPARKBOT_GUARDIAN_DATA_DIR=/app/backend/data/guardian
+      - SPARKBOT_HOST_PROC_ROOT=/host/proc
+      - SPARKBOT_HOST_CRON_ROOTS=/host/etc/cron.d:/host/var/spool/cron
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/utils/health-check/"]
       interval: 10s
@@ -98,6 +100,10 @@ services:
     volumes:
       - sparkbot-local-uploads:/app/backend/uploads
       - sparkbot-local-data:/app/backend/data
+      - /proc:/host/proc:ro
+      - /etc/cron.d:/host/etc/cron.d:ro
+      - /var/spool/cron:/host/var/spool/cron:ro
+      - /home/sparky/kalshi-bot:/host/home/sparky/kalshi-bot:ro
 
   frontend:
     build:

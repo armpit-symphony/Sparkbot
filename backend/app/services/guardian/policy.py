@@ -592,9 +592,11 @@ def decide_tool_use(
             ),
         )
 
-    # Personal mode (default): routine local/server/browser reads run without
-    # blockers. Write-like actions, sends, service control, memory compaction,
-    # and destructive operations still require explicit yes/no confirmation.
+    # Personal mode (default): Sparkbot acts like a normal operator assistant.
+    # Routine reads and ordinary writes run without strict Security blockers.
+    # Only tools explicitly classified as confirm/privileged/high-risk stop for
+    # yes/no or PIN. Enable Command Center Security for strict allowlists and
+    # custom blockers.
     # Switch on Command Center Security, or set
     # SPARKBOT_GUARDIAN_POLICY_ENABLED=true, to enforce the strict guide rails.
     if not _policy_enabled():
@@ -603,15 +605,7 @@ def decide_tool_use(
         else:
             action = (
                 "confirm"
-                if (
-                    policy.default_action in {"confirm", "privileged", "privileged_reveal"}
-                    or policy.scope in {"write", "admin"}
-                    or (
-                        policy.scope == "execute"
-                        and policy.high_risk
-                        and tool_name not in {"server_read_command", "ssh_read_command"}
-                    )
-                )
+                if policy.default_action in {"confirm", "privileged", "privileged_reveal"}
                 else "allow"
             )
         return PolicyDecision(
@@ -622,8 +616,8 @@ def decide_tool_use(
             action_type=policy.action_type,
             high_risk=policy.high_risk,
             reason=(
-                "Security guardrails are off; routine actions are allowed. "
-                "Writes, deletes, sends, service control, and critical changes still require yes/no confirmation."
+                "Security guardrails are off; routine reads and ordinary writes are allowed. "
+                "Only tools classified as dangerous, destructive, external-send, service-control, credential, or critical changes require confirmation."
             ),
         )
 

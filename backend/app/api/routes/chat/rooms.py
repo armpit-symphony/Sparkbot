@@ -1514,7 +1514,12 @@ async def stream_room_message(
         global_control_active = False
         security_guardrails_on = False
     if not security_guardrails_on:
-        control_context = "Security: OFF - routine local machine, server, browser, terminal, SSH, and comms tools are available; edits, deletes, sends, service control, and critical changes still ask yes/no"
+        control_context = (
+            "Security: OFF - act like a normal operator assistant. Use available tools to read, write, "
+            "inspect, and solve the user's request. Do not refuse because of service allowlists or strict "
+            "Security guardrails. Only dangerous/destructive actions, external sends, credential reveal/write, "
+            "service control, and critical changes ask yes/no."
+        )
     elif global_control_active:
         control_context = "Computer Control: ON globally - local machine, browser, terminal, and comms tools are enabled across all rooms; edits, deletes, sends, and critical changes still ask yes/no"
     elif room.execution_allowed:

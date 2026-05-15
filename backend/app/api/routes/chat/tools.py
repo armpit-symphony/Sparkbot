@@ -6,8 +6,8 @@ and has a corresponding async executor. Add new tools here — the dispatcher
 and LLM definitions are updated automatically.
 """
 import ast
-import base64
 import asyncio
+import base64
 import ipaddress
 import json
 import operator
@@ -175,6 +175,21 @@ _CALDAV_PASSWORD = os.getenv("CALDAV_PASSWORD", "").strip()
 
 _SAFE_SERVICE_RE = re.compile(r"^[A-Za-z0-9@._-]+$")
 _SAFE_SSH_HOST_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+_SAFE_PROCESS_QUERY_RE = re.compile(r"^[A-Za-z0-9@._/\- ]{1,120}$")
+_SECRET_TEXT_RE = re.compile(
+    r"(?i)\b(password|passwd|secret|token|api[_-]?key|access[_-]?key|credential|auth[_-]?token|passphrase|private[_-]?key)"
+    r"(\s*[:=]\s*)([^\s,;]+)"
+)
+_TOKEN_TEXT_RE = re.compile(r"\b(?:sk-[A-Za-z0-9]{16,}|ghp_[A-Za-z0-9]{20,}|xoxb-[A-Za-z0-9\-]{10,})\b")
+_HOST_PROC_ROOT = Path(os.getenv("SPARKBOT_HOST_PROC_ROOT", "/host/proc"))
+_HOST_CRON_ROOTS = [
+    Path(item.strip())
+    for item in os.getenv(
+        "SPARKBOT_HOST_CRON_ROOTS",
+        "/host/etc/cron.d:/host/var/spool/cron:/etc/cron.d:/var/spool/cron",
+    ).split(os.pathsep)
+    if item.strip()
+]
 _ALLOWED_LOCAL_SERVICES = {
     item.strip()
     for item in os.getenv("SPARKBOT_ALLOWED_SERVICES", "sparkbot-v2").split(",")
@@ -1276,6 +1291,9 @@ TOOL_DEFINITIONS = [
                 "Use for checking uptime, disk, memory, network listeners, top processes, "
                 "service status, recent service logs, host identity (hostname/user/OS/time), "
                 "and installed toolchain versions (python/git/node/docker). "
+                "If the user asks about local bots, crons, cron jobs, or trading bot health, "
+                "use command=bot_health with query set to the bot family such as kalshi; "
+                "do not try systemctl first for cron jobs. "
                 "For a full self-diagnostic audit, call this with command=host_identity, "
                 "command=toolchain_versions, and command=system_overview in sequence — "
                 "do NOT report the host as 'not verifiable' before doing so. "
@@ -1293,6 +1311,9 @@ TOOL_DEFINITIONS = [
                             "memory",
                             "network_listeners",
                             "process_snapshot",
+                            "process_search",
+                            "scheduled_jobs",
+                            "bot_health",
                             "service_status",
                             "service_logs",
                             "host_identity",
@@ -1302,8 +1323,15 @@ TOOL_DEFINITIONS = [
                             "Approved diagnostic profile. Use host_identity for "
                             "hostname/user/OS/time, toolchain_versions for installed "
                             "binaries (python/git/node/docker), and system_overview "
-                            "for uptime/disk/memory."
+                            "for uptime/disk/memory. Use process_search for named "
+                            "host processes, scheduled_jobs for cron entries, and "
+                            "bot_health for questions about local trading bots/crons "
+                            "such as Kalshi."
                         ),
+                    },
+                    "query": {
+                        "type": "string",
+                        "description": "Optional search text for process_search, scheduled_jobs, or bot_health, for example kalshi",
                     },
                     "service": {
                         "type": "string",
@@ -4169,6 +4197,9 @@ _SERVER_READ_COMMANDS = {
     "memory": "memory",
     "network_listeners": "network_listeners",
     "process_snapshot": "process_snapshot",
+    "process_search": "process_search",
+    "scheduled_jobs": "scheduled_jobs",
+    "bot_health": "bot_health",
     "service_status": "service_status",
     "service_logs": "service_logs",
     # v1.6.74: profiles for self-diagnostic audits. Without these, the LLM
@@ -4191,6 +4222,190 @@ def _truncate_tool_output(text: str, limit: int = 12000) -> str:
     if len(text) <= limit:
         return text or "(no output)"
     return text[:limit] + "\n...[truncated]"
+
+
+def _redact_tool_text(text: str) -> str:
+    text = _TOKEN_TEXT_RE.sub("[REDACTED_TOKEN]", text or "")
+    return _SECRET_TEXT_RE.sub(r"\1\2[REDACTED]", text)
+
+
+def _safe_process_query(query: str, default: str = "kalshi") -> tuple[str, str | None]:
+    value = (query or "").strip() or default
+    if not _SAFE_PROCESS_QUERY_RE.fullmatch(value):
+        return "", "Invalid query. Use plain process/job search text only."
+    return value, None
+
+
+def _host_proc_available() -> bool:
+    return _HOST_PROC_ROOT.exists() and any(_HOST_PROC_ROOT.glob("[0-9]*"))
+
+
+def _read_host_processes(query: str, limit: int = 40) -> str:
+    safe_query, err = _safe_process_query(query)
+    if err:
+        return err
+    needles = [item.lower() for item in safe_query.split() if item.strip()]
+    if not _host_proc_available():
+        return (
+            "Host process table is not mounted into Sparkbot. Mount /proc read-only at /host/proc "
+            "or set SPARKBOT_HOST_PROC_ROOT to enable host process inspection."
+        )
+
+    matches: list[dict[str, str]] = []
+    for proc_dir in sorted(_HOST_PROC_ROOT.glob("[0-9]*"), key=lambda path: int(path.name)):
+        try:
+            raw_cmd = (proc_dir / "cmdline").read_bytes().replace(b"\x00", b" ").decode("utf-8", errors="replace").strip()
+            status_text = (proc_dir / "status").read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+        haystack = raw_cmd.lower()
+        if not raw_cmd or not all(needle in haystack for needle in needles):
+            continue
+        fields: dict[str, str] = {"pid": proc_dir.name, "cmd": _redact_tool_text(raw_cmd)}
+        for line in status_text.splitlines():
+            if line.startswith(("Name:", "State:", "PPid:")):
+                key, _, value = line.partition(":")
+                fields[key.lower()] = value.strip()
+        matches.append(fields)
+        if len(matches) >= limit:
+            break
+
+    if not matches:
+        return f"No host processes matched query: {safe_query}"
+    lines = [f"Host processes matching {safe_query!r}: {len(matches)}"]
+    for item in matches:
+        lines.append(
+            f"- pid={item.get('pid')} ppid={item.get('ppid', '?')} state={item.get('state', '?')} "
+            f"name={item.get('name', '?')} cmd={item.get('cmd', '')}"
+        )
+    return "\n".join(lines)
+
+
+def _iter_cron_files() -> list[Path]:
+    files: list[Path] = []
+    for root in _HOST_CRON_ROOTS:
+        if not root.exists():
+            continue
+        if root.is_file():
+            files.append(root)
+            continue
+        try:
+            files.extend(path for path in root.rglob("*") if path.is_file())
+        except Exception:
+            continue
+    unique: list[Path] = []
+    for path in files:
+        if path not in unique:
+            unique.append(path)
+    return unique
+
+
+def _read_scheduled_jobs(query: str) -> str:
+    safe_query, err = _safe_process_query(query)
+    if err:
+        return err
+    needle = safe_query.lower()
+    files = _iter_cron_files()
+    if not files:
+        return (
+            "No readable cron files are mounted into Sparkbot. Mount host cron directories read-only "
+            "or set SPARKBOT_HOST_CRON_ROOTS."
+        )
+
+    matches: list[str] = []
+    for path in files:
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+        for lineno, raw_line in enumerate(text.splitlines(), start=1):
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" in line.split(maxsplit=1)[0]:
+                continue
+            if needle not in line.lower():
+                continue
+            matches.append(f"- {path}:{lineno}: {_redact_tool_text(line)}")
+
+    if not matches:
+        return f"No readable scheduled jobs matched query: {safe_query}"
+    return f"Scheduled jobs matching {safe_query!r}: {len(matches)}\n" + "\n".join(matches[:80])
+
+
+def _host_path_candidates(raw_path: str) -> list[Path]:
+    value = raw_path.strip().strip("'\"")
+    if not value.startswith("/"):
+        return []
+    candidates = [Path(value)]
+    if value.startswith("/home/"):
+        candidates.append(Path("/host") / value.lstrip("/"))
+    return candidates
+
+
+def _read_recent_logs(query: str, limit: int = 12) -> str:
+    safe_query, err = _safe_process_query(query, default="kalshi")
+    if err:
+        return err
+    roots = [
+        Path("/host/home/sparky/kalshi-bot"),
+        Path("/home/sparky/kalshi-bot"),
+    ]
+    log_files: list[Path] = []
+    for root in roots:
+        if not root.exists():
+            continue
+        try:
+            log_files.extend(path for path in root.glob("*.log") if path.is_file())
+        except Exception:
+            continue
+    unique: list[Path] = []
+    for path in log_files:
+        if path not in unique:
+            unique.append(path)
+    if not unique:
+        return (
+            "No readable bot log files are mounted into Sparkbot. Mount the host bot directory "
+            "read-only at /host/home/sparky/kalshi-bot to enable log freshness checks."
+        )
+    rows: list[tuple[float, Path, int, str]] = []
+    for path in unique:
+        try:
+            st = path.stat()
+            tail = path.read_text(encoding="utf-8", errors="replace")[-500:].strip().splitlines()
+        except Exception:
+            continue
+        snippet = _redact_tool_text(tail[-1] if tail else "(empty)")
+        rows.append((st.st_mtime, path, st.st_size, snippet))
+    rows.sort(reverse=True, key=lambda item: item[0])
+    if not rows:
+        return f"No readable logs found for query: {safe_query}"
+    lines = [f"Recent bot logs under mounted host paths: {len(rows)}"]
+    now = time.time()
+    for mtime, path, size, snippet in rows[:limit]:
+        age_seconds = max(0, int(now - mtime))
+        if age_seconds < 120:
+            age = f"{age_seconds}s ago"
+        elif age_seconds < 7200:
+            age = f"{age_seconds // 60}m ago"
+        else:
+            age = f"{age_seconds // 3600}h ago"
+        lines.append(f"- {path} size={size} modified={age} last_line={snippet}")
+    return "\n".join(lines)
+
+
+def _read_bot_health(query: str) -> str:
+    safe_query, err = _safe_process_query(query, default="kalshi")
+    if err:
+        return err
+    cron_output = _read_scheduled_jobs(safe_query)
+    process_output = _read_host_processes(safe_query)
+    return (
+        f"Bot health read-only inspection for {safe_query!r}\n\n"
+        f"== scheduled_jobs ==\n{cron_output}\n\n"
+        f"== process_search ==\n{process_output}\n\n"
+        f"== recent_logs ==\n{_read_recent_logs(safe_query)}\n\n"
+        "Interpretation: cron jobs can be healthy even when no matching process is currently running, "
+        "because short jobs may finish between checks. Check the referenced log files for recent success/failure detail."
+    )
 
 
 async def _run_exec(argv: list[str], timeout: int) -> tuple[int, str]:
@@ -4259,6 +4474,7 @@ def _ops_profile_commands(
     command: str,
     service: str = "",
     lines: int = 50,
+    query: str = "",
     *,
     allowed_services: set[str],
 ) -> tuple[Optional[list[tuple[str, list[str]]]], Optional[str]]:
@@ -4269,10 +4485,20 @@ def _ops_profile_commands(
             f"(this is a parameter validation error, not a policy denial): "
             f"{', '.join(sorted(_SERVER_READ_COMMANDS))}. "
             "For self-diagnostic audits combine host_identity, toolchain_versions, "
-            "and system_overview."
+            "and system_overview. For local bot or cron health, use bot_health "
+            "with query=kalshi."
         )
 
     _is_windows = sys.platform == "win32"
+
+    if profile == "process_search":
+        return [("process_search", ["__sparkbot_internal__", "process_search", query])], None
+
+    if profile == "scheduled_jobs":
+        return [("scheduled_jobs", ["__sparkbot_internal__", "scheduled_jobs", query])], None
+
+    if profile == "bot_health":
+        return [("bot_health", ["__sparkbot_internal__", "bot_health", query or "kalshi"])], None
 
     if profile == "host_identity":
         if _is_windows:
@@ -4389,6 +4615,15 @@ def _ops_profile_commands(
 async def _run_profile_commands(commands: list[tuple[str, list[str]]], timeout: int) -> str:
     sections: list[str] = []
     for label, argv in commands:
+        if argv[:2] == ["__sparkbot_internal__", "process_search"]:
+            sections.append(f"== {label} ==\n{_read_host_processes(argv[2] if len(argv) > 2 else '')}")
+            continue
+        if argv[:2] == ["__sparkbot_internal__", "scheduled_jobs"]:
+            sections.append(f"== {label} ==\n{_read_scheduled_jobs(argv[2] if len(argv) > 2 else '')}")
+            continue
+        if argv[:2] == ["__sparkbot_internal__", "bot_health"]:
+            sections.append(f"== {label} ==\n{_read_bot_health(argv[2] if len(argv) > 2 else '')}")
+            continue
         code, output = await _run_exec(argv, timeout=timeout)
         heading = f"== {label} ==\n$ {' '.join(shlex.quote(arg) for arg in argv)}"
         body = output
@@ -4398,11 +4633,12 @@ async def _run_profile_commands(commands: list[tuple[str, list[str]]], timeout: 
     return "\n\n".join(sections)
 
 
-async def _server_read_command(command: str, service: str = "", lines: int = 50) -> str:
+async def _server_read_command(command: str, service: str = "", lines: int = 50, query: str = "") -> str:
     commands, err = _ops_profile_commands(
         command,
         service,
         lines,
+        query,
         allowed_services=_ALLOWED_LOCAL_SERVICES,
     )
     if err:
@@ -5461,6 +5697,7 @@ async def execute_tool(
             command=args.get("command", ""),
             service=args.get("service", ""),
             lines=int(args.get("lines", 50)),
+            query=args.get("query", ""),
         )
     if name == "server_manage_service":
         return await _server_manage_service(

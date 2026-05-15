@@ -1,5 +1,15 @@
 # Release Notes
 
+## Sparkbot v1.6.78
+
+- Security-off assistant behavior: Sparkbot now treats Security off as normal operator-assistant mode. Routine reads and ordinary writes are allowed without strict guardrail confirmation; only explicitly dangerous/destructive actions, external sends, service control, credential reveal/write, and critical changes still ask first.
+- Host-backed server inspection: added `server_read_command` profiles `process_search`, `scheduled_jobs`, and `bot_health`. These let a containerized Sparkbot inspect host processes, cron entries, and bot log freshness instead of incorrectly trying `systemctl` for cron jobs.
+- Kalshi/server bot health path: `bot_health` combines scheduled-job discovery, host process search, and recent log freshness so Sparkbot can answer questions like "are the Kalshi trading crons healthy and active?"
+- Compose visibility: local Compose now mounts host `/proc`, `/etc/cron.d`, `/var/spool/cron`, and `/home/sparky/kalshi-bot` read-only into the backend container. This grants inspection visibility without giving Sparkbot write access to host cron or bot files.
+- Prompt/tool guidance: Security-off room context now tells the model to solve using available tools instead of refusing due to service allowlists, and the server-read tool explicitly directs cron/bot health questions to `bot_health`.
+- Tests: added policy coverage for ordinary writes being allowed with Security off and server-ops coverage for host process, scheduled-job, and bot-health profiles.
+- Release metadata: backend, frontend, Tauri shell, package lock, public downloader fallback links, service worker cache key, README, capabilities docs, public-download docs, and release notes advanced to v1.6.78.
+
 ## Sparkbot v1.6.77
 
 - Security posture API: added `GET /api/v1/chat/security/status` so Command Center can display passphrase strength, operator mode, operator PIN state, break-glass state, CORS origins, frontend/backend exposure, health status, managed `.env` permissions, frontend security headers, risky feature toggles, and masked provider-key storage hints from the backend.

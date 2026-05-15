@@ -5,14 +5,18 @@ from app.services.guardian.policy import decide_tool_use, simulate_tool_policy
 # ── Personal mode (default, SPARKBOT_GUARDIAN_POLICY_ENABLED unset / false) ──
 
 def test_security_off_allows_reads_and_confirms_high_risk_tools_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Computer Control allows routine work while high-risk writes still confirm."""
+    """Security off allows normal assistant work while dangerous tools still confirm."""
     monkeypatch.delenv("SPARKBOT_GUARDIAN_POLICY_ENABLED", raising=False)
     read_decision = decide_tool_use("server_read_command", {}, room_execution_allowed=False)
     assert read_decision.action == "allow"
 
+    for tool in ("remember_fact", "create_task", "set_reminder", "guardian_pause_task"):
+        decision = decide_tool_use(tool, {}, room_execution_allowed=False)
+        assert decision.action == "allow", f"{tool} should run without a confirmation modal when Security is off"
+
     for tool in ("browser_click", "gmail_send", "slack_send_message", "server_manage_service"):
         decision = decide_tool_use(tool, {}, room_execution_allowed=True)
-        assert decision.action == "confirm", f"{tool} should still confirm when Computer Control is on"
+        assert decision.action == "confirm", f"{tool} should still confirm because it is high-risk"
 
 
 def test_custom_security_guardrail_denies_matching_tool(monkeypatch: pytest.MonkeyPatch) -> None:

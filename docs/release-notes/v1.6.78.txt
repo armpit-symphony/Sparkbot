@@ -1,0 +1,9 @@
+Sparkbot v1.6.78
+
+- Security off now behaves like normal operator-assistant mode: routine reads and ordinary writes run without strict guardrail confirmation.
+- Dangerous/destructive actions, external sends, service control, credential reveal/write, and critical changes still ask first.
+- Added server_read_command profiles process_search, scheduled_jobs, and bot_health.
+- bot_health combines host cron discovery, host process search, and recent bot log freshness so Sparkbot can answer local trading-bot health questions.
+- Local Compose mounts host /proc, /etc/cron.d, /var/spool/cron, and /home/sparky/kalshi-bot read-only into the backend container for inspection visibility.
+- Security-off prompt context now tells Sparkbot to use available tools and solve instead of refusing due to strict Security allowlists.
+- Added focused tests for the new policy behavior and host-inspection profiles.

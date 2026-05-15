@@ -113,6 +113,7 @@ def test_host_identity_profile_runs_without_service(monkeypatch) -> None:
 
     async def fake_run_profile_commands(commands, timeout):
         captured["commands"] = commands
+        captured["timeout"] = timeout
         return "ok"
 
     monkeypatch.setattr(tools, "_run_profile_commands", fake_run_profile_commands)
@@ -131,6 +132,7 @@ def test_toolchain_versions_profile_probes_each_tool(monkeypatch) -> None:
 
     async def fake_run_profile_commands(commands, timeout):
         captured["commands"] = commands
+        captured["timeout"] = timeout
         return "ok"
 
     monkeypatch.setattr(tools, "_run_profile_commands", fake_run_profile_commands)
@@ -143,6 +145,46 @@ def test_toolchain_versions_profile_probes_each_tool(monkeypatch) -> None:
         assert tool_label in labels
 
 
+def test_bot_health_profile_uses_internal_host_inspection(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    async def fake_run_profile_commands(commands, timeout):
+        captured["commands"] = commands
+        captured["timeout"] = timeout
+        return "ok"
+
+    monkeypatch.setattr(tools, "_run_profile_commands", fake_run_profile_commands)
+
+    result = asyncio.run(tools._server_read_command("bot_health", query="kalshi"))
+
+    assert result == "ok"
+    assert captured["commands"] == [("bot_health", ["__sparkbot_internal__", "bot_health", "kalshi"])]
+
+
+def test_process_search_reports_missing_host_proc_without_policy_language(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(tools, "_HOST_PROC_ROOT", tmp_path / "proc")
+
+    result = asyncio.run(tools._server_read_command("process_search", query="kalshi"))
+
+    assert "Host process table is not mounted" in result
+    assert "policy" not in result.lower()
+
+
+def test_scheduled_jobs_reads_mounted_cron_files(monkeypatch, tmp_path) -> None:
+    cron_dir = tmp_path / "cron.d"
+    cron_dir.mkdir()
+    (cron_dir / "kalshi").write_text("*/5 * * * * sparky /home/sparky/kalshi-bot/crypto.py >> /tmp/kalshi.log 2>&1\n")
+    monkeypatch.setattr(tools, "_HOST_CRON_ROOTS", [cron_dir])
+
+    result = asyncio.run(tools._server_read_command("scheduled_jobs", query="kalshi"))
+
+    assert "Scheduled jobs matching 'kalshi': 1" in result
+    assert "crypto.py" in result
+
+
 def test_new_profiles_listed_in_allowed_set() -> None:
     assert "host_identity" in tools._SERVER_READ_COMMANDS
     assert "toolchain_versions" in tools._SERVER_READ_COMMANDS
+    assert "bot_health" in tools._SERVER_READ_COMMANDS
+    assert "process_search" in tools._SERVER_READ_COMMANDS
+    assert "scheduled_jobs" in tools._SERVER_READ_COMMANDS

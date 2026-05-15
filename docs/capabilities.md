@@ -148,7 +148,9 @@ Room Persona saves through the existing room update path. Security mode still us
 
 ## Computer Control
 
-Sparkbot can control the local machine it is running on. These capabilities are available in the desktop app and on self-hosted servers. By default, Sparkbot runs in an owner-local working mode: routine local machine, server, browser, terminal, SSH, and communication read tools can run without service/SSH allowlist blockers. Obvious risky actions still ask yes/no before execution, including file edits, deletes, code changes, external sends, browser writes, service control, Vault reveal/write paths, and critical admin operations.
+Sparkbot can control the local machine it is running on. These capabilities are available in the desktop app and on self-hosted servers. By default, Sparkbot runs in an owner-local working mode: routine local machine, server, browser, terminal, SSH, communication reads, and ordinary writes can run without strict Security blockers. Dangerous/destructive actions still ask yes/no before execution, including deletes, external sends, browser writes to sensitive targets, service control, Vault reveal/write paths, and critical admin operations.
+
+Containerized server installs can mount host inspection paths read-only. In local Compose, `/proc`, host cron directories, and `/home/sparky/kalshi-bot` are exposed under `/host/...` so `server_read_command` can answer host-process, scheduled-job, and bot-health questions from inside the backend container without write access to those host files.
 
 The Command Center box is labeled **Security**. Checking it enables the stricter Guardian guardrails, including the existing PIN, break-glass, service/SSH allowlist, and tool-input guardrail behavior. Owners can also save custom blockers in that panel. Supported custom guardrail entries are exact tool names (`tool:gmail_send`), regex blockers (`regex:rm\s+-rf`), and plain text phrases. Custom guardrails are enforced only while Security is enabled.
 
@@ -211,7 +213,7 @@ Default timeout: 30 seconds (max 120 seconds). Disable with `SPARKBOT_CODE_DISAB
 
 | Tool | Description |
 |------|-------------|
-| `server_read_command` | Read-only diagnostics: system overview, memory, disk, listeners, processes, service status, recent logs |
+| `server_read_command` | Read-only diagnostics: system overview, memory, disk, listeners, host process search, scheduled jobs, bot health, service status, recent logs |
 | `server_manage_service` | Start/stop/restart a safe service name; service allowlists are enforced when Security is enabled |
 | `ssh_read_command` | Read-only diagnostics on an SSH host alias; host/service allowlists are enforced when Security is enabled |
 
@@ -1942,6 +1944,8 @@ curl -b cookies.txt http://localhost:8000/api/v1/chat/system/watcher | python -m
 | Desktop release tag | `desktop-v{major}.{minor}.{patch}` |
 
 Desktop release tags and app versions are aligned on the `1.6.x` release line.
+
+For `v1.6.78`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release fixes Security-off assistant behavior: routine reads and ordinary writes are allowed without strict guardrail confirmation, while dangerous/destructive actions, external sends, service control, credential reveal/write, and critical changes still ask first. It also adds host-backed server inspection profiles for containerized installs: `process_search`, `scheduled_jobs`, and `bot_health`. The local Compose stack mounts host `/proc`, cron directories, and `/home/sparky/kalshi-bot` read-only so Sparkbot can inspect host crons, host processes, and recent Kalshi bot logs instead of trying `systemctl` inside the backend container for cron jobs.
 
 For `v1.6.77`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release adds the first backend-enforced Security / Operator Control foundation in Command Center. `GET /api/v1/chat/security/status` reports passphrase strength, operator mode, operator PIN state, active break-glass state, CORS origins, frontend/backend exposure, managed `.env` permissions, frontend security headers, risky feature toggles, provider-key storage hints, and operator-owned deployment guidance. Guarded write routes now cover rotating `SPARKBOT_PASSPHRASE`, setting explicit `SPARKBOT_OPERATOR_USERNAMES`, setting/changing the operator PIN, updating allowlisted risky features, and fixing managed `.env` files to mode `600`. Every write route requires authenticated operator identity, active break-glass where appropriate, allowlisted setting names, and audit logging; the UI only exposes state the backend enforces. The first Command Center actions are rotate passphrase, save explicit operators, and fix `.env` permissions. The frontend nginx server now emits baseline security headers so hosted/server mode can report the header posture directly.
 
