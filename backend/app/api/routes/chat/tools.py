@@ -12,8 +12,11 @@ import ipaddress
 import json
 import operator
 import os
+import pwd
 import re
+import shutil
 import shlex
+import socket
 import sys
 import time
 import uuid
@@ -1290,12 +1293,17 @@ TOOL_DEFINITIONS = [
                 "Run a read-only diagnostic command on the local server. "
                 "Use for checking uptime, disk, memory, network listeners, top processes, "
                 "service status, recent service logs, host identity (hostname/user/OS/time), "
-                "and installed toolchain versions (python/git/node/docker). "
+                "runtime context, host audit capabilities, and installed toolchain versions "
+                "(python/git/node/docker). "
+                "If the user asks for a full server audit, everything running live, security "
+                "audit, or asks why you missed processes/services, call command=host_full_audit "
+                "first and base the report on that output. "
                 "If the user asks about local bots, crons, cron jobs, or trading bot health, "
                 "use command=bot_health with query set to the bot family such as kalshi; "
                 "do not try systemctl first for cron jobs. "
                 "For a full self-diagnostic audit, call this with command=host_identity, "
-                "command=toolchain_versions, and command=system_overview in sequence — "
+                "command=runtime_context, command=host_capabilities, command=toolchain_versions, "
+                "and command=host_full_audit in sequence — "
                 "do NOT report the host as 'not verifiable' before doing so. "
                 "If the user asks to show the status of a service or show logs, use this tool, not service management. "
                 "Never use this for writing or destructive actions."
@@ -1314,6 +1322,9 @@ TOOL_DEFINITIONS = [
                             "process_search",
                             "scheduled_jobs",
                             "bot_health",
+                            "runtime_context",
+                            "host_capabilities",
+                            "host_full_audit",
                             "service_status",
                             "service_logs",
                             "host_identity",
@@ -1323,7 +1334,11 @@ TOOL_DEFINITIONS = [
                             "Approved diagnostic profile. Use host_identity for "
                             "hostname/user/OS/time, toolchain_versions for installed "
                             "binaries (python/git/node/docker), and system_overview "
-                            "for uptime/disk/memory. Use process_search for named "
+                            "for uptime/disk/memory. Use runtime_context to learn whether "
+                            "Sparkbot is in Docker and what host surfaces are mounted. Use "
+                            "host_capabilities to report missing audit dependencies. Use "
+                            "host_full_audit for complete server/process/listener/cron audits. "
+                            "Use process_search for named "
                             "host processes, scheduled_jobs for cron entries, and "
                             "bot_health for questions about local trading bots/crons "
                             "such as Kalshi."
@@ -4200,6 +4215,9 @@ _SERVER_READ_COMMANDS = {
     "process_search": "process_search",
     "scheduled_jobs": "scheduled_jobs",
     "bot_health": "bot_health",
+    "runtime_context": "runtime_context",
+    "host_capabilities": "host_capabilities",
+    "host_full_audit": "host_full_audit",
     "service_status": "service_status",
     "service_logs": "service_logs",
     # v1.6.74: profiles for self-diagnostic audits. Without these, the LLM
@@ -4240,6 +4258,98 @@ def _host_proc_available() -> bool:
     return _HOST_PROC_ROOT.exists() and any(_HOST_PROC_ROOT.glob("[0-9]*"))
 
 
+def _is_running_in_container() -> bool:
+    if Path("/.dockerenv").exists():
+        return True
+    try:
+        cgroup = Path("/proc/1/cgroup").read_text(encoding="utf-8", errors="replace").lower()
+    except Exception:
+        return False
+    return any(marker in cgroup for marker in ("docker", "kubepods", "containerd", "libpod"))
+
+
+def _uid_name(uid: str) -> str:
+    try:
+        return pwd.getpwuid(int(uid)).pw_name
+    except Exception:
+        return uid or "?"
+
+
+def _read_proc_status(proc_dir: Path) -> dict[str, str]:
+    fields: dict[str, str] = {"pid": proc_dir.name}
+    try:
+        status_text = (proc_dir / "status").read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        return fields
+    for line in status_text.splitlines():
+        key, _, value = line.partition(":")
+        if key in {"Name", "State", "PPid", "Uid", "VmRSS"}:
+            fields[key.lower()] = value.strip()
+    uid = fields.get("uid", "").split()[0] if fields.get("uid") else ""
+    fields["user"] = _uid_name(uid)
+    return fields
+
+
+def _host_process_records(limit: int = 250) -> list[dict[str, str]]:
+    if not _host_proc_available():
+        return []
+    records: list[dict[str, str]] = []
+    for proc_dir in sorted(_HOST_PROC_ROOT.glob("[0-9]*"), key=lambda path: int(path.name)):
+        try:
+            raw_cmd = (
+                (proc_dir / "cmdline")
+                .read_bytes()
+                .replace(b"\x00", b" ")
+                .decode("utf-8", errors="replace")
+                .strip()
+            )
+        except Exception:
+            raw_cmd = ""
+        fields = _read_proc_status(proc_dir)
+        name = fields.get("name", "")
+        if not raw_cmd:
+            raw_cmd = f"[{name}]" if name else ""
+        fields["cmd"] = _redact_tool_text(raw_cmd)
+        try:
+            fields["rss_kb_int"] = str(int(fields.get("vmrss", "0 kB").split()[0]))
+        except Exception:
+            fields["rss_kb_int"] = "0"
+        records.append(fields)
+        if len(records) >= limit:
+            break
+    return records
+
+
+def _format_process_record(item: dict[str, str]) -> str:
+    rss = item.get("rss_kb_int", "0")
+    try:
+        rss_mb = round(int(rss) / 1024, 1)
+    except Exception:
+        rss_mb = 0
+    return (
+        f"- pid={item.get('pid')} ppid={item.get('ppid', '?')} user={item.get('user', '?')} "
+        f"state={item.get('state', '?')} rss_mb={rss_mb} name={item.get('name', '?')} "
+        f"cmd={item.get('cmd', '')}"
+    )
+
+
+def _read_host_process_snapshot(limit: int = 80) -> str:
+    records = _host_process_records(limit=500)
+    if not records:
+        return (
+            "Host process table is not mounted into Sparkbot. This instance can only see its "
+            "container process table unless /proc is mounted read-only at /host/proc."
+        )
+    records.sort(key=lambda item: int(item.get("rss_kb_int", "0")), reverse=True)
+    lines = [
+        f"Host process snapshot from {_HOST_PROC_ROOT}: {len(records)} readable processes",
+        "Sorted by resident memory because /host/proc snapshots do not expose interval CPU without sampling.",
+    ]
+    for item in records[: max(1, min(limit, 200))]:
+        lines.append(_format_process_record(item))
+    return "\n".join(lines)
+
+
 def _read_host_processes(query: str, limit: int = 40) -> str:
     safe_query, err = _safe_process_query(query)
     if err:
@@ -4252,21 +4362,11 @@ def _read_host_processes(query: str, limit: int = 40) -> str:
         )
 
     matches: list[dict[str, str]] = []
-    for proc_dir in sorted(_HOST_PROC_ROOT.glob("[0-9]*"), key=lambda path: int(path.name)):
-        try:
-            raw_cmd = (proc_dir / "cmdline").read_bytes().replace(b"\x00", b" ").decode("utf-8", errors="replace").strip()
-            status_text = (proc_dir / "status").read_text(encoding="utf-8", errors="replace")
-        except Exception:
+    for item in _host_process_records(limit=1000):
+        haystack = f"{item.get('cmd', '')} {item.get('name', '')}".lower()
+        if not haystack.strip() or not all(needle in haystack for needle in needles):
             continue
-        haystack = raw_cmd.lower()
-        if not raw_cmd or not all(needle in haystack for needle in needles):
-            continue
-        fields: dict[str, str] = {"pid": proc_dir.name, "cmd": _redact_tool_text(raw_cmd)}
-        for line in status_text.splitlines():
-            if line.startswith(("Name:", "State:", "PPid:")):
-                key, _, value = line.partition(":")
-                fields[key.lower()] = value.strip()
-        matches.append(fields)
+        matches.append(item)
         if len(matches) >= limit:
             break
 
@@ -4274,10 +4374,7 @@ def _read_host_processes(query: str, limit: int = 40) -> str:
         return f"No host processes matched query: {safe_query}"
     lines = [f"Host processes matching {safe_query!r}: {len(matches)}"]
     for item in matches:
-        lines.append(
-            f"- pid={item.get('pid')} ppid={item.get('ppid', '?')} state={item.get('state', '?')} "
-            f"name={item.get('name', '?')} cmd={item.get('cmd', '')}"
-        )
+        lines.append(_format_process_record(item))
     return "\n".join(lines)
 
 
@@ -4329,6 +4426,266 @@ def _read_scheduled_jobs(query: str) -> str:
     if not matches:
         return f"No readable scheduled jobs matched query: {safe_query}"
     return f"Scheduled jobs matching {safe_query!r}: {len(matches)}\n" + "\n".join(matches[:80])
+
+
+def _read_all_scheduled_jobs(limit: int = 120) -> str:
+    files = _iter_cron_files()
+    if not files:
+        return (
+            "No readable cron files are mounted into Sparkbot. Mount host cron directories read-only "
+            "or set SPARKBOT_HOST_CRON_ROOTS."
+        )
+
+    matches: list[str] = []
+    for path in files:
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+        for lineno, raw_line in enumerate(text.splitlines(), start=1):
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" in line.split(maxsplit=1)[0]:
+                continue
+            matches.append(f"- {path}:{lineno}: {_redact_tool_text(line)}")
+            if len(matches) >= limit:
+                break
+        if len(matches) >= limit:
+            break
+
+    if not matches:
+        return "Cron files are mounted, but no runnable cron lines were found."
+    return f"Readable scheduled jobs: {len(matches)} shown\n" + "\n".join(matches)
+
+
+def _decode_proc_ip(hex_addr: str, family: str) -> str:
+    try:
+        if family == "tcp":
+            octets = bytes.fromhex(hex_addr)
+            return ".".join(str(part) for part in reversed(octets))
+        raw = bytes.fromhex(hex_addr)
+        if hex_addr == "0" * 32:
+            return "::"
+        # Linux prints IPv6 as little-endian 32-bit words in /proc/net/tcp6.
+        chunks = [raw[i : i + 4][::-1] for i in range(0, len(raw), 4)]
+        return socket.inet_ntop(socket.AF_INET6, b"".join(chunks))
+    except Exception:
+        return hex_addr
+
+
+def _socket_inode_owners() -> dict[str, list[dict[str, str]]]:
+    owners: dict[str, list[dict[str, str]]] = {}
+    if not _host_proc_available():
+        return owners
+    records_by_pid = {item.get("pid", ""): item for item in _host_process_records(limit=2000)}
+    for proc_dir in _HOST_PROC_ROOT.glob("[0-9]*"):
+        fd_dir = proc_dir / "fd"
+        if not fd_dir.exists():
+            continue
+        for fd_path in fd_dir.iterdir():
+            try:
+                target = os.readlink(fd_path)
+            except Exception:
+                continue
+            match = re.fullmatch(r"socket:\[(\d+)\]", target)
+            if not match:
+                continue
+            pid = proc_dir.name
+            record = records_by_pid.get(pid) or _read_proc_status(proc_dir)
+            owners.setdefault(match.group(1), []).append(record)
+    return owners
+
+
+def _read_proc_net_listeners() -> list[dict[str, str]]:
+    if not _host_proc_available():
+        return []
+    owners = _socket_inode_owners()
+    rows: list[dict[str, str]] = []
+    for family, rel_path in (("tcp", "net/tcp"), ("tcp6", "net/tcp6")):
+        path = _HOST_PROC_ROOT / "1" / rel_path
+        if not path.exists():
+            path = _HOST_PROC_ROOT / rel_path
+        if not path.exists():
+            continue
+        try:
+            lines = path.read_text(encoding="utf-8", errors="replace").splitlines()[1:]
+        except Exception:
+            continue
+        for line in lines:
+            parts = line.split()
+            if len(parts) < 10 or parts[3] != "0A":
+                continue
+            local_hex, _, port_hex = parts[1].partition(":")
+            inode = parts[9]
+            try:
+                port = str(int(port_hex, 16))
+            except Exception:
+                port = port_hex
+            proc_names = []
+            for owner in owners.get(inode, [])[:4]:
+                proc_names.append(
+                    f"pid={owner.get('pid')} user={owner.get('user', '?')} "
+                    f"name={owner.get('name', '?')} cmd={owner.get('cmd', '')}"
+                )
+            rows.append(
+                {
+                    "family": family,
+                    "address": _decode_proc_ip(local_hex, family),
+                    "port": port,
+                    "inode": inode,
+                    "process": "; ".join(proc_names) or "(process unavailable)",
+                }
+            )
+    return rows
+
+
+def _read_host_network_listeners(limit: int = 120) -> str:
+    rows = _read_proc_net_listeners()
+    if not rows:
+        if not _host_proc_available():
+            return (
+                "Host network listener table is not mounted into Sparkbot. Mount /proc read-only "
+                "at /host/proc, or install/use ss on the host through an approved terminal."
+            )
+        return "No host TCP listeners were readable from /host/proc/net/tcp."
+    rows.sort(key=lambda row: (int(row["port"]) if row["port"].isdigit() else 0, row["address"]))
+    lines = [f"Host TCP listeners from {_HOST_PROC_ROOT}/1/net: {len(rows)}"]
+    for row in rows[: max(1, min(limit, 240))]:
+        lines.append(
+            f"- {row['family']} {row['address']}:{row['port']} inode={row['inode']} process={row['process']}"
+        )
+    return "\n".join(lines)
+
+
+def _read_runtime_context() -> str:
+    tools = ["ps", "ss", "lsof", "systemctl", "journalctl", "docker", "python3", "node", "npm", "git", "curl"]
+    lines = [
+        "Sparkbot runtime context:",
+        f"- cwd={Path.cwd()}",
+        f"- uid={os.getuid() if hasattr(os, 'getuid') else '?'} user={os.getenv('USER') or os.getenv('USERNAME') or '?'}",
+        f"- python={sys.version.split()[0]} platform={sys.platform}",
+        f"- in_container={_is_running_in_container()}",
+        f"- host_proc_root={_HOST_PROC_ROOT} available={_host_proc_available()}",
+        f"- cron_roots={', '.join(str(root) for root in _HOST_CRON_ROOTS) or '(none)'}",
+        f"- docker_socket_mounted={Path('/var/run/docker.sock').exists()}",
+        f"- audit_scope={'host+container' if _host_proc_available() else 'container-only'}",
+    ]
+    for name in tools:
+        lines.append(f"- tool:{name}={shutil.which(name) or '(missing)'}")
+    return "\n".join(lines)
+
+
+def _read_host_capabilities() -> str:
+    cron_files = _iter_cron_files()
+    listeners = _read_proc_net_listeners() if _host_proc_available() else []
+    lines = [
+        "Host audit capabilities:",
+        f"- host_proc: {'ok' if _host_proc_available() else 'missing'}",
+        f"- host_processes: {'ok' if _host_proc_available() else 'missing /host/proc'}",
+        f"- host_network_listeners: {'ok' if listeners else 'unverified'}",
+        f"- host_cron_files: {'ok' if cron_files else 'missing readable cron mounts'}",
+        f"- container_ps: {'ok' if shutil.which('ps') else 'missing procps package'}",
+        f"- container_ss: {'ok' if shutil.which('ss') else 'missing iproute2 package'}",
+        f"- container_lsof: {'ok' if shutil.which('lsof') else 'missing lsof package'}",
+        f"- docker_cli: {'ok' if shutil.which('docker') else 'missing'}",
+        f"- docker_socket: {'mounted' if Path('/var/run/docker.sock').exists() else 'not mounted'}",
+    ]
+    if not _host_proc_available():
+        lines.append("Remediation: mount host /proc read-only at /host/proc for public server audit support.")
+    if not cron_files:
+        lines.append("Remediation: mount host cron directories read-only or set SPARKBOT_HOST_CRON_ROOTS.")
+    if not shutil.which("ps") or not shutil.which("ss") or not shutil.which("lsof"):
+        lines.append("Remediation: install procps, iproute2, and lsof in the backend image for container fallback tools.")
+    return "\n".join(lines)
+
+
+def _read_host_system_overview() -> str:
+    lines = ["Host system overview from mounted /proc:"]
+    if not _host_proc_available():
+        return "Host system overview unavailable: /host/proc is not mounted."
+    try:
+        uptime_seconds = float((_HOST_PROC_ROOT / "uptime").read_text(encoding="utf-8").split()[0])
+        days = int(uptime_seconds // 86400)
+        hours = int((uptime_seconds % 86400) // 3600)
+        lines.append(f"- uptime={days}d {hours}h")
+    except Exception:
+        lines.append("- uptime=unreadable")
+    try:
+        meminfo = (_HOST_PROC_ROOT / "meminfo").read_text(encoding="utf-8", errors="replace")
+        values: dict[str, int] = {}
+        for line in meminfo.splitlines():
+            key, _, value = line.partition(":")
+            if key in {"MemTotal", "MemAvailable", "SwapTotal", "SwapFree"}:
+                values[key] = int(value.split()[0])
+        if values:
+            lines.append(
+                "- memory="
+                f"total={round(values.get('MemTotal', 0) / 1024 / 1024, 1)}GiB "
+                f"available={round(values.get('MemAvailable', 0) / 1024 / 1024, 1)}GiB "
+                f"swap_total={round(values.get('SwapTotal', 0) / 1024 / 1024, 1)}GiB "
+                f"swap_free={round(values.get('SwapFree', 0) / 1024 / 1024, 1)}GiB"
+            )
+    except Exception:
+        lines.append("- memory=unreadable")
+    try:
+        st = os.statvfs("/")
+        total = st.f_blocks * st.f_frsize
+        free = st.f_bavail * st.f_frsize
+        used = total - free
+        lines.append(f"- root_disk=used={round(used / 1024**3, 1)}GiB free={round(free / 1024**3, 1)}GiB")
+    except Exception:
+        lines.append("- root_disk=unreadable")
+    return "\n".join(lines)
+
+
+def _read_key_runtime_inventory() -> str:
+    keywords = [
+        "sparkbot",
+        "openclaw",
+        "wepo",
+        "kalshi",
+        "mongo",
+        "postgres",
+        "redis",
+        "nginx",
+        "sshd",
+        "docker",
+        "cron",
+        "fail2ban",
+        "codex",
+    ]
+    records = _host_process_records(limit=2000)
+    if not records:
+        return "Key runtime inventory unavailable: /host/proc is not mounted."
+    lines = ["Key runtime inventory from host process table:"]
+    for keyword in keywords:
+        matches = [
+            item
+            for item in records
+            if keyword in f"{item.get('cmd', '')} {item.get('name', '')}".lower()
+        ]
+        if not matches:
+            lines.append(f"- {keyword}: not seen")
+            continue
+        lines.append(f"- {keyword}: {len(matches)} process(es)")
+        for item in matches[:6]:
+            lines.append(f"  {_format_process_record(item)}")
+    return "\n".join(lines)
+
+
+def _read_host_full_audit() -> str:
+    sections = [
+        "Full host audit: read-only snapshot",
+        "Coverage note: this profile inspects mounted host /proc, mounted cron roots, and container fallback tools. "
+        "It cannot prove Docker containers, systemd units, firewall rules, or journal logs unless those surfaces are mounted or explicitly exposed.",
+        f"== runtime_context ==\n{_read_runtime_context()}",
+        f"== host_capabilities ==\n{_read_host_capabilities()}",
+        f"== system_overview ==\n{_read_host_system_overview()}",
+        f"== key_runtime_inventory ==\n{_read_key_runtime_inventory()}",
+        f"== network_listeners ==\n{_read_host_network_listeners()}",
+        f"== scheduled_jobs ==\n{_read_all_scheduled_jobs()}",
+        f"== process_snapshot ==\n{_read_host_process_snapshot()}",
+    ]
+    return "\n\n".join(sections)
 
 
 def _host_path_candidates(raw_path: str) -> list[Path]:
@@ -4485,7 +4842,7 @@ def _ops_profile_commands(
             f"(this is a parameter validation error, not a policy denial): "
             f"{', '.join(sorted(_SERVER_READ_COMMANDS))}. "
             "For self-diagnostic audits combine host_identity, toolchain_versions, "
-            "and system_overview. For local bot or cron health, use bot_health "
+            "runtime_context, host_capabilities, and host_full_audit. For local bot or cron health, use bot_health "
             "with query=kalshi."
         )
 
@@ -4499,6 +4856,15 @@ def _ops_profile_commands(
 
     if profile == "bot_health":
         return [("bot_health", ["__sparkbot_internal__", "bot_health", query or "kalshi"])], None
+
+    if profile == "runtime_context":
+        return [("runtime_context", ["__sparkbot_internal__", "runtime_context"])], None
+
+    if profile == "host_capabilities":
+        return [("host_capabilities", ["__sparkbot_internal__", "host_capabilities"])], None
+
+    if profile == "host_full_audit":
+        return [("host_full_audit", ["__sparkbot_internal__", "host_full_audit"])], None
 
     if profile == "host_identity":
         if _is_windows:
@@ -4585,6 +4951,8 @@ def _ops_profile_commands(
                 "Get-NetTCPConnection -State Listen | "
                 "Select-Object LocalAddress,LocalPort,OwningProcess | "
                 "Sort-Object LocalPort | Format-Table -AutoSize"])], None
+        if _host_proc_available():
+            return [("network_listeners", ["__sparkbot_internal__", "network_listeners"])], None
         return [("network_listeners", ["ss", "-ltnp"])], None
     if profile == "process_snapshot":
         if _is_windows:
@@ -4592,6 +4960,8 @@ def _ops_profile_commands(
                 "Get-Process | Sort-Object CPU -Descending | Select-Object -First 20 "
                 "Id,ProcessName,@{N='CPU(s)';E={[math]::Round($_.CPU,1)}},"
                 "@{N='Mem(MB)';E={[math]::Round($_.WorkingSet/1MB,1)}} | Format-Table -AutoSize"])], None
+        if _host_proc_available():
+            return [("process_snapshot", ["__sparkbot_internal__", "process_snapshot"])], None
         return [("process_snapshot", ["ps", "-eo", "pid,ppid,%cpu,%mem,comm", "--sort=-%cpu"])], None
 
     unit, err = _validate_service_name(service, allowed_services)
@@ -4623,6 +4993,21 @@ async def _run_profile_commands(commands: list[tuple[str, list[str]]], timeout: 
             continue
         if argv[:2] == ["__sparkbot_internal__", "bot_health"]:
             sections.append(f"== {label} ==\n{_read_bot_health(argv[2] if len(argv) > 2 else '')}")
+            continue
+        if argv[:2] == ["__sparkbot_internal__", "runtime_context"]:
+            sections.append(f"== {label} ==\n{_read_runtime_context()}")
+            continue
+        if argv[:2] == ["__sparkbot_internal__", "host_capabilities"]:
+            sections.append(f"== {label} ==\n{_read_host_capabilities()}")
+            continue
+        if argv[:2] == ["__sparkbot_internal__", "host_full_audit"]:
+            sections.append(f"== {label} ==\n{_read_host_full_audit()}")
+            continue
+        if argv[:2] == ["__sparkbot_internal__", "network_listeners"]:
+            sections.append(f"== {label} ==\n{_read_host_network_listeners()}")
+            continue
+        if argv[:2] == ["__sparkbot_internal__", "process_snapshot"]:
+            sections.append(f"== {label} ==\n{_read_host_process_snapshot()}")
             continue
         code, output = await _run_exec(argv, timeout=timeout)
         heading = f"== {label} ==\n$ {' '.join(shlex.quote(arg) for arg in argv)}"

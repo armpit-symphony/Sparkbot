@@ -1,0 +1,15 @@
+Sparkbot v1.6.79
+
+Host-aware server audit competence release.
+
+Highlights
+- Added `runtime_context`, `host_capabilities`, and `host_full_audit` profiles to `server_read_command`.
+- `process_snapshot` and `network_listeners` now prefer mounted host `/proc` readers when available, instead of reporting only the backend container.
+- `host_full_audit` reports runtime scope, missing audit capabilities, system overview, key workloads, host TCP listeners from `/host/proc/1/net`, mounted cron jobs, and host process inventory.
+- Key workload detection now explicitly looks for Sparkbot, OpenClaw, WEPO, Kalshi, Mongo, Postgres, Redis, nginx, sshd, Docker, cron, fail2ban, and Codex.
+- Backend image installs `procps`, `iproute2`, and `lsof` for better container fallback diagnostics.
+- Prompt guidance now requires runtime scope and host audit evidence before answering "what else is running", full server audit, or security audit questions.
+
+Verification
+- Added backend regression tests with fake host `/proc`, listener, and cron fixtures.
+- Focused server-ops test file passes: 14 passed, 1 skipped.

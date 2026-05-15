@@ -1518,7 +1518,10 @@ async def stream_room_message(
             "Security: OFF - act like a normal operator assistant. Use available tools to read, write, "
             "inspect, and solve the user's request. Do not refuse because of service allowlists or strict "
             "Security guardrails. Only dangerous/destructive actions, external sends, credential reveal/write, "
-            "service control, and critical changes ask yes/no."
+            "service control, and critical changes ask yes/no. For server audits, first establish runtime scope: "
+            "if you are in Docker/container context, do not treat container-only ps/ss output as the full host. "
+            "Use server_read_command(runtime_context), host_capabilities, and host_full_audit for full server/live "
+            "process/network/cron audits, and explicitly state any coverage gaps."
         )
     elif global_control_active:
         control_context = "Computer Control: ON globally - local machine, browser, terminal, and comms tools are enabled across all rooms; edits, deletes, sends, and critical changes still ask yes/no"

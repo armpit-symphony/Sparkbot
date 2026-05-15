@@ -150,7 +150,7 @@ Room Persona saves through the existing room update path. Security mode still us
 
 Sparkbot can control the local machine it is running on. These capabilities are available in the desktop app and on self-hosted servers. By default, Sparkbot runs in an owner-local working mode: routine local machine, server, browser, terminal, SSH, communication reads, and ordinary writes can run without strict Security blockers. Dangerous/destructive actions still ask yes/no before execution, including deletes, external sends, browser writes to sensitive targets, service control, Vault reveal/write paths, and critical admin operations.
 
-Containerized server installs can mount host inspection paths read-only. In local Compose, `/proc`, host cron directories, and `/home/sparky/kalshi-bot` are exposed under `/host/...` so `server_read_command` can answer host-process, scheduled-job, and bot-health questions from inside the backend container without write access to those host files.
+Containerized server installs can mount host inspection paths read-only. In local Compose, `/proc`, host cron directories, and `/home/sparky/kalshi-bot` are exposed under `/host/...` so `server_read_command` can answer host-process, network-listener, scheduled-job, full-audit, and bot-health questions from inside the backend container without write access to those host files. For "what else is running", security-audit, or full live-workload questions, Sparkbot should use `runtime_context`, `host_capabilities`, and `host_full_audit` before responding.
 
 The Command Center box is labeled **Security**. Checking it enables the stricter Guardian guardrails, including the existing PIN, break-glass, service/SSH allowlist, and tool-input guardrail behavior. Owners can also save custom blockers in that panel. Supported custom guardrail entries are exact tool names (`tool:gmail_send`), regex blockers (`regex:rm\s+-rf`), and plain text phrases. Custom guardrails are enforced only while Security is enabled.
 
@@ -213,7 +213,7 @@ Default timeout: 30 seconds (max 120 seconds). Disable with `SPARKBOT_CODE_DISAB
 
 | Tool | Description |
 |------|-------------|
-| `server_read_command` | Read-only diagnostics: system overview, memory, disk, listeners, host process search, scheduled jobs, bot health, service status, recent logs |
+| `server_read_command` | Read-only diagnostics: system overview, memory, disk, host-aware listeners, host-aware process snapshots/search, runtime context, host audit capabilities, full host audit, scheduled jobs, bot health, service status, recent logs |
 | `server_manage_service` | Start/stop/restart a safe service name; service allowlists are enforced when Security is enabled |
 | `ssh_read_command` | Read-only diagnostics on an SSH host alias; host/service allowlists are enforced when Security is enabled |
 
@@ -224,6 +224,8 @@ SPARKBOT_GUARDIAN_POLICY_ENABLED=false
 SPARKBOT_CUSTOM_GUARDRAILS=
 SPARKBOT_SERVICE_USE_SUDO=false
 SPARKBOT_SERVER_COMMAND_TIMEOUT_SECONDS=20
+SPARKBOT_HOST_PROC_ROOT=/host/proc
+SPARKBOT_HOST_CRON_ROOTS=/host/etc/cron.d:/host/var/spool/cron
 SPARKBOT_SSH_ALLOWED_HOSTS=
 SPARKBOT_SSH_ALLOWED_SERVICES=
 SPARKBOT_SSH_CONNECT_TIMEOUT_SECONDS=10
@@ -1944,6 +1946,8 @@ curl -b cookies.txt http://localhost:8000/api/v1/chat/system/watcher | python -m
 | Desktop release tag | `desktop-v{major}.{minor}.{patch}` |
 
 Desktop release tags and app versions are aligned on the `1.6.x` release line.
+
+For `v1.6.79`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release turns host-aware auditing into a first-class operator capability. `server_read_command` adds `runtime_context`, `host_capabilities`, and `host_full_audit`; `process_snapshot` and `network_listeners` now prefer mounted host `/proc` readers when available. The full audit profile reports Docker/container scope, installed/missing audit tools, host process inventory, host TCP listeners from `/host/proc/1/net`, mounted cron jobs, key workloads (Sparkbot, OpenClaw, WEPO, Kalshi, Mongo/Postgres/Redis/nginx/sshd/Docker/cron/fail2ban/Codex), and coverage gaps. The backend image now includes `procps`, `iproute2`, and `lsof` for container fallback diagnostics, and the prompt tells Sparkbot to establish runtime scope before answering full server/security audit questions.
 
 For `v1.6.78`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release fixes Security-off assistant behavior: routine reads and ordinary writes are allowed without strict guardrail confirmation, while dangerous/destructive actions, external sends, service control, credential reveal/write, and critical changes still ask first. It also adds host-backed server inspection profiles for containerized installs: `process_search`, `scheduled_jobs`, and `bot_health`. The local Compose stack mounts host `/proc`, cron directories, and `/home/sparky/kalshi-bot` read-only so Sparkbot can inspect host crons, host processes, and recent Kalshi bot logs instead of trying `systemctl` inside the backend container for cron jobs.
 

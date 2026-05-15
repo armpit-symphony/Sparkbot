@@ -3,7 +3,7 @@ FROM python:3.10
 ENV PYTHONUNBUFFERED=1
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends nodejs npm \
+    && apt-get install -y --no-install-recommends nodejs npm procps iproute2 lsof \
     && npm install -g @openai/codex \
     && mkdir -p /root/.codex \
     && apt-get clean \

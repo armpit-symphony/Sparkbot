@@ -6,6 +6,34 @@ import pytest
 from app.api.routes.chat import tools
 
 
+def _write_fake_proc(
+    root,
+    pid: int,
+    *,
+    name: str,
+    cmd: str,
+    ppid: int = 1,
+    uid: int = 1000,
+    rss_kb: int = 1024,
+) -> None:
+    proc_dir = root / str(pid)
+    proc_dir.mkdir(parents=True)
+    proc_dir.joinpath("cmdline").write_bytes(cmd.encode("utf-8").replace(b" ", b"\x00"))
+    proc_dir.joinpath("status").write_text(
+        "\n".join(
+            [
+                f"Name:\t{name}",
+                "State:\tS (sleeping)",
+                f"PPid:\t{ppid}",
+                f"Uid:\t{uid}\t{uid}\t{uid}\t{uid}",
+                f"VmRSS:\t{rss_kb} kB",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
 def test_server_manage_service_rejects_unapproved_service_when_security_on(monkeypatch) -> None:
     monkeypatch.setenv("SPARKBOT_GUARDIAN_POLICY_ENABLED", "true")
     monkeypatch.setattr(tools, "_ALLOWED_LOCAL_SERVICES", {"sparkbot-v2"})
@@ -182,9 +210,111 @@ def test_scheduled_jobs_reads_mounted_cron_files(monkeypatch, tmp_path) -> None:
     assert "crypto.py" in result
 
 
+def test_process_snapshot_uses_mounted_host_proc(monkeypatch, tmp_path) -> None:
+    proc_root = tmp_path / "proc"
+    _write_fake_proc(
+        proc_root,
+        225970,
+        name="node",
+        cmd="/usr/bin/node /home/sparky/.npm-global/lib/node_modules/openclaw/dist/index.js gateway --port 18789",
+    )
+    _write_fake_proc(
+        proc_root,
+        1268686,
+        name="python",
+        cmd="/usr/bin/python /home/sparky/WEPO/wepo-blockchain/core/wepo_node.py --api-port 18212",
+    )
+    monkeypatch.setattr(tools, "_HOST_PROC_ROOT", proc_root)
+
+    result = asyncio.run(tools._server_read_command("process_snapshot"))
+
+    assert "Host process snapshot" in result
+    assert "openclaw" in result
+    assert "wepo_node.py" in result
+    assert "ps -eo" not in result
+
+
+def test_network_listeners_uses_mounted_host_proc_net(monkeypatch, tmp_path) -> None:
+    proc_root = tmp_path / "proc"
+    _write_fake_proc(
+        proc_root,
+        225970,
+        name="node",
+        cmd="/usr/bin/node openclaw gateway --port 18789",
+    )
+    fd_dir = proc_root / "225970" / "fd"
+    fd_dir.mkdir()
+    (fd_dir / "7").symlink_to("socket:[12345]")
+    net_dir = proc_root / "net"
+    net_dir.mkdir()
+    net_dir.joinpath("tcp").write_text(
+        "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n"
+        "   0: 0100007F:4965 00000000:0000 0A 00000000:00000000 00:00000000 00000000 1000 0 12345 1 0000000000000000 100 0 0 10 0\n",
+        encoding="utf-8",
+    )
+    net_dir.joinpath("tcp6").write_text(
+        "  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(tools, "_HOST_PROC_ROOT", proc_root)
+
+    result = asyncio.run(tools._server_read_command("network_listeners"))
+
+    assert "Host TCP listeners" in result
+    assert "127.0.0.1:18789" in result
+    assert "openclaw" in result
+
+
+def test_host_full_audit_itemizes_known_workloads(monkeypatch, tmp_path) -> None:
+    proc_root = tmp_path / "proc"
+    _write_fake_proc(
+        proc_root,
+        225970,
+        name="node",
+        cmd="/usr/bin/node /home/sparky/.npm-global/lib/node_modules/openclaw/dist/index.js gateway --port 18789",
+    )
+    _write_fake_proc(
+        proc_root,
+        1268686,
+        name="python",
+        cmd="/usr/bin/python /home/sparky/WEPO/wepo-blockchain/core/wepo_node.py --api-port 18212",
+    )
+    (proc_root / "uptime").write_text("7200.00 100.00\n", encoding="utf-8")
+    (proc_root / "meminfo").write_text(
+        "MemTotal:        8192000 kB\nMemAvailable:    4096000 kB\nSwapTotal:       4096000 kB\nSwapFree:        4000000 kB\n",
+        encoding="utf-8",
+    )
+    net_dir = proc_root / "net"
+    net_dir.mkdir()
+    net_dir.joinpath("tcp").write_text(
+        "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n",
+        encoding="utf-8",
+    )
+    net_dir.joinpath("tcp6").write_text(
+        "  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n",
+        encoding="utf-8",
+    )
+    cron_dir = tmp_path / "cron.d"
+    cron_dir.mkdir()
+    cron_dir.joinpath("kalshi").write_text("*/5 * * * * sparky /home/sparky/kalshi-bot/flow_edge_bot.py\n")
+    monkeypatch.setattr(tools, "_HOST_PROC_ROOT", proc_root)
+    monkeypatch.setattr(tools, "_HOST_CRON_ROOTS", [cron_dir])
+
+    result = asyncio.run(tools._server_read_command("host_full_audit"))
+
+    assert "Full host audit: read-only snapshot" in result
+    assert "openclaw: 1 process" in result
+    assert "wepo: 1 process" in result
+    assert "flow_edge_bot.py" in result
+    assert "coverage" in result.lower()
+
+
 def test_new_profiles_listed_in_allowed_set() -> None:
     assert "host_identity" in tools._SERVER_READ_COMMANDS
     assert "toolchain_versions" in tools._SERVER_READ_COMMANDS
     assert "bot_health" in tools._SERVER_READ_COMMANDS
     assert "process_search" in tools._SERVER_READ_COMMANDS
     assert "scheduled_jobs" in tools._SERVER_READ_COMMANDS
+    assert "runtime_context" in tools._SERVER_READ_COMMANDS
+    assert "host_capabilities" in tools._SERVER_READ_COMMANDS
+    assert "host_full_audit" in tools._SERVER_READ_COMMANDS
