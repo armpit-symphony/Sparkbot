@@ -40,12 +40,17 @@ _WEAK_PASSPHRASES = {
     "",
     "admin",
     "admin123",
+    "changethis",
     "changeme",
     "changeme-in-production",
     "letmein",
     "letmein12345",
     "password",
+    "replace_with_admin_password",
+    "replace_with_strong_passphrase",
+    "sparkbot-local",
     "sparkbot",
+    "weak",
 }
 
 
