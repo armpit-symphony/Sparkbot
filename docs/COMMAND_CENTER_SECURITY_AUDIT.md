@@ -21,6 +21,8 @@ Current UI capabilities:
 
 Public issue: the UI is binary, not profile-based. It says "Security on/off" instead of Free/Personal, Balanced, Locked, Custom. This risks making Sparkbot feel either too loose or randomly blocked.
 
+Phil decision: Custom guardrails should be added through the Security section in Command Center. The public UX should make these feel user-owned and editable, not like hidden hard-coded refusals.
+
 ## Current Backend/API State
 
 Wired backend paths:
@@ -46,6 +48,7 @@ The policy engine is real, not fake:
 
 - Binary Security toggle.
 - Owner-authored custom blockers, stored as env JSON.
+- Intended public entry point for custom guardrails/blockers in Command Center Security.
 - PIN/break-glass operator flow.
 - Vault and provider-secret posture.
 - Risky feature status for terminal, robotics bridge, global computer control, and bridges.
@@ -80,7 +83,7 @@ Recommended staged plan:
 2. Keep existing policy engine underneath to avoid a broad rewrite.
 3. Add `profile_id` to the returned model/security config.
 4. Implement `Personal`, `Balanced`, and `Locked` as policy presets.
-5. Keep `Custom` as profile plus owner-authored blockers initially.
+5. Keep `Custom` as profile plus owner-authored blockers initially, edited from Command Center Security.
 6. Convert custom blockers from env text into structured records:
 
 ```json

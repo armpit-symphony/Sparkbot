@@ -14,6 +14,7 @@ Sparkbot Public is the product shell. It should prove the user experience for:
 - permissioned capability behavior
 - Command Center Security profiles
 - user-owned custom blockers
+- Slack bridge continuity as a baseline connector pattern
 
 LIMA AI OS/runtime should not be wired in this phase. These notes are only design cross-references for future review.
 
@@ -35,6 +36,7 @@ LIMA AI OS/runtime should not be wired in this phase. These notes are only desig
 | Custom blockers | Runtime should represent owner-authored rules as structured policy records. |
 | Guardrail redirect behavior | A block should include reason, owner rule, and next safe step. |
 | Shared Work Memory | Runtime memory should support source-labeled cross-surface events. |
+| Slack bridge memory | Connector bridges should use the same memory and permission contract across products. |
 | Meeting manager flow | Multi-agent runtime should support chaired phases, assignment state, and summary checkpoints. |
 
 ## Concepts That Can Inform Arc Bot And Custom Bots
@@ -42,6 +44,7 @@ LIMA AI OS/runtime should not be wired in this phase. These notes are only desig
 - Bot-specific capability profiles derived from the same permission model.
 - Custom blockers scoped to bot, workspace, surface, channel, or tool family.
 - Memory scopes: user profile, room/project, shared work, connector channel.
+- Slack as a safe base connector pattern for Sparkbot Public, Arc Bot, and custom bots.
 - Explainable refusals with editable owner rules.
 - Agent meeting manager pattern for multi-agent coordination.
 

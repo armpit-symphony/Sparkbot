@@ -72,6 +72,7 @@ Public features included:
 - Shared Work Memory
 - meeting wrap-up rollups
 - bridge continuity
+- Slack bridge continuity as a public baseline connector
 
 Private/proprietary excluded:
 - internal runtime memory plans
@@ -132,6 +133,7 @@ Public features included:
 - safe browser reads
 - terminal/server diagnostics
 - confirmed file/browser/terminal writes
+- Free / Personal mode browser and terminal capability enabled by default with confirmations for risky actions
 
 Private/proprietary excluded:
 - raw public shell access by default
@@ -141,7 +143,7 @@ Private/proprietary excluded:
 Readiness dependencies:
 - Permission profile model.
 - Clear confirmation modal.
-- Terminal hidden/disabled unless local operator enables it.
+- Terminal and browser capability exposed in Free / Personal mode with confirmation gates, not hidden by default.
 
 Extraction risk:
 - Shipping dangerous tool access as casual public UI.
@@ -161,6 +163,7 @@ Public features included:
 - Locked
 - Custom
 - custom blocker text initially
+- custom guardrails edited from Command Center Security
 - later structured custom rules
 
 Private/proprietary excluded:
@@ -221,6 +224,7 @@ Public features included:
 - disabled manifests
 - "local operator only" labels
 - future integration notes
+- Robo remains visible as a teaser for now, with release reconfiguration later.
 
 Private/proprietary excluded:
 - full LIMA AI OS

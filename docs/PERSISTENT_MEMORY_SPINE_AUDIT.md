@@ -93,6 +93,7 @@ This is the right public pattern, but it must avoid noisy spam:
    - Chat can recall Telegram/Discord/WhatsApp/GitHub context.
    - Bridges can recall main chat and Round Table outcomes.
    - Slack must be upgraded to the same bridge memory pattern.
+   - Phil decision: Slack is popular enough to be a public baseline connector and should set the reusable bridge-memory pattern for Sparkbot Public, Arc Bot, and future custom bots.
 
 6. User-visible memory controls later:
    - Inspect, correct, restore, archive, delete.
@@ -100,7 +101,7 @@ This is the right public pattern, but it must avoid noisy spam:
 
 ## P0 Memory Findings
 
-- Slack is disconnected from the shared memory substrate.
+- Slack is disconnected from the shared memory substrate. Because Slack is now confirmed as a public baseline connector, this remains `P0` before extraction.
 - Meeting Room UI still depends on localStorage meeting metadata even though backend heartbeat has a persisted manifest.
 - Round Table memory is directionally right, but public MVP needs an explicit rule: only manager wrap-ups/checkpoints create shared meeting memory.
 - Launch scaffold artifacts must never become shared memory notes.

@@ -13,7 +13,9 @@ Sparkbot Public should feel like a capable self-hosted AI workstation, not a loc
 - Risky actions ask for confirmation before execution.
 - Security blockers explain the reason and propose the next safe step.
 - Command Center Security makes guardrails stricter when the user chooses it.
-- Custom blockers/guardrails are user-owned and editable.
+- Custom blockers/guardrails are user-owned, editable, and added through the Security section in Command Center.
+- Slack is a public baseline connector target because it should carry across Sparkbot Public, Arc Bot, and future custom bots.
+- Free / Personal mode allows terminal and browser capability by default, with confirmation for risky actions.
 - The profile pattern should later inform Arc Bot, custom bots, and LIMA runtime policy design, but no runtime wiring happens in this phase.
 
 ## Current Implementation Anchors
@@ -44,11 +46,12 @@ Sparkbot Public should feel like a capable self-hosted AI workstation, not a loc
 Default public mode. Sparkbot is capable by default.
 
 Allowed:
-- Normal chat reasoning, model routing, memory recall/write, tasks/reminders, file reads, local/server diagnostics, browser reads, room-local ordinary writes, and safe tool use.
+- Normal chat reasoning, model routing, memory recall/write, tasks/reminders, file reads, local/server diagnostics, browser reads, terminal diagnostics, room-local ordinary writes, and safe tool use.
 - Configured Telegram/Discord/WhatsApp/GitHub bridges can read and reply in their linked context.
+- Configured Slack should follow the same bridge pattern and become part of the public connector baseline.
 
 Requires confirmation:
-- External sends, browser writes, file edits/deletes, package installs/builds, service control, scheduled write jobs, credential writes/reveals, terminal writes, and Git mutations.
+- External sends, browser writes/clicks/fills, file edits/deletes, package installs/builds, service control, scheduled write jobs, credential writes/reveals, terminal writes, and Git mutations.
 
 Blocked:
 - Unknown tools, unsupported real robot/drone/humanoid control, private/proprietary integrations, and owner-defined custom blockers if the user explicitly enables them for this mode later.
@@ -101,8 +104,9 @@ Blocked:
 | Round Table | Allow manager-led discussion and memory recall. Confirm risky tool calls. | Same; stricter on participant tool use. | Discussion-only unless approved. | Base profile plus meeting-specific user rules later. |
 | Telegram | Read/reply in linked private context when configured. Confirm external sends outside context. | Confirm sends and write-like actions. | Confirm every reply/action. | Base profile plus channel rules. |
 | Discord | Same as Telegram. | Same as Telegram. | Same as Telegram. | Base profile plus channel rules. |
-| Terminal | Read/list sessions allowed; writes confirm. | Reads allowed; writes confirm; service control confirm/PIN. | Disabled or PIN-required. | Base profile plus command regex blockers. |
-| Browser | Open/read public pages allowed; writes confirm. | Reads allowed; clicks/fills confirm. | Read-only unless approved. | Base profile plus URL/action blockers. |
+| Slack | Read/reply in linked workspace context when configured. Confirm external or high-impact sends/actions. | Confirm sends and write-like actions. | Confirm every reply/action. | Base profile plus workspace/channel rules. |
+| Terminal | Available by default for diagnostics; writes confirm. | Reads allowed; writes confirm; service control confirm/PIN. | Disabled or PIN-required. | Base profile plus command regex blockers. |
+| Browser | Available by default for open/read; writes/clicks/fills confirm. | Reads allowed; clicks/fills confirm. | Read-only unless approved. | Base profile plus URL/action blockers. |
 | Files | Read allowed; ordinary writes confirm when outside safe workspace. | Reads allowed; all writes confirm. | Read-only by default. | Base profile plus path blockers. |
 | Server/PC tools | Diagnostics allowed in Personal; service changes confirm. | Diagnostics allowed; gated writes confirm/PIN. | PIN-required or blocked by default. | Base profile plus host/service allowlists. |
 
@@ -113,7 +117,7 @@ Ship with Personal, Balanced, Locked, and Custom profile names in Command Center
 - Personal maps to `SPARKBOT_GUARDIAN_POLICY_ENABLED=false`.
 - Balanced maps to `SPARKBOT_GUARDIAN_POLICY_ENABLED=true` with default confirmations but fewer hard denies.
 - Locked maps to `SPARKBOT_GUARDIAN_POLICY_ENABLED=true` with terminal/server/browser writes off unless break-glass is active.
-- Custom stores user blockers and later user confirmation/block rules.
+- Custom stores user blockers added through Command Center Security and later supports typed user confirmation/block rules.
 
 P0 principle: every `deny` or `privileged` outcome must give the user an understandable reason and one useful safe alternative.
 
