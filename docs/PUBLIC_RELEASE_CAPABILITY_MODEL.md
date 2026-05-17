@@ -164,3 +164,20 @@ Remaining policy work:
 - Balanced and Locked still need deeper behavioral separation in the policy engine.
 - Browser, shell, files, and connector writes should show profile-specific confirmation/block labels in the UI.
 - Custom guardrails need typed user-owned allow/confirm/block records before Custom mode can claim full enforcement.
+
+## Invite Wing Update - 2026-05-17
+
+Branch: `public-release-invite-wing-model-seats`
+
+Implemented:
+
+- Invite Wing model seats are backend-owned public MVP configuration.
+- Codex/OpenAI, Claude/Anthropic, and Grok/xAI seats remain as editable defaults.
+- Seat metadata is sanitized before it reaches the frontend.
+- Credentials submitted from Invite Wing are saved in Guardian Vault and are not persisted in browser `localStorage`.
+- Round Table invite-seat route registration now sends a `modelSeatId` and resolves Vault credentials backend-side.
+- Specialty Wing model selectors include model-seat model IDs.
+
+Remaining policy work:
+
+- Specialty Wing per-agent routing still needs a seat-specific credential binding when a model seat is configured only through Vault and not through a global provider/CLI auth path.

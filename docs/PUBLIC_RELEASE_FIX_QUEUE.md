@@ -57,6 +57,7 @@ Branch `public-release-surface-nav-room-ux` moved the public shell UX blockers f
 
 5. Move Invite Wing credentials out of browser storage.
    - Persist model-seat provider credentials and sub-account keys through backend config or Guardian Vault-backed storage.
+   - Status: `DONE_THIS_PHASE` for Invite Wing and Round Table. Workstation now removes the legacy `sparkbot_invite_configs` key, saves model-seat metadata through `/api/v1/chat/models/config`, and stores supplied credentials in Guardian Vault. Follow-up remains for Specialty Wing per-agent routing to seat-specific Vault credentials.
    - Keep only non-sensitive UI preferences in localStorage.
    - Show route-save errors instead of swallowing them.
    - Evidence: `frontend/src/pages/WorkstationPage.tsx:4261`, `frontend/src/pages/WorkstationPage.tsx:4585`, `frontend/src/lib/workstationMeeting.ts:659`.
@@ -211,7 +212,7 @@ Branch `public-release-surface-nav-room-ux` moved the public shell UX blockers f
 
 Phase B2 should be a focused P0/P1 stabilization patch:
 
-1. Move Invite Wing credentials out of browser storage.
+1. Finish Specialty Wing model-seat credential routing for Vault-only seats.
 2. Rewrite built-in public agent prompts.
 3. Update package exclusions for internal docs and private path references.
 4. Tune Balanced vs Locked policy behavior.

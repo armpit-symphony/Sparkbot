@@ -110,10 +110,16 @@ type InviteAuthMode = "api_key" | "oauth" | "codex_sub"
 interface InviteConfig {
   label: string
   provider: string
+  providerId?: string
   description: string
   modelId?: string
-  apiKey?: string
   authMode?: InviteAuthMode
+  enabled?: boolean
+  showInRoundTable?: boolean
+  showInSpecialtyWing?: boolean
+  configured?: boolean
+  credentialConfigured?: boolean
+  credential?: string
 }
 
 interface SeatPickerState {
@@ -165,11 +171,38 @@ function resolveInviteStation(
     label: config.label,
     subtitle: config.provider,
     description: config.description || station.description,
-    status: "idle" as StationStatus,
-    invitePrompt: undefined,
-    ...(config.apiKey ? { inviteApiKey: config.apiKey } : {}),
+    status: config.enabled !== false && config.configured ? "idle" as StationStatus : "empty" as StationStatus,
+    invitePrompt: config.configured
+      ? undefined
+      : "Finish provider setup in Invite Wing. Credentials are saved by the backend, not browser storage.",
+    ...(config.modelId ? { modelId: config.modelId } : {}),
+    modelSeatId: station.id,
+    modelSeatConfigured: Boolean(config.configured),
     ...(config.authMode ? { inviteAuthMode: config.authMode } : {}),
+    showInRoundTable: config.showInRoundTable !== false,
+    showInSpecialtyWing: config.showInSpecialtyWing !== false,
   }
+}
+
+function buildConfiguredInvites(config: SparkbotControlsConfig | null): Map<string, InviteConfig> {
+  const next = new Map<string, InviteConfig>()
+  for (const seat of config?.model_seats ?? []) {
+    if (!seat.id) continue
+    next.set(seat.id, {
+      label: seat.label || seat.id,
+      provider: seat.company || seat.provider,
+      providerId: seat.provider,
+      description: seat.notes || "",
+      modelId: seat.model_id || undefined,
+      authMode: seat.auth_mode,
+      enabled: seat.enabled,
+      showInRoundTable: seat.show_in_round_table,
+      showInSpecialtyWing: seat.show_in_specialty_wing,
+      configured: Boolean(seat.configured),
+      credentialConfigured: Boolean(seat.credential_configured),
+    })
+  }
+  return next
 }
 
 function slugifyMeetingHandleLabel(value: string, fallback: string): string {
@@ -243,7 +276,8 @@ function buildMeetingSeatMeta(
           agentDescription: station.agentDescription || station.description,
         }
       : {}),
-    ...(station.inviteApiKey ? { inviteApiKey: station.inviteApiKey } : {}),
+    ...(station.modelSeatId ? { modelSeatId: station.modelSeatId } : {}),
+    ...(typeof station.modelSeatConfigured === "boolean" ? { modelSeatConfigured: station.modelSeatConfigured } : {}),
     ...(station.inviteAuthMode ? { inviteAuthMode: station.inviteAuthMode } : {}),
   }
 }
@@ -800,32 +834,35 @@ function DeskCard({
 
 interface InviteConfigModalProps {
   station: Station
-  onSave: (id: string, config: InviteConfig) => void
+  onSave: (id: string, config: InviteConfig) => Promise<void>
   onCancel: () => void
 }
 
 const PROVIDER_OPTIONS = [
-  { value: "OpenAI", label: "OpenAI (ChatGPT)" },
-  { value: "Anthropic", label: "Anthropic (Claude)" },
-  { value: "xAI", label: "xAI (Grok)" },
-  { value: "Google", label: "Google (Gemini)" },
-  { value: "Ollama", label: "Ollama (Local)" },
-  { value: "Custom", label: "Custom Provider" },
+  { value: "openai_codex", label: "OpenAI (Codex seat)", company: "OpenAI" },
+  { value: "openai", label: "OpenAI API", company: "OpenAI" },
+  { value: "anthropic", label: "Anthropic (Claude)", company: "Anthropic" },
+  { value: "xai", label: "xAI (Grok)", company: "xAI" },
+  { value: "google", label: "Google (Gemini)", company: "Google" },
+  { value: "ollama", label: "Ollama (Local)", company: "Ollama" },
+  { value: "openrouter", label: "OpenRouter / custom", company: "Custom" },
 ]
 
 const MODEL_ID_PLACEHOLDER: Record<string, string> = {
-  Anthropic: "e.g. claude-sonnet-4-6",
-  OpenAI: "e.g. openai-codex/gpt-5.3-codex or gpt-5.3-codex",
-  xAI: "e.g. xai/grok-4.20-multi-agent-0309",
-  Ollama: "e.g. ollama/phi4-mini",
-  Google: "e.g. gemini/gemini-1.5-pro",
-  Custom: "e.g. openrouter/openai/gpt-4o",
+  anthropic: "e.g. claude-sonnet-4-6",
+  openai_codex: "e.g. openai-codex/gpt-5.3-codex",
+  openai: "e.g. gpt-5.3-codex",
+  xai: "e.g. xai/grok-4.20-multi-agent-0309",
+  ollama: "e.g. ollama/phi4-mini",
+  google: "e.g. gemini/gemini-1.5-pro",
+  openrouter: "e.g. openrouter/openai/gpt-4o",
 }
 
 const DEFAULT_INVITE_MODELS: Record<string, string> = {
-  Anthropic: "claude-sonnet-4-6",
-  OpenAI: "openai-codex/gpt-5.3-codex",
-  xAI: "xai/grok-4.20-multi-agent-0309",
+  anthropic: "claude-sonnet-4-6",
+  openai_codex: "openai-codex/gpt-5.3-codex",
+  openai: "gpt-5.3-codex",
+  xai: "xai/grok-4.20-multi-agent-0309",
 }
 
 function InviteConfigModal({ station, onSave, onCancel }: InviteConfigModalProps) {
@@ -833,56 +870,81 @@ function InviteConfigModal({ station, onSave, onCancel }: InviteConfigModalProps
     station.label === "Add Agent" ? "" : station.label,
   )
   const defaultProvider =
-    station.id === "invite-claude" ? "Anthropic" :
-    station.id === "invite-gpt" ? "OpenAI" :
-    station.id === "invite-custom" ? "xAI" :
-    "Custom"
+    station.modelSeatId === "invite-claude" || station.id === "invite-claude" ? "anthropic" :
+    station.modelSeatId === "invite-gpt" || station.id === "invite-gpt" ? "openai_codex" :
+    station.modelSeatId === "invite-custom" || station.id === "invite-custom" ? "xai" :
+    "openrouter"
   const [provider, setProvider] = useState(defaultProvider)
-  const [description, setDescription] = useState("")
+  const [description, setDescription] = useState(station.description || "")
   const [modelId, setModelId] = useState(
-    station.id === "invite-claude"
-      ? DEFAULT_INVITE_MODELS.Anthropic
+    station.modelId
+      ? station.modelId
+      : station.id === "invite-claude"
+      ? DEFAULT_INVITE_MODELS.anthropic
       : station.id === "invite-gpt"
-        ? DEFAULT_INVITE_MODELS.OpenAI
+        ? DEFAULT_INVITE_MODELS.openai_codex
         : station.id === "invite-custom"
-          ? DEFAULT_INVITE_MODELS.xAI
+          ? DEFAULT_INVITE_MODELS.xai
           : "",
   )
-  const [apiKey, setApiKey] = useState("")
+  const [credential, setCredential] = useState("")
   const [authMode, setAuthMode] = useState<InviteAuthMode>(
     station.id === "invite-gpt" ? "codex_sub" : "api_key",
   )
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState("")
 
   const { accentHex } = station
   const canSave = label.trim().length > 0
-  const supportsClaudeOAuth = provider === "Anthropic"
-  const supportsCodexSub = provider === "OpenAI"
+  const providerOption = PROVIDER_OPTIONS.find((option) => option.value === provider)
+  const supportsClaudeOAuth = provider === "anthropic"
+  const supportsCodexSub = provider === "openai_codex"
   const showsAuthModeToggle = supportsClaudeOAuth || supportsCodexSub
   const authModeOptions: InviteAuthMode[] = supportsClaudeOAuth
     ? ["api_key", "oauth"]
     : supportsCodexSub
-      ? ["api_key", "codex_sub"]
+      ? ["codex_sub"]
       : ["api_key"]
   const effectiveAuthMode: InviteAuthMode =
     supportsClaudeOAuth || supportsCodexSub ? authMode : "api_key"
 
   useEffect(() => {
     const fallbackModel = DEFAULT_INVITE_MODELS[provider]
-    if (!fallbackModel) return
-    setModelId((current) => current.trim() || fallbackModel)
-  }, [provider])
+    if (fallbackModel) {
+      setModelId((current) => current.trim() || fallbackModel)
+    }
+    if (provider === "openai_codex") {
+      setAuthMode("codex_sub")
+    } else if (provider === "anthropic" && authMode === "codex_sub") {
+      setAuthMode("api_key")
+    } else if (provider !== "anthropic") {
+      setAuthMode("api_key")
+    }
+  }, [provider, authMode])
 
-  const handleSave = useCallback(() => {
-    if (!canSave) return
-    onSave(station.id, {
-      label: label.trim(),
-      provider,
-      description: description.trim(),
-      modelId: modelId.trim() || undefined,
-      apiKey: apiKey.trim() || undefined,
-      authMode: effectiveAuthMode,
-    })
-  }, [canSave, label, provider, description, modelId, apiKey, effectiveAuthMode, station.id, onSave])
+  const handleSave = useCallback(async () => {
+    if (!canSave || saving) return
+    setSaving(true)
+    setSaveError("")
+    try {
+      await onSave(station.id, {
+        label: label.trim(),
+        provider: providerOption?.company ?? provider,
+        providerId: provider,
+        description: description.trim(),
+        modelId: modelId.trim() || undefined,
+        credential: credential.trim() || undefined,
+        authMode: effectiveAuthMode,
+        enabled: true,
+        showInRoundTable: true,
+        showInSpecialtyWing: true,
+      })
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Could not save model seat.")
+    } finally {
+      setSaving(false)
+    }
+  }, [canSave, saving, station.id, label, providerOption?.company, provider, description, modelId, credential, effectiveAuthMode, onSave])
 
   const inputStyle: React.CSSProperties = {
     width: "100%",
@@ -1024,12 +1086,12 @@ function InviteConfigModal({ station, onSave, onCancel }: InviteConfigModalProps
               spellCheck={false}
             />
             <div style={{ fontSize: 10, color: "#4b5563", marginTop: 4 }}>
-              {provider === "Ollama"
-                ? "No API key needed — Ollama runs locally."
-                : "Leave blank to use the model configured in Controls."}
+              {provider === "ollama"
+                ? "No API key needed - Ollama runs locally."
+                : "This model id is saved as backend-owned seat config for Round Table and Specialty Wing."}
             </div>
           </div>
-          {provider !== "Ollama" && (
+          {provider !== "ollama" && (
             <div>
               {showsAuthModeToggle && (
                 <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
@@ -1061,55 +1123,47 @@ function InviteConfigModal({ station, onSave, onCancel }: InviteConfigModalProps
                   })}
                 </div>
               )}
+              {effectiveAuthMode !== "codex_sub" && (
+                <>
               <label style={labelStyle}>
-                {effectiveAuthMode === "oauth"
-                  ? "Claude Subscription Token"
-                  : effectiveAuthMode === "codex_sub"
-                    ? "OpenAI Subscription Key"
-                    : "API Key"}
+                {effectiveAuthMode === "oauth" ? "Claude OAuth token" : "API key"}
               </label>
               <input
                 style={inputStyle}
                 type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder={
-                  effectiveAuthMode === "oauth"
-                    ? "sk-ant-oat01-…"
-                    : effectiveAuthMode === "codex_sub"
-                      ? "sk-proj-… or other OpenAI key"
-                    : "sk-… or your provider key"
-                }
+                value={credential}
+                onChange={(e) => setCredential(e.target.value)}
+                placeholder={effectiveAuthMode === "oauth" ? "sk-ant-oat01-..." : "Provider key saved to local Vault"}
                 maxLength={400}
                 spellCheck={false}
                 autoComplete="off"
               />
+                </>
+              )}
               <div style={{ fontSize: 10, color: "#4b5563", marginTop: 4, lineHeight: 1.5 }}>
                 {effectiveAuthMode === "oauth" ? (
                   <>
-                    Paste your Claude Pro/Max OAuth token — same credential openclaw and Hermes use.
-                    Generate with <code style={{ color: "#9ca3af" }}>claude setup-token</code> or copy the{" "}
-                    <code style={{ color: "#9ca3af" }}>access_token</code> from{" "}
-                    <code style={{ color: "#9ca3af" }}>~/.claude/credentials.json</code>.
-                    Stored locally — used only when this seat joins a meeting.
+                    Optional Claude OAuth access tokens are saved in Guardian Vault by the backend.
+                    Do not paste a subscription password or browser cookie.
                   </>
                 ) : effectiveAuthMode === "codex_sub" ? (
                   <>
-                    For ChatGPT-plan Codex, use Sparkbot Controls -&gt; Codex Sub. Run{" "}
-                    <code style={{ color: "#9ca3af" }}>codex login</code>, choose ChatGPT sign-in, restart Sparkbot,
-                    then pick <code style={{ color: "#9ca3af" }}>openai-codex/gpt-5.3-codex</code>. This regular
-                    OpenAI key field is only for OpenAI Platform API-key routing.
+                    Codex subscription seats use backend/CLI sign-in. Sparkbot does not store subscription
+                    passwords or browser cookies for this seat.
                   </>
-                ) : provider === "xAI" ? (
+                ) : provider === "xai" ? (
                   <>
-                    Use an xAI API key for Grok seats. xAI’s official docs currently require an xAI account plus{" "}
-                    API key for developer access; Grok app or X subscription status does not replace{" "}
-                    <code style={{ color: "#9ca3af" }}>XAI_API_KEY</code> here.
+                    Use an xAI API key for Grok seats. The key is sent to the backend and stored in Guardian Vault.
                   </>
                 ) : (
-                  <>Stored locally — used only when this seat joins a meeting.</>
+                  <>Provider credentials are saved by the backend in Guardian Vault, not browser storage.</>
                 )}
               </div>
+            </div>
+          )}
+          {saveError && (
+            <div style={{ fontSize: 10, color: "#f87171", lineHeight: 1.5 }}>
+              {saveError}
             </div>
           )}
           <div>
@@ -1158,17 +1212,17 @@ function InviteConfigModal({ station, onSave, onCancel }: InviteConfigModalProps
           </button>
           <button
             onClick={handleSave}
-            disabled={!canSave}
+            disabled={!canSave || saving}
             style={{
               flex: 1,
               padding: "9px 0",
               fontSize: 11,
               fontWeight: 700,
-              color: canSave ? "#060a13" : "#374151",
-              backgroundColor: canSave ? accentHex : "#1a2235",
+              color: canSave && !saving ? "#060a13" : "#374151",
+              backgroundColor: canSave && !saving ? accentHex : "#1a2235",
               border: "none",
               borderRadius: 6,
-              cursor: canSave ? "pointer" : "not-allowed",
+              cursor: canSave && !saving ? "pointer" : "not-allowed",
               letterSpacing: "0.06em",
               textTransform: "uppercase",
               fontFamily: "monospace",
@@ -1176,14 +1230,14 @@ function InviteConfigModal({ station, onSave, onCancel }: InviteConfigModalProps
               alignItems: "center",
               justifyContent: "center",
               gap: 6,
-              boxShadow: canSave ? `0 0 12px 2px ${accentHex}44` : "none",
+              boxShadow: canSave && !saving ? `0 0 12px 2px ${accentHex}44` : "none",
               transition: "opacity 0.15s",
             }}
-            onMouseEnter={(e) => { if (canSave) e.currentTarget.style.opacity = "0.85" }}
+            onMouseEnter={(e) => { if (canSave && !saving) e.currentTarget.style.opacity = "0.85" }}
             onMouseLeave={(e) => { e.currentTarget.style.opacity = "1" }}
           >
             <Check size={12} />
-            Invite
+            {saving ? "Saving..." : "Save Seat"}
           </button>
         </div>
       </div>
@@ -1208,6 +1262,7 @@ interface StationDetailPanelProps {
   savingAgentModel: string | null
   agentOptions: SpecialtyAgentOption[]
   onAgentChange: (stationId: string, agentName: string) => void
+  onConfigureInvite: (station: Station) => void
 }
 
 function StationDetailPanel({
@@ -1225,6 +1280,7 @@ function StationDetailPanel({
   savingAgentModel,
   agentOptions,
   onAgentChange,
+  onConfigureInvite,
 }: StationDetailPanelProps) {
   const {
     accentHex,
@@ -1315,12 +1371,13 @@ function StationDetailPanel({
     actionDisabled = false
     actionHandler = handleNavigate
   } else if (type === "invite" && status === "idle") {
-    actionLabel = "Open Chat (Phase 3)"
-    actionDisabled = true
-  } else if (type === "invite" && status === "empty") {
-    actionLabel = "Configure Agent"
+    actionLabel = "Edit Model Seat"
     actionDisabled = false
-    actionHandler = () => {} // handled upstream
+    actionHandler = () => onConfigureInvite(station)
+  } else if (type === "invite" && status === "empty") {
+    actionLabel = "Configure Model Seat"
+    actionDisabled = false
+    actionHandler = () => onConfigureInvite(station)
   }
 
   return (
@@ -4370,16 +4427,7 @@ export default function WorkstationPage() {
       seats: normalizeMeetingSeats(draft.seats),
     }
   })
-  const [configuredInvites, setConfiguredInvites] = useState<Map<string, InviteConfig>>(() => {
-    try {
-      const raw = window.localStorage.getItem("sparkbot_invite_configs")
-      if (!raw) return new Map()
-      const entries = JSON.parse(raw) as Array<[string, InviteConfig]>
-      return new Map(entries)
-    } catch {
-      return new Map()
-    }
-  })
+  const [configuredInvites, setConfiguredInvites] = useState<Map<string, InviteConfig>>(new Map())
   const [controlsConfig, setControlsConfig] = useState<SparkbotControlsConfig | null>(null)
   const [overview, setOverview] = useState<WorkstationOverview | null>(null)
   const [infoOpen, setInfoOpen] = useState(false)
@@ -4470,6 +4518,13 @@ export default function WorkstationPage() {
       setPanel({ kind: "mcp" })
     }
   }, [])
+
+  useEffect(() => {
+    setConfiguredInvites(buildConfiguredInvites(controlsConfig))
+    try {
+      window.localStorage.removeItem("sparkbot_invite_configs")
+    } catch {}
+  }, [controlsConfig])
 
   useEffect(() => {
     saveMeetingDraft({
@@ -4710,16 +4765,41 @@ export default function WorkstationPage() {
     setSeatPicker(null)
   }, [])
 
-  const handleSaveInvite = useCallback((stationId: string, config: InviteConfig) => {
-    setConfiguredInvites((prev) => {
-      const next = new Map([...prev, [stationId, config]])
-      try {
-        window.localStorage.setItem("sparkbot_invite_configs", JSON.stringify([...next]))
-      } catch {}
-      return next
+  const handleSaveInvite = useCallback(async (stationId: string, config: InviteConfig) => {
+    const existingSeats = controlsConfig?.model_seats ?? []
+    const matchingStation = INVITE_DESKS.find((desk) => desk.id === stationId)
+    const nextSeat = {
+      id: stationId,
+      label: config.label,
+      company: config.provider,
+      provider: config.providerId ?? config.provider,
+      auth_mode: config.authMode ?? "api_key",
+      model_id: config.modelId ?? "",
+      enabled: config.enabled ?? true,
+      show_in_round_table: config.showInRoundTable ?? true,
+      show_in_specialty_wing: config.showInSpecialtyWing ?? true,
+      notes: config.description || matchingStation?.description || "",
+      ...(config.credential ? { credential: config.credential } : {}),
+    }
+    const modelSeats = [
+      ...existingSeats.filter((seat) => seat.id !== stationId),
+      nextSeat,
+    ]
+    const response = await apiFetch("/api/v1/chat/models/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ model_seats: modelSeats }),
     })
+    const data = await response.json().catch(() => null)
+    if (!response.ok) {
+      throw new Error(String(data?.detail ?? "Could not save Invite Wing model seat."))
+    }
+    const nextConfig = data as SparkbotControlsConfig
+    setControlsConfig(nextConfig)
+    setConfiguredInvites(buildConfiguredInvites(nextConfig))
     setInviteModalTarget(null)
-  }, [])
+  }, [controlsConfig?.model_seats])
 
   const handleClosePanel = useCallback(() => setPanel(null), [])
 
@@ -4747,7 +4827,7 @@ export default function WorkstationPage() {
       }
 
       // Unconfigured invite desk → open config modal
-      if (station.isInviteSlot && !configuredInvites.has(station.id)) {
+      if (station.isInviteSlot && !configuredInvites.get(station.id)?.configured) {
         setInviteModalTarget(station)
         return
       }
@@ -5615,6 +5695,7 @@ export default function WorkstationPage() {
             savingAgentModel={savingAgentModel}
             agentOptions={specialtyAgentOptions}
             onAgentChange={handleSpecialtyAgentChange}
+            onConfigureInvite={(station) => setInviteModalTarget(station)}
           />
         )}
         {panel?.kind === "table" && (

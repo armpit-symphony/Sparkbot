@@ -18,6 +18,7 @@ import type {
   SkillInfo,
   PolicyEntry,
   Agent,
+  AgentUpdateDraft,
 } from "@/hooks/useControlsState"
 import { AGENT_TEMPLATES } from "@/hooks/useControlsState"
 
@@ -126,6 +127,7 @@ export interface SetupPanelProps {
   onSpawnDescriptionChange: (v: string) => void
   onSpawnPromptChange: (v: string) => void
   onSpawnAgent: () => void
+  onUpdateAgent: (name: string, draft: AgentUpdateDraft) => Promise<void>
 }
 
 // ─── Derived helpers (used inside panels) ────────────────────────────────────
@@ -146,6 +148,7 @@ function useSetupHelpers(props: SetupPanelProps) {
       ...openRouterModels.map((m) => m.id),
       ...localModelOptions,
       modelStack?.primary, modelStack?.backup_1, modelStack?.backup_2, modelStack?.heavy_hitter,
+      ...(modelsConfig?.model_seats ?? []).map((seat) => seat.model_id ?? ""),
     ].filter(Boolean)),
   ), [modelsConfig, openRouterModels, localModelOptions, modelStack])
 
@@ -158,7 +161,8 @@ function useSetupHelpers(props: SetupPanelProps) {
     ["openrouter", "OpenRouter (OPENROUTER_API_KEY)", (id) => id.startsWith("openrouter/")],
     ["openai", "OpenAI direct (OPENAI_API_KEY)", (id) => id.startsWith("gpt-") || id.startsWith("codex-")],
     ["openai_codex", "OpenAI Codex subscription", (id) => id.startsWith("openai-codex/")],
-    ["anthropic", "Anthropic direct (ANTHROPIC_API_KEY)", (id) => id.startsWith("claude")],
+    ["anthropic", "Anthropic direct (ANTHROPIC_API_KEY)", (id) => id.startsWith("claude") && !id.startsWith("claude-sub/")],
+    ["claude_sub", "Claude subscription", (id) => id.startsWith("claude-sub/")],
     ["google", "Google direct (GOOGLE_API_KEY)", (id) => id.startsWith("gemini/")],
     ["xai", "xAI direct (XAI_API_KEY)", (id) => id.startsWith("xai/")],
     ["groq", "Groq direct (GROQ_API_KEY)", (id) => id.startsWith("groq/")],
@@ -171,7 +175,7 @@ function useSetupHelpers(props: SetupPanelProps) {
 
   const hasOpenRouterConfigured = Boolean(modelsConfig?.providers?.find((p) => p.id === "openrouter")?.configured)
   const directProviderLabel: Record<string, string> = {
-    openai: "OpenAI", openai_codex: "OpenAI Codex Subscription", anthropic: "Anthropic",
+    openai: "OpenAI", openai_codex: "OpenAI Codex Subscription", anthropic: "Anthropic", claude_sub: "Claude Subscription",
     google: "Google", groq: "Groq", minimax: "MiniMax", xai: "xAI",
   }
   const directProviderKeyField: Record<string, keyof ProviderTokenDrafts> = {
@@ -182,8 +186,12 @@ function useSetupHelpers(props: SetupPanelProps) {
     modelsConfig?.providers?.find((p) => p.id === id)?.auth_modes ?? ["api_key"]
   const directProviderIsConfigured = (id: string) =>
     Boolean(modelsConfig?.providers?.find((p) => p.id === id)?.configured)
-  const directProviderModels = (id: string): string[] =>
-    modelsConfig?.providers?.find((p) => p.id === id)?.models ?? []
+  const directProviderModels = (id: string): string[] => Array.from(new Set([
+    ...(modelsConfig?.providers?.find((p) => p.id === id)?.models ?? []),
+    ...(modelsConfig?.model_seats ?? [])
+      .filter((seat) => seat.show_in_specialty_wing && seat.provider === id && seat.model_id)
+      .map((seat) => seat.model_id as string),
+  ]))
   const ollamaProvider = modelsConfig?.providers?.find((p) => p.id === "ollama")
   const routingAgents = modelsConfig?.available_agents ?? []
   const pinConfigured = Boolean(guardianStatus?.pin_configured)
@@ -905,10 +913,39 @@ export function AgentsPanel(props: SetupPanelProps) {
     agents,
     onAgentOverrideChange, onSaveAgentOverrides,
     onSpawnTemplateChange, onSpawnNameChange, onSpawnEmojiChange,
-    onSpawnDescriptionChange, onSpawnPromptChange, onSpawnAgent,
+    onSpawnDescriptionChange, onSpawnPromptChange, onSpawnAgent, onUpdateAgent,
   } = props
 
   const { localModelOptions, directProviderModels, routingAgents } = useSetupHelpers(props)
+  const editableAgents = agents.filter((agent) => agent.is_builtin === false)
+  const [editingAgent, setEditingAgent] = useState<string | null>(null)
+  const [editEmoji, setEditEmoji] = useState("")
+  const [editDescription, setEditDescription] = useState("")
+  const [editPrompt, setEditPrompt] = useState("")
+  const [updatingAgent, setUpdatingAgent] = useState<string | null>(null)
+
+  const startEditAgent = (agent: Agent) => {
+    setEditingAgent(agent.name)
+    setEditEmoji(agent.emoji)
+    setEditDescription(agent.description)
+    setEditPrompt("")
+  }
+
+  const saveEditAgent = async () => {
+    if (!editingAgent) return
+    setUpdatingAgent(editingAgent)
+    try {
+      await onUpdateAgent(editingAgent, {
+        emoji: editEmoji,
+        description: editDescription,
+        system_prompt: editPrompt,
+      })
+      setEditingAgent(null)
+      setEditPrompt("")
+    } finally {
+      setUpdatingAgent(null)
+    }
+  }
 
   return (
     <CollapsibleSection title="Agents" subtitle="Spawn custom agents, route agent models, and review built-ins">
@@ -969,6 +1006,67 @@ export function AgentsPanel(props: SetupPanelProps) {
         </div>
       </div>
 
+      {/* Editable custom agents */}
+      <div className="mb-4 rounded-lg border bg-background/70 p-4">
+        <div className="mb-3">
+          <h3 className="text-sm font-semibold">Specialty Wing Agents</h3>
+          <p className="text-xs text-muted-foreground">
+            Custom agents can be edited here. Built-in agents stay locked for the public MVP.
+          </p>
+        </div>
+        {editableAgents.length === 0 ? (
+          <div className="rounded-md border border-dashed bg-muted/30 px-3 py-3 text-xs text-muted-foreground">
+            No custom specialty agents yet. Spawn one above, then edit its display fields and instructions here.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {editableAgents.map((agent) => {
+              const isEditing = editingAgent === agent.name
+              return (
+                <div key={agent.name} className="rounded-lg border bg-muted/30 px-3 py-3">
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">{agent.emoji}</span>
+                      <div>
+                        <div className="text-sm font-medium">{agentDisplayName(agent.name)}</div>
+                        <div className="font-mono text-[11px] text-muted-foreground">@{agent.name}</div>
+                      </div>
+                    </div>
+                    <button type="button" onClick={() => isEditing ? setEditingAgent(null) : startEditAgent(agent)}
+                      className="rounded-md border px-3 py-1.5 text-xs">
+                      {isEditing ? "Cancel" : "Edit"}
+                    </button>
+                  </div>
+                  {!isEditing ? (
+                    <p className="m-0 text-xs text-muted-foreground">{agent.description || "No description yet."}</p>
+                  ) : (
+                    <div className="grid gap-2">
+                      <div className="grid gap-2 md:grid-cols-[80px_1fr]">
+                        <input value={editEmoji} onChange={(e) => setEditEmoji(e.target.value)} maxLength={4}
+                          className="w-full rounded-md border bg-background px-3 py-2 text-center text-lg outline-none" />
+                        <input value={editDescription} onChange={(e) => setEditDescription(e.target.value)} maxLength={300}
+                          placeholder="Short public description"
+                          className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none" />
+                      </div>
+                      <textarea value={editPrompt} onChange={(e) => setEditPrompt(e.target.value)}
+                        placeholder="Optional: replace this agent's instructions. Leave blank to keep the current prompt."
+                        rows={4}
+                        className="w-full rounded-md border bg-background px-3 py-2 text-sm font-mono outline-none resize-none" />
+                      <div className="flex justify-end">
+                        <button type="button" onClick={saveEditAgent} disabled={updatingAgent === agent.name}
+                          className="rounded-md bg-blue-600 px-4 py-2 text-sm text-white disabled:opacity-50">
+                          {updatingAgent === agent.name ? "Saving..." : "Save agent"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
       {/* Agent model overrides */}
       <div className="rounded-lg border bg-background/70 p-4 mb-4">
         <div className="mb-3">
@@ -982,11 +1080,11 @@ export function AgentsPanel(props: SetupPanelProps) {
             const modelValue = override.model ?? ""
             const routeProviderMap: Record<string, string> = {
               openrouter: "openrouter", local: "ollama", openai: "openai", openai_codex: "openai_codex",
-              anthropic: "anthropic", google: "google", groq: "groq", minimax: "minimax", xai: "xai",
+              anthropic: "anthropic", claude_sub: "claude_sub", google: "google", groq: "groq", minimax: "minimax", xai: "xai",
             }
             const routeLabels: Record<string, string> = {
               openrouter: "OpenRouter", local: "Local (Ollama)", openai: "OpenAI", openai_codex: "Codex Subscription",
-              anthropic: "Anthropic", google: "Google", groq: "Groq", minimax: "MiniMax", xai: "xAI",
+              anthropic: "Anthropic", claude_sub: "Claude Subscription", google: "Google", groq: "Groq", minimax: "MiniMax", xai: "xAI",
             }
             const providerForRoute = routeProviderMap[route] ?? ""
             const modelsForRoute = route === "openrouter"
@@ -1014,6 +1112,7 @@ export function AgentsPanel(props: SetupPanelProps) {
                     <option value="openai">OpenAI</option>
                     <option value="openai_codex">Codex Subscription</option>
                     <option value="anthropic">Anthropic</option>
+                    <option value="claude_sub">Claude Subscription</option>
                     <option value="google">Google</option>
                     <option value="groq">Groq</option>
                     <option value="minimax">MiniMax</option>

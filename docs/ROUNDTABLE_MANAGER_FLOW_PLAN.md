@@ -155,6 +155,13 @@ Implemented UI behavior:
 - Existing manager wrap-up/checkpoint/manual notes behavior was not changed.
 - Existing structured assignment persistence was not changed.
 
+## Invite Wing Model Seat Update - 2026-05-17
+
+- Round Table meeting seat metadata now carries `modelSeatId` and model id instead of frontend-held provider secrets.
+- Invite-seat route registration calls `/api/v1/chat/agents/{name}/invite-route` with the seat id. The backend resolves any Guardian Vault credential for that seat before storing the runtime route.
+- Route-registration errors are no longer swallowed by the frontend meeting launcher, so a broken Invite Wing route should block launch instead of silently falling back to the wrong model.
+- Per-turn meeting notes remain disabled; model-seat work did not re-enable them.
+
 Remaining public polish:
 
 - Render latest persisted `meeting_assignments` artifacts as visible assignment cards/status rows.

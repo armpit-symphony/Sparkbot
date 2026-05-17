@@ -1053,6 +1053,7 @@ function SpineOps() {
     onSpawnDescriptionChange: (v: string) => controls.setSpawnDescription(v),
     onSpawnPromptChange: (v: string) => controls.setSpawnPrompt(v),
     onSpawnAgent: controls.spawnAgent,
+    onUpdateAgent: controls.updateAgent,
   }
 
   useEffect(() => {

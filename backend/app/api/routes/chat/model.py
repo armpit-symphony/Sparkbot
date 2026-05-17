@@ -91,6 +91,63 @@ SECURITY_PROFILE_LABELS = {
     "locked": "Locked",
     "custom": "Custom",
 }
+MODEL_SEATS_ENV = "SPARKBOT_MODEL_SEATS_JSON"
+MODEL_SEAT_AUTH_MODES = {"api_key", "oauth", "codex_sub"}
+MODEL_SEAT_PROVIDER_ALIASES = {
+    "anthropic": "anthropic",
+    "claude": "anthropic",
+    "claude_sub": "claude_sub",
+    "claude-sub": "claude_sub",
+    "google": "google",
+    "gemini": "google",
+    "groq": "groq",
+    "minimax": "minimax",
+    "ollama": "ollama",
+    "openai": "openai",
+    "openai_codex": "openai_codex",
+    "openai-codex": "openai_codex",
+    "codex": "openai_codex",
+    "xai": "xai",
+    "grok": "xai",
+}
+MODEL_SEAT_DEFAULTS: list[dict[str, Any]] = [
+    {
+        "id": "invite-gpt",
+        "label": "Codex / OpenAI",
+        "company": "OpenAI",
+        "provider": "openai_codex",
+        "auth_mode": "codex_sub",
+        "model_id": "openai-codex/gpt-5.3-codex",
+        "enabled": True,
+        "show_in_round_table": True,
+        "show_in_specialty_wing": True,
+        "notes": "Default Codex/OpenAI model seat for Round Table and Specialty Wing.",
+    },
+    {
+        "id": "invite-claude",
+        "label": "Claude / Anthropic",
+        "company": "Anthropic",
+        "provider": "anthropic",
+        "auth_mode": "api_key",
+        "model_id": "claude-sonnet-4-6",
+        "enabled": True,
+        "show_in_round_table": True,
+        "show_in_specialty_wing": True,
+        "notes": "Default Claude model seat for long-context reasoning.",
+    },
+    {
+        "id": "invite-custom",
+        "label": "Grok / xAI",
+        "company": "xAI",
+        "provider": "xai",
+        "auth_mode": "api_key",
+        "model_id": "xai/grok-4.20-multi-agent-0309",
+        "enabled": True,
+        "show_in_round_table": True,
+        "show_in_specialty_wing": True,
+        "notes": "Default Grok model seat for agentic reasoning.",
+    },
+]
 
 
 def _security_profile_id() -> str:
@@ -402,6 +459,163 @@ def _provider_catalog(ollama_status: dict[str, Any] | None = None) -> list[dict[
     return items
 
 
+def _model_seat_secret_alias(seat_id: str) -> str:
+    safe_id = re.sub(r"[^a-z0-9_]+", "_", seat_id.strip().lower()).strip("_")
+    return f"model_seat_{safe_id}_credential"
+
+
+def _vault_secret_configured(alias: str) -> bool:
+    try:
+        from app.services.guardian.vault import vault_get_metadata
+
+        meta = vault_get_metadata(alias)
+        return bool(meta and str(meta.get("access_policy") or "") != "disabled")
+    except Exception:
+        return False
+
+
+def _load_model_seat_overrides() -> dict[str, dict[str, Any]]:
+    raw = os.getenv(MODEL_SEATS_ENV, "").strip()
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        return {}
+    if not isinstance(parsed, list):
+        return {}
+    items: dict[str, dict[str, Any]] = {}
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        seat_id = str(item.get("id") or "").strip().lower()
+        if not seat_id:
+            continue
+        items[seat_id] = item
+    return items
+
+
+def _merged_model_seats() -> list[dict[str, Any]]:
+    merged: dict[str, dict[str, Any]] = {
+        str(item["id"]): dict(item)
+        for item in MODEL_SEAT_DEFAULTS
+    }
+    for seat_id, override in _load_model_seat_overrides().items():
+        base = dict(merged.get(seat_id, {"id": seat_id}))
+        for key in (
+            "label",
+            "company",
+            "provider",
+            "auth_mode",
+            "model_id",
+            "enabled",
+            "show_in_round_table",
+            "show_in_specialty_wing",
+            "notes",
+        ):
+            if key in override:
+                base[key] = override[key]
+        merged[seat_id] = base
+    return list(merged.values())
+
+
+def _model_seat_by_id(seat_id: str) -> dict[str, Any] | None:
+    normalized = str(seat_id or "").strip().lower()
+    for seat in _merged_model_seats():
+        if str(seat.get("id") or "").strip().lower() == normalized:
+            return seat
+    return None
+
+
+def _normalize_model_seat_provider(provider: str | None, model_id: str | None) -> str:
+    raw_provider = str(provider or "").strip().lower().replace(" ", "_")
+    if raw_provider in MODEL_SEAT_PROVIDER_ALIASES:
+        return MODEL_SEAT_PROVIDER_ALIASES[raw_provider]
+    if model_id:
+        resolved = model_provider(model_id)
+        if resolved:
+            return resolved
+    return "openrouter"
+
+
+def _clean_model_seat_record(item: "ModelSeatInput", existing: dict[str, Any] | None = None) -> dict[str, Any]:
+    base = dict(existing or {})
+    seat_id = re.sub(r"[^a-z0-9_-]+", "-", str(item.id or "").strip().lower()).strip("-")
+    if not seat_id:
+        raise HTTPException(status_code=400, detail="Model seat id is required.")
+    model_id = str(item.model_id if item.model_id is not None else base.get("model_id") or "").strip()
+    if model_id and not is_valid_model(model_id):
+        raise HTTPException(status_code=400, detail=f"Unknown model '{model_id}' for model seat '{seat_id}'.")
+    provider = _normalize_model_seat_provider(item.provider if item.provider is not None else base.get("provider"), model_id)
+    auth_mode = str(item.auth_mode if item.auth_mode is not None else base.get("auth_mode") or "api_key").strip().lower()
+    if auth_mode not in MODEL_SEAT_AUTH_MODES:
+        auth_mode = "api_key"
+    return {
+        "id": seat_id,
+        "label": str(item.label if item.label is not None else base.get("label") or seat_id).strip()[:80],
+        "company": str(item.company if item.company is not None else base.get("company") or provider).strip()[:80],
+        "provider": provider,
+        "auth_mode": auth_mode,
+        "model_id": model_id,
+        "enabled": bool(base.get("enabled", True) if item.enabled is None else item.enabled),
+        "show_in_round_table": bool(base.get("show_in_round_table", True) if item.show_in_round_table is None else item.show_in_round_table),
+        "show_in_specialty_wing": bool(base.get("show_in_specialty_wing", True) if item.show_in_specialty_wing is None else item.show_in_specialty_wing),
+        "notes": str(item.notes if item.notes is not None else base.get("notes") or "").strip()[:400],
+    }
+
+
+def _model_seat_configured(seat: dict[str, Any], providers: list[dict[str, Any]]) -> bool:
+    provider_id = str(seat.get("provider") or "").strip().lower()
+    provider = next((item for item in providers if str(item.get("id")) == provider_id), None)
+    if _vault_secret_configured(_model_seat_secret_alias(str(seat.get("id") or ""))):
+        return True
+    if provider_id == "ollama":
+        return bool(provider and (provider.get("models_available") or provider.get("configured") or provider.get("reachable")))
+    return bool(provider and (provider.get("configured") or provider.get("models_available")))
+
+
+def _model_seat_payload(providers: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    payload: list[dict[str, Any]] = []
+    for seat in _merged_model_seats():
+        seat_id = str(seat.get("id") or "").strip().lower()
+        if not seat_id:
+            continue
+        model_id = str(seat.get("model_id") or "").strip()
+        provider = _normalize_model_seat_provider(str(seat.get("provider") or ""), model_id)
+        credential_configured = _vault_secret_configured(_model_seat_secret_alias(seat_id))
+        provider_configured = _model_seat_configured({**seat, "provider": provider}, providers)
+        payload.append(
+            {
+                "id": seat_id,
+                "label": str(seat.get("label") or seat_id),
+                "company": str(seat.get("company") or provider),
+                "provider": provider,
+                "auth_mode": str(seat.get("auth_mode") or "api_key"),
+                "model_id": model_id,
+                "enabled": bool(seat.get("enabled", True)),
+                "show_in_round_table": bool(seat.get("show_in_round_table", True)),
+                "show_in_specialty_wing": bool(seat.get("show_in_specialty_wing", True)),
+                "notes": str(seat.get("notes") or ""),
+                "credential_configured": credential_configured,
+                "configured": provider_configured,
+            }
+        )
+    return payload
+
+
+def _use_model_seat_secret(seat_id: str, current_user: CurrentChatUser) -> str | None:
+    alias = _model_seat_secret_alias(seat_id)
+    if not _vault_secret_configured(alias):
+        return None
+    operator = str(current_user.username or current_user.id or "system")
+    return get_guardian_suite().vault.vault_use(
+        alias,
+        user_id=str(current_user.id),
+        operator=operator,
+        session_id="model-seat-route",
+    )
+
+
 def _build_google_comms_status() -> dict[str, Any]:
     """Return configured status for Google (Gmail + Calendar) credentials."""
     has_oauth = bool(
@@ -476,6 +690,8 @@ async def _build_controls_config(current_user: CurrentChatUser, notices: list[st
     _display_model = _configured_primary or ""
     _configured_local = os.getenv(LOCAL_DEFAULT_MODEL_ENV, "").strip()
     global_control = global_bypass_status()
+    providers = _provider_catalog(ollama_status=ollama_status)
+    model_seats = _model_seat_payload(providers)
     return {
         "active_model": get_model(str(current_user.id)),
         "stack": get_model_stack_display(),
@@ -549,7 +765,8 @@ async def _build_controls_config(current_user: CurrentChatUser, notices: list[st
             ],
         ],
         "token_guardian_mode": os.getenv("SPARKBOT_TOKEN_GUARDIAN_MODE", "shadow").strip().lower() or "shadow",
-        "providers": _provider_catalog(ollama_status=ollama_status),
+        "providers": providers,
+        "model_seats": model_seats,
         # Friendly label for every model — keyed by model ID so the frontend
         # can show "GPT-5 Mini — fast…" instead of a raw model string.
         # Auto-updates whenever AVAILABLE_MODELS is updated; no frontend change needed.
@@ -557,6 +774,11 @@ async def _build_controls_config(current_user: CurrentChatUser, notices: list[st
             **dict(AVAILABLE_MODELS),
             **({_display_model: model_label(_display_model)} if _display_model else {}),
             **({_configured_local: model_label(_configured_local)} if _configured_local else {}),
+            **{
+                str(seat["model_id"]): model_label(str(seat["model_id"]))
+                for seat in model_seats
+                if str(seat.get("model_id") or "").strip()
+            },
         },
         "comms": _build_comms_status(),
         "ollama_status": ollama_status,
@@ -596,6 +818,18 @@ async def build_safe_runtime_state(current_user: CurrentChatUser) -> dict[str, A
         "security_guardrails_enabled": bool(config.get("security_guardrails_enabled")),
         "security_profile": config.get("security_profile") or {},
         "agent_overrides": config.get("agent_overrides") or {},
+        "model_seats": [
+            {
+                "id": str(seat.get("id") or ""),
+                "label": str(seat.get("label") or ""),
+                "provider": str(seat.get("provider") or ""),
+                "model_id": str(seat.get("model_id") or ""),
+                "configured": bool(seat.get("configured")),
+                "show_in_round_table": bool(seat.get("show_in_round_table")),
+                "show_in_specialty_wing": bool(seat.get("show_in_specialty_wing")),
+            }
+            for seat in list(config.get("model_seats") or [])
+        ],
         "ollama_status": config.get("ollama_status") or {},
         "openrouter_configured": bool((provider_flags.get("openrouter") or {}).get("configured")),
         "providers": provider_flags,
@@ -642,6 +876,20 @@ class LocalRuntimeInput(BaseModel):
 
 class RoutingPolicyInput(BaseModel):
     cross_provider_fallback: bool | None = None
+
+
+class ModelSeatInput(BaseModel):
+    id: str = Field(..., max_length=80)
+    label: str | None = Field(default=None, max_length=80)
+    company: str | None = Field(default=None, max_length=80)
+    provider: str | None = Field(default=None, max_length=80)
+    auth_mode: str | None = Field(default=None, max_length=40)
+    model_id: str | None = Field(default=None, max_length=160)
+    enabled: bool | None = None
+    show_in_round_table: bool | None = None
+    show_in_specialty_wing: bool | None = None
+    notes: str | None = Field(default=None, max_length=400)
+    credential: str | None = Field(default=None, max_length=4000)
 
 
 class TelegramConfigInput(BaseModel):
@@ -707,6 +955,7 @@ class ControlsConfigUpdate(BaseModel):
     default_selection: dict[str, str] | None = None
     local_runtime: LocalRuntimeInput | None = None
     routing_policy: RoutingPolicyInput | None = None
+    model_seats: list[ModelSeatInput] | None = None
     agent_overrides: dict[str, dict[str, str]] | None = None
     providers: ProviderSecretsInput | None = None
     comms: CommsConfigInput | None = None
@@ -779,6 +1028,12 @@ class AgentCreate(BaseModel):
     kill_switch: bool = False
 
 
+class AgentUpdate(BaseModel):
+    emoji: str | None = Field(default=None, max_length=10)
+    description: str | None = Field(default=None, max_length=300)
+    system_prompt: str | None = Field(default=None, min_length=10)
+
+
 @router.post("/agents", status_code=201)
 def create_agent(body: AgentCreate, current_user: CurrentChatUser, session: SessionDep) -> dict:
     """Spawn a custom agent — persists to DB and registers immediately (no restart needed)."""
@@ -830,6 +1085,57 @@ def create_agent(body: AgentCreate, current_user: CurrentChatUser, session: Sess
     }
 
 
+@router.patch("/agents/{name}", status_code=200)
+def update_agent(name: str, body: AgentUpdate, current_user: CurrentChatUser, session: SessionDep) -> dict:
+    """Edit a custom Specialty Wing agent. Built-ins stay locked in the public MVP."""
+    from sqlmodel import select
+    from app.models import CustomAgent
+
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    name = name.lower().strip()
+    if name in BUILT_IN_AGENTS or name == "sparkbot":
+        raise HTTPException(status_code=403, detail=f"Built-in agent '{name}' is locked for the public MVP.")
+
+    try:
+        CustomAgent.__table__.create(session.get_bind(), checkfirst=True)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Could not prepare custom agent storage: {exc}")
+
+    agent = session.exec(select(CustomAgent).where(CustomAgent.name == name)).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail=f"Agent '{name}' not found.")
+
+    if body.emoji is not None:
+        agent.emoji = body.emoji.strip() or agent.emoji
+    if body.description is not None:
+        agent.description = body.description.strip()
+    if body.system_prompt is not None:
+        agent.system_prompt = body.system_prompt.strip()
+    session.add(agent)
+    session.commit()
+    session.refresh(agent)
+
+    identity = {
+        "owner": current_user.username,
+        "purpose": agent.description,
+        "scopes": ["chat", "room_context"],
+        "allowed_tools": ["policy_registry"],
+        "expires_at": None,
+        "risk_tier": "standard",
+        "kill_switch": False,
+    }
+    register_agent(agent.name, agent.emoji, agent.description, agent.system_prompt, identity=identity)
+    return {
+        "name": agent.name,
+        "emoji": agent.emoji,
+        "description": agent.description,
+        "is_builtin": False,
+        "identity": identity,
+    }
+
+
 @router.delete("/agents/{name}", status_code=200)
 def delete_agent(name: str, current_user: CurrentChatUser, session: SessionDep) -> dict:
     """Delete a custom agent from DB and unregister from the runtime registry."""
@@ -861,10 +1167,10 @@ def delete_agent(name: str, current_user: CurrentChatUser, session: SessionDep) 
 class InviteRouteConfig(BaseModel):
     model: str | None = Field(default=None)
     api_key: str | None = Field(default=None)
+    model_seat_id: str | None = Field(default=None, max_length=80)
     # "api_key" (default) or "oauth" — "oauth" means the api_key is a Claude
     # subscription OAuth access token (sk-ant-oat01-…) and should be sent as
-    # Authorization: Bearer with the anthropic-beta oauth header, matching how
-    # openclaw / Hermes let Claude Pro/Max subscriptions drive the API.
+    # Authorization: Bearer with the anthropic-beta oauth header.
     # "codex_sub" means the api_key is an OpenAI key generated after signing
     # into Codex with a ChatGPT plan; routing is identical to a normal OpenAI key
     # but the UI can preserve the setup mode explicitly.
@@ -873,19 +1179,38 @@ class InviteRouteConfig(BaseModel):
 
 @router.post("/agents/{name}/invite-route", status_code=200)
 def set_agent_invite_route(name: str, body: InviteRouteConfig, current_user: CurrentChatUser) -> dict:
-    """Register a custom model and API key for an invite-seat agent (runtime only, cleared on restart)."""
+    """Register backend-owned invite-seat routing for a custom agent (runtime only, cleared on restart)."""
     if not current_user:
         raise HTTPException(status_code=401, detail="Authentication required")
     auth_mode = (body.auth_mode or "").strip().lower() or None
     if auth_mode not in (None, "api_key", "oauth", "codex_sub"):
         auth_mode = None
+    model = (body.model or "").strip() or None
+    api_key = (body.api_key or "").strip() or None
+    if body.model_seat_id:
+        seat_id = str(body.model_seat_id or "").strip().lower()
+        seat = _model_seat_by_id(seat_id)
+        if not seat:
+            raise HTTPException(status_code=404, detail=f"Model seat '{seat_id}' not found.")
+        if not bool(seat.get("enabled", True)):
+            raise HTTPException(status_code=400, detail=f"Model seat '{seat_id}' is disabled.")
+        model = model or str(seat.get("model_id") or "").strip() or None
+        auth_mode = auth_mode or str(seat.get("auth_mode") or "api_key").strip().lower()
+        if auth_mode not in (None, "api_key", "oauth", "codex_sub"):
+            auth_mode = None
+        api_key = _use_model_seat_secret(seat_id, current_user)
     set_invite_agent_config(
         name.lower().strip(),
-        model=(body.model or "").strip() or None,
-        api_key=(body.api_key or "").strip() or None,
+        model=model,
+        api_key=api_key,
         auth_mode=auth_mode,
     )
-    return {"name": name.lower().strip(), "configured": True}
+    return {
+        "name": name.lower().strip(),
+        "configured": True,
+        "model_seat_id": body.model_seat_id,
+        "credential_from_vault": bool(body.model_seat_id and api_key),
+    }
 
 
 @router.post("/model")
@@ -1019,6 +1344,7 @@ async def update_models_config(
     runtime_only_env_updates: dict[str, str] = {}
     notices: list[str] = []
     restart_required = False
+    vault_updates = 0
 
     if body.stack is not None:
         try:
@@ -1171,6 +1497,30 @@ async def update_models_config(
             cleaned[agent_name.strip().lower()] = {"route": route, "model": model}
         env_updates[AGENT_MODEL_OVERRIDES_ENV] = json.dumps(cleaned, separators=(",", ":"))
         notices.append("Agent routing overrides updated.")
+
+    if body.model_seats is not None:
+        existing_by_id = {str(seat.get("id") or "").strip().lower(): seat for seat in _merged_model_seats()}
+        for item in body.model_seats:
+            base = existing_by_id.get(str(item.id or "").strip().lower())
+            cleaned = _clean_model_seat_record(item, existing=base)
+            credential = str(item.credential or "").strip()
+            if credential:
+                _upsert_vault_secret(
+                    alias=_model_seat_secret_alias(cleaned["id"]),
+                    value=credential,
+                    category="model_seats",
+                    notes=f"Invite Wing credential for {cleaned['label']}",
+                    current_user=current_user,
+                )
+                vault_updates += 1
+            existing_by_id[cleaned["id"]] = cleaned
+        ordered_ids = [str(item["id"]) for item in MODEL_SEAT_DEFAULTS]
+        ordered_ids.extend(sorted(seat_id for seat_id in existing_by_id if seat_id not in ordered_ids))
+        env_updates[MODEL_SEATS_ENV] = json.dumps(
+            [existing_by_id[seat_id] for seat_id in ordered_ids if seat_id in existing_by_id],
+            separators=(",", ":"),
+        )
+        notices.append("Invite Wing model seats saved. Credentials stay in Guardian Vault when supplied.")
 
     if body.providers is not None:
         for field_name, env_key in _PROVIDER_ENV_KEYS.items():
@@ -1433,7 +1783,7 @@ async def update_models_config(
         env_updates["SPARKBOT_TOKEN_GUARDIAN_MODE"] = body.token_guardian_mode
         notices.append(f"Token Guardian set to {body.token_guardian_mode}.")
 
-    if not env_updates and not runtime_only_env_updates:
+    if not env_updates and not runtime_only_env_updates and not vault_updates:
         raise HTTPException(status_code=400, detail="No model, provider, or comms updates were supplied.")
 
     _apply_env_updates(env_updates)

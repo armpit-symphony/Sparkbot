@@ -49,6 +49,20 @@ export interface SparkbotControlsConfig {
       model?: string
     }
   >
+  model_seats?: Array<{
+    id: string
+    label: string
+    company?: string
+    provider: string
+    auth_mode?: "api_key" | "oauth" | "codex_sub"
+    model_id?: string
+    enabled: boolean
+    show_in_round_table: boolean
+    show_in_specialty_wing: boolean
+    notes?: string
+    configured?: boolean
+    credential_configured?: boolean
+  }>
   available_agents: Array<{
     name: string
     emoji: string
@@ -164,6 +178,7 @@ export function buildControlsModelGroups(
           ...(provider.available_models ?? []),
           ...(provider.models ?? []),
         ]),
+        ...(config.model_seats ?? []).map((seat) => seat.model_id ?? ""),
       ].filter(Boolean) as string[],
     ),
   )

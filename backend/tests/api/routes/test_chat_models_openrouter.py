@@ -1,4 +1,5 @@
 import asyncio
+import json
 from datetime import timedelta
 from types import SimpleNamespace
 from uuid import UUID
@@ -191,6 +192,122 @@ def test_models_config_persists_security_profile(client: TestClient, monkeypatch
     assert payload["security_guardrails_enabled"] is True
     assert saved_updates["SPARKBOT_SECURITY_PROFILE"] == "locked"
     assert saved_updates["SPARKBOT_GUARDIAN_POLICY_ENABLED"] == "true"
+
+
+def test_models_config_saves_model_seat_credentials_to_vault_only(client: TestClient, monkeypatch) -> None:
+    operator_id = _ensure_chat_user("sparkbot-user")
+    headers = _chat_headers_for_user(operator_id)
+    saved_updates: dict[str, str] = {}
+    vault_writes: list[dict[str, str]] = []
+
+    async def fake_ollama_status():
+        return {"reachable": False, "models_available": False, "models": [], "model_ids": []}
+
+    def fake_upsert_vault_secret(**kwargs):
+        vault_writes.append(
+            {
+                "alias": kwargs["alias"],
+                "value": kwargs["value"],
+                "category": kwargs["category"],
+            }
+        )
+        return True
+
+    def fake_apply_env_updates(updates: dict[str, str]) -> None:
+        for key, value in updates.items():
+            monkeypatch.setenv(key, value)
+
+    monkeypatch.setenv("SPARKBOT_OPERATOR_USERNAMES", "sparkbot-user")
+    monkeypatch.delenv("SPARKBOT_MODEL_SEATS_JSON", raising=False)
+    monkeypatch.setattr(model_route, "_write_env_updates", lambda updates: saved_updates.update(updates))
+    monkeypatch.setattr(model_route, "_apply_env_updates", fake_apply_env_updates)
+    monkeypatch.setattr(model_route, "_upsert_vault_secret", fake_upsert_vault_secret)
+    monkeypatch.setattr(model_route, "get_ollama_status", fake_ollama_status)
+
+    response = client.post(
+        f"{settings.API_V1_STR}/chat/models/config",
+        headers=headers,
+        json={
+            "model_seats": [
+                {
+                    "id": "invite-custom",
+                    "label": "Grok Seat",
+                    "company": "xAI",
+                    "provider": "xai",
+                    "auth_mode": "api_key",
+                    "model_id": "xai/grok-4.20-multi-agent-0309",
+                    "credential": "xai-secret-value",
+                    "enabled": True,
+                    "show_in_round_table": True,
+                    "show_in_specialty_wing": True,
+                }
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    rendered_seats = json.dumps(payload["model_seats"])
+    assert '"credential":' not in rendered_seats
+    assert "xai-secret-value" not in rendered_seats
+    assert "xai-secret-value" not in saved_updates["SPARKBOT_MODEL_SEATS_JSON"]
+    assert vault_writes == [
+        {
+            "alias": "model_seat_invite_custom_credential",
+            "value": "xai-secret-value",
+            "category": "model_seats",
+        }
+    ]
+    grok_seat = next(seat for seat in payload["model_seats"] if seat["id"] == "invite-custom")
+    assert grok_seat["label"] == "Grok Seat"
+    assert grok_seat["model_id"] == "xai/grok-4.20-multi-agent-0309"
+
+
+def test_invite_route_resolves_model_seat_secret_backend_side(client: TestClient, monkeypatch) -> None:
+    operator_id = _ensure_chat_user("sparkbot-user")
+    headers = _chat_headers_for_user(operator_id)
+    captured: dict[str, object] = {}
+
+    monkeypatch.setenv("SPARKBOT_OPERATOR_USERNAMES", "sparkbot-user")
+    monkeypatch.setenv(
+        "SPARKBOT_MODEL_SEATS_JSON",
+        json.dumps(
+            [
+                {
+                    "id": "invite-custom",
+                    "label": "Grok Seat",
+                    "company": "xAI",
+                    "provider": "xai",
+                    "auth_mode": "api_key",
+                    "model_id": "xai/grok-4.20-multi-agent-0309",
+                    "enabled": True,
+                    "show_in_round_table": True,
+                    "show_in_specialty_wing": True,
+                    "notes": "",
+                }
+            ]
+        ),
+    )
+    monkeypatch.setattr(model_route, "_use_model_seat_secret", lambda seat_id, current_user: "xai-secret-value")
+    monkeypatch.setattr(
+        model_route,
+        "set_invite_agent_config",
+        lambda agent_name, **kwargs: captured.update({"agent_name": agent_name, **kwargs}),
+    )
+
+    response = client.post(
+        f"{settings.API_V1_STR}/chat/agents/grok_seat/invite-route",
+        headers=headers,
+        json={"model_seat_id": "invite-custom"},
+    )
+
+    assert response.status_code == 200
+    assert captured == {
+        "agent_name": "grok_seat",
+        "model": "xai/grok-4.20-multi-agent-0309",
+        "api_key": "xai-secret-value",
+        "auth_mode": "api_key",
+    }
 
 
 def test_models_config_personal_profile_keeps_capable_default(client: TestClient, monkeypatch) -> None:

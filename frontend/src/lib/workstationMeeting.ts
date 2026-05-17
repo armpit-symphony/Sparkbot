@@ -39,7 +39,8 @@ export interface WorkstationMeetingSeatMeta {
   agentDescription?: string
   modelId?: string
   route?: string
-  inviteApiKey?: string
+  modelSeatId?: string
+  modelSeatConfigured?: boolean
   inviteAuthMode?: "api_key" | "oauth" | "codex_sub"
 }
 
@@ -89,7 +90,7 @@ function providerReadyForSeat(
   modelId: string,
   config: SparkbotControlsConfig | null,
 ): boolean {
-  if (seat.inviteApiKey?.trim()) return true
+  if (seat.modelSeatId && seat.modelSeatConfigured !== false) return true
   const providerId = providerForModel(modelId)
   const provider = config?.providers.find((item) => item.id === providerId)
   if (!provider) return false
@@ -103,7 +104,7 @@ export function buildAssignedProviderReadinessSummary(
   seats: WorkstationMeetingSeatMeta[],
   config: SparkbotControlsConfig | null,
 ): string {
-  const assigned = seats.filter((seat) => seat.agentHandle || seat.modelId || seat.inviteApiKey)
+  const assigned = seats.filter((seat) => seat.agentHandle || seat.modelId || seat.modelSeatId)
   if (assigned.length === 0) return "Assigned provider check: no assigned model seats."
   const providers = new Set<string>()
   for (const seat of assigned) {
@@ -153,6 +154,7 @@ function buildMeetingManifestMeta(
       label: seat.label,
       handle: slugifyMeetingHandle(seat.agentHandle || seat.label || seat.stationId, seat.stationId),
       modelId: seat.modelId || null,
+      modelSeatId: seat.modelSeatId || null,
       route: seat.route || null,
     })),
   }
@@ -717,16 +719,16 @@ async function ensureMeetingSeatAgents(seats: WorkstationMeetingSeatMeta[]): Pro
 async function ensureInviteAgentRoutes(seats: WorkstationMeetingSeatMeta[]): Promise<void> {
   for (const seat of seats) {
     if (seat.agentProvisioning !== "custom" || !seat.agentHandle) continue
-    if (!seat.modelId && !seat.inviteApiKey) continue
+    if (!seat.modelId && !seat.modelSeatId) continue
     await apiFetch(`/api/v1/chat/agents/${encodeURIComponent(seat.agentHandle)}/invite-route`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
       body: JSON.stringify({
         model: seat.modelId || null,
-        api_key: seat.inviteApiKey || null,
+        model_seat_id: seat.modelSeatId || null,
         auth_mode: seat.inviteAuthMode || null,
       }),
-    }).catch(() => {})
+    })
   }
 }

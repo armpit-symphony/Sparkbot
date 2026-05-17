@@ -23,8 +23,11 @@ export interface Station {
   capabilities: string[]
   invitePrompt?: string
   isInviteSlot?: boolean
-  inviteApiKey?: string
+  modelSeatId?: string
+  modelSeatConfigured?: boolean
   inviteAuthMode?: "api_key" | "oauth" | "codex_sub"
+  showInRoundTable?: boolean
+  showInSpecialtyWing?: boolean
   shellType?: "bash" | "zsh" | "ssh" | "powershell"
   host?: string
   isSpecialtyOffice?: boolean
@@ -63,10 +66,10 @@ export const INVITE_DESKS: Station[] = [
     icon: Plus,
     accentHex: "#a78bfa",
     description:
-      "Connect Anthropic Claude as a dedicated agent desk with its own history and persona.",
+      "Configure Claude as a dedicated model seat that can join Round Table meetings and specialty agents.",
     capabilities: ["Long context", "Vision", "Multi-turn chat"],
     invitePrompt:
-      "Configure an Anthropic API key in Controls to activate this desk.",
+      "Configure an Anthropic model seat with a backend-stored credential to activate this desk.",
     isInviteSlot: true,
   },
   {
@@ -78,10 +81,10 @@ export const INVITE_DESKS: Station[] = [
     icon: Plus,
     accentHex: "#7dd3fc",
     description:
-      "Use the ChatGPT workstation button as the Codex gateway desk for an OpenAI coding seat with its own sub-account key and history.",
+      "Use the ChatGPT workstation button as the Codex/OpenAI model seat for coding-focused meetings.",
     capabilities: ["Codex workflows", "Function calling", "Vision"],
     invitePrompt:
-      "Configure an OpenAI API key or Codex sub-account key to activate this desk.",
+      "Configure Codex CLI or an OpenAI API key in backend-owned setup to activate this desk.",
     isInviteSlot: true,
   },
   {
@@ -93,7 +96,7 @@ export const INVITE_DESKS: Station[] = [
     icon: Plus,
     accentHex: "#f472b6",
     description:
-      "Stage a dedicated Grok collaborator desk with its own model, history, and provider key.",
+      "Stage a dedicated Grok model seat with a backend-stored provider credential.",
     capabilities: ["xAI direct", "Reasoning", "Dedicated history"],
     invitePrompt:
       "Configure an xAI API key to activate this desk.",

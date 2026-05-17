@@ -107,9 +107,29 @@ Known validation caveat:
 
 - `backend/tests/api/routes/test_chat_security_controls.py` still fails two Windows file mode assertions where `.env` chmod reports `0o666` instead of expected `0o600`. The code path was not changed in this pass; keep this as a Windows validation issue unless Phil wants the tests made platform-aware.
 
+## Invite Wing Model Seat Update - 2026-05-17
+
+Branch: `public-release-invite-wing-model-seats`
+
+Completed in this pass:
+
+- Added backend-owned Invite Wing model-seat config with Codex/OpenAI, Claude/Anthropic, and Grok/xAI defaults.
+- Moved Invite Wing submitted credentials to Guardian Vault and removed browser `localStorage` credential persistence.
+- Changed Round Table invite seats to pass `modelSeatId` instead of frontend-held secrets.
+- Added a small Command Center edit path for custom Specialty Wing agents.
+- Added targeted backend tests for model-seat Vault storage and backend-side invite route secret resolution.
+
+Validation in this pass:
+
+- `git diff --check`: passed.
+- `python -m py_compile backend/app/api/routes/chat/model.py`: passed.
+- `npm --prefix frontend run build`: passed.
+- `.\\.venv-ci\\Scripts\\uv.exe run pytest -q backend\\tests\\api\\routes\\test_chat_models_openrouter.py -k "model_seat or invite_route"`: 2 passed.
+
 ## Remaining P0 Blockers
 
-- Invite Wing credential storage needs backend/Vault-backed storage instead of browser storage.
+- Invite Wing credential storage moved to backend/Vault-backed storage for Round Table model seats.
+- Remaining Invite Wing blocker: Specialty Wing can select model-seat model IDs, but arbitrary specialty-agent routing does not yet bind to a seat-specific Vault credential when no global provider auth is configured.
 - Public package exclusions/private path cleanup.
 - Built-in public agent prompt rewrite.
 - Balanced vs Locked policy behavior needs tuning so profiles are more than persisted names.
@@ -120,7 +140,7 @@ Known validation caveat:
 
 Run a focused public extraction-blocker phase:
 
-1. Move Invite Wing credentials out of localStorage into backend/Vault-backed storage.
+1. Finish Specialty Wing model-seat credential routing for Vault-only seats.
 2. Rewrite built-in public agent prompts.
 3. Update public package exclusions and private path cleanup.
 4. Tune Balanced vs Locked policy differences.

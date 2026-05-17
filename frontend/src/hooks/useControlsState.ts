@@ -58,6 +58,20 @@ export interface ModelsControlsConfig {
   }>
   custom_guardrails?: string
   agent_overrides: Record<string, { route: string; model?: string }>
+  model_seats?: Array<{
+    id: string
+    label: string
+    company?: string
+    provider: string
+    auth_mode?: "api_key" | "oauth" | "codex_sub"
+    model_id?: string
+    enabled: boolean
+    show_in_round_table: boolean
+    show_in_specialty_wing: boolean
+    notes?: string
+    configured?: boolean
+    credential_configured?: boolean
+  }>
   available_agents: Array<{
     name: string
     emoji: string
@@ -307,6 +321,12 @@ export interface Agent {
   emoji: string
   description: string
   is_builtin?: boolean
+}
+
+export interface AgentUpdateDraft {
+  emoji?: string
+  description?: string
+  system_prompt?: string
 }
 
 export interface RoomInfo {
@@ -820,6 +840,32 @@ export function useControlsState({ roomId, onStatusMessage }: UseControlsStateOp
     } catch { setSettingsError("Could not spawn agent.") } finally { setSpawning(false) }
   }, [spawnName, spawnEmoji, spawnDescription, spawnPrompt])
 
+  const updateAgent = useCallback(async (name: string, draft: AgentUpdateDraft) => {
+    const payload: AgentUpdateDraft = {}
+    if (draft.emoji !== undefined) payload.emoji = draft.emoji
+    if (draft.description !== undefined) payload.description = draft.description
+    if (draft.system_prompt?.trim()) payload.system_prompt = draft.system_prompt.trim()
+    setSettingsError("")
+    const res = await apiFetch(`/api/v1/chat/agents/${encodeURIComponent(name)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(payload),
+    })
+    const data = await res.json().catch(() => ({ detail: "Could not update agent." }))
+    if (!res.ok) {
+      setSettingsError(data.detail ?? "Could not update agent.")
+      throw new Error(data.detail ?? "Could not update agent.")
+    }
+    const nextAgent = { name: data.name, emoji: data.emoji, description: data.description, is_builtin: false }
+    setAgents(prev => [...prev.filter(a => a.name !== name), nextAgent])
+    setModelsConfig(prev => prev ? {
+      ...prev,
+      available_agents: [...(prev.available_agents ?? []).filter(a => a.name !== name), nextAgent],
+    } : prev)
+    notify(`Agent **@${data.name}** updated.`)
+  }, [notify])
+
   const handleDefaultSelectionChange = useCallback((field: keyof DefaultModelSelectionForm, value: string) => {
     if (field === "provider") {
       const validProviders = new Set(["openrouter", "ollama", "openai", "openai_codex", "claude_sub", "anthropic", "google", "groq", "minimax", "xai"])
@@ -871,7 +917,7 @@ export function useControlsState({ roomId, onStatusMessage }: UseControlsStateOp
   ) => {
     const routeToProviderPrefix: Record<string, string> = {
       openrouter: "openrouter/", local: "ollama/", openai: "gpt-", openai_codex: "openai-codex/", anthropic: "claude",
-      google: "gemini/", groq: "groq/", minimax: "minimax/", xai: "xai/",
+      claude_sub: "claude-sub/", google: "gemini/", groq: "groq/", minimax: "minimax/", xai: "xai/",
     }
     setAgentOverrides((prev) => {
       const current = prev[agentName] ?? { route: "default", model: "" }
@@ -1320,7 +1366,7 @@ export function useControlsState({ roomId, onStatusMessage }: UseControlsStateOp
     // PIN
     savingPin, pinSaved, pinError, saveOperatorPin,
     // Agents
-    agents, setAgents,
+    agents, setAgents, updateAgent,
     // Spawn agent
     spawnTemplate, setSpawnTemplate,
     spawnName, setSpawnName,
