@@ -44,7 +44,17 @@ def token_guardian_live_enabled() -> bool:
 
 @lru_cache(maxsize=1)
 def _pipeline() -> UnifiedPipeline:
-    return UnifiedPipeline(config_dir=str(_CONFIG_DIR), shadow_mode=True)
+    # Track the actual operator-configured mode in the pipeline's shadow_mode
+    # flag so the init log line and decision.status reflect reality. The
+    # `route_model` wrapper re-reads the env on every call, so live-mode
+    # routing still applies correctly even after env flips post-startup —
+    # only the init log goes stale across mode changes, and a restart fixes
+    # that. Previously this was hardcoded to True, which made every install
+    # log "shadow=True" even when the operator had set live mode.
+    return UnifiedPipeline(
+        config_dir=str(_CONFIG_DIR),
+        shadow_mode=token_guardian_mode() != "live",
+    )
 
 
 @lru_cache(maxsize=1)
@@ -221,15 +231,31 @@ def _select_live_model(
             return candidate, None, candidate_models
         return candidate, f"Requested model '{requested_model}' was unavailable; applied '{candidate}' instead.", candidate_models
 
+    # No classification candidate is both configured and allowed. Prefer to
+    # stay on the user's current_model so we don't surprise the operator with
+    # a model swap that wasn't on routing.yaml's list. Previously we fell
+    # through to "first configured alphabetically", which made live-mode
+    # routing look arbitrary on stacks where routing.yaml's preferred names
+    # (claude-sonnet-4-5, gpt-4o) aren't directly configured — e.g. operators
+    # who only have claude-sub/*, openai-codex/*, or openrouter/* providers.
     if current_model in configured_set and current_model in allowed_set:
-        return current_model, f"No live-routable Token Guardian target was available; stayed on '{current_model}'.", candidate_models
+        return current_model, (
+            f"Token Guardian: no preferred model for classification '{classification}'"
+            f" is configured for live routing; staying on '{current_model}'."
+        ), candidate_models
 
     usable_fallbacks = [model for model in configured_models if model in allowed_set]
     if usable_fallbacks:
         fallback = usable_fallbacks[0]
-        return fallback, f"No classified candidate was available; fell back to first configured model '{fallback}'.", candidate_models
+        return fallback, (
+            f"Token Guardian: '{current_model}' is not in the live allowlist;"
+            f" fell back to '{fallback}' (first configured)."
+        ), candidate_models
 
-    return current_model, "No configured models are available for live Token Guardian routing.", candidate_models
+    return current_model, (
+        "Token Guardian: no configured models available for live routing —"
+        " add provider keys or unset SPARKBOT_TOKEN_GUARDIAN_LIVE_MODELS."
+    ), candidate_models
 
 
 def _emit_token_guardian_event(event_type: str, content: str, payload: dict) -> None:

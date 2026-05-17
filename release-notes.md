@@ -1,5 +1,24 @@
 # Release Notes
 
+## Sparkbot v1.6.80
+
+- Token Guardian live-mode is honest: when no preferred `routing.yaml` candidate is configured for the operator's stack, Sparkbot now stays on the current model with a clear `fallback_reason` instead of silently jumping to the alphabetical-first configured model. Fixes the "Token Guardian doesn't register or even work" report for operators on `claude-sub/*`, `openai-codex/*`, or `openrouter/*`-only setups.
+- Token Guardian pipeline init now mirrors the operator-configured mode in its `shadow_mode` arg, so the "Pipeline initialized (shadow=...)" startup log line reflects reality instead of always claiming `shadow=true` even when live was set.
+- Desktop backend log default lowered to INFO (was DEBUG). On a busy install the previous setting was producing ~600 MB of `httpcore` long-poll spam per week from the Telegram bridge. Operators who need lower levels can set `SPARKBOT_BACKEND_LOG_LEVEL=debug`.
+- Noisy modules pinned to WARNING even when root is INFO: `httpcore`, `httpx`, `h2`, `rustls`, `openai._base_client`, `cookie_store`, `primp`. These accounted for >90% of historic log volume with little actionable signal for end users.
+- Tests: added regression coverage for the live stay-on-current behavior and the pipeline mode-label fix; 178 services tests still pass overall.
+- Release metadata: backend, frontend, Tauri shell, package lock, public downloader fallback links, service worker cache key, README, capabilities docs, public-download docs, and release notes advanced to v1.6.80.
+
+## Sparkbot v1.6.79
+
+- Host-aware server audit: added `runtime_context`, `host_capabilities`, and `host_full_audit` profiles to `server_read_command`. Sparkbot now knows whether it is running inside Docker, what host surfaces (e.g. `/host/proc`) are mounted, and which audit tools (`ps`, `ss`, `lsof`, `crontab`) are installed in the current image.
+- `process_snapshot` and `network_listeners` now prefer mounted host `/proc` readers when available, instead of reporting only the backend container's view.
+- `host_full_audit` reports runtime scope, missing audit capabilities, system overview, key workloads (Sparkbot, OpenClaw, WEPO, Kalshi, Mongo/Postgres/Redis/nginx/sshd/Docker/cron/fail2ban/Codex), host TCP listeners from `/host/proc/1/net`, mounted cron jobs, and host process inventory.
+- Backend image installs `procps`, `iproute2`, and `lsof` for better container fallback diagnostics.
+- Prompt guidance now requires runtime scope and host audit evidence before answering "what else is running", full server audit, or security audit questions.
+- Tests: added backend regression coverage with fake host `/proc`, listener, and cron fixtures.
+- Release metadata: backend, frontend, Tauri shell, package lock, public downloader fallback links, service worker cache key, README, capabilities docs, public-download docs, and release notes advanced to v1.6.79.
+
 ## Sparkbot v1.6.78
 
 - Security-off assistant behavior: Sparkbot now treats Security off as normal operator-assistant mode. Routine reads and ordinary writes are allowed without strict guardrail confirmation; only explicitly dangerous/destructive actions, external sends, service control, credential reveal/write, and critical changes still ask first.

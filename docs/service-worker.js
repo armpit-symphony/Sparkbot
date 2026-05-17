@@ -1,4 +1,4 @@
-const CACHE_NAME = "sparkbot-v1.6.79";
+const CACHE_NAME = "sparkbot-v1.6.80";
 const CORE_ASSETS = ["/Sparkbot/", "/Sparkbot/index.html", "/Sparkbot/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {

@@ -212,3 +212,70 @@ def test_token_guardian_shadow_applies_learned_route_bias(monkeypatch) -> None:
     assert payload is not None
     assert payload["learned_route_applied"] is True
     assert payload["selected_model"] == "claude-sonnet-4-5"
+
+
+def test_token_guardian_live_stays_on_current_when_no_candidate_configured(monkeypatch) -> None:
+    """v1.6.80: when no classification candidate is configured AND current_model
+    is configured, stay on current_model with a clear reason instead of jumping
+    to the alphabetical-first configured fallback. The old behavior surprised
+    operators on stacks where routing.yaml's preferred names aren't directly
+    configured (claude-sub/*, openai-codex/*, openrouter/*-only)."""
+    monkeypatch.setenv("SPARKBOT_TOKEN_GUARDIAN_MODE", "live")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-openrouter")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("SPARKBOT_TOKEN_GUARDIAN_LIVE_MODELS", raising=False)
+
+    class _FakeMonitor:
+        def record_usage(self, tokens: int, model: str, action: str = "unknown", is_output: bool = False):
+            return None
+
+        def get_stats(self):
+            return {}
+
+    monkeypatch.setattr(token_guardian, "_monitor", lambda: _FakeMonitor())
+    monkeypatch.setattr(
+        token_guardian,
+        "_build_route_payload",
+        lambda query, current_model, mode: {
+            "mode": mode,
+            "classification": "coding",
+            "selected_model": "claude-sonnet-4-5",
+            "current_model": current_model,
+            "estimated_tokens": 7,
+            "estimated_cost": 0.0,
+            "estimated_current_cost": 0.0,
+            "estimated_savings": 0.0,
+            "would_switch_models": True,
+        },
+    )
+
+    chosen, payload = token_guardian.route_model(
+        "Write a parser",
+        "openrouter/openai/gpt-4o-mini",
+        available_models={"openrouter/openai/gpt-4o-mini"},
+    )
+
+    assert chosen == "openrouter/openai/gpt-4o-mini"
+    assert payload is not None
+    assert payload["live_routed"] is False
+    # Either we matched current_model in the candidate walk ("unavailable") or
+    # fell into the new clearer stay-on-current branch.
+    reason = str(payload.get("fallback_reason") or "").lower()
+    assert reason  # never empty
+
+
+def test_token_guardian_pipeline_reflects_live_mode_in_shadow_mode_arg(monkeypatch) -> None:
+    """v1.6.80: pipeline init's shadow_mode arg now mirrors the operator's
+    SPARKBOT_TOKEN_GUARDIAN_MODE, so the 'Pipeline initialized (shadow=...)'
+    log line and decision.status reflect the actual mode instead of being
+    hardcoded to shadow=True."""
+    token_guardian._pipeline.cache_clear()
+    monkeypatch.setenv("SPARKBOT_TOKEN_GUARDIAN_MODE", "live")
+    pipeline = token_guardian._pipeline()
+    assert pipeline.shadow_mode is False
+
+    token_guardian._pipeline.cache_clear()
+    monkeypatch.setenv("SPARKBOT_TOKEN_GUARDIAN_MODE", "shadow")
+    pipeline = token_guardian._pipeline()
+    assert pipeline.shadow_mode is True

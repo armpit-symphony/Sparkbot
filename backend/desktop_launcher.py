@@ -250,14 +250,40 @@ import uvicorn  # noqa: E402 (import after path fixup)
 
 # Hard startup log: write every log line to a file beside the exe so crashes
 # are visible even when the Tauri console is hidden (windows_subsystem = "windows").
+#
+# Default level is INFO. Previously DEBUG, which produced ~600 MB log files in
+# a week (httpcore long-poll spam from the Telegram bridge dominated). Operators
+# who need lower-level diagnostics can set SPARKBOT_BACKEND_LOG_LEVEL=debug.
+# httpcore/httpx/h2/rustls/openai-base-client/cookie_store are pinned at WARNING
+# even when root is INFO — they account for >90% of historic log volume and
+# offer almost no actionable signal for end users.
 if getattr(sys, "frozen", False):
     _log_path = os.path.join(os.path.dirname(sys.executable), "sparkbot-backend.log")
+    _level_name = os.environ.get("SPARKBOT_BACKEND_LOG_LEVEL", "info").strip().upper()
+    _level = getattr(_root_logging, _level_name, _root_logging.INFO)
+    if not isinstance(_level, int):
+        _level = _root_logging.INFO
     _root_logging.basicConfig(
         filename=_log_path,
-        level=_root_logging.DEBUG,
+        level=_level,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
         force=True,
     )
+    for _noisy in (
+        "httpcore",
+        "httpcore.http11",
+        "httpcore.connection",
+        "httpx",
+        "h2",
+        "h2.codec",
+        "h2.client",
+        "rustls",
+        "rustls.client",
+        "openai._base_client",
+        "cookie_store",
+        "primp",
+    ):
+        _root_logging.getLogger(_noisy).setLevel(_root_logging.WARNING)
 
 if __name__ == "__main__":
     _exe_dir = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else "."

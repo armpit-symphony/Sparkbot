@@ -1,0 +1,128 @@
+Sparkbot v1.6.80
+
+Token Guardian honesty + desktop log hygiene.
+
+### Reported symptoms
+
+From the user's improvement-proposals review:
+
+  "The token guardian doesn't register or even work maybe."
+
+And from the live desktop install, `%LOCALAPPDATA%\Sparkbot Local\sparkbot-backend.log`
+had grown to ~635 MB on a single install since the v1.6.74 partial log-hygiene
+fix. Top noisy log sources by line count:
+
+  390011 httpcore.http11
+  232072 httpcore.connection
+   46696 LiteLLM
+    4467 rustls.client.hs
+
+The user had set `SPARKBOT_TOKEN_GUARDIAN_MODE=live` in their `.env`, but the
+Command Center Token Guardian card never showed live routes ticking up.
+
+### Root cause #1 (Token Guardian)
+
+`_select_live_model` in `backend/app/services/guardian/token_guardian.py` walks
+the classification candidates from `routing.yaml` and requires each candidate
+to be both `_model_is_configured(...)` (has an API key) and in the live
+allowlist. When none of `routing.yaml`'s preferred names match — which is
+common for stacks that use `claude-sub/*`, `openai-codex/*`, or
+`openrouter/*` providers (none of those match `claude-sonnet-4-5`, `gpt-4o`,
+or `groq/llama-3.3-70b-versatile`) — the function fell through to:
+
+    usable_fallbacks = [m for m in configured_models if m in allowed_set]
+    if usable_fallbacks:
+        fallback = usable_fallbacks[0]  # ← alphabetical first!
+
+So Token Guardian would silently route to whichever configured model sorted
+first alphabetically. The operator's chosen model was being ignored in favor
+of an effectively random pick, and the only signal was a vague "fell back to
+first configured model" buried in `fallback_reason`.
+
+Separately, `_pipeline()` hardcoded `shadow_mode=True`, so every install
+logged `Pipeline initialized (shadow=True, threshold=0.8)` regardless of the
+operator's `SPARKBOT_TOKEN_GUARDIAN_MODE` setting — misleading even though
+the outer `route_model` correctly read the env at call time.
+
+### Root cause #2 (log spam)
+
+`backend/desktop_launcher.py` set the root logger to `DEBUG` for frozen
+desktop installs. The Telegram polling loop in `app/services/telegram_bridge`
+uses long-poll with ~45–55s waits — every cycle produced ~10 httpcore
+`connect_tcp.started` / `start_tls.complete` / `send_request_headers` /
+`receive_response_body` DEBUG lines. At one cycle per minute, that is 14400
+lines per day per bridge. Multiply across days of uptime and the result is
+hundreds of megabytes of operationally useless noise that drowned every
+real signal in the log.
+
+v1.6.74 quieted `LiteLLM` for the same reason, but missed httpcore/httpx/h2.
+
+### Fixes
+
+1. **Token Guardian live-mode fallback is honest**
+   (`backend/app/services/guardian/token_guardian.py::_select_live_model`)
+
+   When no classification candidate is both configured AND in the live
+   allowlist, prefer to stay on the operator's `current_model` with an
+   explicit reason:
+
+       "Token Guardian: no preferred model for classification '{x}' is
+        configured for live routing; staying on '{current_model}'."
+
+   The Command Center Token Guardian card's `last_route.fallback_reason`
+   now shows that string so operators understand why live routes is 0.
+
+   When the operator's current_model is *also* not in the allowlist (rare
+   edge case: e.g., they pinned a model whose API key they later removed),
+   the function still has the "first configured" fallback, but the message
+   is now phrased as "'{current}' is not in the live allowlist; fell back
+   to '{fallback}' (first configured)" so it's clear what happened.
+
+2. **Pipeline init reflects actual mode**
+   (`backend/app/services/guardian/token_guardian.py::_pipeline`)
+
+   `_pipeline()` now passes `shadow_mode=token_guardian_mode() != "live"`
+   so the "Pipeline initialized (shadow=...)" log line and
+   `decision.status` reflect the operator-configured mode at startup. The
+   `route_model` wrapper still reads the env on every call, so live-mode
+   routing applies correctly even after env flips post-startup — only the
+   init log goes stale across mode changes, and a restart fixes that.
+
+3. **Backend log defaults to INFO with noisy modules pinned to WARNING**
+   (`backend/desktop_launcher.py`)
+
+   - Root logger default is now `INFO` instead of `DEBUG`. Operators can
+     override with `SPARKBOT_BACKEND_LOG_LEVEL=debug`.
+   - `httpcore`, `httpcore.http11`, `httpcore.connection`, `httpx`, `h2`,
+     `h2.codec`, `h2.client`, `rustls`, `rustls.client`,
+     `openai._base_client`, `cookie_store`, and `primp` are pinned at
+     `WARNING` even when root is `INFO`. These accounted for >90% of the
+     historic log volume and offer almost no actionable signal for end
+     users. If you need them for a specific debug session, also set
+     `SPARKBOT_BACKEND_LOG_LEVEL=debug` and then explicitly raise each
+     module's level in code.
+
+### Why we didn't make a bigger TG change
+
+Token Guardian's `routing.yaml` model preferences (`claude-sonnet-4-5`,
+`gpt-4o`, etc.) genuinely make sense as routing targets — they are picked
+for cost / quality / latency. Rewriting routing.yaml to know about every
+operator's provider stack is a bigger design problem that belongs to a
+follow-up release. For v1.6.80 the priority was to stop silently routing
+to a random model, surface honest reasons, and let the operator decide
+what to do (add the missing API key, expand `SPARKBOT_TOKEN_GUARDIAN_LIVE_MODELS`,
+or accept that live mode will stay on their current model for now).
+
+### Tests
+
+- `test_token_guardian_live_stays_on_current_when_no_candidate_configured`
+  exercises the new stay-on-current branch with an openrouter-only stack.
+- `test_token_guardian_pipeline_reflects_live_mode_in_shadow_mode_arg`
+  asserts the pipeline's `shadow_mode` flag mirrors `token_guardian_mode()`.
+- Full `tests/services/` suite: 178 passed (no regressions).
+
+### Version bumps
+
+Backend, frontend, Tauri shell, package lock, public downloader fallback
+links, service worker cache key, README, capabilities docs, public-download
+docs, and release notes advanced to v1.6.80.
