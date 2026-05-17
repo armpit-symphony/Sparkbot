@@ -103,3 +103,37 @@ Still do not move:
 - No Sparkbot code from this pass should be copied into LIMA runtime.
 - No LIMA AI OS, Arc Bot, LIMA Office, LIMA IT, robotics, or IoT execution wiring was added.
 - Sparkbot Public should keep proving the UX before any runtime extraction or contract hardening.
+
+## Unified Context Spine Update - 2026-05-17
+
+Branch: `public-release-unified-context-spine`
+
+New reusable design learning:
+
+- Sparkbot Public now has an explicit public context adapter shape over Guardian memory:
+  - source/surface label
+  - actor label
+  - bounded summary
+  - thread/conversation/meeting id
+  - optional model-seat and agent ids
+  - memory rollup flag
+  - public-safe sensitivity/risk labels
+  - retrieval tags
+- External bridges now show the desired connector pattern: connector event -> source-labeled context event -> bounded context retrieval -> model response -> source-labeled response memory.
+- Model-seat routing now demonstrates the public/private split for future runtimes: frontend and agent configs carry only a seat id, while credentials resolve server-side through Vault.
+- Explicit model-seat routing now demonstrates a safer failure mode: missing Vault credentials produce setup-needed status instead of falling back to global credentials.
+- Draft/scaffold rollups are explicitly blocked so future runtime memory does not treat setup templates or placeholder meeting notes as durable knowledge.
+- Pending approval event payloads now recursively redact nested secret-like keys before Spine emission; future runtime approval events should use recursive redaction by default.
+
+Future LIMA/runtime review questions:
+
+1. Should runtime policy, memory, and connector bridges share a single event envelope based on this public Sparkbot adapter?
+2. Should `modelSeatId` become a generic runtime capability binding id for Arc Bot/custom bots, or remain Sparkbot-specific product language?
+3. Should approval/confirmation summaries write to memory through the same context adapter or stay only in audit logs unless the user opts in?
+4. Should source-labeled connector events include raw content by default, or should future runtimes prefer summaries for sensitive channels?
+
+Boundary remains unchanged:
+
+- Do not wire LIMA runtime from this branch.
+- Do not move proprietary Guardian Suite internals into Sparkbot Public.
+- Do not expose Vault values or private policy internals through public context events.

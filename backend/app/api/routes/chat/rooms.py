@@ -1494,7 +1494,7 @@ async def stream_room_message(
         system_prompt = base_prompt
 
     try:
-        memory_context = guardian_suite.memory.build_memory_context(
+        memory_context = guardian_suite.memory.build_unified_context(
             user_id=str(current_user.id),
             room_id=str(room_id),
             query=agent_content,

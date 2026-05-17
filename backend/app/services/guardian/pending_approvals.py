@@ -18,17 +18,28 @@ _SECRET_KEY_RE = re.compile(
 )
 
 
+def _redact_value_for_event(value: Any) -> Any:
+    if isinstance(value, dict):
+        safe: dict[str, Any] = {}
+        for key, item in value.items():
+            if _SECRET_KEY_RE.search(str(key)):
+                safe[str(key)] = "[REDACTED]"
+            else:
+                safe[str(key)] = _redact_value_for_event(item)
+        return safe
+    if isinstance(value, list):
+        return [_redact_value_for_event(item) for item in value]
+    if isinstance(value, tuple):
+        return [_redact_value_for_event(item) for item in value]
+    return value
+
+
 def _redact_tool_args_for_event(tool_args: dict[str, Any] | None) -> dict[str, Any]:
-    """Return a copy of tool_args with secret-like values replaced by [REDACTED]."""
+    """Return a recursive copy of tool_args with secret-like values redacted."""
     if not tool_args:
         return {}
-    safe = {}
-    for key, value in tool_args.items():
-        if _SECRET_KEY_RE.search(str(key)):
-            safe[key] = "[REDACTED]"
-        else:
-            safe[key] = value
-    return safe
+    redacted = _redact_value_for_event(tool_args)
+    return redacted if isinstance(redacted, dict) else {}
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS pending_approvals (

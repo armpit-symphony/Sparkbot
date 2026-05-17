@@ -29,6 +29,16 @@ Branch `public-release-surface-nav-room-ux` moved the public shell UX blockers f
 - Live terminal UI is disabled unless backend security status confirms the live terminal feature is enabled.
 - Robo defaults to a static preview panel; the operational MCP registry panel is dev/private-flag only.
 
+Branch `public-release-unified-context-spine` moved unified memory/context blockers forward:
+
+- Added a public shared context adapter over Guardian memory: `remember_context_event(...)` and `build_unified_context(...)`.
+- Slack, Telegram, Discord, WhatsApp, and GitHub bridge handlers now use unified context retrieval and source-labeled context writes.
+- Structured recall now returns source/surface, actor, thread, meeting, model-seat, agent, rollup, sensitivity, risk, and tag metadata.
+- Specialty Wing/Command Center/legacy DM Controls agent overrides can persist non-secret `model_seat_id` values.
+- Backend LLM route context resolves selected model-seat Vault credentials server-side and reports setup-needed instead of falling back to global provider auth when an explicit seat credential is missing.
+- Draft/scaffold context rollups are skipped and manager/checkpoint rollups dedupe by fingerprint.
+- Pending approval Spine events recursively redact nested secret-like payload keys.
+
 ## 1. P0 Blockers Before Extraction
 
 1. Unify public chat route.
@@ -57,7 +67,7 @@ Branch `public-release-surface-nav-room-ux` moved the public shell UX blockers f
 
 5. Move Invite Wing credentials out of browser storage.
    - Persist model-seat provider credentials and sub-account keys through backend config or Guardian Vault-backed storage.
-   - Status: `DONE_THIS_PHASE` for Invite Wing and Round Table. Workstation now removes the legacy `sparkbot_invite_configs` key, saves model-seat metadata through `/api/v1/chat/models/config`, and stores supplied credentials in Guardian Vault. Follow-up remains for Specialty Wing per-agent routing to seat-specific Vault credentials.
+   - Status: `DONE` for Invite Wing, Round Table, and Specialty Wing backend routing. Workstation removes the legacy `sparkbot_invite_configs` key, saves model-seat metadata through `/api/v1/chat/models/config`, stores supplied credentials in Guardian Vault, and Specialty Wing agent overrides can carry `model_seat_id` for backend-only credential resolution.
    - Keep only non-sensitive UI preferences in localStorage.
    - Show route-save errors instead of swallowing them.
    - Evidence: `frontend/src/pages/WorkstationPage.tsx:4261`, `frontend/src/pages/WorkstationPage.tsx:4585`, `frontend/src/lib/workstationMeeting.ts:659`.
@@ -89,6 +99,11 @@ Branch `public-release-surface-nav-room-ux` moved the public shell UX blockers f
 10. Rewrite built-in public agent prompts.
    - Remove SparkPit Labs, LIMA AI, Guardian services, and service-offering references from public default agents.
    - Evidence: `backend/app/api/routes/chat/agents.py:128`, `backend/app/api/routes/chat/agents.py:205`, `backend/app/api/routes/chat/agents.py:278`.
+
+11. Keep one shared context spine across public surfaces.
+   - Route meaningful chat, connector, meeting, model-seat, agent, task, file, and approval events through a shared source-labeled context interface.
+   - Status: `PARTIAL_DONE` - chat, external connectors, meeting rollups, model-seat metadata, and existing task/file/reminder adapters are aligned. Approval summaries and Workstation UI intent events remain follow-ups.
+   - Evidence: `backend/app/services/guardian/memory.py`, `backend/app/services/model_seats.py`.
 
 ## 2. P1 Polish Before Public Beta
 
@@ -212,11 +227,11 @@ Branch `public-release-surface-nav-room-ux` moved the public shell UX blockers f
 
 Phase B2 should be a focused P0/P1 stabilization patch:
 
-1. Finish Specialty Wing model-seat credential routing for Vault-only seats.
+1. Update package exclusions for internal docs and private path references.
 2. Rewrite built-in public agent prompts.
-3. Update package exclusions for internal docs and private path references.
-4. Tune Balanced vs Locked policy behavior.
-5. Add final Round Table assignment display/phase UI polish.
+3. Tune Balanced vs Locked policy behavior.
+4. Add final Round Table assignment display/phase UI polish.
+5. Refresh the Sparkbot_shell extraction map.
 6. Converge remaining "Controls" copy into AI setup versus Command Center.
 
 After B2 passes build/tests, run browser QA on `/login`, `/dm`, `/workstation`, `/meeting/:roomId`, and `/spine`.

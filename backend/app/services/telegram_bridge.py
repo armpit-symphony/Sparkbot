@@ -561,7 +561,15 @@ async def _run_room_prompt(session: Session, room_id: str, user_id: str, content
 
     agent_name, agent_content = resolve_agent_from_message(content)
     try:
-        guardian_suite.memory.remember_chat_message(user_id=user_id, room_id=room_id, role="user", content=agent_content)
+        guardian_suite.memory.remember_context_event(
+            user_id=user_id,
+            room_id=room_id,
+            source_type="telegram",
+            actor_label="user",
+            role="user",
+            content_summary=agent_content,
+            metadata={"telegram_chat_id": chat_id},
+        )
     except Exception:
         pass
 
@@ -588,7 +596,7 @@ async def _run_room_prompt(session: Session, room_id: str, user_id: str, content
         system_prompt = base_prompt
 
     try:
-        memory_context = guardian_suite.memory.build_memory_context(user_id=user_id, room_id=room_id, query=agent_content)
+        memory_context = guardian_suite.memory.build_unified_context(user_id=user_id, room_id=room_id, query=agent_content)
     except Exception:
         memory_context = ""
     if memory_context:
@@ -664,7 +672,15 @@ async def _run_room_prompt(session: Session, room_id: str, user_id: str, content
         meta_json={"source": "telegram", "telegram_chat_id": chat_id},
     )
     try:
-        guardian_suite.memory.remember_chat_message(user_id=user_id, room_id=room_id, role="assistant", content=final_text)
+        guardian_suite.memory.remember_context_event(
+            user_id=user_id,
+            room_id=room_id,
+            source_type="telegram",
+            actor_label="sparkbot",
+            role="assistant",
+            content_summary=final_text,
+            metadata={"telegram_chat_id": chat_id},
+        )
     except Exception:
         pass
     await _broadcast_room_message(room_id, str(bot_msg.id), final_text, bot_user.username, "BOT")
@@ -759,11 +775,14 @@ async def _run_room_photo_prompt(
         meta_json={"source": "telegram", "telegram_chat_id": chat_id, "message_type": "image"},
     )
     try:
-        get_guardian_suite().memory.remember_chat_message(
+        get_guardian_suite().memory.remember_context_event(
             user_id=user_id,
             room_id=room_id,
+            source_type="telegram",
+            actor_label="sparkbot",
             role="assistant",
-            content=final_text,
+            content_summary=final_text,
+            metadata={"telegram_chat_id": chat_id, "message_type": "image"},
         )
     except Exception:
         pass

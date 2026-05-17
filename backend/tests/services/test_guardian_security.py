@@ -31,6 +31,24 @@ class TestPendingApprovalSpineRedaction:
         assert redacted["password"] == "[REDACTED]"
         assert redacted["api_key"] == "[REDACTED]"
 
+    def test_redacts_nested_secret_keys_in_spine_event(self):
+        from app.services.guardian.pending_approvals import _redact_tool_args_for_event
+
+        tool_args = {
+            "alias": "connector",
+            "config": {
+                "headers": {"Authorization": "Bearer safe-to-keep-label", "api_key": "sk-live-nested"},
+                "items": [{"token": "tok-nested"}, {"name": "public"}],
+            },
+        }
+        redacted = _redact_tool_args_for_event(tool_args)
+
+        assert redacted["alias"] == "connector"
+        assert redacted["config"]["headers"]["Authorization"] == "Bearer safe-to-keep-label"
+        assert redacted["config"]["headers"]["api_key"] == "[REDACTED]"
+        assert redacted["config"]["items"][0]["token"] == "[REDACTED]"
+        assert redacted["config"]["items"][1]["name"] == "public"
+
     def test_consume_redacts_secret_keys_in_spine_event(self, monkeypatch, tmp_path):
         monkeypatch.setenv("SPARKBOT_GUARDIAN_DATA_DIR", str(tmp_path / "guardian"))
 

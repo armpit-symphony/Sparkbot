@@ -23,6 +23,11 @@ from typing import Any
 import litellm
 
 from app.services.guardian import get_guardian_suite
+from app.services.model_seats import (
+    model_seat_by_id,
+    model_seat_secret_alias,
+    normalize_model_seat_provider,
+)
 from app.services.guardian import improvement as guardian_improvement
 
 litellm.drop_params = True  # ignore unsupported params instead of erroring
@@ -974,10 +979,46 @@ def get_agent_model_overrides() -> dict[str, dict[str, str]]:
             continue
         route = str(value.get("route") or "default").strip().lower()
         model = str(value.get("model") or "").strip()
+        model_seat_id = str(value.get("model_seat_id") or "").strip().lower()
         if route not in VALID_AGENT_ROUTES:
             continue
-        cleaned[str(key).strip().lower()] = {"route": route, "model": model}
+        entry = {"route": route, "model": model}
+        if model_seat_id:
+            entry["model_seat_id"] = model_seat_id
+        cleaned[str(key).strip().lower()] = entry
     return cleaned
+
+
+def _route_for_model_seat_provider(provider: str) -> str:
+    if provider == "ollama":
+        return "local"
+    return provider if provider in VALID_AGENT_ROUTES else "default"
+
+
+def _use_model_seat_secret_for_agent(seat_id: str, *, agent_name: str) -> str | None:
+    alias = model_seat_secret_alias(seat_id)
+    try:
+        from app.services.guardian.vault import vault_get_metadata
+
+        meta = vault_get_metadata(alias)
+        if not meta or str(meta.get("access_policy") or "") == "disabled":
+            return None
+        return get_guardian_suite().vault.vault_use(
+            alias,
+            user_id="agent_model_seat",
+            operator=agent_name or "system",
+            session_id=f"agent-model-seat-route:{seat_id}",
+        )
+    except Exception:
+        return None
+
+
+def _model_seat_requires_vault_secret(*, provider: str, auth_mode: str) -> bool:
+    normalized_provider = (provider or "").strip().lower()
+    normalized_auth = (auth_mode or "").strip().lower()
+    if normalized_provider in {"openai_codex", "claude_sub"} and normalized_auth in {"codex_sub", "cli", "claude_cli"}:
+        return False
+    return normalized_auth in {"api_key", "oauth"}
 
 
 def get_agent_route_context(
@@ -1014,6 +1055,40 @@ def get_agent_route_context(
     if route not in VALID_AGENT_ROUTES:
         route = "default"
 
+    override_model_seat_id = str((override or {}).get("model_seat_id") or "").strip().lower()
+    if override_model_seat_id:
+        seat = model_seat_by_id(override_model_seat_id, model_provider_func=model_provider)
+        if seat and bool(seat.get("enabled", True)) and bool(seat.get("show_in_specialty_wing", True)):
+            seat_model = str(seat.get("model_id") or "").strip()
+            seat_provider = normalize_model_seat_provider(
+                str(seat.get("provider") or ""),
+                seat_model,
+                model_provider_func=model_provider,
+            )
+            if not invite_model and seat_model:
+                invite_model = seat_model
+            invite_auth_mode = str(seat.get("auth_mode") or invite_auth_mode or "api_key").strip().lower()
+            if invite_auth_mode not in {"api_key", "oauth", "codex_sub"}:
+                invite_auth_mode = "api_key"
+            invite_api_key = _use_model_seat_secret_for_agent(
+                override_model_seat_id,
+                agent_name=effective_agent,
+            ) or invite_api_key
+            model_seat_setup_required = (
+                not invite_api_key
+                and _model_seat_requires_vault_secret(provider=seat_provider, auth_mode=invite_auth_mode)
+            )
+            if route == "default":
+                route = _route_for_model_seat_provider(seat_provider)
+        else:
+            model_seat_setup_required = True
+            seat_provider = ""
+            invite_auth_mode = "api_key"
+            seat_model = ""
+    else:
+        model_seat_setup_required = False
+        seat_provider = ""
+
     override_model = invite_model or str((override or {}).get("model") or "").strip()
     chosen_model = default_model
     if route == "openrouter":
@@ -1044,6 +1119,15 @@ def get_agent_route_context(
             else False
         ),
     }
+    if override_model_seat_id:
+        ctx["model_seat_id"] = override_model_seat_id
+        if model_seat_setup_required:
+            ctx["model_seat_setup_required"] = True
+            ctx["model_seat_setup_message"] = (
+                f"Model seat '{override_model_seat_id}' is selected for this agent, but its backend Vault credential "
+                "is not configured or the seat is unavailable. Configure the seat in Invite Wing/Command Center or "
+                "change this agent back to Use default."
+            )
     if invite_api_key:
         ctx["invite_api_key"] = invite_api_key
         ctx["invite_auth_mode"] = invite_auth_mode
@@ -1287,6 +1371,8 @@ def _provider_authoritative_route_payload(
 
 
 async def _ensure_locked_route_ready(route_context: dict[str, Any]) -> None:
+    if route_context.get("model_seat_setup_required"):
+        raise RuntimeError(str(route_context.get("model_seat_setup_message") or "Selected model seat is not configured."))
     model_name = str(route_context.get("model") or "").strip()
     locked_provider = model_provider(model_name) if route_context.get("provider_locked") else ""
     if locked_provider == "openrouter":
@@ -1357,6 +1443,8 @@ def humanise_chat_error(error: Exception) -> str:
 
 
 def _format_locked_route_error(route_context: dict[str, Any], error: Exception) -> str:
+    if route_context.get("model_seat_setup_required"):
+        return str(route_context.get("model_seat_setup_message") or error)
     model_name = str(route_context.get("model") or "").strip()
     locked_provider = model_provider(model_name) if route_context.get("provider_locked") else ""
     if locked_provider == "openrouter":
@@ -1737,6 +1825,8 @@ async def _acompletion_with_fallback(
         bool((route_context or {}).get("cross_provider_fallback")),
         candidates,
     )
+    if (route_context or {}).get("model_seat_setup_required"):
+        raise RuntimeError(str((route_context or {}).get("model_seat_setup_message") or "Selected model seat is not configured."))
     invite_api_key = str((route_context or {}).get("invite_api_key") or "").strip() or None
     invite_auth_mode = str((route_context or {}).get("invite_auth_mode") or "api_key").strip().lower()
     for candidate in candidates:

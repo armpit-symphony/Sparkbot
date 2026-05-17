@@ -969,6 +969,7 @@ def remember_bridge_message(
                         content=f"{bridge_name.title()} from {room_id} ({role_label}): {shared_content}",
                         session_id=_shared_work_session(user_id),
                         metadata={
+                            **event_meta,
                             "user_id": user_id,
                             "room_id": room_id,
                             "scope_type": "shared_bridge",
@@ -982,6 +983,133 @@ def remember_bridge_message(
         except Exception:
             pass
     return stored
+
+
+def _context_label(value: str | None, *, fallback: str) -> str:
+    label = re.sub(r"[^a-z0-9_.-]+", "_", (value or "").strip().lower()).strip("_")
+    return label or fallback
+
+
+def _looks_like_draft_context(text: str, metadata: dict[str, Any]) -> bool:
+    marker = " ".join(
+        [
+            str(metadata.get("artifact_type") or ""),
+            str(metadata.get("artifact_kind") or ""),
+            str(metadata.get("status") or ""),
+            str(metadata.get("state") or ""),
+        ]
+    ).lower()
+    if any(token in marker for token in ("draft", "scaffold", "placeholder", "in_progress")):
+        return True
+    normalized = re.sub(r"[_*`\[\]()#>-]+", " ", (text or "").lower())
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    placeholder_phrases = {
+        "meeting in progress",
+        "none recorded yet",
+        "none noted",
+        "to be determined",
+        "to be defined",
+        "draft notes",
+        "placeholder",
+    }
+    return any(phrase in normalized for phrase in placeholder_phrases)
+
+
+def remember_context_event(
+    *,
+    user_id: str,
+    room_id: str,
+    source_type: str,
+    actor_label: str,
+    content_summary: str,
+    role: str | None = None,
+    raw_content: str | None = None,
+    thread_id: str | None = None,
+    conversation_id: str | None = None,
+    meeting_id: str | None = None,
+    model_seat_id: str | None = None,
+    agent_id: str | None = None,
+    memory_rollup: bool = False,
+    sensitivity: str | None = None,
+    risk_label: str | None = None,
+    tags: list[str] | tuple[str, ...] | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> bool:
+    """Store a public-safe source-labeled context event.
+
+    This is the public Sparkbot context adapter. It intentionally routes through
+    the existing Guardian memory substrate without exposing Guardian internals.
+    Rollups go to shared work memory; ordinary events use the bridge room/shared
+    path so retrieval stays fluent across chat, agents, connectors, and meetings.
+    """
+    source_label = _context_label(source_type, fallback="context")
+    actor = _context_label(actor_label, fallback="system")
+    role_label = _context_label(role or actor, fallback="system")
+    safe_summary = _safe_text(_redact_sensitive_text(raw_content or content_summary), limit=1800)
+    if not safe_summary:
+        return False
+    event_meta = {
+        "user_id": user_id,
+        "room_id": room_id,
+        "surface": source_label,
+        "source_type": source_label,
+        "actor_label": actor,
+        "thread_id": _safe_text(thread_id or conversation_id or meeting_id or room_id, limit=160),
+        "conversation_id": _safe_text(conversation_id or "", limit=160),
+        "meeting_id": _safe_text(meeting_id or "", limit=160),
+        "model_seat_id": _safe_text(model_seat_id or "", limit=120),
+        "agent_id": _safe_text(agent_id or "", limit=120),
+        "memory_rollup": bool(memory_rollup),
+        "sensitivity": _safe_text(sensitivity or "normal", limit=40),
+        "risk_label": _safe_text(risk_label or "", limit=80),
+        "tags": [str(tag)[:80] for tag in (tags or []) if str(tag).strip()][:12],
+        **_sanitize_metadata(metadata or {}),
+    }
+    if memory_rollup:
+        if _looks_like_draft_context(safe_summary, event_meta):
+            return False
+        fingerprint = hashlib.sha256(
+            "\n".join(
+                [
+                    user_id,
+                    room_id,
+                    source_label,
+                    actor,
+                    str(event_meta.get("thread_id") or ""),
+                    safe_summary,
+                ]
+            ).encode("utf-8")
+        ).hexdigest()
+        try:
+            for event in _guardian().ledger.iter_events(session_id=_shared_work_session(user_id)):
+                meta = dict(event.metadata or {})
+                if meta.get("context_fingerprint") == fingerprint and _is_event_active_for_prompt(event):
+                    return False
+        except Exception:
+            pass
+        content = f"{source_label.title()} context from {event_meta['thread_id']} ({actor}): {safe_summary}"
+        return _append_event(
+            event_type=EventType.SYSTEM,
+            role="system",
+            content=content,
+            session_id=_shared_work_session(user_id),
+            metadata={
+                **event_meta,
+                "scope_type": "shared_context",
+                "context_fingerprint": fingerprint,
+            },
+            source=f"{source_label}.rollup",
+            confidence=0.84,
+            verification_state="recorded",
+        )
+    return remember_bridge_message(
+        user_id=user_id,
+        room_id=room_id,
+        bridge=source_label,
+        role=role_label,
+        content=safe_summary,
+        metadata=event_meta,
+    )
 
 
 def remember_tool_event(
@@ -1409,6 +1537,11 @@ def build_memory_context(*, user_id: str, room_id: str, query: str) -> str:
     return "\n\n".join(blocks)
 
 
+def build_unified_context(*, user_id: str, room_id: str, query: str) -> str:
+    """Public context read adapter for chat, meetings, agents, and connectors."""
+    return build_memory_context(user_id=user_id, room_id=room_id, query=query)
+
+
 def _archive_recall_events(
     *,
     query: str,
@@ -1536,6 +1669,18 @@ def recall_relevant_events(
                 "timestamp": event.timestamp.isoformat() if event.timestamp else None,
                 "score": round(score, 4),
                 "source": meta.get("source"),
+                "surface": meta.get("surface"),
+                "source_type": meta.get("source_type"),
+                "actor_label": meta.get("actor_label"),
+                "thread_id": meta.get("thread_id"),
+                "conversation_id": meta.get("conversation_id"),
+                "meeting_id": meta.get("meeting_id"),
+                "model_seat_id": meta.get("model_seat_id"),
+                "agent_id": meta.get("agent_id"),
+                "memory_rollup": bool(meta.get("memory_rollup", False)),
+                "sensitivity": meta.get("sensitivity"),
+                "risk_label": meta.get("risk_label"),
+                "tags": meta.get("tags") if isinstance(meta.get("tags"), list) else [],
                 "confidence": meta.get("confidence"),
                 "memory_type": meta.get("memory_type"),
                 "lifecycle_state": meta.get("lifecycle_state", "active"),

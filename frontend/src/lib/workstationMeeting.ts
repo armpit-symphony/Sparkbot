@@ -272,9 +272,14 @@ async function ensureMeetingAgentOverrides(seats: WorkstationMeetingSeatMeta[]):
     const nextOverride = {
       route: seat.route || "default",
       model: seat.modelId,
+      model_seat_id: seat.modelSeatId || "",
     }
     const existing = nextOverrides[handle]
-    if (existing?.route !== nextOverride.route || existing?.model !== nextOverride.model) {
+    if (
+      existing?.route !== nextOverride.route
+      || existing?.model !== nextOverride.model
+      || existing?.model_seat_id !== nextOverride.model_seat_id
+    ) {
       nextOverrides[handle] = nextOverride
       changed = true
     }

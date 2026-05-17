@@ -476,6 +476,7 @@ function buildSpecialtyOfficeStations(
       agentDescription: agent?.description,
       agentEmoji: agent?.emoji,
       ...(modelOverride?.model ? { modelId: modelOverride.model, routeMode: modelOverride.route } : {}),
+      ...(modelOverride?.model_seat_id ? { modelSeatId: modelOverride.model_seat_id } : {}),
     }
   })
 }
@@ -4656,9 +4657,14 @@ export default function WorkstationPage() {
   const handleAgentModelChange = useCallback(async (agentName: string, modelId: string) => {
     if (!controlsConfig) return
     setSavingAgentModel(agentName)
+    const matchedSeat = controlsConfig.model_seats?.find((seat) =>
+      seat.enabled
+      && seat.show_in_specialty_wing
+      && seat.model_id === modelId
+    )
     const nextOverride = modelId
-      ? { route: routeForModelOverride(modelId), model: modelId }
-      : { route: "default", model: "" }
+      ? { route: routeForModelOverride(modelId), model: modelId, model_seat_id: matchedSeat?.id ?? "" }
+      : { route: "default", model: "", model_seat_id: "" }
     const nextOverrides = {
       ...(controlsConfig.agent_overrides ?? {}),
       [agentName]: nextOverride,

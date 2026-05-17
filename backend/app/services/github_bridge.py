@@ -581,7 +581,16 @@ async def _run_room_prompt(
 
     agent_name, agent_content = resolve_agent_from_message(content)
     try:
-        guardian_suite.memory.remember_chat_message(user_id=user_id, room_id=room_id, role="user", content=agent_content)
+        guardian_suite.memory.remember_context_event(
+            user_id=user_id,
+            room_id=room_id,
+            source_type="github",
+            actor_label=actor_login or "user",
+            role="user",
+            content_summary=agent_content,
+            thread_id=thread_key,
+            metadata={"github_repo": repo_full_name, "github_issue_number": issue_number},
+        )
     except Exception:
         pass
 
@@ -608,7 +617,7 @@ async def _run_room_prompt(
         system_prompt = base_prompt
 
     try:
-        memory_context = guardian_suite.memory.build_memory_context(user_id=user_id, room_id=room_id, query=agent_content)
+        memory_context = guardian_suite.memory.build_unified_context(user_id=user_id, room_id=room_id, query=agent_content)
     except Exception:
         memory_context = ""
     if memory_context:
@@ -670,7 +679,16 @@ async def _run_room_prompt(
         },
     )
     try:
-        guardian_suite.memory.remember_chat_message(user_id=user_id, room_id=room_id, role="assistant", content=final_text)
+        guardian_suite.memory.remember_context_event(
+            user_id=user_id,
+            room_id=room_id,
+            source_type="github",
+            actor_label="sparkbot",
+            role="assistant",
+            content_summary=final_text,
+            thread_id=thread_key,
+            metadata={"github_repo": repo_full_name, "github_issue_number": issue_number},
+        )
     except Exception:
         pass
     await _broadcast_room_message(room_id, str(bot_msg.id), final_text, bot_user.username, "BOT")

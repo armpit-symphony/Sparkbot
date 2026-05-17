@@ -47,6 +47,7 @@ export interface SparkbotControlsConfig {
     {
       route: string
       model?: string
+      model_seat_id?: string
     }
   >
   model_seats?: Array<{

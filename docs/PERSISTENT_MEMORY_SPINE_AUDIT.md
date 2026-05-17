@@ -171,3 +171,34 @@ Regression coverage added:
 - Shared bridge memory route, including Slack-style user events and task-style system events.
 - Draft/scaffold meeting artifacts do not roll up to memory.
 - Manager wrap-up/checkpoint notes can still become shared memory through the existing meeting artifact rollup path.
+
+## Unified Context Spine Update - 2026-05-17
+
+Branch: `public-release-unified-context-spine`
+
+Implemented:
+
+- Added `remember_context_event(...)` as the public shared context write adapter over the existing Guardian memory substrate.
+- Added `build_unified_context(...)` as the public shared context read adapter.
+- Expanded structured recall results with source/surface, actor, thread, meeting, model-seat, agent, rollup, sensitivity, risk, and tag metadata.
+- Slack, Telegram, Discord, WhatsApp, and GitHub bridge handlers now retrieve context through the unified adapter.
+- Slack, Telegram, Discord, WhatsApp, and GitHub bridge user/assistant messages now write source-labeled context events where safe.
+- Unified manager/checkpoint rollups dedupe by fingerprint and skip draft/scaffold placeholder content.
+- Specialty Wing agent overrides can now carry non-secret `model_seat_id` metadata; Vault credential resolution remains backend-only.
+
+Connected after this update:
+
+| Surface | Status |
+|---|---|
+| Chat / DM | Reads via unified adapter; writes through existing chat memory path. |
+| Round Table | Manager wrap-up/checkpoints can roll up through shared context; per-turn notes remain disabled. |
+| Invite Wing model seats | Non-secret seat id flows through meeting/agent metadata; secrets stay in Vault. |
+| Specialty Wing agents | Model-seat id can persist in overrides and resolve server-side. |
+| Slack | Public baseline connector now uses unified read/write context. |
+| Telegram/Discord/WhatsApp/GitHub | External bridge read/write paths are source-labeled through unified context. |
+
+Still deferred:
+
+- Workstation UI clicks and setup panel changes should not become memory until there is an explicit public rule for useful non-noisy UI events.
+- Direct task/reminder retrieval of prior context remains a follow-up.
+- Approval/confirmation summaries should become public-safe memory events later, but this pass did not add a second log path that could duplicate audit records.

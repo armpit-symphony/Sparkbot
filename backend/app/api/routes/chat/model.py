@@ -31,6 +31,15 @@ from app.services.guardian.policy import (
     global_bypass_status,
     security_guardrails_enabled,
 )
+from app.services.model_seats import (
+    MODEL_SEAT_AUTH_MODES,
+    MODEL_SEAT_DEFAULTS,
+    MODEL_SEATS_ENV,
+    merged_model_seats,
+    model_seat_by_id,
+    model_seat_secret_alias,
+    normalize_model_seat_provider,
+)
 from app.api.routes.chat.llm import (
     AGENT_MODEL_OVERRIDES_ENV,
     AVAILABLE_MODELS,
@@ -91,63 +100,6 @@ SECURITY_PROFILE_LABELS = {
     "locked": "Locked",
     "custom": "Custom",
 }
-MODEL_SEATS_ENV = "SPARKBOT_MODEL_SEATS_JSON"
-MODEL_SEAT_AUTH_MODES = {"api_key", "oauth", "codex_sub"}
-MODEL_SEAT_PROVIDER_ALIASES = {
-    "anthropic": "anthropic",
-    "claude": "anthropic",
-    "claude_sub": "claude_sub",
-    "claude-sub": "claude_sub",
-    "google": "google",
-    "gemini": "google",
-    "groq": "groq",
-    "minimax": "minimax",
-    "ollama": "ollama",
-    "openai": "openai",
-    "openai_codex": "openai_codex",
-    "openai-codex": "openai_codex",
-    "codex": "openai_codex",
-    "xai": "xai",
-    "grok": "xai",
-}
-MODEL_SEAT_DEFAULTS: list[dict[str, Any]] = [
-    {
-        "id": "invite-gpt",
-        "label": "Codex / OpenAI",
-        "company": "OpenAI",
-        "provider": "openai_codex",
-        "auth_mode": "codex_sub",
-        "model_id": "openai-codex/gpt-5.3-codex",
-        "enabled": True,
-        "show_in_round_table": True,
-        "show_in_specialty_wing": True,
-        "notes": "Default Codex/OpenAI model seat for Round Table and Specialty Wing.",
-    },
-    {
-        "id": "invite-claude",
-        "label": "Claude / Anthropic",
-        "company": "Anthropic",
-        "provider": "anthropic",
-        "auth_mode": "api_key",
-        "model_id": "claude-sonnet-4-6",
-        "enabled": True,
-        "show_in_round_table": True,
-        "show_in_specialty_wing": True,
-        "notes": "Default Claude model seat for long-context reasoning.",
-    },
-    {
-        "id": "invite-custom",
-        "label": "Grok / xAI",
-        "company": "xAI",
-        "provider": "xai",
-        "auth_mode": "api_key",
-        "model_id": "xai/grok-4.20-multi-agent-0309",
-        "enabled": True,
-        "show_in_round_table": True,
-        "show_in_specialty_wing": True,
-        "notes": "Default Grok model seat for agentic reasoning.",
-    },
-]
 
 
 def _security_profile_id() -> str:
@@ -460,8 +412,7 @@ def _provider_catalog(ollama_status: dict[str, Any] | None = None) -> list[dict[
 
 
 def _model_seat_secret_alias(seat_id: str) -> str:
-    safe_id = re.sub(r"[^a-z0-9_]+", "_", seat_id.strip().lower()).strip("_")
-    return f"model_seat_{safe_id}_credential"
+    return model_seat_secret_alias(seat_id)
 
 
 def _vault_secret_configured(alias: str) -> bool:
@@ -474,68 +425,16 @@ def _vault_secret_configured(alias: str) -> bool:
         return False
 
 
-def _load_model_seat_overrides() -> dict[str, dict[str, Any]]:
-    raw = os.getenv(MODEL_SEATS_ENV, "").strip()
-    if not raw:
-        return {}
-    try:
-        parsed = json.loads(raw)
-    except Exception:
-        return {}
-    if not isinstance(parsed, list):
-        return {}
-    items: dict[str, dict[str, Any]] = {}
-    for item in parsed:
-        if not isinstance(item, dict):
-            continue
-        seat_id = str(item.get("id") or "").strip().lower()
-        if not seat_id:
-            continue
-        items[seat_id] = item
-    return items
-
-
 def _merged_model_seats() -> list[dict[str, Any]]:
-    merged: dict[str, dict[str, Any]] = {
-        str(item["id"]): dict(item)
-        for item in MODEL_SEAT_DEFAULTS
-    }
-    for seat_id, override in _load_model_seat_overrides().items():
-        base = dict(merged.get(seat_id, {"id": seat_id}))
-        for key in (
-            "label",
-            "company",
-            "provider",
-            "auth_mode",
-            "model_id",
-            "enabled",
-            "show_in_round_table",
-            "show_in_specialty_wing",
-            "notes",
-        ):
-            if key in override:
-                base[key] = override[key]
-        merged[seat_id] = base
-    return list(merged.values())
+    return merged_model_seats(model_provider_func=model_provider)
 
 
 def _model_seat_by_id(seat_id: str) -> dict[str, Any] | None:
-    normalized = str(seat_id or "").strip().lower()
-    for seat in _merged_model_seats():
-        if str(seat.get("id") or "").strip().lower() == normalized:
-            return seat
-    return None
+    return model_seat_by_id(seat_id, model_provider_func=model_provider)
 
 
 def _normalize_model_seat_provider(provider: str | None, model_id: str | None) -> str:
-    raw_provider = str(provider or "").strip().lower().replace(" ", "_")
-    if raw_provider in MODEL_SEAT_PROVIDER_ALIASES:
-        return MODEL_SEAT_PROVIDER_ALIASES[raw_provider]
-    if model_id:
-        resolved = model_provider(model_id)
-        if resolved:
-            return resolved
-    return "openrouter"
+    return normalize_model_seat_provider(provider, model_id, model_provider_func=model_provider)
 
 
 def _clean_model_seat_record(item: "ModelSeatInput", existing: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -1483,18 +1382,37 @@ async def update_models_config(
     if body.agent_overrides is not None:
         cleaned: dict[str, dict[str, str]] = {}
         _route_to_provider = {"openrouter": "openrouter", "local": "ollama", "openai": "openai", "openai_codex": "openai_codex", "claude_sub": "claude_sub", "anthropic": "anthropic", "google": "google", "groq": "groq", "minimax": "minimax", "xai": "xai"}
+        _provider_to_route = {"ollama": "local"}
         for agent_name, value in body.agent_overrides.items():
             route = str((value or {}).get("route") or "default").strip().lower()
             model = str((value or {}).get("model") or "").strip()
+            model_seat_id = str((value or {}).get("model_seat_id") or "").strip().lower()
             if route not in VALID_AGENT_ROUTES:
                 raise HTTPException(status_code=400, detail=f"Invalid route for agent '{agent_name}'.")
+            if model_seat_id:
+                seat = _model_seat_by_id(model_seat_id)
+                if not seat:
+                    raise HTTPException(status_code=404, detail=f"Model seat '{model_seat_id}' not found for agent '{agent_name}'.")
+                if not bool(seat.get("enabled", True)):
+                    raise HTTPException(status_code=400, detail=f"Model seat '{model_seat_id}' is disabled.")
+                if not bool(seat.get("show_in_specialty_wing", True)):
+                    raise HTTPException(status_code=400, detail=f"Model seat '{model_seat_id}' is not enabled for Specialty Wing.")
+                seat_model = str(seat.get("model_id") or "").strip()
+                seat_provider = _normalize_model_seat_provider(str(seat.get("provider") or ""), seat_model)
+                if not model and seat_model:
+                    model = seat_model
+                if route == "default":
+                    route = _provider_to_route.get(seat_provider, seat_provider)
             if model and not is_valid_model(model):
                 raise HTTPException(status_code=400, detail=f"Unknown model '{model}' for agent '{agent_name}'.")
             if route in _route_to_provider and model:
                 expected_provider = _route_to_provider[route]
                 if model_provider(model) != expected_provider:
                     raise HTTPException(status_code=400, detail=f"Agent '{agent_name}' route '{route}' requires a {expected_provider} model.")
-            cleaned[agent_name.strip().lower()] = {"route": route, "model": model}
+            entry = {"route": route, "model": model}
+            if model_seat_id:
+                entry["model_seat_id"] = model_seat_id
+            cleaned[agent_name.strip().lower()] = entry
         env_updates[AGENT_MODEL_OVERRIDES_ENV] = json.dumps(cleaned, separators=(",", ":"))
         notices.append("Agent routing overrides updated.")
 

@@ -57,7 +57,7 @@ export interface ModelsControlsConfig {
     description: string
   }>
   custom_guardrails?: string
-  agent_overrides: Record<string, { route: string; model?: string }>
+  agent_overrides: Record<string, { route: string; model?: string; model_seat_id?: string }>
   model_seats?: Array<{
     id: string
     label: string
@@ -168,6 +168,7 @@ export interface RoutingPolicyForm {
 export interface AgentRoutingOverride {
   route: string
   model: string
+  model_seat_id?: string
 }
 
 export interface OpenRouterModelRecord {
@@ -500,6 +501,7 @@ export function useControlsState({ roomId, onStatusMessage }: UseControlsStateOp
           {
             route: config.agent_overrides?.[agent.name]?.route ?? "default",
             model: config.agent_overrides?.[agent.name]?.model ?? "",
+            model_seat_id: config.agent_overrides?.[agent.name]?.model_seat_id ?? "",
           },
         ]),
       ),
@@ -924,15 +926,32 @@ export function useControlsState({ roomId, onStatusMessage }: UseControlsStateOp
       if (field === "route") {
         const nextRoute = value
         if (nextRoute === "default") {
-          return { ...prev, [agentName]: { route: "default", model: "" } }
+          return { ...prev, [agentName]: { route: "default", model: "", model_seat_id: "" } }
         }
         const prefix = routeToProviderPrefix[nextRoute] ?? ""
         const modelFits = prefix && current.model.startsWith(prefix)
-        return { ...prev, [agentName]: { route: nextRoute, model: modelFits ? current.model : "" } }
+        const modelSeatFits = modelFits
+          && modelsConfig?.model_seats?.some((seat) => seat.id === current.model_seat_id && seat.model_id === current.model)
+        return {
+          ...prev,
+          [agentName]: {
+            route: nextRoute,
+            model: modelFits ? current.model : "",
+            model_seat_id: modelSeatFits ? current.model_seat_id : "",
+          },
+        }
+      }
+      if (field === "model") {
+        const seat = modelsConfig?.model_seats?.find((item) =>
+          item.show_in_specialty_wing
+          && item.enabled
+          && item.model_id === value
+        )
+        return { ...prev, [agentName]: { ...current, model: value, model_seat_id: seat?.id ?? "" } }
       }
       return { ...prev, [agentName]: { ...current, [field]: value } }
     })
-  }, [])
+  }, [modelsConfig?.model_seats])
 
   const saveProviderTokens = useCallback(async () => {
     const payload = Object.fromEntries(
@@ -1112,8 +1131,21 @@ export function useControlsState({ roomId, onStatusMessage }: UseControlsStateOp
     const payload = Object.fromEntries(
       routingAgentList.map((agent) => {
         const override = agentOverrides[agent.name] ?? { route: "default", model: "" }
-        if (override.route === "default") return [agent.name, { route: "default", model: "" }]
-        return [agent.name, { route: override.route, model: override.model.trim() }]
+        if (override.route === "default") return [agent.name, { route: "default", model: "", model_seat_id: "" }]
+        const model = override.model.trim()
+        const matchedSeat = modelsConfig?.model_seats?.find((seat) =>
+          seat.show_in_specialty_wing
+          && seat.enabled
+          && seat.model_id === model
+        )
+        return [
+          agent.name,
+          {
+            route: override.route,
+            model,
+            model_seat_id: override.model_seat_id || matchedSeat?.id || "",
+          },
+        ]
       }),
     )
     setSavingAgentOverrides(true)
@@ -1138,7 +1170,7 @@ export function useControlsState({ roomId, onStatusMessage }: UseControlsStateOp
     } finally {
       setSavingAgentOverrides(false)
     }
-  }, [agentOverrides, applyControlsConfig, modelsConfig?.available_agents, refreshControls, notify])
+  }, [agentOverrides, applyControlsConfig, modelsConfig?.available_agents, modelsConfig?.model_seats, refreshControls, notify])
 
   const saveComms = useCallback(async () => {
     setSavingComms(true)

@@ -370,7 +370,15 @@ async def _run_room_prompt(
 
     agent_name, agent_content = resolve_agent_from_message(content)
     try:
-        guardian_suite.memory.remember_chat_message(user_id=user_id, room_id=room_id, role="user", content=agent_content)
+        guardian_suite.memory.remember_context_event(
+            user_id=user_id,
+            room_id=room_id,
+            source_type="discord",
+            actor_label="user",
+            role="user",
+            content_summary=agent_content,
+            metadata={"discord_channel_id": channel_id},
+        )
     except Exception:
         pass
 
@@ -398,7 +406,7 @@ async def _run_room_prompt(
         system_prompt = base_prompt
 
     try:
-        memory_context = guardian_suite.memory.build_memory_context(user_id=user_id, room_id=room_id, query=agent_content)
+        memory_context = guardian_suite.memory.build_unified_context(user_id=user_id, room_id=room_id, query=agent_content)
     except Exception:
         memory_context = ""
     if memory_context:
@@ -460,7 +468,15 @@ async def _run_room_prompt(
         meta_json={"source": "discord", "discord_channel_id": channel_id},
     )
     try:
-        guardian_suite.memory.remember_chat_message(user_id=user_id, room_id=room_id, role="assistant", content=final_text)
+        guardian_suite.memory.remember_context_event(
+            user_id=user_id,
+            room_id=room_id,
+            source_type="discord",
+            actor_label="sparkbot",
+            role="assistant",
+            content_summary=final_text,
+            metadata={"discord_channel_id": channel_id},
+        )
     except Exception:
         pass
     try:

@@ -155,6 +155,78 @@ def test_meeting_artifact_rollup_skips_placeholder_scaffolds(monkeypatch, tmp_pa
     )
 
 
+def test_unified_context_event_source_labels_and_retrieval(monkeypatch, tmp_path: Path) -> None:
+    _reset_memory_guardian(monkeypatch, tmp_path)
+
+    stored = memory.remember_context_event(
+        user_id="user-1",
+        room_id="slack-room",
+        source_type="slack",
+        actor_label="user",
+        role="user",
+        content_summary="Slack asked Sparkbot to remember the public launch checklist owner.",
+        thread_id="slack-thread-1",
+        tags=["connector", "launch"],
+    )
+
+    assert stored is True
+    recalled = memory.recall_relevant_events(
+        user_id="user-1",
+        room_id="main-chat-room",
+        query="public launch checklist owner from Slack",
+    )
+
+    assert any(item["source_type"] == "slack" for item in recalled)
+    assert any(item["actor_label"] == "user" for item in recalled)
+    assert any(item["thread_id"] == "slack-thread-1" for item in recalled)
+
+
+def test_unified_context_rollup_deduplicates_and_skips_drafts(monkeypatch, tmp_path: Path) -> None:
+    _reset_memory_guardian(monkeypatch, tmp_path)
+
+    assert not memory.remember_context_event(
+        user_id="user-1",
+        room_id="roundtable-room",
+        source_type="roundtable",
+        actor_label="manager",
+        content_summary="Meeting in progress. None recorded yet.",
+        memory_rollup=True,
+        metadata={"artifact_kind": "draft_scaffold"},
+    )
+    assert memory.remember_context_event(
+        user_id="user-1",
+        room_id="roundtable-room",
+        source_type="roundtable",
+        actor_label="manager",
+        content_summary="Manager wrap-up: Seat 2 will verify memory continuity and Seat 3 will polish setup copy.",
+        meeting_id="roundtable-room",
+        memory_rollup=True,
+        tags=["manager_wrapup"],
+    )
+    assert not memory.remember_context_event(
+        user_id="user-1",
+        room_id="roundtable-room",
+        source_type="roundtable",
+        actor_label="manager",
+        content_summary="Manager wrap-up: Seat 2 will verify memory continuity and Seat 3 will polish setup copy.",
+        meeting_id="roundtable-room",
+        memory_rollup=True,
+        tags=["manager_wrapup"],
+    )
+
+    context = memory.build_unified_context(
+        user_id="user-1",
+        room_id="main-chat-room",
+        query="Who will verify memory continuity from the manager wrap-up?",
+    )
+
+    assert "Shared Work Memory" in context
+    assert "Seat 2 will verify memory continuity" in context
+    events = list(memory._guardian().ledger.iter_events(session_id=memory._shared_work_session("user-1")))
+    assert len(events) == 1
+    assert events[0].metadata["memory_rollup"] is True
+
+
 def test_memory_guardian_uses_desktop_data_dir_when_specific_dir_absent(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.delenv("SPARKBOT_MEMORY_GUARDIAN_DATA_DIR", raising=False)
     monkeypatch.setenv("SPARKBOT_DATA_DIR", str(tmp_path / "desktop-data"))

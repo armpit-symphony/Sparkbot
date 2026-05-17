@@ -117,18 +117,19 @@ async def _handle_slack_event(text: str, channel: str, thread_ts: Optional[str])
     db = next(db_gen)
     user_id, room_id = _get_or_create_slack_memory_context(db)
     try:
-        guardian_memory.remember_bridge_message(
+        guardian_memory.remember_context_event(
             user_id=user_id,
             room_id=room_id,
-            bridge="slack",
+            source_type="slack",
+            actor_label="user",
             role="user",
-            content=text,
+            content_summary=text,
             metadata={"slack_channel": channel, "slack_thread_ts": thread_ts or ""},
         )
     except Exception:
         pass
     try:
-        memory_context = guardian_memory.build_memory_context(
+        memory_context = guardian_memory.build_unified_context(
             user_id=user_id,
             room_id=room_id,
             query=text,
@@ -163,12 +164,13 @@ async def _handle_slack_event(text: str, channel: str, thread_ts: Optional[str])
     response = "".join(tokens).strip()
     try:
         if response:
-            guardian_memory.remember_bridge_message(
+            guardian_memory.remember_context_event(
                 user_id=user_id,
                 room_id=room_id,
-                bridge="slack",
+                source_type="slack",
+                actor_label="sparkbot",
                 role="assistant",
-                content=response,
+                content_summary=response,
                 metadata={"slack_channel": channel, "slack_thread_ts": thread_ts or ""},
             )
     except Exception:

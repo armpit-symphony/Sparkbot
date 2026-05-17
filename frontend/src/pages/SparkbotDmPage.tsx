@@ -235,7 +235,21 @@ interface ModelsControlsConfig {
   global_computer_control?: boolean
   global_computer_control_expires_at?: number | null
   global_computer_control_ttl_remaining?: number | null
-  agent_overrides: Record<string, { route: string; model?: string }>
+  agent_overrides: Record<string, { route: string; model?: string; model_seat_id?: string }>
+  model_seats?: Array<{
+    id: string
+    label: string
+    company?: string
+    provider: string
+    auth_mode?: "api_key" | "oauth" | "codex_sub"
+    model_id?: string
+    enabled: boolean
+    show_in_round_table: boolean
+    show_in_specialty_wing: boolean
+    notes?: string
+    configured?: boolean
+    credential_configured?: boolean
+  }>
   available_agents: Array<{
     name: string
     emoji: string
@@ -333,6 +347,7 @@ interface RoutingPolicyForm {
 interface AgentRoutingOverride {
   route: string
   model: string
+  model_seat_id?: string
 }
 
 interface OpenRouterModelRecord {
@@ -964,6 +979,7 @@ function SparkbotSettingsDialog({
         modelStack?.backup_1,
         modelStack?.backup_2,
         modelStack?.heavy_hitter,
+        ...(modelsConfig?.model_seats ?? []).map((seat) => seat.model_id ?? ""),
       ].filter(Boolean),
     ),
   )
@@ -977,7 +993,8 @@ function SparkbotSettingsDialog({
     ["openrouter", "OpenRouter (OPENROUTER_API_KEY)", (id) => id.startsWith("openrouter/")],
     ["openai", "OpenAI direct (OPENAI_API_KEY)", (id) => id.startsWith("gpt-") || id.startsWith("codex-")],
     ["openai_codex", "OpenAI Codex subscription", (id) => id.startsWith("openai-codex/")],
-    ["anthropic", "Anthropic direct (ANTHROPIC_API_KEY)", (id) => id.startsWith("claude")],
+    ["anthropic", "Anthropic direct (ANTHROPIC_API_KEY)", (id) => id.startsWith("claude") && !id.startsWith("claude-sub/")],
+    ["claude_sub", "Claude subscription", (id) => id.startsWith("claude-sub/")],
     ["google", "Google direct (GOOGLE_API_KEY)", (id) => id.startsWith("gemini/")],
     ["xai", "xAI direct (XAI_API_KEY)", (id) => id.startsWith("xai/")],
     ["groq", "Groq direct (GROQ_API_KEY)", (id) => id.startsWith("groq/")],
@@ -992,7 +1009,7 @@ function SparkbotSettingsDialog({
     modelsConfig?.providers?.find((provider) => provider.id === "openrouter")?.configured,
   )
   const directProviderLabel: Record<string, string> = {
-    openai: "OpenAI", openai_codex: "OpenAI Codex Subscription", anthropic: "Anthropic", google: "Google", groq: "Groq", minimax: "MiniMax", xai: "xAI",
+    openai: "OpenAI", openai_codex: "OpenAI Codex Subscription", anthropic: "Anthropic", claude_sub: "Claude Subscription", google: "Google", groq: "Groq", minimax: "MiniMax", xai: "xAI",
   }
   const directProviderKeyField: Record<string, keyof ProviderTokenDrafts> = {
     openai: "openai_api_key", anthropic: "anthropic_api_key",
@@ -1003,7 +1020,12 @@ function SparkbotSettingsDialog({
   const directProviderIsConfigured = (id: string) =>
     Boolean(modelsConfig?.providers?.find((p) => p.id === id)?.configured)
   const directProviderModels = (id: string): string[] =>
-    modelsConfig?.providers?.find((p) => p.id === id)?.models ?? []
+    Array.from(new Set([
+      ...(modelsConfig?.providers?.find((p) => p.id === id)?.models ?? []),
+      ...(modelsConfig?.model_seats ?? [])
+        .filter((seat) => seat.show_in_specialty_wing && seat.provider === id && seat.model_id)
+        .map((seat) => seat.model_id as string),
+    ]))
   const ollamaProvider = modelsConfig?.providers?.find((provider) => provider.id === "ollama")
   const routingAgents = modelsConfig?.available_agents ?? []
   const showAdvancedControls = true
@@ -2606,12 +2628,12 @@ function SparkbotSettingsDialog({
                   const modelValue = override.model ?? ""
                   const routeProviderMap: Record<string, string> = {
                     openrouter: "openrouter", local: "ollama", openai: "openai", openai_codex: "openai_codex",
-                    anthropic: "anthropic", google: "google", groq: "groq",
+                    anthropic: "anthropic", claude_sub: "claude_sub", google: "google", groq: "groq",
                     minimax: "minimax", xai: "xai",
                   }
                   const routeLabels: Record<string, string> = {
                     openrouter: "OpenRouter", local: "Local (Ollama)", openai: "OpenAI", openai_codex: "Codex Subscription",
-                    anthropic: "Anthropic", google: "Google", groq: "Groq",
+                    anthropic: "Anthropic", claude_sub: "Claude Subscription", google: "Google", groq: "Groq",
                     minimax: "MiniMax", xai: "xAI",
                   }
                   const providerForRoute = routeProviderMap[route] ?? ""
@@ -2644,6 +2666,7 @@ function SparkbotSettingsDialog({
                           <option value="openai">OpenAI</option>
                           <option value="openai_codex">Codex Subscription</option>
                           <option value="anthropic">Anthropic</option>
+                          <option value="claude_sub">Claude Subscription</option>
                           <option value="google">Google</option>
                           <option value="groq">Groq</option>
                           <option value="minimax">MiniMax</option>
@@ -3117,6 +3140,7 @@ function SparkbotDmPage({ controlsSurface = false }: SparkbotDmPageProps = {}) {
           {
             route: config.agent_overrides?.[agent.name]?.route ?? "default",
             model: config.agent_overrides?.[agent.name]?.model ?? "",
+            model_seat_id: config.agent_overrides?.[agent.name]?.model_seat_id ?? "",
           },
         ]),
       ),
@@ -3598,18 +3622,35 @@ function SparkbotDmPage({ controlsSurface = false }: SparkbotDmPageProps = {}) {
   ) => {
     const routeToProviderPrefix: Record<string, string> = {
       openrouter: "openrouter/", local: "ollama/", openai: "gpt-", openai_codex: "openai-codex/", anthropic: "claude",
-      google: "gemini/", groq: "groq/", minimax: "minimax/", xai: "xai/",
+      claude_sub: "claude-sub/", google: "gemini/", groq: "groq/", minimax: "minimax/", xai: "xai/",
     }
     setAgentOverrides((prev) => {
       const current = prev[agentName] ?? { route: "default", model: "" }
       if (field === "route") {
         const nextRoute = value
         if (nextRoute === "default") {
-          return { ...prev, [agentName]: { route: "default", model: "" } }
+          return { ...prev, [agentName]: { route: "default", model: "", model_seat_id: "" } }
         }
         const prefix = routeToProviderPrefix[nextRoute] ?? ""
         const modelFits = prefix && current.model.startsWith(prefix)
-        return { ...prev, [agentName]: { route: nextRoute, model: modelFits ? current.model : "" } }
+        const modelSeatFits = modelFits
+          && modelsConfig?.model_seats?.some((seat) => seat.id === current.model_seat_id && seat.model_id === current.model)
+        return {
+          ...prev,
+          [agentName]: {
+            route: nextRoute,
+            model: modelFits ? current.model : "",
+            model_seat_id: modelSeatFits ? current.model_seat_id : "",
+          },
+        }
+      }
+      if (field === "model") {
+        const seat = modelsConfig?.model_seats?.find((item) =>
+          item.show_in_specialty_wing
+          && item.enabled
+          && item.model_id === value
+        )
+        return { ...prev, [agentName]: { ...current, model: value, model_seat_id: seat?.id ?? "" } }
       }
       return {
         ...prev,
@@ -3619,7 +3660,7 @@ function SparkbotDmPage({ controlsSurface = false }: SparkbotDmPageProps = {}) {
         },
       }
     })
-  }, [])
+  }, [modelsConfig?.model_seats])
 
   const saveProviderTokens = useCallback(async () => {
     const payload = Object.fromEntries(
@@ -3822,9 +3863,22 @@ function SparkbotDmPage({ controlsSurface = false }: SparkbotDmPageProps = {}) {
       routingAgents.map((agent) => {
         const override = agentOverrides[agent.name] ?? { route: "default", model: "" }
         if (override.route === "default") {
-          return [agent.name, { route: "default", model: "" }]
+          return [agent.name, { route: "default", model: "", model_seat_id: "" }]
         }
-        return [agent.name, { route: override.route, model: override.model.trim() }]
+        const model = override.model.trim()
+        const matchedSeat = modelsConfig?.model_seats?.find((seat) =>
+          seat.show_in_specialty_wing
+          && seat.enabled
+          && seat.model_id === model
+        )
+        return [
+          agent.name,
+          {
+            route: override.route,
+            model,
+            model_seat_id: override.model_seat_id || matchedSeat?.id || "",
+          },
+        ]
       }),
     )
 
@@ -3850,7 +3904,7 @@ function SparkbotDmPage({ controlsSurface = false }: SparkbotDmPageProps = {}) {
     } finally {
       setSavingAgentOverrides(false)
     }
-  }, [agentOverrides, applyControlsConfig, defaultSelection.model, localDefaultModel, modelsConfig?.available_agents, refreshControls])
+  }, [agentOverrides, applyControlsConfig, modelsConfig?.available_agents, modelsConfig?.model_seats, refreshControls])
 
   const saveComms = useCallback(async () => {
     setSavingComms(true)

@@ -129,22 +129,50 @@ Validation in this pass:
 ## Remaining P0 Blockers
 
 - Invite Wing credential storage moved to backend/Vault-backed storage for Round Table model seats.
-- Remaining Invite Wing blocker: Specialty Wing can select model-seat model IDs, but arbitrary specialty-agent routing does not yet bind to a seat-specific Vault credential when no global provider auth is configured.
+- Specialty Wing model-seat Vault binding is now implemented for agent overrides that carry `model_seat_id`; remaining work is clearer setup-needed UI and a full Command Center seat editor.
+- Legacy DM Controls now preserves `model_seat_id` in the same way as Command Center and Workstation controls.
+- Explicit model-seat routing now reports setup-needed instead of falling back to a global provider key when the selected seat's Vault credential is missing.
+- Pending approval Spine payloads now recursively redact nested secret-like keys before public-safe approval events are emitted.
 - Public package exclusions/private path cleanup.
 - Built-in public agent prompt rewrite.
 - Balanced vs Locked policy behavior needs tuning so profiles are more than persisted names.
 - Final Round Table assignment cards/phase UI polish.
 - Remaining "Controls" naming should converge into AI setup versus Command Center.
 
+## Unified Context Spine Update - 2026-05-17
+
+Branch: `public-release-unified-context-spine`
+
+Completed in this pass:
+
+- Added the public `remember_context_event(...)` and `build_unified_context(...)` adapters over Guardian memory.
+- Added bounded structured recall metadata for source/surface, actor, thread, meeting, model-seat, agent, rollup, sensitivity, risk, and tags.
+- Slack, Telegram, Discord, WhatsApp, and GitHub bridge handlers now read unified context and write source-labeled user/assistant context events.
+- Added shared model-seat helper logic and preserved `model_seat_id` in Specialty Wing/Command Center agent overrides.
+- Backend route context now resolves model-seat Vault credentials server-side for Specialty Wing agents.
+- Added regression coverage for unified context source labels, draft/scaffold rollup skipping, manager checkpoint rollups, model-seat override persistence, and backend-side credential resolution.
+
+Validation in this pass:
+
+- Targeted validation is recorded in the final report for `public-release-unified-context-spine`.
+
+Remaining after this pass:
+
+- Public package exclusions/private path cleanup.
+- Built-in public agent prompt rewrite.
+- Balanced vs Locked behavior separation.
+- Final Round Table assignment UI polish.
+- Sparkbot_shell extraction map refresh.
+
 ## Recommended Next Phase
 
 Run a focused public extraction-blocker phase:
 
-1. Finish Specialty Wing model-seat credential routing for Vault-only seats.
+1. Update public package exclusions and private path cleanup.
 2. Rewrite built-in public agent prompts.
-3. Update public package exclusions and private path cleanup.
-4. Tune Balanced vs Locked policy differences.
-5. Add Meeting Room assignment display and phase/status UI.
+3. Tune Balanced vs Locked policy differences.
+4. Add Meeting Room assignment display and phase/status UI.
+5. Refresh the Sparkbot_shell extraction map after the cleanup pass.
 6. Finish AI setup versus Command Center naming cleanup.
 
 ## Questions For Phil
