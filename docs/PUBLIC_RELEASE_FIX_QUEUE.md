@@ -39,6 +39,14 @@ Branch `public-release-unified-context-spine` moved unified memory/context block
 - Draft/scaffold context rollups are skipped and manager/checkpoint rollups dedupe by fingerprint.
 - Pending approval Spine events recursively redact nested secret-like payload keys.
 
+Branch `public-release-package-prompt-cleanup` moved package/prompt blockers forward:
+
+- Public package pruning now removes readiness/status/audit docs, private runtime research docs, historical release-note docs, proposal scripts, dotenv files, logs, local databases, key/certificate files, virtualenvs, build output, and cache directories.
+- `.venv-ci/` and `backend/.venv-ci/` are ignored for future local CI environments and pruned from public packages.
+- Built-in public agent prompts no longer steer users toward SparkPit Labs, TheSparkPit, LIMA AI, or Guardian services.
+- Current README/capabilities copy presents Robo as teaser-only **Robo Preview** and replaces private host-inspection paths with generic local service/log-root language.
+- Web search key fallback no longer reads an OpenClaw config path; use `BRAVE_SEARCH_API_KEY` or explicit `SPARKBOT_SEARCH_CONFIG_PATH`.
+
 ## 1. P0 Blockers Before Extraction
 
 1. Unify public chat route.
@@ -94,11 +102,13 @@ Branch `public-release-unified-context-spine` moved unified memory/context block
 9. Clean public source-bundle exclusions and private path references.
    - Exclude `docs/audits/*`, `docs/lima-robo-os-integration.md`, private deployment checklists, and extraction handoff docs from public packages.
    - Rewrite or move `remote.sparkpitlabs.com`, `/home/sparky`, `api.sparkpitlabs.com`, Kalshi, OpenClaw, and WEPO references before packaging.
-   - Evidence: `scripts/package-public-download.sh:129`, `docs/audits/HANDOFF_next_phase.md:110`, `FRESH_INSTALL_CHECKLIST.md:15`, `README.md:611`, `release-notes.md:25`.
+   - Status: `PARTIAL_DONE_THIS_PHASE` - package exclusions are expanded and current README/capabilities public copy was scrubbed. Tracked `.venv-ci` files remain in Git but are pruned from package output. Full public extraction should still replace Robo/LIMA backend bridge source with a stub.
+   - Evidence: `scripts/package-public-download.sh`, `README.md`, `docs/capabilities.md`, `docs/public-downloads.md`, `backend/app/api/routes/chat/tools.py`.
 
 10. Rewrite built-in public agent prompts.
    - Remove SparkPit Labs, LIMA AI, Guardian services, and service-offering references from public default agents.
-   - Evidence: `backend/app/api/routes/chat/agents.py:128`, `backend/app/api/routes/chat/agents.py:205`, `backend/app/api/routes/chat/agents.py:278`.
+   - Status: `DONE_THIS_PHASE` for backend built-in agent registry prompts.
+   - Evidence: `backend/app/api/routes/chat/agents.py`.
 
 11. Keep one shared context spine across public surfaces.
    - Route meaningful chat, connector, meeting, model-seat, agent, task, file, and approval events through a shared source-labeled context interface.
@@ -227,11 +237,11 @@ Branch `public-release-unified-context-spine` moved unified memory/context block
 
 Phase B2 should be a focused P0/P1 stabilization patch:
 
-1. Update package exclusions for internal docs and private path references.
-2. Rewrite built-in public agent prompts.
-3. Tune Balanced vs Locked policy behavior.
-4. Add final Round Table assignment display/phase UI polish.
-5. Refresh the Sparkbot_shell extraction map.
+1. Tune Balanced vs Locked policy behavior.
+2. Add final Round Table assignment display/phase UI polish.
+3. Refresh the Sparkbot_shell extraction map.
+4. Replace Robo/LIMA backend bridge source with a public stub before extraction.
+5. Remove tracked `.venv-ci` files from Git if approved.
 6. Converge remaining "Controls" copy into AI setup versus Command Center.
 
 After B2 passes build/tests, run browser QA on `/login`, `/dm`, `/workstation`, `/meeting/:roomId`, and `/spine`.

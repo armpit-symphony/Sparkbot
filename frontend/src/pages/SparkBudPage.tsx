@@ -457,7 +457,7 @@ export default function SparkBudPage({ budId }: SparkBudPageProps) {
           }}
         >
           <span style={{ fontSize: 10, color: "#1e3a52", letterSpacing: "0.08em" }}>
-            SparkPit Labs · Specialist desk routes are intentionally gated
+            Sparkbot Public · Specialist desk routes use configured permissions
           </span>
         </footer>
       </div>

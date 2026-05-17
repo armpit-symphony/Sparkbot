@@ -120,9 +120,12 @@ Preserved:
 
 ## Remaining P0 Blockers
 
-1. Public package exclusions/private path cleanup.
-2. Built-in public agent prompt rewrite.
-3. Balanced vs Locked guardrail behavior separation.
-4. Final Round Table assignment UI polish.
-5. Add public-safe confirmation/approval memory summaries without duplicating audit logs.
-6. Add user-visible setup-needed indicators for Specialty Wing model seats that are selected but not configured.
+1. Balanced vs Locked guardrail behavior separation.
+2. Final Round Table assignment UI polish.
+3. Add public-safe confirmation/approval memory summaries without duplicating audit logs.
+4. Add user-visible setup-needed indicators for Specialty Wing model seats that are selected but not configured.
+5. Replace Robo/LIMA backend bridge source with a public stub before Sparkbot_shell extraction.
+
+## Package Cleanup Note - 2026-05-17
+
+The package/prompt cleanup pass completed the public package exclusions and built-in prompt rewrite items tracked here. It did not alter unified context behavior.

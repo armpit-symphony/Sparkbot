@@ -437,7 +437,7 @@ const BUILTIN_AGENTS: Agent[] = [
   { name: "analyst",    emoji: "📊", description: "Data analyst — structured reasoning and actionable insights" },
   { name: "meetings_manager", emoji: "🗓️", description: "Plans, runs, summarizes, and follows up on meetings with clear agendas, decisions, action items, owners, deadlines, and operator-ready recaps." },
   { name: "web_designer", emoji: "🎨", description: "Designs clean, modern, responsive web pages and product experiences with strong layout, copy structure, visual hierarchy, and implementation-ready specs." },
-  { name: "marketing_agent", emoji: "📣", description: "Creates practical marketing strategy, landing page copy, launch messaging, social posts, positioning, and campaign plans for SparkPit Labs products and services." },
+  { name: "marketing_agent", emoji: "📣", description: "Creates practical marketing strategy, landing page copy, launch messaging, social posts, positioning, and campaign plans." },
   { name: "business_analyst", emoji: "📈", description: "Turns ideas, products, operations, and technical plans into clear business requirements, risks, priorities, metrics, workflows, and execution-ready recommendations." },
 ]
 
@@ -5144,7 +5144,7 @@ function SparkbotDmPage({ controlsSurface = false }: SparkbotDmPageProps = {}) {
                   </span>
                 )}
               </h1>
-              <p className="text-xs text-slate-400">Sparkpit Labs · primary everyday chat surface</p>
+              <p className="text-xs text-slate-400">Sparkbot Public · primary everyday chat surface</p>
             </div>
           </div>
           <div className="flex items-center justify-end gap-2">

@@ -9,7 +9,7 @@ For a release, keep these pieces aligned:
 - `src-tauri/tauri.conf.json`
 - `docs/index.html`
 - `README.md`
-- `docs/release-notes/vX.Y.Z.txt`
+- generated `RELEASE-NOTES.txt` from `scripts/package-public-download.sh`
 
 The current Sparkbot release is `v1.6.81`.
 
@@ -124,7 +124,7 @@ Default output:
 
 ```bash
 bash scripts/package-public-download.sh \
-  --publish-dir /var/www/sparkpitlabs.com/downloads/sparkbot/latest
+  --publish-dir /srv/www/example.com/downloads/sparkbot/latest
 ```
 
 If the target directory needs elevated permissions, run the script from a shell with the necessary access. The GitHub Pages download page itself is committed at `docs/index.html` and published by the Pages workflow.
@@ -159,8 +159,8 @@ If `--notes-file` is provided, its plaintext body is appended under `Release not
 ## Reproducibility rules
 
 - Packaging source is exported with `git archive`, so the bundle is built from committed source, not local junk
-- Internal-only docs are removed from the staged public bundle
-- Backup files, Python bytecode, cache directories, `node_modules`, and `dist` are excluded
+- Internal-only docs, readiness audits, private runtime research notes, historical release-note docs, and proposal scripts are removed from the staged public bundle
+- Dotenv files, local databases, key/certificate files, logs, backup files, Python bytecode, cache directories, virtualenvs, `node_modules`, `dist`, `build`, and coverage directories are excluded
 - `SHA256SUMS` is regenerated on every run
 
 For public download provenance, package from a tag or commit with `--ref` and keep the generated `RELEASE-NOTES.txt` and `SHA256SUMS` alongside the published artifacts.

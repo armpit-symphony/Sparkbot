@@ -207,6 +207,11 @@ _HOST_CRON_ROOTS = [
     ).split(os.pathsep)
     if item.strip()
 ]
+_HOST_LOG_ROOTS = [
+    Path(item.strip())
+    for item in os.getenv("SPARKBOT_HOST_LOG_ROOTS", "/host/logs").split(os.pathsep)
+    if item.strip()
+]
 _ALLOWED_LOCAL_SERVICES = {
     item.strip()
     for item in os.getenv("SPARKBOT_ALLOWED_SERVICES", "sparkbot-v2").split(",")
@@ -1313,7 +1318,7 @@ TOOL_DEFINITIONS = [
                 "audit, or asks why you missed processes/services, call command=host_full_audit "
                 "first and base the report on that output. "
                 "If the user asks about local bots, crons, cron jobs, or trading bot health, "
-                "use command=bot_health with query set to the bot family such as kalshi; "
+                "use command=bot_health with query set to the local service or bot family; "
                 "do not try systemctl first for cron jobs. "
                 "For a full self-diagnostic audit, call this with command=host_identity, "
                 "command=runtime_context, command=host_capabilities, command=toolchain_versions, "
@@ -1354,13 +1359,12 @@ TOOL_DEFINITIONS = [
                             "host_full_audit for complete server/process/listener/cron audits. "
                             "Use process_search for named "
                             "host processes, scheduled_jobs for cron entries, and "
-                            "bot_health for questions about local trading bots/crons "
-                            "such as Kalshi."
+                            "bot_health for questions about configured local bots, cron jobs, or services."
                         ),
                     },
                     "query": {
                         "type": "string",
-                        "description": "Optional search text for process_search, scheduled_jobs, or bot_health, for example kalshi",
+                        "description": "Optional search text for process_search, scheduled_jobs, or bot_health.",
                     },
                     "service": {
                         "type": "string",
@@ -2028,9 +2032,9 @@ _ROBOTICS_TOOL_DEFINITIONS = [
         "function": {
             "name": "lima_robot_command",
             "description": (
-                "Send a natural-language command to LIMA Robo OS through the configured LIMA MCP bridge. "
-                "Use for robot status, camera inspection, replay/simulation movement, and operator-approved robot control. "
-                "Real hardware motion is blocked by default until Guardian approval handoff is implemented."
+                "Send a natural-language command to the private Robo preview bridge when explicitly configured. "
+                "Default public Sparkbot teaser mode blocks live control and allows dry-run contracts only. "
+                "Use only for explicit robot or robotics simulation requests."
             ),
             "parameters": {
                 "type": "object",
@@ -2106,7 +2110,7 @@ async def _web_search(query: str) -> str:
 
     brave_key = os.getenv("BRAVE_SEARCH_API_KEY", "").strip()
     if not brave_key:
-        brave_key = _load_openclaw_search_key()
+        brave_key = _load_local_search_key()
     if brave_key:
         try:
             brave_results = await _search_brave(q, brave_key, max_results=4)
@@ -2145,7 +2149,7 @@ async def _web_search(query: str) -> str:
 
 
 _SEARCH_CACHE: dict[str, tuple[float, str]] = {}
-_OPENCLAW_KEY_CACHE: str | None = None
+_LOCAL_SEARCH_KEY_CACHE: str | None = None
 
 
 def _search_cache_ttl_seconds() -> int:
@@ -2172,31 +2176,34 @@ def _search_cache_set(query: str, payload: str) -> None:
     _SEARCH_CACHE[query] = (time.time() + _search_cache_ttl_seconds(), payload)
 
 
-def _load_openclaw_search_key() -> str:
+def _load_local_search_key() -> str:
     """
-    Best-effort bridge to OpenClaw's existing web-search key so Sparkbot can
-    reuse local config without duplicating key setup.
+    Best-effort bridge to a user-specified local web-search config so Sparkbot
+    can reuse local setup without hardcoding another product's config path.
     """
-    global _OPENCLAW_KEY_CACHE
-    if _OPENCLAW_KEY_CACHE is not None:
-        return _OPENCLAW_KEY_CACHE
+    global _LOCAL_SEARCH_KEY_CACHE
+    if _LOCAL_SEARCH_KEY_CACHE is not None:
+        return _LOCAL_SEARCH_KEY_CACHE
 
-    cfg_path = os.getenv("OPENCLAW_CONFIG_PATH", "").strip()
+    cfg_path = os.getenv("SPARKBOT_SEARCH_CONFIG_PATH", "").strip()
     if not cfg_path:
-        cfg_path = str(Path.home() / ".openclaw" / "openclaw.json")
+        _LOCAL_SEARCH_KEY_CACHE = ""
+        return ""
     p = Path(cfg_path).expanduser()
     if not p.exists():
-        _OPENCLAW_KEY_CACHE = ""
+        _LOCAL_SEARCH_KEY_CACHE = ""
         return ""
 
     try:
         data = json.loads(p.read_text(encoding="utf-8"))
         key = str(
-            (((data.get("tools") or {}).get("web") or {}).get("search") or {}).get("apiKey", "")
+            data.get("BRAVE_SEARCH_API_KEY")
+            or data.get("brave_search_api_key")
+            or (((data.get("tools") or {}).get("web") or {}).get("search") or {}).get("apiKey", "")
         ).strip()
     except Exception:
         key = ""
-    _OPENCLAW_KEY_CACHE = key
+    _LOCAL_SEARCH_KEY_CACHE = key
     return key
 
 
@@ -4261,7 +4268,7 @@ def _redact_tool_text(text: str) -> str:
     return _SECRET_TEXT_RE.sub(r"\1\2[REDACTED]", text)
 
 
-def _safe_process_query(query: str, default: str = "kalshi") -> tuple[str, str | None]:
+def _safe_process_query(query: str, default: str = "sparkbot") -> tuple[str, str | None]:
     value = (query or "").strip() or default
     if not _SAFE_PROCESS_QUERY_RE.fullmatch(value):
         return "", "Invalid query. Use plain process/job search text only."
@@ -4663,9 +4670,6 @@ def _read_host_system_overview() -> str:
 def _read_key_runtime_inventory() -> str:
     keywords = [
         "sparkbot",
-        "openclaw",
-        "wepo",
-        "kalshi",
         "mongo",
         "postgres",
         "redis",
@@ -4722,19 +4726,19 @@ def _host_path_candidates(raw_path: str) -> list[Path]:
 
 
 def _read_recent_logs(query: str, limit: int = 12) -> str:
-    safe_query, err = _safe_process_query(query, default="kalshi")
+    safe_query, err = _safe_process_query(query, default="sparkbot")
     if err:
         return err
-    roots = [
-        Path("/host/home/sparky/kalshi-bot"),
-        Path("/home/sparky/kalshi-bot"),
-    ]
     log_files: list[Path] = []
-    for root in roots:
+    for root in _HOST_LOG_ROOTS:
         if not root.exists():
             continue
         try:
-            log_files.extend(path for path in root.glob("*.log") if path.is_file())
+            log_files.extend(
+                path
+                for path in root.glob("*.log")
+                if path.is_file() and safe_query.lower() in path.name.lower()
+            )
         except Exception:
             continue
     unique: list[Path] = []
@@ -4743,8 +4747,8 @@ def _read_recent_logs(query: str, limit: int = 12) -> str:
             unique.append(path)
     if not unique:
         return (
-            "No readable bot log files are mounted into Sparkbot. Mount the host bot directory "
-            "read-only at /host/home/sparky/kalshi-bot to enable log freshness checks."
+            "No readable matching log files are mounted into Sparkbot. Mount a local log directory "
+            "read-only at /host/logs or set SPARKBOT_HOST_LOG_ROOTS to enable log freshness checks."
         )
     rows: list[tuple[float, Path, int, str]] = []
     for path in unique:
@@ -4773,7 +4777,7 @@ def _read_recent_logs(query: str, limit: int = 12) -> str:
 
 
 def _read_bot_health(query: str) -> str:
-    safe_query, err = _safe_process_query(query, default="kalshi")
+    safe_query, err = _safe_process_query(query, default="sparkbot")
     if err:
         return err
     cron_output = _read_scheduled_jobs(safe_query)
@@ -4866,7 +4870,7 @@ def _ops_profile_commands(
             f"{', '.join(sorted(_SERVER_READ_COMMANDS))}. "
             "For self-diagnostic audits combine host_identity, toolchain_versions, "
             "runtime_context, host_capabilities, and host_full_audit. For local bot or cron health, use bot_health "
-            "with query=kalshi."
+            "with query set to the configured local service or bot family."
         )
 
     _is_windows = sys.platform == "win32"
@@ -4878,7 +4882,7 @@ def _ops_profile_commands(
         return [("scheduled_jobs", ["__sparkbot_internal__", "scheduled_jobs", query])], None
 
     if profile == "bot_health":
-        return [("bot_health", ["__sparkbot_internal__", "bot_health", query or "kalshi"])], None
+        return [("bot_health", ["__sparkbot_internal__", "bot_health", query or "sparkbot"])], None
 
     if profile == "runtime_context":
         return [("runtime_context", ["__sparkbot_internal__", "runtime_context"])], None
@@ -5406,7 +5410,7 @@ async def _lima_robot_command(
             dry_run=dry_run,
         )
     except LimaBridgeError as exc:
-        return f"LIMA Robo OS bridge unavailable: {exc}"
+        return f"Robo preview bridge unavailable: {exc}"
 
     contract = payload.get("contract", {})
     tool_name = contract.get("mcp_tool_name", "unknown")
@@ -5414,17 +5418,17 @@ async def _lima_robot_command(
     reason = contract.get("safety_reason", "")
     if payload.get("blocked"):
         return (
-            f"LIMA Robo OS command blocked. Tool: {tool_name}; risk: {risk}; "
+            f"Robo preview command blocked. Tool: {tool_name}; risk: {risk}; "
             f"reason: {reason}"
         )
     if not payload.get("executed"):
         return (
-            f"LIMA Robo OS dry run ready. Tool: {tool_name}; risk: {risk}; "
+            f"Robo preview dry run ready. Tool: {tool_name}; risk: {risk}; "
             f"approval required: {contract.get('approval_required')}; reason: {reason}"
         )
     result = contract.get("result", {})
     return (
-        f"LIMA Robo OS command executed. Tool: {tool_name}; risk: {risk}; "
+        f"Robo preview command executed. Tool: {tool_name}; risk: {risk}; "
         f"result: {_truncate_tool_output(json.dumps(result, sort_keys=True), 1000)}"
     )
 

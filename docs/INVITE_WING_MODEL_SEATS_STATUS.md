@@ -54,3 +54,7 @@ Implemented:
 2. Add clearer setup-needed UI when a Specialty Wing agent selects an unconfigured or disabled model seat.
 3. Decide whether Claude subscription mode should use only CLI/session auth for public MVP or allow OAuth access-token entry.
 4. Add broader frontend regression coverage when the project has a stable test harness for Command Center/Workstation controls.
+
+## Package Cleanup Note - 2026-05-17
+
+The package/prompt cleanup pass did not change Invite Wing behavior. It did keep the public positioning: Codex/OpenAI, Claude/Anthropic, and Grok/xAI remain editable default model seats, credentials stay backend/Vault-owned, and public package exclusions now remove internal readiness/status docs from generated source bundles.

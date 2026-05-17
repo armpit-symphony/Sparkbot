@@ -28,7 +28,7 @@ Sparkbot is a local-first agent OS with enterprise-grade governance. In practica
 | Agent run resume | Shipped baseline: approval-gated tool calls persist exact payloads and resume on approval; full multi-hour graph serialization remains future expansion. |
 | Tool guardrails before/after execution | Shipped baseline: per-tool input guardrails run before execution and output guardrails run after LLM/dashboard execution. |
 | Workflow builder | Shipped baseline: `/api/v1/chat/dashboard/workflows/templates` exposes trigger -> condition -> tool/agent -> approval -> notify -> audit templates. |
-| Unified MCP registry | Shipped baseline: `/api/v1/chat/mcp/registry` returns backend-owned Sparkbot and LIMA Robotics OS manifests, policy tags, approval posture, run timeline, and live health for the Workstation Robo OS panel. `POST /api/v1/chat/mcp/explain-plan` previews any manifest through Guardian policy without executing it, then the run approval endpoints can request, approve, or deny the saved plan without triggering execution. |
+| Robo preview | Shipped baseline: the Workstation keeps a Robo Preview surface visible while the public default remains teaser-only and does not wire real robot, drone, humanoid, or IoT control. |
 | Mobile companion / PWA | Shipped baseline: public site includes PWA manifest and service worker; dashboard/bridge approval surfaces remain mobile-readable. |
 | Connector quality | Shipped baseline: `/api/v1/chat/dashboard/connectors/health` reports connector setup state, read/write scopes, setup-test flag, and audit metadata. |
 | Evaluation harness | Shipped baseline: `/api/v1/chat/dashboard/evals/agent-behavior` runs deterministic governance eval cases for tool choice, approval requirements, guardrails, and agent routing. |
@@ -49,7 +49,7 @@ References used for this roadmap framing: [Okta's 2026 agent governance framing]
 7. [AI & Model Configuration](#ai--model-configuration)
 8. [Multi-Agent System](#multi-agent-system)
 9. [Workstation](#workstation)
-10. [MCP Control Plane & Robo OS](#mcp-control-plane--robo-os)
+10. [Robo Preview](#robo-preview)
 11. [Task Guardian (Scheduled Autonomy)](#task-guardian-scheduled-autonomy)
 12. [Guardian Stack (Security)](#guardian-stack-security)
 13. [Communication Bridges](#communication-bridges)
@@ -135,7 +135,7 @@ Type `/` in the chat input to get autocomplete.
 
 Command Center is the operator-facing page for Sparkbot operations. It replaces the old Spine Ops presentation while preserving `/spine` and adding `/command-center` as an alias.
 
-- Uses the same top header/navigation flow as Chat, Workstation, Controls, and Robo OS.
+- Uses the same top header/navigation flow as Chat, Workstation, Controls, and Robo Preview.
 - Puts **Room Persona** at the top so the active room/persona context is visible before actions.
 - Surfaces **System Health**, **Security / Operator controls**, **Token Guardian**, and **Task Guardian** from backend-enforced sources.
 - Keeps the existing Guardian Spine queues, events, security, vault, and Task Guardian inspector panels below the main operator flow.
@@ -150,7 +150,7 @@ Room Persona saves through the existing room update path. Security mode still us
 
 Sparkbot can control the local machine it is running on. These capabilities are available in the desktop app and on self-hosted servers. By default, Sparkbot runs in an owner-local working mode: routine local machine, server, browser, terminal, SSH, communication reads, and ordinary writes can run without strict Security blockers. Dangerous/destructive actions still ask yes/no before execution, including deletes, external sends, browser writes to sensitive targets, service control, Vault reveal/write paths, and critical admin operations.
 
-Containerized server installs can mount host inspection paths read-only. In local Compose, `/proc`, host cron directories, and `/home/sparky/kalshi-bot` are exposed under `/host/...` so `server_read_command` can answer host-process, network-listener, scheduled-job, full-audit, and bot-health questions from inside the backend container without write access to those host files. For "what else is running", security-audit, or full live-workload questions, Sparkbot should use `runtime_context`, `host_capabilities`, and `host_full_audit` before responding.
+Containerized server installs can mount host inspection paths read-only. In local Compose, `/proc`, host cron directories, and an optional host log root are exposed under `/host/...` so `server_read_command` can answer host-process, network-listener, scheduled-job, full-audit, and configured local service health questions from inside the backend container without write access to those host files. For "what else is running", security-audit, or full live-workload questions, Sparkbot should use `runtime_context`, `host_capabilities`, and `host_full_audit` before responding.
 
 The Command Center box is labeled **Security**. Checking it enables the stricter Guardian guardrails, including the existing PIN, break-glass, service/SSH allowlist, and tool-input guardrail behavior. Owners can also save custom blockers in that panel. Supported custom guardrail entries are exact tool names (`tool:gmail_send`), regex blockers (`regex:rm\s+-rf`), and plain text phrases. Custom guardrails are enforced only while Security is enabled.
 
@@ -539,7 +539,7 @@ Switch live from chat: `/model <id>` — changes take effect immediately for you
 
 Seat any model into a Workstation desk with its own Model ID and API Key. At meeting launch, requests route directly to that provider using your key — bypassing the default stack. Supports Claude, Codex/GPT, Grok, Gemini, and Ollama.
 
-**Claude Subscription (OAuth).** When the provider is **Anthropic**, the invite modal shows an `API Key / Claude Subscription` segmented toggle. Picking **Claude Subscription** lets you paste an OAuth access token (`sk-ant-oat01-…`) instead of an `sk-ant-api03-…` API key — the same credential format used by [openclaw](https://github.com/instavm/openclaw) and [Hermes](https://github.com/HumanLayer/hermes). Anthropic allows Claude Pro/Max plans to drive API calls via OAuth with no per-token billing.
+**Claude Subscription (OAuth).** When the provider is **Anthropic**, the invite modal shows an `API Key / Claude Subscription` segmented toggle. Picking **Claude Subscription** lets you paste an OAuth access token (`sk-ant-oat01-...`) instead of an `sk-ant-api03-...` API key. Anthropic allows Claude Pro/Max plans to drive API calls via OAuth with no per-token billing.
 
 How to get the token:
 
@@ -648,7 +648,7 @@ SPARKBOT_AGENT_IDENTITY_JSON={"devops":{"owner":"platform","scopes":["ci","diagn
 
 The Workstation is the visual operations hub. Access it from the main navigation.
 
-On phone-sized screens, Workstation keeps the full office map available as a horizontally scrollable workspace instead of replacing it with a screen-size blocker. Side panels are capped to the viewport width so station details, Robo OS, Computer Control, and terminal controls remain reachable from mobile browsers and remote-browser sessions.
+On phone-sized screens, Workstation keeps the full office map available as a horizontally scrollable workspace instead of replacing it with a screen-size blocker. Side panels are capped to the viewport width so station details, Robo Preview, Computer Control, and terminal controls remain reachable from mobile browsers and remote-browser sessions.
 
 ### Office Floor
 
@@ -659,7 +659,7 @@ A visual grid showing all active desks:
 - **Specialty Wing** — five assignable office slots backed by the shared Controls Agents list
 - **Terminal Desk** — live xterm.js terminal panel
 - **Computer Control** — shell, terminal, and browser capability panel
-- **Robo OS** — unified MCP control-plane panel for Sparkbot tools and LIMA Robotics OS skills
+- **Robo Preview** — teaser/demo surface for future runtime and robotics-adjacent integrations
 
 The Specialty Wing defaults to `@meetings_manager`, `@researcher`, `@analyst`, `@writer`, and `@workstation_backup_1`. Each office card and its detail panel include an agent dropdown populated from the same packaged/custom agent list used by Controls, so user-created custom agents remain available without a second registry. Office assignments are saved in local browser storage as Workstation layout state, with missing defaults falling back to the first available agent instead of crashing.
 
@@ -678,79 +678,18 @@ The legacy **Always on** wording is replaced by Security status in current Comma
 
 ---
 
-## MCP Control Plane & Robo OS
+## Robo Preview
 
-The **Robo OS** button opens the first unified MCP registry in Workstation. It positions the system as:
+The **Robo Preview** button opens a public teaser/demo surface in Workstation. It is meant to show the future direction for PC/server/runtime and robotics-adjacent integrations without making those integrations part of the public MVP.
 
-| Layer | Ownership |
-|-------|-----------|
-| Sparkbot | Governed agentic assistant and command center for chat, computer work, cloud ops, business workflows, approvals, memory, Vault, and audit |
-| LIMA Robotics OS | Local Intelligent Machine Agent runtime for robot skills and physical-world execution exposed through MCP |
-| Together | One assistant surface for computer work, connected services, and robotics |
+Public behavior:
 
-The panel loads from `GET /api/v1/chat/mcp/registry` and falls back to the bundled frontend manifests only if the API is unavailable. It shows typed manifests for Sparkbot tools and LIMA robot skills with:
+- The default Robo surface is preview-only copy.
+- Real robot, drone, humanoid, and IoT control is not wired in public Sparkbot.
+- Private runtime bridges, emergency-stop contracts, and hardware command runners are not public core features.
+- Any future live runtime integration should require explicit setup, clear capability labels, user-owned permissions, and elevated confirmation before risky actions.
 
-- Runtime owner: `sparkbot` or `lima-robo-os`
-- Policy tags: `read-only`, `write`, `destructive`, `external-send`, `robot-motion`, `secret-use`
-- Risk level: low, medium, high, critical
-- Required secrets or daemon endpoints
-- Health source: Sparkbot API, Task Guardian, Guardian Vault, or external MCP
-- Live status: configured, missing secrets, bridge needed, disabled, or demo-ready
-- Approval posture: whether the tool requires operator approval before execution
-- Dry-run posture: native dry run, explain-plan, or required-before-motion
-
-Click **Explain** on a manifest to call `POST /api/v1/chat/mcp/explain-plan`. Sparkbot maps the manifest to the concrete policy tool name, supplies safe sample args when none are provided, runs Guardian policy simulation, writes an `mcp_explain_plan` audit entry, and returns:
-
-- Simulation-only flag
-- Policy decision and reason
-- Whether dry run or approval is required
-- Whether execution can happen now
-- Next required operator action
-- Timeline steps from user request through audit evidence
-
-The explain-plan also creates a durable MCP run record in `mcp_runs.db` under the Guardian data directory. The Robo OS panel shows recent runs, and API clients can inspect them with:
-
-- `GET /api/v1/chat/mcp/runs`
-- `GET /api/v1/chat/mcp/runs/{run_id}`
-- `POST /api/v1/chat/mcp/runs/{run_id}/request-approval`
-- `POST /api/v1/chat/mcp/runs/{run_id}/approve`
-- `POST /api/v1/chat/mcp/runs/{run_id}/deny`
-
-Run statuses are `planned`, `awaiting_approval`, `ready`, `blocked`, `completed`, or `failed`. The MCP run history records planning, policy, and approval state. Approval marks a run `ready` for future runner handoff, denial marks it `blocked`, and this path still does not execute the underlying Sparkbot or LIMA tool directly.
-
-The Phase 2 LIMA robotics bridge is available separately for explicit robot commands:
-
-- `GET /api/v1/chat/robotics/status`
-- `GET /api/v1/chat/robotics/tools`
-- `POST /api/v1/chat/robotics/command`
-- `POST /api/v1/chat/robotics/emergency-stop`
-
-The bridge accepts natural-language robot commands, creates the command contract, classifies risk, and calls the configured LIMA MCP tool only when the request is safe. Dry runs work without hardware. Replay/simulation is the default. Real-hardware motion is blocked by default until the Guardian approval-to-runner handoff is complete.
-
-No hardware is required for the Robo OS demo path. LIMA replay/simulation commands are surfaced directly in Sparkbot:
-
-```bash
-LIMA --replay run unitree-go2
-LIMA --simulation run unitree-go2-agentic-mcp
-LIMA run demo-camera
-```
-
-Robot-motion tools such as `navigate`, `follow_route`, `return_home`, and `stop` are marked critical. They should produce a dry-run/explain-plan, then require operator approval and audit evidence before execution.
-
-Set `LIMA_MCP_URL` to the running LIMA MCP endpoint, such as `http://127.0.0.1:9990/mcp`, to enable live replay/simulation calls from Sparkbot. If it is not set, Robo OS still exposes the replay/simulation manifests as demo-ready and the robotics bridge can produce dry-run command contracts without hardware.
-
-Detailed phase notes live in [LIMA Robo OS Integration](./lima-robo-os-integration.md).
-
-The universal run timeline is:
-
-1. User request
-2. Parsed intent and context pack
-3. Tool manifests matched
-4. Policy tags and risk evaluated
-5. Dry run or explain plan
-6. Operator approval when required
-7. Execution
-8. Audit evidence and run summary
+This keeps the public product centered on the workstation shell, shared context, model seats, Specialty Wing agents, and Round Table meetings while preserving a truthful teaser for future work.
 
 ### Round Table
 
@@ -1523,17 +1462,13 @@ PUBLIC_URL=
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/api/v1/chat/skills` | List loaded skill plugins (name, description, policy flags) |
-| `GET` | `/api/v1/chat/mcp/registry` | Unified Sparkbot + LIMA MCP registry: manifests, policy metadata, approval posture, health, and run timeline |
-| `POST` | `/api/v1/chat/mcp/explain-plan` | No-execution dry-run plan for a registry manifest using Guardian policy simulation |
-| `GET` | `/api/v1/chat/mcp/runs` | Recent durable MCP explain-plan/run records for the current user |
-| `GET` | `/api/v1/chat/mcp/runs/{run_id}` | One MCP run record with persisted explain-plan payload |
-| `POST` | `/api/v1/chat/mcp/runs/{run_id}/request-approval` | Move a planned or unapproved ready MCP run to awaiting approval without executing it |
-| `POST` | `/api/v1/chat/mcp/runs/{run_id}/approve` | Guardian-operator approval that marks an awaiting MCP run ready for future runner handoff without executing it |
-| `POST` | `/api/v1/chat/mcp/runs/{run_id}/deny` | Guardian-operator denial that blocks an awaiting MCP run with an audit reason |
-| `GET` | `/api/v1/chat/robotics/status` | LIMA Robo OS bridge status and configured MCP target metadata |
-| `GET` | `/api/v1/chat/robotics/tools` | Tools discovered from the configured LIMA MCP endpoint |
-| `POST` | `/api/v1/chat/robotics/command` | Natural-language robot command contract, risk classification, and safe replay/simulation MCP execution |
-| `POST` | `/api/v1/chat/robotics/emergency-stop` | Audited stop call to the best available LIMA stop tool |
+| `GET` | `/api/v1/chat/mcp/registry` | Advanced operator registry endpoint; public UI treats Robo as preview-only by default |
+| `POST` | `/api/v1/chat/mcp/explain-plan` | No-execution dry-run plan for an advanced registry manifest using policy simulation |
+| `GET` | `/api/v1/chat/mcp/runs` | Recent durable no-execution explain-plan/run records for the current user |
+| `GET` | `/api/v1/chat/mcp/runs/{run_id}` | One no-execution run record with persisted explain-plan payload |
+| `POST` | `/api/v1/chat/mcp/runs/{run_id}/request-approval` | Move a planned or unapproved ready run to awaiting approval without executing it |
+| `POST` | `/api/v1/chat/mcp/runs/{run_id}/approve` | Operator approval that marks an awaiting run ready for future runner handoff without executing it |
+| `POST` | `/api/v1/chat/mcp/runs/{run_id}/deny` | Operator denial that blocks an awaiting run with an audit reason |
 | `GET` | `/api/v1/chat/audit` | Recent tool audit log (room-scoped) |
 | `GET` | `/api/v1/utils/health-check/` | Health check → `true` |
 
@@ -1951,9 +1886,9 @@ For `v1.6.81`, the backend, frontend, Tauri shell, README, public download page,
 
 For `v1.6.80`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release fixes two operator-visibility issues. (1) Token Guardian live-mode fallback was silently jumping to the alphabetical-first configured model when none of `routing.yaml`'s preferred candidates (e.g. `claude-sonnet-4-5`, `gpt-4o`) were configured for the operator's stack — a common case for users on `claude-sub/*`, `openai-codex/*`, or `openrouter/*`-only setups. Live-mode now stays on the operator's current_model with an explicit `fallback_reason` ("Token Guardian: no preferred model for classification '{x}' is configured for live routing; staying on '{current}'.") so the Command Center Token Guardian card shows why no live route fired. The pipeline init's `shadow_mode` arg now mirrors the operator-configured mode at startup instead of being hardcoded to True, so the "Pipeline initialized (shadow=...)" log line reflects reality even when the operator has set live mode. (2) Desktop `sparkbot-backend.log` defaulted to DEBUG, which let `httpcore` long-poll spam from the Telegram bridge balloon the log file to ~600 MB in a week. The default is now INFO; `SPARKBOT_BACKEND_LOG_LEVEL=debug` re-enables verbose. `httpcore`, `httpx`, `h2`, `rustls`, `openai._base_client`, `cookie_store`, and `primp` are explicitly pinned to WARNING even when root is INFO — they accounted for 90%+ of historic log volume with little actionable signal for end users. 2 new regression tests cover the stay-on-current behavior and the pipeline mode-label fix; 178 services tests still pass.
 
-For `v1.6.79`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release turns host-aware auditing into a first-class operator capability. `server_read_command` adds `runtime_context`, `host_capabilities`, and `host_full_audit`; `process_snapshot` and `network_listeners` now prefer mounted host `/proc` readers when available. The full audit profile reports Docker/container scope, installed/missing audit tools, host process inventory, host TCP listeners from `/host/proc/1/net`, mounted cron jobs, key workloads (Sparkbot, OpenClaw, WEPO, Kalshi, Mongo/Postgres/Redis/nginx/sshd/Docker/cron/fail2ban/Codex), and coverage gaps. The backend image now includes `procps`, `iproute2`, and `lsof` for container fallback diagnostics, and the prompt tells Sparkbot to establish runtime scope before answering full server/security audit questions.
+For `v1.6.79`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release turns host-aware auditing into a first-class operator capability. `server_read_command` adds `runtime_context`, `host_capabilities`, and `host_full_audit`; `process_snapshot` and `network_listeners` now prefer mounted host `/proc` readers when available. The full audit profile reports Docker/container scope, installed/missing audit tools, host process inventory, host TCP listeners from `/host/proc/1/net`, mounted cron jobs, generic key workloads (Sparkbot, database services, web servers, SSH, Docker, cron, fail2ban, Codex), and coverage gaps. The backend image now includes `procps`, `iproute2`, and `lsof` for container fallback diagnostics, and the prompt tells Sparkbot to establish runtime scope before answering full server/security audit questions.
 
-For `v1.6.78`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release fixes Security-off assistant behavior: routine reads and ordinary writes are allowed without strict guardrail confirmation, while dangerous/destructive actions, external sends, service control, credential reveal/write, and critical changes still ask first. It also adds host-backed server inspection profiles for containerized installs: `process_search`, `scheduled_jobs`, and `bot_health`. The local Compose stack mounts host `/proc`, cron directories, and `/home/sparky/kalshi-bot` read-only so Sparkbot can inspect host crons, host processes, and recent Kalshi bot logs instead of trying `systemctl` inside the backend container for cron jobs.
+For `v1.6.78`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release fixes Security-off assistant behavior: routine reads and ordinary writes are available without strict guardrail confirmation, while dangerous/destructive actions, external sends, service control, credential reveal/write, and critical changes still ask first. It also adds host-backed server inspection profiles for containerized installs: `process_search`, `scheduled_jobs`, and `bot_health`. The local Compose stack mounts host `/proc`, cron directories, and a generic optional host log root read-only so Sparkbot can inspect host crons, host processes, and configured local service logs instead of trying `systemctl` inside the backend container for cron jobs.
 
 For `v1.6.77`, the backend, frontend, Tauri shell, README, public download page, and release note are all advanced together so the installer, runtime self-inspection, and GitHub Pages downloader tell the same version story. This release adds the first backend-enforced Security / Operator Control foundation in Command Center. `GET /api/v1/chat/security/status` reports passphrase strength, operator mode, operator PIN state, active break-glass state, CORS origins, frontend/backend exposure, managed `.env` permissions, frontend security headers, risky feature toggles, provider-key storage hints, and operator-owned deployment guidance. Guarded write routes now cover rotating `SPARKBOT_PASSPHRASE`, setting explicit `SPARKBOT_OPERATOR_USERNAMES`, setting/changing the operator PIN, updating allowlisted risky features, and fixing managed `.env` files to mode `600`. Every write route requires authenticated operator identity, active break-glass where appropriate, allowlisted setting names, and audit logging; the UI only exposes state the backend enforces. The first Command Center actions are rotate passphrase, save explicit operators, and fix `.env` permissions. The frontend nginx server now emits baseline security headers so hosted/server mode can report the header posture directly.
 

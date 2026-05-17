@@ -22,7 +22,7 @@ Options:
 Examples:
   bash scripts/package-public-download.sh
   bash scripts/package-public-download.sh --ref sparkbot-v1.3.0 --artifact-prefix sparkbot-1.3.0 --output-dir dist/public-download/1.3.0
-  bash scripts/package-public-download.sh --publish-dir /var/www/sparkpitlabs.com/downloads/sparkbot/latest
+  bash scripts/package-public-download.sh --publish-dir /srv/www/example.com/downloads/sparkbot/latest
 EOF
 }
 
@@ -130,9 +130,35 @@ git -C "$repo_root" archive --format=tar --prefix="sparkbot-v2/" "$commit" | tar
 rm -f \
   "$stage_repo/FRESH_INSTALL_CHECKLIST.md" \
   "$stage_repo/consumer_readiness_checklist.md" \
+  "$stage_repo/guardian_suite_integration.md" \
   "$stage_repo/release-notes.md" \
   "$stage_repo/sparkbot-backend.spec" \
   "$stage_repo/copier.yml"
+
+# Remove readiness audits, extraction notes, private runtime research, and other
+# repo-internal planning docs from public source bundles. The public bundle keeps
+# install/setup docs, README, generated release notes, and product-facing docs.
+rm -rf "$stage_repo/docs/audits"
+rm -rf "$stage_repo/docs/release-notes"
+rm -f \
+  "$stage_repo/docs/COMMAND_CENTER_SECURITY_AUDIT.md" \
+  "$stage_repo/docs/INVITE_WING_MODEL_SEATS_STATUS.md" \
+  "$stage_repo/docs/LIMA_RUNTIME_ALIGNMENT_NOTES.md" \
+  "$stage_repo/docs/P0_STABILIZATION_STATUS.md" \
+  "$stage_repo/docs/PERSISTENT_MEMORY_SPINE_AUDIT.md" \
+  "$stage_repo/docs/PUBLIC_PACKAGE_PROMPT_CLEANUP_STATUS.md" \
+  "$stage_repo/docs/PUBLIC_SHELL_LAYER_PLAN.md" \
+  "$stage_repo/docs/PUBLIC_SURFACE_UX_STATUS.md" \
+  "$stage_repo/docs/ROUNDTABLE_MANAGER_FLOW_PLAN.md" \
+  "$stage_repo/docs/UNIFIED_CONTEXT_SPINE_STATUS.md" \
+  "$stage_repo/docs/lima-robo-os-integration.md"
+rm -f \
+  "$stage_repo"/docs/PUBLIC_RELEASE_*.md \
+  "$stage_repo"/docs/release-readiness-*.md \
+  "$stage_repo"/docs/*_AUDIT.md \
+  "$stage_repo"/docs/*_STATUS.md \
+  "$stage_repo"/docs/*LIMA*.md \
+  "$stage_repo"/docs/lima-*.md
 
 # Remove desktop build artifacts not relevant to the Docker/CLI self-hosted install.
 rm -rf "$stage_repo/src-tauri"
@@ -142,12 +168,12 @@ rm -rf "$stage_repo/.copier"
 
 find "$stage_repo" \
   -type d \
-  \( -name "__pycache__" -o -name ".pytest_cache" -o -name ".mypy_cache" -o -name ".ruff_cache" -o -name "node_modules" -o -name "dist" \) \
+  \( -name "__pycache__" -o -name ".pytest_cache" -o -name ".mypy_cache" -o -name ".ruff_cache" -o -name ".cache" -o -name ".venv" -o -name ".venv-ci" -o -name "venv" -o -name "node_modules" -o -name "dist" -o -name "build" -o -name "coverage" -o -name "logs" \) \
   -prune -exec rm -rf {} +
 
 find "$stage_repo" \
   -type f \
-  \( -name "*.pyc" -o -name "*.pyo" -o -name "*.bak" -o -name "*.bak_*" \) \
+  \( -name "*.pyc" -o -name "*.pyo" -o -name "*.bak" -o -name "*.bak_*" -o -name "*.log" -o -name "*.jsonl" -o -name "*.sqlite" -o -name "*.db" -o -name "*.pem" -o -name "*.key" -o -name "*.p12" -o -name "*.pfx" -o -name ".env" -o -name ".env.local" -o -name ".env.production" -o -name ".env.development" -o -name "file_v*_proposals.py" -o -name "*_proposals.py" \) \
   -delete
 
 mkdir -p "$output_dir"
@@ -193,12 +219,18 @@ chmod 755 "$output_dir/$cli_name"
   echo "- FRESH_INSTALL_CHECKLIST.md"
   echo "- consumer_readiness_checklist.md"
   echo "- release-notes.md"
+  echo "- guardian_suite_integration.md"
+  echo "- docs/audits/ and public-readiness/status/audit docs"
+  echo "- docs/release-notes/ historical release notes"
+  echo "- private LIMA/Robo runtime research docs"
   echo "- sparkbot-backend.spec (PyInstaller desktop build artifact)"
   echo "- copier.yml + .copier/ (project scaffolding config)"
   echo "- src-tauri/ (Tauri desktop shell source)"
+  echo "- proposal scripts and scratch files"
+  echo "- dotenv files, logs, local databases, key/certificate files"
   echo "- backup files (*.bak, *.bak_*)"
   echo "- Python bytecode and cache directories"
-  echo "- node_modules and dist directories"
+  echo "- node_modules, dist, build, coverage, virtualenv, and cache directories"
   if [[ -n "$notes_file" ]]; then
     echo
     echo "Release notes:"

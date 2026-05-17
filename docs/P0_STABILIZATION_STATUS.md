@@ -164,15 +164,36 @@ Remaining after this pass:
 - Final Round Table assignment UI polish.
 - Sparkbot_shell extraction map refresh.
 
+## Package And Prompt Cleanup Update - 2026-05-17
+
+Branch: `public-release-package-prompt-cleanup`
+
+Completed in this pass:
+
+- Expanded public package pruning for readiness/status/audit docs, private runtime research docs, historical release-note docs, proposal scripts, dotenv files, logs, local databases, key/certificate files, virtualenvs, build output, and cache directories.
+- Added `.venv-ci/` and `backend/.venv-ci/` to `.gitignore`; public packages now prune `.venv-ci` even though tracked CI virtualenv files remain a separate repo hygiene cleanup.
+- Rewrote backend built-in public agent prompts to remove SparkPit Labs, TheSparkPit, LIMA AI, and Guardian services assumptions.
+- Reframed README and capabilities docs around **Robo Preview** as teaser-only public core.
+- Replaced private host-inspection paths/examples with generic host log roots and local service health wording.
+- Removed the OpenClaw config fallback from web search key loading; public Sparkbot uses `BRAVE_SEARCH_API_KEY` or explicit `SPARKBOT_SEARCH_CONFIG_PATH`.
+
+Remaining after this pass:
+
+- Remove tracked `.venv-ci` files from Git in a dedicated cleanup if Phil approves.
+- Replace Robo/LIMA backend bridge source with a public stub before Sparkbot_shell extraction.
+- Tune Balanced vs Locked behavior separation.
+- Add final Round Table assignment display/phase UI polish.
+- Refresh the Sparkbot_shell extraction map.
+
 ## Recommended Next Phase
 
 Run a focused public extraction-blocker phase:
 
-1. Update public package exclusions and private path cleanup.
-2. Rewrite built-in public agent prompts.
-3. Tune Balanced vs Locked policy differences.
-4. Add Meeting Room assignment display and phase/status UI.
-5. Refresh the Sparkbot_shell extraction map after the cleanup pass.
+1. Tune Balanced vs Locked policy differences.
+2. Add Meeting Room assignment display and phase/status UI.
+3. Refresh the Sparkbot_shell extraction map after the cleanup pass.
+4. Replace Robo/LIMA backend bridge source with a true public stub for Sparkbot_shell.
+5. Remove tracked `.venv-ci` files from Git if approved.
 6. Finish AI setup versus Command Center naming cleanup.
 
 ## Questions For Phil

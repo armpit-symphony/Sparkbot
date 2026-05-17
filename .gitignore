@@ -72,6 +72,8 @@ __pycache__/
 *pyc*
 venv/
 .venv/
+.venv-ci/
+backend/.venv-ci/
 backend/venv/
 
 # Development tools

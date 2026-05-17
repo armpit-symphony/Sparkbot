@@ -192,7 +192,7 @@ def test_bot_health_profile_uses_internal_host_inspection(monkeypatch) -> None:
 def test_process_search_reports_missing_host_proc_without_policy_language(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(tools, "_HOST_PROC_ROOT", tmp_path / "proc")
 
-    result = asyncio.run(tools._server_read_command("process_search", query="kalshi"))
+    result = asyncio.run(tools._server_read_command("process_search", query="sparkbot"))
 
     assert "Host process table is not mounted" in result
     assert "policy" not in result.lower()
@@ -201,13 +201,13 @@ def test_process_search_reports_missing_host_proc_without_policy_language(monkey
 def test_scheduled_jobs_reads_mounted_cron_files(monkeypatch, tmp_path) -> None:
     cron_dir = tmp_path / "cron.d"
     cron_dir.mkdir()
-    (cron_dir / "kalshi").write_text("*/5 * * * * sparky /home/sparky/kalshi-bot/crypto.py >> /tmp/kalshi.log 2>&1\n")
+    (cron_dir / "sparkbot").write_text("*/5 * * * * sparkbot /srv/sparkbot/jobs/health_check.py >> /tmp/sparkbot.log 2>&1\n")
     monkeypatch.setattr(tools, "_HOST_CRON_ROOTS", [cron_dir])
 
-    result = asyncio.run(tools._server_read_command("scheduled_jobs", query="kalshi"))
+    result = asyncio.run(tools._server_read_command("scheduled_jobs", query="sparkbot"))
 
-    assert "Scheduled jobs matching 'kalshi': 1" in result
-    assert "crypto.py" in result
+    assert "Scheduled jobs matching 'sparkbot': 1" in result
+    assert "health_check.py" in result
 
 
 def test_process_snapshot_uses_mounted_host_proc(monkeypatch, tmp_path) -> None:
@@ -216,21 +216,22 @@ def test_process_snapshot_uses_mounted_host_proc(monkeypatch, tmp_path) -> None:
         proc_root,
         225970,
         name="node",
-        cmd="/usr/bin/node /home/sparky/.npm-global/lib/node_modules/openclaw/dist/index.js gateway --port 18789",
+        cmd="/usr/bin/node /srv/sparkbot-ui/dist/server.js gateway --port 18789",
     )
     _write_fake_proc(
         proc_root,
         1268686,
         name="python",
-        cmd="/usr/bin/python /home/sparky/WEPO/wepo-blockchain/core/wepo_node.py --api-port 18212",
+        cmd="/usr/bin/python /srv/example-worker/worker.py --api-port 18212",
     )
     monkeypatch.setattr(tools, "_HOST_PROC_ROOT", proc_root)
+    monkeypatch.setattr(tools.sys, "platform", "linux")
 
     result = asyncio.run(tools._server_read_command("process_snapshot"))
 
     assert "Host process snapshot" in result
-    assert "openclaw" in result
-    assert "wepo_node.py" in result
+    assert "sparkbot-ui" in result
+    assert "example-worker" in result
     assert "ps -eo" not in result
 
 
@@ -240,11 +241,15 @@ def test_network_listeners_uses_mounted_host_proc_net(monkeypatch, tmp_path) -> 
         proc_root,
         225970,
         name="node",
-        cmd="/usr/bin/node openclaw gateway --port 18789",
+        cmd="/usr/bin/node sparkbot gateway --port 18789",
     )
     fd_dir = proc_root / "225970" / "fd"
     fd_dir.mkdir()
-    (fd_dir / "7").symlink_to("socket:[12345]")
+    try:
+        (fd_dir / "7").symlink_to("socket:[12345]")
+        link_created = True
+    except OSError:
+        link_created = False
     net_dir = proc_root / "net"
     net_dir.mkdir()
     net_dir.joinpath("tcp").write_text(
@@ -257,12 +262,16 @@ def test_network_listeners_uses_mounted_host_proc_net(monkeypatch, tmp_path) -> 
         encoding="utf-8",
     )
     monkeypatch.setattr(tools, "_HOST_PROC_ROOT", proc_root)
+    monkeypatch.setattr(tools.sys, "platform", "linux")
 
     result = asyncio.run(tools._server_read_command("network_listeners"))
 
     assert "Host TCP listeners" in result
     assert "127.0.0.1:18789" in result
-    assert "openclaw" in result
+    if link_created:
+        assert "sparkbot" in result
+    else:
+        assert "(process unavailable)" in result
 
 
 def test_host_full_audit_itemizes_known_workloads(monkeypatch, tmp_path) -> None:
@@ -271,13 +280,13 @@ def test_host_full_audit_itemizes_known_workloads(monkeypatch, tmp_path) -> None
         proc_root,
         225970,
         name="node",
-        cmd="/usr/bin/node /home/sparky/.npm-global/lib/node_modules/openclaw/dist/index.js gateway --port 18789",
+        cmd="/usr/bin/node /srv/sparkbot-ui/dist/server.js gateway --port 18789",
     )
     _write_fake_proc(
         proc_root,
         1268686,
-        name="python",
-        cmd="/usr/bin/python /home/sparky/WEPO/wepo-blockchain/core/wepo_node.py --api-port 18212",
+        name="postgres",
+        cmd="/usr/lib/postgresql/bin/postgres -D /var/lib/postgresql/data",
     )
     (proc_root / "uptime").write_text("7200.00 100.00\n", encoding="utf-8")
     (proc_root / "meminfo").write_text(
@@ -296,16 +305,16 @@ def test_host_full_audit_itemizes_known_workloads(monkeypatch, tmp_path) -> None
     )
     cron_dir = tmp_path / "cron.d"
     cron_dir.mkdir()
-    cron_dir.joinpath("kalshi").write_text("*/5 * * * * sparky /home/sparky/kalshi-bot/flow_edge_bot.py\n")
+    cron_dir.joinpath("sparkbot").write_text("*/5 * * * * sparkbot /srv/sparkbot/jobs/health_check.py\n")
     monkeypatch.setattr(tools, "_HOST_PROC_ROOT", proc_root)
     monkeypatch.setattr(tools, "_HOST_CRON_ROOTS", [cron_dir])
 
     result = asyncio.run(tools._server_read_command("host_full_audit"))
 
     assert "Full host audit: read-only snapshot" in result
-    assert "openclaw: 1 process" in result
-    assert "wepo: 1 process" in result
-    assert "flow_edge_bot.py" in result
+    assert "sparkbot: 1 process" in result
+    assert "postgres: 1 process" in result
+    assert "health_check.py" in result
     assert "coverage" in result.lower()
 
 
