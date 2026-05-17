@@ -146,3 +146,21 @@ Still true:
 - This phase does not wire LIMA AI OS, Arc Bot, LIMA Office, LIMA IT, or real robotics/IoT.
 - The profile contract is reusable design learning for Arc Bot/custom bots/LIMA runtime policy later, not runtime coupling now.
 - `Sparkbot_shell` remains untouched.
+
+## Surface UX Update - 2026-05-17
+
+Branch: `public-release-surface-nav-room-ux`
+
+Implemented public truthfulness changes:
+
+- Workstation Computer Control copy now frames terminal/browser as configured capabilities with confirmations for risky actions, not as unrestricted machine control.
+- Live terminal UI now checks backend security status and disables the live terminal desk/CTA unless `features.live_terminal.enabled` is true.
+- Free / Personal still remains capable by default for configured tools, but raw PTY terminal access is visibly setup-required until an operator explicitly enables `WORKSTATION_LIVE_TERMINAL_ENABLED`.
+- Robo remains visible as a public teaser, but the default UI is static preview copy and does not imply real robot, drone, humanoid, or IoT control.
+- The operational Robo/MCP registry panel is dev/private-flag only through `VITE_SPARKBOT_ROBO_MCP_PANEL=true`.
+
+Remaining policy work:
+
+- Balanced and Locked still need deeper behavioral separation in the policy engine.
+- Browser, shell, files, and connector writes should show profile-specific confirmation/block labels in the UI.
+- Custom guardrails need typed user-owned allow/confirm/block records before Custom mode can claim full enforcement.

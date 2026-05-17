@@ -287,7 +287,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
     setStreamError("")
     try {
       const nextMeeting = await launchMeetingRoom({
-        roomName: room?.name ?? meetingMeta?.roomName ?? "Roundtable",
+        roomName: room?.name ?? meetingMeta?.roomName ?? "Round Table",
         seats: seatedParticipants,
       })
       await reloadMeetingRooms()
@@ -308,7 +308,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
     setStreamError("")
     try {
       const target = meetingRooms.find((candidate) => candidate.id === targetRoomId)
-      const targetName = target?.name ?? room?.name ?? "Roundtable"
+      const targetName = target?.name ?? room?.name ?? "Round Table"
       const targetDescription = target?.description ?? room?.description ?? ""
       const nextDescription = [targetDescription, `Ended ${new Date().toISOString()}`]
         .filter(Boolean)
@@ -466,9 +466,9 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
             } else if (evt.type === "error") {
               const msg = typeof evt.error === "string" ? evt.error : "An error occurred."
               const friendly = msg.includes("guardrail") || msg.includes("data policy")
-                ? "OpenRouter model unavailable (privacy policy). Check OpenRouter settings or switch model in Controls."
+                ? "OpenRouter model unavailable (privacy policy). Check OpenRouter settings or switch model in AI setup."
                 : msg.includes("NotFoundError") || msg.includes("404")
-                ? "Model not found. Please check your model settings in Controls."
+                ? "Model not found. Please check your model settings in AI setup."
                 : msg.substring(0, 120)
               const nonFatal = evt.fatal === false || Boolean(evt.agent)
               if (nonFatal) {
@@ -531,29 +531,40 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
     }
   }
 
+  function handleOpenRoboPreview() {
+    window.sessionStorage.setItem("sparkbot_workstation_open_panel", "mcp")
+    navigate({ to: "/workstation" })
+  }
+
   return (
     <>
       <div
         style={{
-          minHeight: "100dvh",
+          height: "100dvh",
           display: "flex",
           flexDirection: "column",
-          overflowY: "auto",
+          overflow: "hidden",
           background:
             "linear-gradient(180deg, rgba(6,10,19,1), rgba(8,14,28,1), rgba(11,17,33,1))",
         }}
       >
         <header
           style={{
-            height: 56,
+            minHeight: 56,
+            height: "auto",
             borderBottom: "1px solid rgba(99,102,241,0.16)",
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            padding: "0 20px",
+            flexWrap: "wrap",
+            gap: 12,
+            padding: "10px 20px",
             background:
               "linear-gradient(180deg, rgba(7,11,24,0.98), rgba(10,16,31,0.94))",
             flexShrink: 0,
+            position: "sticky",
+            top: 0,
+            zIndex: 30,
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -589,7 +600,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                 Meeting Room
               </div>
               <div style={{ fontSize: 16, fontWeight: 700, color: "#e2e8f0", marginTop: 4 }}>
-                {room?.name ?? "Roundtable"}
+                {room?.name ?? "Round Table"}
               </div>
             </div>
           </div>
@@ -600,6 +611,8 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
               onChat={() => navigate({ to: "/dm" })}
               onWorkstation={() => navigate({ to: "/workstation" })}
               onControls={() => navigate({ to: "/dm", search: { controls: "open" } })}
+              onRoboOs={handleOpenRoboPreview}
+              onSpineOps={() => navigate({ to: "/spine" })}
               onInfo={() => setInfoOpen((prev) => !prev)}
             />
             <div
@@ -627,6 +640,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
             gridTemplateColumns: isCompactLayout ? undefined : "320px minmax(0, 1fr)",
             gap: isCompactLayout ? 10 : 16,
             minHeight: 0,
+            overflow: isCompactLayout ? "auto" : "hidden",
           }}
         >
           <aside
@@ -642,7 +656,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
               position: isCompactLayout ? "static" : "sticky",
               top: isCompactLayout ? undefined : 16,
               width: isCompactLayout ? "100%" : undefined,
-              maxHeight: isCompactLayout ? "none" : "calc(100dvh - 88px)",
+              maxHeight: isCompactLayout ? "none" : "100%",
               overflowY: isCompactLayout ? "visible" : "auto",
             }}
           >
@@ -656,7 +670,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                   fontWeight: 700,
                 }}
               >
-                Roundtable
+                Round Table
               </div>
               <p style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.7, margin: "8px 0 0" }}>
                 Launched from Workstation. After your kickoff, the room should continue on its own,
@@ -996,7 +1010,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                 </div>
                 {meetingRooms.length === 0 ? (
                   <div style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.6 }}>
-                    No active meetings. Start a fresh Roundtable instance from here or from Workstation.
+                    No active meetings. Start a fresh Round Table instance from here or from Workstation.
                   </div>
                 ) : (
                   meetingRooms.map((meeting) => (
@@ -1194,6 +1208,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
               display: "flex",
               flexDirection: "column",
               minHeight: isCompactLayout ? "70dvh" : 0,
+              height: isCompactLayout ? undefined : "100%",
               width: "100%",
             }}
           >
@@ -1209,7 +1224,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
             >
               <div>
                 <div style={{ fontSize: 16, fontWeight: 700, color: "#e2e8f0" }}>
-                  {room?.name ?? "Roundtable"}
+                  {room?.name ?? "Round Table"}
                 </div>
                 <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
                   Autonomous meeting mode is active. The room keeps working until it reaches a stopping point.
@@ -1247,7 +1262,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                   currentUser={currentUser}
                   isLoading={false}
                   typingUsers={[]}
-                  className={isCompactLayout ? "min-h-[45dvh] flex-1" : "flex-1"}
+                  className={isCompactLayout ? "min-h-[45dvh] flex-1" : "min-h-0 flex-1"}
                 />
                 {streamError && (
                   <div
@@ -1314,10 +1329,10 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
 
       <SparkbotSurfaceInfoDialog
         open={infoOpen}
-        title="Roundtable Meeting Room"
+        title="Round Table Meeting Room"
         subtitle="This room was launched from Workstation as the live group chat version of the central table."
         bullets={[
-          "Roundtable is the live room spawned from the eight-seat table in Workstation.",
+          "Round Table is the live room spawned from the eight-seat table in Workstation.",
           "Autonomous meeting mode keeps the room moving after your kickoff while preserving one active speaker at a time.",
           "You are the owner and approver. Jump in whenever you want; the room should only stop for approval, missing input, blockers, or a clear recommendation.",
           "Use Workstation to reseat desks, change the table, or launch again after reconfiguring chairs.",

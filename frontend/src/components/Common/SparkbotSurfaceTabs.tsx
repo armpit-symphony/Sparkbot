@@ -24,7 +24,7 @@ const TAB_ACTIVE_SHADOW = "0 10px 24px rgba(30, 64, 175, 0.24)"
 
 const TAB_CONFIG: Array<{
   id: SparkbotSurfaceTab
-  label: "Chat" | "Workstation" | "Robo OS" | "Command Center" | "Info"
+  label: "Chat" | "Workstation" | "Robo" | "Command Center" | "Info"
   onClick: (props: SparkbotSurfaceTabsProps) => void
 }> = [
   {
@@ -39,13 +39,13 @@ const TAB_CONFIG: Array<{
   },
   {
     id: "robo_os",
-    label: "Robo OS",
+    label: "Robo",
     onClick: (props) => {
       if (props.onRoboOs) {
         props.onRoboOs()
         return
       }
-      window.open("https://github.com/armpit-symphony/LIMA-Robo-OS", "_blank", "noopener,noreferrer")
+      props.onWorkstation()
     },
   },
   {

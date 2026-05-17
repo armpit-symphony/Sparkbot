@@ -18,11 +18,23 @@ Branch `public-release-p0-memory-guardrails-roundtable` moved several prior bloc
 - Hidden DM auto-breakglass was removed.
 - Robo defaults to teaser-only backend/tool behavior, blocking live robotics control while allowing dry-run/demo contracts.
 
+Branch `public-release-surface-nav-room-ux` moved the public shell UX blockers forward:
+
+- `/chat` now redirects to `/dm` without importing the legacy debug page.
+- Devtools are dev-only dynamic imports.
+- Admin and Items template routes redirect to `/dm` outside dev.
+- Public sidebar nav exposes Workstation, Sparkbot, and Command Center instead of template/admin/debug surfaces.
+- Workstation and Meeting Room keep top navigation reachable while content scrolls.
+- Meeting Room keeps room controls and message history in separate scroll regions on desktop.
+- Live terminal UI is disabled unless backend security status confirms the live terminal feature is enabled.
+- Robo defaults to a static preview panel; the operational MCP registry panel is dev/private-flag only.
+
 ## 1. P0 Blockers Before Extraction
 
 1. Unify public chat route.
    - Redirect `/chat` to `/dm` or remove the debug `ChatPage` route.
    - Remove fixed debug overlays, tap logs, and raw `fetch` from the public route.
+   - Status: `DONE_THIS_PHASE` - `/chat` always redirects to `/dm`, no longer imports `ChatPage`, and `ChatPage` no longer exports a route.
    - Evidence: `frontend/src/pages/ChatPage.tsx:33`, `frontend/src/pages/ChatPage.tsx:44`, `frontend/src/pages/ChatPage.tsx:433`.
 
 2. Persist Round Table meeting manifest server-side.
@@ -53,17 +65,19 @@ Branch `public-release-p0-memory-guardrails-roundtable` moved several prior bloc
    - Mount TanStack Router Devtools and React Query Devtools only in development.
    - Ensure local-mode navigation exposes Chat, Workstation, Round Table, and Setup.
    - Remove template Admin/Items surfaces from public navigation.
+   - Status: `DONE_THIS_PHASE` for visible route/nav cleanup; a later shared-shell refactor can consolidate layout wrappers.
    - Evidence: `frontend/src/routes/__root.tsx:12`, `frontend/src/routes/__root.tsx:13`, `frontend/src/components/Sidebar/AppSidebar.tsx:26`, `frontend/src/routeTree.gen.ts:117`.
 
 7. Gate or hide terminal desks for public default.
    - Terminal UI should be hidden or disabled unless backend config confirms live terminal is enabled and user is an operator.
+   - Status: `DONE_THIS_PHASE` for visible live-terminal UI gating. Workstation now reads `/api/v1/chat/security/status` and disables the live terminal desk/CTA unless `features.live_terminal.enabled` is true.
    - Evidence: `frontend/src/config/workstationStations.ts:106`, `frontend/src/config/workstationStations.ts:120`, `README.md:499`.
 
-8. Convert Robo OS to teaser-only for public shell.
+8. Convert Robo to teaser-only for public shell.
    - Remove or hard-disable `lima_robot_command` from public tool catalog.
    - Hide robotics endpoints behind a private build flag or remove from public route registration.
    - Replace top-tab Robo action with a static teaser card.
-   - Status: `PARTIAL_DONE` - public default `SPARKBOT_ROBO_TEASER_ONLY=true` hides the chat robot tool, returns no live tool list, blocks non-dry-run robotics commands, and blocks emergency stop. UI teaser copy still needs public pass.
+   - Status: `DONE_THIS_PHASE` for public default UI plus prior backend guard. Public default `SPARKBOT_ROBO_TEASER_ONLY=true` hides the chat robot tool, returns no live tool list, blocks non-dry-run robotics commands, and blocks emergency stop. The Workstation default Robo panel is now static teaser copy; the operational registry panel is dev/private-flag only.
    - Evidence: `frontend/src/components/Common/SparkbotSurfaceTabs.tsx:42`, `backend/app/api/routes/chat/robotics.py:22`, `backend/app/api/routes/chat/tools.py:2014`.
 
 9. Clean public source-bundle exclusions and private path references.
@@ -114,6 +128,7 @@ Branch `public-release-p0-memory-guardrails-roundtable` moved several prior bloc
 9. Rename template residue.
    - `package.json` name from `fastapi-full-stack-template` to `sparkbot`.
    - Signup page title from `FastAPI Template` to Sparkbot or hide unsupported signup.
+   - Status: `PARTIAL_DONE` - frontend public route titles for signup/recovery/settings/admin/items now say Sparkbot. Package metadata remains.
 
 10. Align or document desktop crate version.
     - `src-tauri/Cargo.toml` is `1.2.10` while product release is `1.6.81`.
@@ -149,7 +164,7 @@ Branch `public-release-p0-memory-guardrails-roundtable` moved several prior bloc
 
 ## 4. Remove Or Stub For Public
 
-1. Robo OS full control plane.
+1. Robo full control plane.
    - Keep teaser only.
    - Remove/stub LIMA tool manifests, robot-motion policy, emergency stop, and simulation commands from public UI.
 
@@ -177,7 +192,7 @@ Branch `public-release-p0-memory-guardrails-roundtable` moved several prior bloc
 2. SparkPit Labs branding.
    - Should public shell keep `com.sparkpitlabs.sparkbot.local` and SparkPit ownership, or adopt neutral open-source branding?
 
-3. Robo OS teaser copy.
+3. Robo teaser copy.
    - Mention LIMA by name, or describe it generically as "future robotics/runtime integrations"?
 
 4. Public Guardian scope.
@@ -190,18 +205,17 @@ Branch `public-release-p0-memory-guardrails-roundtable` moved several prior bloc
    - Public open-source repo can include R&D history, or should packages and `Sparkbot_shell` exclude internal audit/extraction docs entirely?
 
 7. Round Table brand language.
-   - Standardize "Round Table" versus "Roundtable", and "Seat 1 manager" versus "chair".
+   - Standardize remaining legacy "Roundtable" copy, and decide "Seat 1 manager" versus "chair".
 
 ## Recommended Next Codex Phase
 
-Phase B1 should be a focused P0 stabilization patch:
+Phase B2 should be a focused P0/P1 stabilization patch:
 
-1. Redirect `/chat` to `/dm`.
-2. Fix provider allowlist mismatch.
-3. Make meeting heartbeat best-effort.
-4. Add backend-backed meeting manifest load/save.
-5. Move Invite Wing credentials out of browser storage.
-6. Gate devtools, template routes, Robo/robotics, and terminal public surfaces behind clear public defaults.
-7. Update package exclusions for internal docs and private path references.
+1. Move Invite Wing credentials out of browser storage.
+2. Rewrite built-in public agent prompts.
+3. Update package exclusions for internal docs and private path references.
+4. Tune Balanced vs Locked policy behavior.
+5. Add final Round Table assignment display/phase UI polish.
+6. Converge remaining "Controls" copy into AI setup versus Command Center.
 
-After B1 passes build/tests, run browser QA on `/login`, `/dm`, `/workstation`, `/meeting/:roomId`, and `/spine`.
+After B2 passes build/tests, run browser QA on `/login`, `/dm`, `/workstation`, `/meeting/:roomId`, and `/spine`.

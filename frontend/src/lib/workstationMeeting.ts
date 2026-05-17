@@ -305,7 +305,7 @@ export function buildEmptyMeetingDraft(): WorkstationMeetingDraft {
   return {
     seats: new Array(ROUND_TABLE_SEAT_COUNT).fill(null),
     roomId: null,
-    roomName: "Roundtable",
+    roomName: "Round Table",
   }
 }
 
@@ -327,7 +327,7 @@ export function loadMeetingDraft(): WorkstationMeetingDraft {
     return {
       seats: normalizeMeetingSeats(parsed.seats),
       roomId: null,
-      roomName: parsed.roomName || "Roundtable",
+      roomName: parsed.roomName || "Round Table",
     }
   } catch {
     return buildEmptyMeetingDraft()
@@ -341,7 +341,7 @@ export function saveMeetingDraft(draft: WorkstationMeetingDraft): void {
     JSON.stringify({
       seats: normalizeMeetingSeats(draft.seats),
       roomId: null,
-      roomName: draft.roomName || "Roundtable",
+      roomName: draft.roomName || "Round Table",
     }),
   )
 }
@@ -390,7 +390,7 @@ function metaFromMeetingManifest(roomId: string, artifact: MeetingManifestArtifa
   if (seats.length === 0) return null
   return {
     roomId,
-    roomName: String(meta.room_name || meta.roomName || "Roundtable"),
+    roomName: String(meta.room_name || meta.roomName || "Round Table"),
     launchedAt: artifact.created_at || new Date().toISOString(),
     protocolLabel: String(meta.protocol_label || meta.protocolLabel || "Autonomous meeting"),
     seats,
@@ -440,7 +440,7 @@ export function deleteMeetingRoomMeta(roomId: string): void {
 }
 
 export async function launchMeetingRoom({
-  roomName = "Roundtable",
+  roomName = "Round Table",
   seats,
 }: LaunchMeetingRoomOptions): Promise<WorkstationMeetingRoomMeta> {
   const preparedSeats = await prepareMeetingSeats(seats)
@@ -453,11 +453,11 @@ export async function launchMeetingRoom({
     credentials: "include",
     body: JSON.stringify({ name: roomName, description }),
   })
-  if (!createRes.ok) throw new Error("Could not create roundtable room.")
+  if (!createRes.ok) throw new Error("Could not create Round Table room.")
 
   const created = await createRes.json()
   const roomId = created.id as string
-  if (!roomId) throw new Error("Roundtable room id missing after creation.")
+  if (!roomId) throw new Error("Round Table room id missing after creation.")
 
   const patchRes = await apiFetch(`/api/v1/chat/rooms/${roomId}`, {
     method: "PATCH",
@@ -470,7 +470,7 @@ export async function launchMeetingRoom({
       meeting_mode_bots_mention_only: true,
       meeting_mode_max_bot_msgs_per_min: 20,
       persona:
-        "Roundtable mode. Seat 1 is the meeting manager. After the owner kickoff, run a chaired working session: first ideas from every participant, manager assessment, manager assignments, assigned work from every participant, manager summary, then plan, adjust, continue with another assignment/pass, or ask the owner for input. Do not discuss unrelated provider availability.",
+        "Round Table mode. Seat 1 is the meeting manager. After the owner kickoff, run a chaired working session: first ideas from every participant, manager assessment, manager assignments, assigned work from every participant, manager summary, then plan, adjust, continue with another assignment/pass, or ask the owner for input. Do not discuss unrelated provider availability.",
     }),
   })
   if (!patchRes.ok) {
@@ -485,12 +485,12 @@ export async function launchMeetingRoom({
     headers: { "Content-Type": "application/json" },
     credentials: "include",
     body: JSON.stringify({
-      content: `Roundtable launched from Workstation.\n\n${readinessSummary}\n\nSeat 1 is the meeting manager. After the owner kickoff, the room runs ideas, assessment, assignments, assigned work, summary, then either plans, adjusts, continues, or asks for owner input.\n\nSeated participants:\n${participantLines}`,
+      content: `Round Table launched from Workstation.\n\n${readinessSummary}\n\nSeat 1 is the meeting manager. After the owner kickoff, the room runs ideas, assessment, assignments, assigned work, summary, then either plans, adjusts, continues, or asks for owner input.\n\nSeated participants:\n${participantLines}`,
     }),
   }).catch(() => {})
 
   const artifactMarkdown = [
-    `# Roundtable Meeting — ${launchedAt.toISOString().replace("T", " ").slice(0, 16)} UTC`,
+    `# Round Table Meeting — ${launchedAt.toISOString().replace("T", " ").slice(0, 16)} UTC`,
     "",
     "## Purpose",
     "_To be defined by participants._",

@@ -47,6 +47,8 @@ import { useTerminalSession } from "@/hooks/useTerminalSession"
 const XtermTerminal = lazy(() =>
   import("@/components/Terminal/XtermTerminal").then((m) => ({ default: m.XtermTerminal }))
 )
+const ROBO_MCP_PANEL_ENABLED =
+  import.meta.env.DEV || import.meta.env.VITE_SPARKBOT_ROBO_MCP_PANEL === "true"
 import { apiFetch } from "@/lib/apiBase"
 import {
   agentDisplayName,
@@ -146,6 +148,7 @@ interface ComputerControlRoomStatus {
   pinConfigured: boolean | null
   breakglassActive: boolean
   breakglassTtl: number | null
+  liveTerminalEnabled: boolean | null
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -2792,6 +2795,7 @@ function ComputerControlPanel({ onClose, onOpenTerminal, status }: ComputerContr
   const effectivelyUnlocked = securityOff || enabled || bgActive
   const badgeText = securityOff ? "Security off" : enabled ? "Security on" : bgActive ? "Break-glass active" : "PIN gated"
   const badgeColor = effectivelyUnlocked ? "#4ade80" : "#fbbf24"
+  const terminalReady = status.liveTerminalEnabled === true
 
   const cap = (
     icon: React.ReactNode,
@@ -2802,6 +2806,7 @@ function ComputerControlPanel({ onClose, onOpenTerminal, status }: ComputerContr
     actionLabel: string,
     onAction: () => void,
     examples: string[],
+    disabled = false,
   ) => (
     <div
       style={{
@@ -2854,15 +2859,16 @@ function ComputerControlPanel({ onClose, onOpenTerminal, status }: ComputerContr
       </div>
       <button
         onClick={onAction}
+        disabled={disabled}
         style={{
           display: "flex",
           alignItems: "center",
           gap: 6,
-          background: `${ACCENT}18`,
-          border: `1px solid ${ACCENT}44`,
+          background: disabled ? "#111827" : `${ACCENT}18`,
+          border: `1px solid ${disabled ? "#1f2937" : `${ACCENT}44`}`,
           borderRadius: 6,
-          cursor: "pointer",
-          color: ACCENT,
+          cursor: disabled ? "not-allowed" : "pointer",
+          color: disabled ? "#64748b" : ACCENT,
           fontSize: 11,
           padding: "6px 12px",
           letterSpacing: "0.06em",
@@ -2940,8 +2946,7 @@ function ComputerControlPanel({ onClose, onOpenTerminal, status }: ComputerContr
       {/* Capabilities */}
       <div style={{ flex: 1, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
         <p style={{ fontSize: 11, color: "#64748b", margin: 0, lineHeight: 1.65 }}>
-          Sparkbot can control your local machine. Just ask it in chat — or use the terminal panel
-          to interact live. This follows the Security state in Command Center.
+          Sparkbot can use local terminal and browser capabilities when they are configured. Routine diagnostics are available in Personal mode; risky writes, deletes, sends, service changes, and credential access ask for confirmation or elevated approval.
         </p>
 
         <div
@@ -2966,7 +2971,7 @@ function ComputerControlPanel({ onClose, onOpenTerminal, status }: ComputerContr
               : enabled
               ? "Security guardrails are on. Room execution is enabled; service allowlists and custom blockers apply, and risky changes still ask yes/no."
               : bgActive
-                ? `Break-glass is active — all tools are unlocked except vault writes/reveals. ${status.breakglassTtl != null ? `Expires in ${Math.ceil(status.breakglassTtl / 60)} min.` : ""}`
+                ? `Break-glass is active for elevated actions. ${status.breakglassTtl != null ? `Expires in ${Math.ceil(status.breakglassTtl / 60)} min.` : ""}`
                 : status.pinConfigured === false
                   ? "Security guardrails are on and no PIN is configured yet. Open Command Center to set the 6-digit PIN before privileged actions."
                   : "Security guardrails are on. Sparkbot will ask for the break-glass PIN before gated commands, edits, browser writes, vault access, or comms sends."}
@@ -2998,15 +3003,19 @@ function ComputerControlPanel({ onClose, onOpenTerminal, status }: ComputerContr
         {cap(
           <Terminal size={14} />,
           "Live Terminal",
-          badgeText,
-          badgeColor,
-          "An interactive xterm.js terminal connected to a live PTY on this machine. Sparkbot can also type into open terminal sessions via terminal_send.",
-          "Open Terminal",
+          terminalReady ? badgeText : "Setup required",
+          terminalReady ? badgeColor : "#fbbf24",
+          terminalReady
+            ? "An interactive terminal connected to this machine when terminal support is enabled. Commands remain subject to confirmations, profile settings, and operator approval."
+            : "Live terminal is disabled in this public install until an operator explicitly enables WORKSTATION_LIVE_TERMINAL_ENABLED.",
+          terminalReady ? "Open Terminal" : "Disabled",
           () => {
+            if (!terminalReady) return
             onClose()
             onOpenTerminal()
           },
           ['"open terminal and run npm install"', '"check my terminal sessions"'],
+          !terminalReady,
         )}
 
         {cap(
@@ -3014,7 +3023,7 @@ function ComputerControlPanel({ onClose, onOpenTerminal, status }: ComputerContr
           "Browser Control",
           badgeText,
           badgeColor,
-          "Sparkbot can open a Chromium browser, navigate pages, read content, fill forms, and click buttons. On first use, Chromium downloads automatically (~150 MB).",
+          "Sparkbot can use a browser when configured. Reading pages is routine; clicks, forms, external sends, and sensitive targets require confirmation or elevated approval.",
           "Ask Sparkbot",
           () => { onClose() },
           ['"open chrome and go to google.com"', '"fill the login form on example.com"'],
@@ -3034,8 +3043,8 @@ function ComputerControlPanel({ onClose, onOpenTerminal, status }: ComputerContr
           <ol style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.8, margin: 0, paddingLeft: 16 }}>
             <li>Open Sparkbot chat (click Sparkbot's desk)</li>
             <li>Tell Sparkbot what you want it to do</li>
-            <li>For terminal control, connect the terminal panel first</li>
-            {!enabled && !bgActive && <li>Type <code style={{ color: "#7dd3fc", fontSize: 10 }}>/breakglass</code> + your PIN to unlock privileged tools</li>}
+            <li>For live terminal, an operator must enable the terminal feature first</li>
+            {!enabled && !bgActive && <li>Use Command Center Security or <code style={{ color: "#7dd3fc", fontSize: 10 }}>/breakglass &lt;reason&gt;</code> only when an action needs elevated approval</li>}
           </ol>
         </div>
       </div>
@@ -3047,7 +3056,7 @@ function ComputerControlPanel({ onClose, onOpenTerminal, status }: ComputerContr
 // Phase 3: Live xterm.js terminal backed by a WebSocket PTY session.
 
 // MCPControlPlanePanel
-// One registry for Sparkbot tools and the LIMA Robotics OS MCP runtime.
+// Public preview for Sparkbot tools plus future Robo/runtime connector manifests.
 
 interface McpHealth {
   loading: boolean
@@ -3093,6 +3102,112 @@ function manifestHealthLabel(manifest: McpToolManifest, health: McpHealth): { la
       : { label: "Disabled", color: "#fbbf24" }
   }
   return { label: "API live", color: "#4ade80" }
+}
+
+function RoboPreviewPanel({ onClose }: { onClose: () => void }) {
+  const ACCENT = "#22d3ee"
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        top: 0,
+        right: 0,
+        bottom: 0,
+        width: 420,
+        maxWidth: "100vw",
+        backgroundColor: "#07101e",
+        borderLeft: `1px solid ${ACCENT}`,
+        boxShadow: `-4px 0 32px ${ACCENT}22`,
+        zIndex: 50,
+        display: "flex",
+        flexDirection: "column",
+        fontFamily: "system-ui, sans-serif",
+        overflow: "hidden",
+        animation: "slideInPanel 0.2s ease-out",
+      }}
+    >
+      <div
+        style={{
+          backgroundColor: `${ACCENT}18`,
+          borderBottom: `1px solid ${ACCENT}33`,
+          padding: "12px 16px",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          flexShrink: 0,
+        }}
+      >
+        <Rocket size={15} style={{ color: ACCENT }} />
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: ACCENT, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+            Robo Preview
+          </div>
+          <div style={{ fontSize: 10, color: "#6b7280", marginTop: 1 }}>
+            Teaser-only public surface
+          </div>
+        </div>
+        <button
+          onClick={onClose}
+          style={{
+            background: "none",
+            border: "1px solid #1f2937",
+            borderRadius: 4,
+            cursor: "pointer",
+            color: "#6b7280",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 28,
+            height: 28,
+          }}
+          aria-label="Close Robo preview"
+        >
+          <X size={14} />
+        </button>
+      </div>
+
+      <div style={{ flex: 1, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ border: `1px solid ${ACCENT}24`, borderRadius: 10, backgroundColor: "#040d1a", padding: "14px 16px" }}>
+          <div style={{ fontSize: 10, color: ACCENT, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700 }}>
+            Public MVP boundary
+          </div>
+          <p style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.7, margin: "8px 0 0" }}>
+            Robo stays visible as a demo of future PC, server, and robotics connector capability.
+            Sparkbot Public does not expose real robot, drone, humanoid, or IoT control from this
+            panel.
+          </p>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          {[
+            ["Status", "Preview only"],
+            ["Runtime", "Not wired"],
+            ["Control", "No hardware"],
+            ["Policy", "Permission-first"],
+          ].map(([label, value]) => (
+            <div key={label} style={{ border: `1px solid ${ACCENT}1f`, borderRadius: 8, backgroundColor: "#040d1a", padding: "10px 12px" }}>
+              <div style={{ fontSize: 10, color: "#64748b", letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 700 }}>
+                {label}
+              </div>
+              <div style={{ fontSize: 13, color: "#e2e8f0", fontWeight: 800, marginTop: 4 }}>{value}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ border: "1px dashed rgba(34,211,238,0.28)", borderRadius: 10, backgroundColor: "#040d1a", padding: "12px 14px" }}>
+          <div style={{ fontSize: 10, color: ACCENT, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700 }}>
+            Future public direction
+          </div>
+          <p style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.65, margin: "8px 0 0" }}>
+            Public Sparkbot should reuse the same permission model here later: read/demo actions can
+            run when configured, risky actions ask for confirmation, and real hardware requires a
+            separate private operator path.
+          </p>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function McpControlPlanePanel({ onClose }: { onClose: () => void }) {
@@ -3166,7 +3281,7 @@ function McpControlPlanePanel({ onClose }: { onClose: () => void }) {
     try {
       const plan = await fetchMcpExplainPlan({
         manifestId: manifest.id,
-        userRequest: `Preview ${manifest.name} from Workstation Robo OS.`,
+        userRequest: `Preview ${manifest.name} from Workstation Robo preview.`,
       })
       setExplainPlan(plan)
       fetchMcpRuns(6).then((payload) => setMcpRuns(payload.runs)).catch(() => {})
@@ -3194,7 +3309,7 @@ function McpControlPlanePanel({ onClose }: { onClose: () => void }) {
       } else if (action === "approve") {
         await approveMcpRun(run.id)
       } else {
-        await denyMcpRun(run.id, "Denied from Workstation Robo OS.")
+        await denyMcpRun(run.id, "Denied from Workstation Robo preview.")
       }
       await refreshMcpRuns()
     } catch {
@@ -3241,7 +3356,7 @@ function McpControlPlanePanel({ onClose }: { onClose: () => void }) {
             MCP Control Plane
           </div>
           <div style={{ fontSize: 10, color: "#6b7280", marginTop: 1 }}>
-            Sparkbot command center and LIMA Robotics OS
+            Sparkbot tools and Robo preview
           </div>
         </div>
         <button
@@ -3266,15 +3381,15 @@ function McpControlPlanePanel({ onClose }: { onClose: () => void }) {
 
       <div style={{ flex: 1, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
         <p style={{ fontSize: 11, color: "#94a3b8", margin: 0, lineHeight: 1.65 }}>
-          Sparkbot is the governed agentic assistant and command center. LIMA Robotics OS is the
-          robotics and physical-world runtime exposed through MCP. This registry keeps both sets of
-          tools under one policy and audit model.
+          Sparkbot Public keeps local tools behind user-owned permissions. Robo is a teaser surface
+          for future PC, server, and robotics connector demos; the public core does not run real
+          robot, drone, or hardware control from this panel.
         </p>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
           {[
             ["Sparkbot tools", String(runtimeCounts.sparkbot), health.apiBacked ? "Backend registry" : health.loading ? "Checking" : "Fallback registry"],
-            ["Robo OS tools", String(runtimeCounts["lima-robo-os"]), health.limaBridgeConfigured ? "Bridge configured" : "Replay/sim first"],
+            ["Robo preview", String(runtimeCounts["lima-robo-os"]), health.limaBridgeConfigured ? "Demo bridge configured" : "Demo manifests only"],
             ["Policy source", health.apiBacked ? "API" : "Local", "Typed manifests"],
           ].map(([label, value, detail]) => (
             <div key={label} style={{ border: `1px solid ${ACCENT}1f`, borderRadius: 8, backgroundColor: "#040d1a", padding: "10px 12px" }}>
@@ -3465,16 +3580,19 @@ function McpControlPlanePanel({ onClose }: { onClose: () => void }) {
               Dry run mode
             </div>
             <p style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.65, margin: 0 }}>
-              Read-only tools can run directly. Writes, sends, destructive commands, secret use, and robot motion should produce an explain-plan first, then wait for the operator approval path.
+              Read-only tools can run when configured. Writes, sends, destructive commands, and
+              credential use must produce an explain-plan first, then wait for the confirmation or
+              elevated approval path.
             </p>
           </div>
           <div style={{ border: `1px solid ${ACCENT}1f`, borderRadius: 10, backgroundColor: "#040d1a", padding: "12px 14px" }}>
             <div style={{ fontSize: 10, color: ACCENT, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700, marginBottom: 8 }}>
-              No hardware demos
+              Teaser-only public mode
             </div>
-            <code style={{ display: "block", whiteSpace: "pre-wrap", color: "#cbd5e1", fontSize: 10, lineHeight: 1.6 }}>
-              LIMA --replay run unitree-go2{"\n"}LIMA --simulation run unitree-go2-agentic-mcp{"\n"}LIMA run demo-camera
-            </code>
+            <p style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.65, margin: 0 }}>
+              Robo stays visible as a preview of future connector capability. Public builds should
+              not expose real robot, drone, humanoid, or IoT execution paths here.
+            </p>
           </div>
         </div>
 
@@ -3494,9 +3612,7 @@ function McpControlPlanePanel({ onClose }: { onClose: () => void }) {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => window.open("https://github.com/armpit-symphony/LIMA-Robo-OS", "_blank", "noopener,noreferrer")}
+        <div
           style={{
             alignSelf: "flex-start",
             display: "inline-flex",
@@ -3505,7 +3621,6 @@ function McpControlPlanePanel({ onClose }: { onClose: () => void }) {
             background: `${ACCENT}18`,
             border: `1px solid ${ACCENT}44`,
             borderRadius: 6,
-            cursor: "pointer",
             color: ACCENT,
             fontSize: 11,
             padding: "7px 12px",
@@ -3514,9 +3629,8 @@ function McpControlPlanePanel({ onClose }: { onClose: () => void }) {
             fontWeight: 700,
           }}
         >
-          <ExternalLink size={12} />
-          Open Robo OS README
-        </button>
+          Public preview only
+        </div>
       </div>
     </div>
   )
@@ -4287,16 +4401,20 @@ export default function WorkstationPage() {
     pinConfigured: null,
     breakglassActive: false,
     breakglassTtl: null,
+    liveTerminalEnabled: null,
   })
 
   const fetchOverview = useCallback(async () => {
     try {
-      const [configRes, overviewRes, guardianStatusRes] = await Promise.all([
+      const [configRes, overviewRes, guardianStatusRes, securityStatusRes] = await Promise.all([
         fetchControlsConfig(),
         apiFetch("/api/v1/chat/workstation/overview", { credentials: "include" }).then((r) =>
           r.ok ? r.json() : null
         ).catch(() => null),
         apiFetch("/api/v1/chat/guardian/status", { credentials: "include" }).then((r) =>
+          r.ok ? r.json() : null
+        ).catch(() => null),
+        apiFetch("/api/v1/chat/security/status", { credentials: "include" }).then((r) =>
           r.ok ? r.json() : null
         ).catch(() => null),
       ])
@@ -4318,6 +4436,9 @@ export default function WorkstationPage() {
       }
       const bgActive = guardianStatusRes?.breakglass?.active === true
       const bgTtl = typeof guardianStatusRes?.breakglass?.ttl_remaining === "number" ? guardianStatusRes.breakglass.ttl_remaining : null
+      const securityFeatures = securityStatusRes && typeof securityStatusRes === "object"
+        ? (securityStatusRes as { features?: { live_terminal?: { enabled?: boolean } } }).features
+        : undefined
       setComputerControlStatus({
         enabled: roomEnabled,
         securityGuardrailsActive:
@@ -4329,6 +4450,7 @@ export default function WorkstationPage() {
         pinConfigured: typeof guardianStatusRes?.pin_configured === "boolean" ? guardianStatusRes.pin_configured : null,
         breakglassActive: bgActive,
         breakglassTtl: bgTtl,
+        liveTerminalEnabled: securityFeatures?.live_terminal?.enabled === true,
       })
     } catch {
       // ignore
@@ -4377,7 +4499,17 @@ export default function WorkstationPage() {
   const resolvedInviteStations = INVITE_DESKS.map((station) =>
     resolveInviteStation(station, configuredInvites),
   )
-  const localTerminalDesk = TERMINALS[0]
+  const liveTerminalEnabled = computerControlStatus.liveTerminalEnabled === true
+  const localTerminalDesk: Station = liveTerminalEnabled
+    ? TERMINALS[0]
+    : {
+        ...TERMINALS[0],
+        status: "offline" as StationStatus,
+        subtitle: "Setup required",
+        description:
+          "Live terminal is disabled in public installs until an operator explicitly enables it.",
+        capabilities: ["Operator setup", "Confirmations", "Disabled by default"],
+      }
   const roomEligibleStations = [
     MAIN_DESK,
     ...companionModelStations.filter((station) => station.status !== "empty"),
@@ -4602,6 +4734,10 @@ export default function WorkstationPage() {
 
       // Terminal → open terminal detail panel
       if (station.type === "terminal") {
+        if (!liveTerminalEnabled) {
+          setPanel({ kind: "computercontrol" })
+          return
+        }
         setPanel((prev) =>
           prev?.kind === "terminal" && prev.station.id === station.id
             ? null
@@ -4625,7 +4761,7 @@ export default function WorkstationPage() {
           : { kind: "station", station: resolved },
       )
     },
-    [configuredInvites],
+    [configuredInvites, liveTerminalEnabled],
   )
 
   const handleOpenInfo = useCallback(() => {
@@ -4712,7 +4848,7 @@ export default function WorkstationPage() {
     setMeetingLaunchError(null)
     setLaunchingMeeting(true)
     try {
-      const roomName = "Roundtable"
+      const roomName = "Round Table"
       const meetingMeta = await launchMeetingRoom({
         roomName,
         seats: assignedSeatMeta,
@@ -4792,8 +4928,9 @@ export default function WorkstationPage() {
             background:
               "linear-gradient(180deg, rgba(7,11,24,0.98), rgba(10,16,31,0.94))",
             flexShrink: 0,
-            zIndex: 10,
-            position: "relative",
+            zIndex: 30,
+            position: "sticky",
+            top: 0,
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -5016,14 +5153,14 @@ export default function WorkstationPage() {
                   <Rocket size={15} style={{ color: "#22d3ee", flexShrink: 0 }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 11, fontWeight: 700, color: "#22d3ee", letterSpacing: "0.06em", textTransform: "uppercase" }}>
-                      Robo OS
+                      Robo Preview
                     </div>
                     <div style={{ fontSize: 10, color: "#64748b", marginTop: 1 }}>
-                      LIMA MCP registry
+                      Demo connector surface
                     </div>
                   </div>
                   <span style={{ fontSize: 9, color: "#4ade80", border: "1px solid #4ade8044", borderRadius: 3, padding: "1px 6px", letterSpacing: "0.08em", textTransform: "uppercase" }}>
-                    Sim ready
+                    Teaser
                   </span>
                 </button>
               </div>
@@ -5392,7 +5529,7 @@ export default function WorkstationPage() {
                       color: "#4b5563",
                     }}
                   >
-                    No meetings yet. Launch one from the Roundtable or start a project above.
+                    No meetings yet. Launch one from the Round Table or start a project above.
                   </div>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -5500,12 +5637,18 @@ export default function WorkstationPage() {
         {panel?.kind === "computercontrol" && (
           <ComputerControlPanel
             onClose={handleClosePanel}
-            onOpenTerminal={() => setPanel({ kind: "terminal", station: localTerminalDesk })}
+            onOpenTerminal={() => {
+              if (liveTerminalEnabled) setPanel({ kind: "terminal", station: localTerminalDesk })
+            }}
             status={computerControlStatus}
           />
         )}
         {panel?.kind === "mcp" && (
-          <McpControlPlanePanel onClose={handleClosePanel} />
+          ROBO_MCP_PANEL_ENABLED ? (
+            <McpControlPlanePanel onClose={handleClosePanel} />
+          ) : (
+            <RoboPreviewPanel onClose={handleClosePanel} />
+          )
         )}
 
         {/* ─── Invite config modal ────────────────────────────────────── */}
@@ -5529,12 +5672,12 @@ export default function WorkstationPage() {
         <SparkbotSurfaceInfoDialog
           open={infoOpen}
           title="Workstation"
-          subtitle="A spatial office map around Sparkbot. Chat stays primary, Controls handles setup, and Roundtable launches focused group rooms from the floor."
+          subtitle="A spatial office map around Sparkbot. Chat stays primary, AI setup and Command Center handle configuration, and Round Table launches focused group rooms from the floor."
           bullets={[
             "Workstation is the desktop map: desks, offices, and the central meeting table.",
-            "Roundtable is the eight-seat launcher for staged desk participants.",
+            "Round Table is the eight-seat launcher for staged desk participants.",
             "Sparkbot Chat remains the everyday home for normal prompting and conversations.",
-            "Controls still manages providers, models, and safety/configuration settings.",
+            "AI setup manages providers and models; Command Center manages safety and operations.",
           ]}
           onClose={() => setInfoOpen(false)}
         />

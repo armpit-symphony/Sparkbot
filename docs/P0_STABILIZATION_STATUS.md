@@ -76,7 +76,24 @@ Default public behavior is teaser-only:
 - Robotics `/tools` returns an empty teaser response.
 - Robotics `/command` allows dry-run contracts but blocks live/non-dry-run and real-hardware requests.
 - Robotics `/emergency-stop` is blocked in teaser mode.
-- UI copy still needs a public teaser pass before extraction.
+- UI default now opens a static Robo preview panel. The operational MCP registry panel is available only in dev/private-flag builds.
+
+## Surface UX Update - 2026-05-17
+
+Branch: `public-release-surface-nav-room-ux`
+
+Implemented:
+
+- Workstation header is sticky so top tabs remain available while the workstation scrolls.
+- Meeting Room now uses a fixed-height shell with sticky top navigation, a scrollable control sidebar, and an independently scrolling chat pane on desktop.
+- Meeting Room top tabs now include Chat, Workstation, Robo, Command Center, and Info.
+- `/chat` always redirects to `/dm` and no longer imports the legacy debug `ChatPage`.
+- Devtools load only in dev mode.
+- Admin and Items template routes redirect to `/dm` outside dev.
+- Sidebar nav no longer exposes Dashboard, legacy Chat, Settings, or Admin as public tabs.
+- Signup, recovery, settings, admin, and items route titles were renamed from FastAPI Template to Sparkbot.
+- Live terminal UI is setup-gated by backend security status instead of looking like an always-on public shell.
+- Robo UI defaults to teaser-only copy and does not link to private runtime docs.
 
 ## Validation
 
@@ -92,25 +109,23 @@ Known validation caveat:
 
 ## Remaining P0 Blockers
 
-- Public `/chat` route/template/debug cleanup.
 - Invite Wing credential storage needs backend/Vault-backed storage instead of browser storage.
-- Devtools/template Admin/Items public navigation cleanup.
-- Terminal desks need explicit public default gating/copy.
-- Robo UI copy still needs teaser-only pass even though backend/tool execution is guarded.
 - Public package exclusions/private path cleanup.
 - Built-in public agent prompt rewrite.
 - Balanced vs Locked policy behavior needs tuning so profiles are more than persisted names.
+- Final Round Table assignment cards/phase UI polish.
+- Remaining "Controls" naming should converge into AI setup versus Command Center.
 
 ## Recommended Next Phase
 
-Run a focused public surface cleanup phase:
+Run a focused public extraction-blocker phase:
 
-1. Remove/debug-gate public `/chat`, template Admin/Items, and devtools surfaces.
-2. Move Invite Wing credentials out of localStorage.
-3. Add Meeting Room assignment display and phase/status UI.
+1. Move Invite Wing credentials out of localStorage into backend/Vault-backed storage.
+2. Rewrite built-in public agent prompts.
+3. Update public package exclusions and private path cleanup.
 4. Tune Balanced vs Locked policy differences.
-5. Public-teaser copy pass for Robo and terminal/live tools.
-6. Update public package exclusions and install docs.
+5. Add Meeting Room assignment display and phase/status UI.
+6. Finish AI setup versus Command Center naming cleanup.
 
 ## Questions For Phil
 

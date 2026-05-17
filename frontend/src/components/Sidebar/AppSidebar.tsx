@@ -1,4 +1,4 @@
-import { Bot, Database, Home, LayoutGrid, MessageSquare, Settings, Users } from "lucide-react"
+import { Bot, Database, LayoutGrid } from "lucide-react"
 
 import { SidebarAppearance } from "@/components/Common/Appearance"
 import { Logo } from "@/components/Common/Logo"
@@ -9,31 +9,22 @@ import {
   SidebarHeader,
 } from "@/components/ui/sidebar"
 import useAuth, { hasChatSession } from "@/hooks/useAuth"
-import { isV1LocalMode } from "@/lib/v1Local"
 import { type Item, Main } from "./Main"
 import { User } from "./User"
 
 const baseItems: Item[] = [
   { icon: LayoutGrid, title: "Workstation", path: "/workstation" },
-  { icon: Home, title: "Dashboard", path: "/" },
   { icon: Bot, title: "Sparkbot", path: "/dm" },
-  { icon: MessageSquare, title: "Chat", path: "/chat" },
-  { icon: Settings, title: "Settings", path: "/settings" },
 ]
 
 export function AppSidebar() {
   const { user: currentUser } = useAuth()
-  const visibleBaseItems = isV1LocalMode
-    ? baseItems.filter((item) => item.path !== "/workstation" && item.path !== "/chat")
-    : baseItems
-
   const items = hasChatSession()
     ? [
-        ...visibleBaseItems,
+        ...baseItems,
         { icon: Database, title: "Command Center", path: "/spine" },
-        ...(currentUser?.is_superuser ? [{ icon: Users, title: "Admin", path: "/admin" }] : []),
       ]
-    : visibleBaseItems
+    : baseItems
 
   return (
     <Sidebar collapsible="icon">

@@ -5445,11 +5445,11 @@ function SparkbotDmPage({ controlsSurface = false }: SparkbotDmPageProps = {}) {
       <SparkbotSurfaceInfoDialog
         open={infoOpen}
         title="Sparkbot"
-        subtitle="Chat, full-page Controls, Workstation, Robo OS, and Command Center now share the same top navigation."
+        subtitle="Chat, AI setup, Workstation, Robo preview, and Command Center now share the same top navigation."
         bullets={[
           "Chat is the everyday surface for prompts, files, voice, slash commands, and agent mentions.",
-          "Controls opens as a full-page setup and safety surface with the same tabs.",
-          "Workstation, Robo OS, and Command Center stay reachable from the same tab bar instead of mode-specific links.",
+          "AI setup opens as a full-page provider, model, and safety surface with the same tabs.",
+          "Workstation, Robo preview, and Command Center stay reachable from the same tab bar instead of mode-specific links.",
         ]}
         onClose={() => setInfoOpen(false)}
       />

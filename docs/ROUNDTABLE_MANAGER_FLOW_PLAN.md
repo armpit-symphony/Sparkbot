@@ -141,3 +141,22 @@ Remaining before public beta:
 - Show persisted assignments in the Meeting Room UI as cards or a compact table.
 - Add phase/status display so users can see first pass, manager assessment, assignments, second pass, and wrap-up.
 - Consider storing assignments as first-class room tasks only after the artifact metadata path proves stable.
+
+## Surface UX Update - 2026-05-17
+
+Branch: `public-release-surface-nav-room-ux`
+
+Implemented UI behavior:
+
+- Meeting Room top navigation is sticky and includes Chat, Workstation, Robo, Command Center, and Info.
+- Meeting Room uses a fixed-height shell on desktop so the page itself does not bury the controls.
+- Sidebar room controls, seated participant controls, meeting list/tasks tabs, manual notes, and Back to Workstation stay in a scrollable control rail.
+- Chat history scrolls inside the meeting pane with the composer still reachable.
+- Existing manager wrap-up/checkpoint/manual notes behavior was not changed.
+- Existing structured assignment persistence was not changed.
+
+Remaining public polish:
+
+- Render latest persisted `meeting_assignments` artifacts as visible assignment cards/status rows.
+- Add a compact phase indicator for first ideas, manager assessment, assignments, second pass, and manager wrap-up.
+- Add a visible "manager / Seat 1" label in the sticky room header or control rail.

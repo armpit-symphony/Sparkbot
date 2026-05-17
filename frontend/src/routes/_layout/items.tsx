@@ -1,5 +1,5 @@
 import { useSuspenseQuery } from "@tanstack/react-query"
-import { createFileRoute } from "@tanstack/react-router"
+import { createFileRoute, redirect } from "@tanstack/react-router"
 import { Search } from "lucide-react"
 import { Suspense } from "react"
 
@@ -18,10 +18,15 @@ function getItemsQueryOptions() {
 
 export const Route = createFileRoute("/_layout/items")({
   component: Items,
+  beforeLoad: () => {
+    if (!import.meta.env.DEV) {
+      throw redirect({ to: "/dm" })
+    }
+  },
   head: () => ({
     meta: [
       {
-        title: "Items - FastAPI Template",
+        title: "Items - Sparkbot",
       },
     ],
   }),

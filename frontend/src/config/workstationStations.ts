@@ -103,7 +103,7 @@ export const INVITE_DESKS: Station[] = [
 
 export const ROUND_TABLE: Station = {
   id: "round-table",
-  label: "Roundtable",
+  label: "Round Table",
   subtitle: "Shared Project Room",
   type: "table",
   status: "idle",

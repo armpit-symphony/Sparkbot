@@ -1,7 +1,6 @@
 // ChatPage - Main chat page component
 
 import { useState, useCallback, useEffect, useMemo } from "react"
-import { createFileRoute } from "@tanstack/react-router"
 import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { ChatLayout } from "@/components/chat/ChatLayout"
@@ -14,10 +13,6 @@ import {
 } from "@/lib/chat/hooks"
 import type { Room, Message } from "@/lib/chat/types"
 import useAuth from "@/hooks/useAuth"
-
-export const Route = createFileRoute("/_layout/chat")({
-  component: ChatPage,
-})
 
 interface BootStatus {
   status?: number

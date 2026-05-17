@@ -19,6 +19,11 @@ function getUsersQueryOptions() {
 export const Route = createFileRoute("/_layout/admin")({
   component: Admin,
   beforeLoad: async () => {
+    if (!import.meta.env.DEV) {
+      throw redirect({
+        to: "/dm",
+      })
+    }
     const user = await UsersService.readUserMe()
     if (!user.is_superuser) {
       throw redirect({
@@ -29,7 +34,7 @@ export const Route = createFileRoute("/_layout/admin")({
   head: () => ({
     meta: [
       {
-        title: "Admin - FastAPI Template",
+        title: "Admin - Sparkbot",
       },
     ],
   }),
