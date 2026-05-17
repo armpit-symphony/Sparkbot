@@ -12,7 +12,6 @@ import ipaddress
 import json
 import operator
 import os
-import pwd
 import re
 import shutil
 import shlex
@@ -4269,6 +4268,15 @@ def _is_running_in_container() -> bool:
 
 
 def _uid_name(uid: str) -> str:
+    # `pwd` is POSIX-only; on Windows this whole code path is reached only via
+    # /proc/<pid>/status parsing (Linux containers). Falling back to the raw
+    # uid keeps the import — and therefore the rest of tools.py — usable on
+    # Windows desktop installs where bridge chats (Telegram/Discord/WhatsApp/
+    # GitHub) lazy-import tools.py via stream_chat_with_tools.
+    try:
+        import pwd  # type: ignore[import-not-found]
+    except ImportError:
+        return uid or "?"
     try:
         return pwd.getpwuid(int(uid)).pw_name
     except Exception:

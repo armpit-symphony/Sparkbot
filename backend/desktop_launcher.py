@@ -69,6 +69,64 @@ def _migrate_guardian_sidecar_data(umbrella_dir: str) -> None:
             shutil.copy2(source, target)
             break
 
+
+def _rotate_oversized_backend_log(log_path: str, max_bytes: int = 50 * 1024 * 1024) -> None:
+    """Rename `sparkbot-backend.log` to `.1` if it has grown past `max_bytes`.
+
+    Pre-v1.6.80 builds wrote httpcore/httpx DEBUG to the log, which produced
+    ~600 MB files on busy installs. v1.6.80 lowered the level, but existing
+    installs would still carry the legacy file forward. Rotating on launch
+    gives upgraders a clean slate while preserving the prior log for one
+    cycle of triage.
+    """
+    try:
+        path = Path(log_path)
+        if not path.exists() or path.stat().st_size <= max_bytes:
+            return
+        rotated = path.with_suffix(path.suffix + ".1")
+        if rotated.exists():
+            try:
+                rotated.unlink()
+            except Exception:
+                pass
+        path.rename(rotated)
+    except Exception:
+        # Never block startup over log housekeeping.
+        pass
+
+
+def _prune_stale_pyinstaller_temp_dirs(pyi_runtime_root: Path, keep_latest: int = 2) -> None:
+    """Remove old `_MEI*` PyInstaller temp dirs from `pyi-runtime/`.
+
+    PyInstaller is supposed to delete these on graceful exit, but desktop
+    builds frequently terminate abruptly (Tauri close, user logout, crash)
+    and leave the directories behind. Each is ~50 MB; observed installs
+    accumulated 30+ dirs (~1.5 GB) over the v1.6.6x → v1.6.8x line. We keep
+    the newest `keep_latest` as a safety margin in case the current process
+    still references one — the active `sys._MEIPASS` is always among them.
+    """
+    try:
+        if not pyi_runtime_root.exists():
+            return
+        candidates = [p for p in pyi_runtime_root.glob("_MEI*") if p.is_dir()]
+        if len(candidates) <= keep_latest:
+            return
+        candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        active = getattr(sys, "_MEIPASS", "")
+        active_path = Path(active).resolve() if active else None
+        for stale in candidates[keep_latest:]:
+            try:
+                if active_path and stale.resolve() == active_path:
+                    continue
+                shutil.rmtree(stale, ignore_errors=True)
+            except Exception:
+                # One bad dir shouldn't stop the rest.
+                continue
+    except Exception:
+        # Never block startup over disk housekeeping.
+        pass
+
+
 # Inject required env vars before any app module is imported.
 # Settings() runs at module-level in app.core.config, so these must be set first.
 os.environ.setdefault("PROJECT_NAME", "Sparkbot")
@@ -259,6 +317,19 @@ import uvicorn  # noqa: E402 (import after path fixup)
 # offer almost no actionable signal for end users.
 if getattr(sys, "frozen", False):
     _log_path = os.path.join(os.path.dirname(sys.executable), "sparkbot-backend.log")
+    # Rotate the prior log file BEFORE basicConfig opens it for writing.
+    # Pre-v1.6.80 builds wrote DEBUG-level httpcore spam and could leave behind
+    # 600+ MB files; rotating gives upgraders a clean slate while preserving
+    # the previous run as `.log.1` for one cycle.
+    _rotate_oversized_backend_log(_log_path)
+    # Prune stale PyInstaller temp dirs left behind by abrupt exits. Keeps
+    # the two newest as a safety margin (current run + previous in case the
+    # OS still holds a handle).
+    try:
+        _appdata = Path(os.environ.get("APPDATA") or os.path.expanduser("~"))
+        _prune_stale_pyinstaller_temp_dirs(_appdata / "Sparkbot" / "pyi-runtime")
+    except Exception:
+        pass
     _level_name = os.environ.get("SPARKBOT_BACKEND_LOG_LEVEL", "info").strip().upper()
     _level = getattr(_root_logging, _level_name, _root_logging.INFO)
     if not isinstance(_level, int):

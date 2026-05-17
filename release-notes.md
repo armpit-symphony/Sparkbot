@@ -1,5 +1,14 @@
 # Release Notes
 
+## Sparkbot v1.6.81
+
+- **Windows bridges fixed**: `backend/app/api/routes/chat/tools.py` did `import pwd` at module top — POSIX-only, breaks on Windows. Lazy-imported by Telegram, Discord, WhatsApp, and GitHub bridges via `stream_chat_with_tools`, so every bridged chat on a Windows desktop install failed with `ModuleNotFoundError: No module named 'pwd'`. The main UI was unaffected because it doesn't share the same lazy import. Fix: conditional import, raw-uid fallback in `_uid_name`.
+- **Backend log auto-rotation**: `desktop_launcher.py` now renames `sparkbot-backend.log` → `sparkbot-backend.log.1` on startup if it has grown past 50 MB. Upgraders from v1.6.79 with 600+ MB legacy logs get a clean slate without losing prior-run triage.
+- **Stale PyInstaller temp-dir cleanup**: pyi-runtime `_MEI*` directories left behind by abrupt exits (Tauri close, OS logout, crash) are pruned on each launch. Keeps the newest 2 and never touches the live `sys._MEIPASS`. The operator's install had accumulated 30+ dirs / ~1.5 GB.
+- **CI cleanup**: deleted `.github/workflows/add-to-project.yml`, leftover FastAPI template that targeted `github.com/orgs/fastapi/projects/2` and failed on every PR because Sparkpit's repo never set `secrets.PROJECTS_TOKEN`.
+- Tests: 2 new regressions assert `tools.py` imports without `pwd` and `_uid_name` returns a safe fallback. 180 services + tools tests pass overall.
+- Release metadata: backend, frontend, Tauri shell, package lock, public downloader fallback links, service worker cache key, README, capabilities docs, public-download docs, and release notes advanced to v1.6.81.
+
 ## Sparkbot v1.6.80
 
 - Token Guardian live-mode is honest: when no preferred `routing.yaml` candidate is configured for the operator's stack, Sparkbot now stays on the current model with a clear `fallback_reason` instead of silently jumping to the alphabetical-first configured model. Fixes the "Token Guardian doesn't register or even work" report for operators on `claude-sub/*`, `openai-codex/*`, or `openrouter/*`-only setups.

@@ -979,7 +979,7 @@
         <span class="logo-name">Sparkbot</span>
       </div>
 
-      <div class="hero-badge">Free &amp; Open Source &nbsp;-&nbsp; <span id="version-badge">v1.6.80</span></div>
+      <div class="hero-badge">Free &amp; Open Source &nbsp;-&nbsp; <span id="version-badge">v1.6.81</span></div>
       <h1>Your own AI,<br>on your computer</h1>
 
       <p class="hero-tagline">
@@ -1001,7 +1001,7 @@
       <div class="download-primary-wrap">
         <a
           id="download-windows-primary"
-          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.80/Sparkbot.Local_1.6.80_x64-setup.exe"
+          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.81/Sparkbot.Local_1.6.81_x64-setup.exe"
           class="btn-download-windows"
           aria-label="Download Sparkbot for Windows, latest stable version"
         >
@@ -1013,7 +1013,7 @@
         </a>
       </div>
 
-      <p class="download-meta"><span id="download-version-label">Version 1.6.80</span> &nbsp;-&nbsp; Windows 10 &amp; 11 &nbsp;-&nbsp; 64-bit &nbsp;-&nbsp; Free forever</p>
+      <p class="download-meta"><span id="download-version-label">Version 1.6.81</span> &nbsp;-&nbsp; Windows 10 &amp; 11 &nbsp;-&nbsp; 64-bit &nbsp;-&nbsp; Free forever</p>
       <p class="download-meta" style="margin-top:12px; font-size:0.95rem;">
         This page checks GitHub for the latest stable desktop release automatically. If the button does not start a download, open
         <a href="https://github.com/armpit-symphony/Sparkbot/releases" target="_blank" rel="noopener noreferrer">All Releases</a>
@@ -1023,7 +1023,7 @@
       <div class="other-os">
         <a
           id="download-macos-link"
-          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.80/Sparkbot.Local_1.6.80_aarch64.dmg"
+          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.81/Sparkbot.Local_1.6.81_aarch64.dmg"
           class="btn-os-small"
           aria-label="Download Sparkbot for macOS"
         >
@@ -1031,7 +1031,7 @@
         </a>
         <a
           id="download-linux-link"
-          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.80/Sparkbot.Local_1.6.80_amd64.AppImage"
+          href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.81/Sparkbot.Local_1.6.81_amd64.AppImage"
           class="btn-os-small"
           aria-label="Download Sparkbot for Linux AppImage"
         >
@@ -1121,46 +1121,46 @@
     =========================== -->
     <section class="section" aria-labelledby="new-heading">
       <div class="container">
-        <h2 class="section-title" id="new-heading">New in v1.6.80: Token Guardian honesty + log hygiene</h2>
+        <h2 class="section-title" id="new-heading">New in v1.6.81: Windows bridge fix + disk reclaim</h2>
         <p class="section-subtitle">
-          Token Guardian now stays on your current model with a clear reason when no preferred candidate is configured, instead of surprising you with an alphabetical pick. The desktop backend log defaults to INFO with httpcore/httpx pinned at WARNING, so it stops ballooning into hundreds of megabytes of long-poll noise.
+          A POSIX-only import was silently breaking every chat bridge (Telegram, Discord, WhatsApp, GitHub) on Windows desktop installs. Fixed, with a regression test. Plus automatic backend log rotation and PyInstaller temp-dir cleanup so Sparkbot stops eating gigabytes of disk over time.
         </p>
 
         <div class="features-grid">
           <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">Route</span>
-            <h3 class="feature-title">Honest live-mode fallback</h3>
-            <p class="feature-desc">When live routing has no configured preferred candidate, Token Guardian stays on your current model and surfaces a clear reason — no more silent jumps to whichever model sorts first.</p>
-          </div>
-
-          <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">Label</span>
-            <h3 class="feature-title">Pipeline mode label fixed</h3>
-            <p class="feature-desc">The Token Guardian pipeline now logs the real operator-configured mode at startup instead of always claiming shadow=true even when you had it set to live.</p>
+            <span class="feature-icon" role="img" aria-hidden="true">Win</span>
+            <h3 class="feature-title">Windows bridges work</h3>
+            <p class="feature-desc">Telegram, Discord, WhatsApp, and GitHub chats no longer fail with "ModuleNotFoundError: No module named 'pwd'" on Windows. The POSIX-only import in tools.py is now conditional with a Windows-safe fallback.</p>
           </div>
 
           <div class="feature-card">
             <span class="feature-icon" role="img" aria-hidden="true">Log</span>
-            <h3 class="feature-title">Backend log default is INFO</h3>
-            <p class="feature-desc">Desktop sparkbot-backend.log defaults to INFO instead of DEBUG. Operators who need lower levels can set SPARKBOT_BACKEND_LOG_LEVEL=debug.</p>
+            <h3 class="feature-title">Backend log auto-rotates</h3>
+            <p class="feature-desc">sparkbot-backend.log is renamed to .log.1 on startup if it has grown past 50 MB. Upgraders from v1.6.79 with 600+ MB legacy logs get a clean slate without losing the previous run for triage.</p>
           </div>
 
           <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">Quiet</span>
-            <h3 class="feature-title">Noisy modules pinned to WARNING</h3>
-            <p class="feature-desc">httpcore, httpx, h2, rustls, openai base client, and the cookie store are pinned at WARNING even when root is INFO — these accounted for 90%+ of historic log volume with little actionable signal.</p>
+            <span class="feature-icon" role="img" aria-hidden="true">Disk</span>
+            <h3 class="feature-title">Stale temp dirs cleaned</h3>
+            <p class="feature-desc">PyInstaller _MEI* directories left behind by abrupt exits (Tauri close, crash, OS logout) are pruned on each launch — observed installs accumulated 30+ dirs at ~50 MB each.</p>
           </div>
 
           <div class="feature-card">
-            <span class="feature-icon" role="img" aria-hidden="true">Saved</span>
-            <h3 class="feature-title">Hundreds of MB reclaimed</h3>
-            <p class="feature-desc">A week of Telegram-bridge long-poll spam previously produced a ~600 MB backend log on busy installs. v1.6.80 brings that back to operator-readable size.</p>
+            <span class="feature-icon" role="img" aria-hidden="true">CI</span>
+            <h3 class="feature-title">CI noise removed</h3>
+            <p class="feature-desc">Deleted leftover FastAPI template workflow that was failing on every PR (targeted github.com/orgs/fastapi/projects/2 with a secret Sparkpit never set).</p>
+          </div>
+
+          <div class="feature-card">
+            <span class="feature-icon" role="img" aria-hidden="true">Safety</span>
+            <h3 class="feature-title">Keep newest dirs</h3>
+            <p class="feature-desc">The _MEI* cleanup keeps the two newest directories and skips the one currently in use, so a live process is never disturbed.</p>
           </div>
 
           <div class="feature-card">
             <span class="feature-icon" role="img" aria-hidden="true">Tests</span>
             <h3 class="feature-title">Regression coverage</h3>
-            <p class="feature-desc">New tests cover the live-mode stay-on-current behavior and the pipeline mode-label fix, in addition to the existing 178 service-layer tests.</p>
+            <p class="feature-desc">New tests assert that tools.py imports cleanly when pwd is unavailable and that _uid_name returns the raw uid as a Windows-safe fallback. 180 services + tools tests pass overall.</p>
           </div>
         </div>
       </div>
@@ -1182,7 +1182,7 @@
             <div class="step-num" aria-hidden="true">1</div>
             <div class="step-body">
               <h3 class="step-title">Click the big purple "Download for Windows" button above</h3>
-              <p class="step-desc">Your browser will download a file called <strong id="windows-filename-step-1">Sparkbot.Local_1.6.80_x64-setup.exe</strong>. This is the installer. It usually arrives in less than a minute.</p>
+              <p class="step-desc">Your browser will download a file called <strong id="windows-filename-step-1">Sparkbot.Local_1.6.81_x64-setup.exe</strong>. This is the installer. It usually arrives in less than a minute.</p>
             </div>
           </div>
 
@@ -1190,7 +1190,7 @@
             <div class="step-num" aria-hidden="true">2</div>
             <div class="step-body">
               <h3 class="step-title">Find the downloaded file and open it</h3>
-              <p class="step-desc">Look at the bottom of your browser for the downloaded file, or check your <strong>Downloads folder</strong>. Double-click the file named <strong id="windows-filename-step-2">Sparkbot.Local_1.6.80_x64-setup.exe</strong> to start installing.</p>
+              <p class="step-desc">Look at the bottom of your browser for the downloaded file, or check your <strong>Downloads folder</strong>. Double-click the file named <strong id="windows-filename-step-2">Sparkbot.Local_1.6.81_x64-setup.exe</strong> to start installing.</p>
             </div>
           </div>
 
@@ -1260,7 +1260,7 @@
               </div>
 
               <div class="win-info-row">
-                <strong>App:</strong> <span id="windows-filename-dialog">Sparkbot.Local_1.6.80_x64-setup.exe</span>
+                <strong>App:</strong> <span id="windows-filename-dialog">Sparkbot.Local_1.6.81_x64-setup.exe</span>
               </div>
               <div class="win-info-row">
                 <strong>Publisher:</strong> <span>Unknown publisher</span>
@@ -1496,7 +1496,7 @@
       <p>Free. Private. Yours. Download takes less than a minute.</p>
       <a
         id="download-windows-bottom"
-        href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.80/Sparkbot.Local_1.6.80_x64-setup.exe"
+        href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.81/Sparkbot.Local_1.6.81_x64-setup.exe"
         class="btn-download-windows"
         style="display:inline-flex;"
         aria-label="Download Sparkbot for Windows"
@@ -1516,7 +1516,7 @@
   =========================== -->
   <footer>
     <p>
-      <span role="img" aria-hidden="true">Spark</span> <strong>Sparkbot</strong> &nbsp;-&nbsp; <span id="footer-version-label">Version 1.6.80</span> &nbsp;-&nbsp; Free &amp; Open Source
+      <span role="img" aria-hidden="true">Spark</span> <strong>Sparkbot</strong> &nbsp;-&nbsp; <span id="footer-version-label">Version 1.6.81</span> &nbsp;-&nbsp; Free &amp; Open Source
     </p>
     <p style="margin-top:10px;">
       <a href="https://github.com/armpit-symphony/Sparkbot" target="_blank" rel="noopener noreferrer">GitHub</a>
@@ -1527,9 +1527,9 @@
     </p>
     <p style="margin-top:12px; font-size:0.8rem;">
       Other platforms:
-      <a id="footer-macos-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.80/Sparkbot.Local_1.6.80_aarch64.dmg">macOS (all Macs)</a>
+      <a id="footer-macos-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.81/Sparkbot.Local_1.6.81_aarch64.dmg">macOS (all Macs)</a>
       &nbsp;-&nbsp;
-      <a id="footer-linux-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.80/Sparkbot.Local_1.6.80_amd64.AppImage">Linux (AppImage)</a>
+      <a id="footer-linux-link" href="https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.81/Sparkbot.Local_1.6.81_amd64.AppImage">Linux (AppImage)</a>
     </p>
   </footer>
 
@@ -1538,11 +1538,11 @@
   =========================== -->
   <script>
     var fallbackRelease = {
-      version: "1.6.80",
-      windowsFilename: "Sparkbot.Local_1.6.80_x64-setup.exe",
-      windowsUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.80/Sparkbot.Local_1.6.80_x64-setup.exe",
-      macosUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.80/Sparkbot.Local_1.6.80_aarch64.dmg",
-      linuxUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.80/Sparkbot.Local_1.6.80_amd64.AppImage"
+      version: "1.6.81",
+      windowsFilename: "Sparkbot.Local_1.6.81_x64-setup.exe",
+      windowsUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.81/Sparkbot.Local_1.6.81_x64-setup.exe",
+      macosUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.81/Sparkbot.Local_1.6.81_aarch64.dmg",
+      linuxUrl: "https://github.com/armpit-symphony/Sparkbot/releases/download/desktop-v1.6.81/Sparkbot.Local_1.6.81_amd64.AppImage"
     };
 
     function setText(id, value) {
@@ -1618,7 +1618,7 @@
           return /_amd64\.AppImage$/i.test(asset.name || "");
         });
 
-        // Extract version from tag (desktop-v1.6.80 -> 1.6.80)
+        // Extract version from tag (desktop-v1.6.81 -> 1.6.81)
         var tagVersion = String(desktopRelease.tag_name || "").replace(/^desktop-v/i, "");
 
         applyRelease({

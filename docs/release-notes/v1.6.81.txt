@@ -1,0 +1,103 @@
+Sparkbot v1.6.81
+
+Windows bridge fix + disk reclaim.
+
+### Critical Windows bug
+
+`backend/app/api/routes/chat/tools.py` did `import pwd` at module top.
+`pwd` is POSIX-only — on Windows it raises `ModuleNotFoundError`. The
+import is lazy (only loaded inside `stream_chat_with_tools` at chat
+time, not at app startup), which is why the main UI worked normally.
+But Telegram, Discord, WhatsApp, and GitHub bridges all funnel through
+`stream_chat_with_tools`, so every bridged chat on a Windows desktop
+install failed with this traceback (captured from the operator's live
+`sparkbot-backend.log` on 2026-05-16):
+
+    Traceback (most recent call last):
+      File "app\services\telegram_bridge.py", line 1076, in _handle_private_message
+      File "app\services\telegram_bridge.py", line 601, in _run_room_prompt
+      File "app\api\routes\chat\llm.py", line 2051, in stream_chat_with_tools
+      File "pyimod02_importers.py", line 457, in exec_module
+      File "app\api\routes\chat\tools.py", line 15, in <module>
+    ModuleNotFoundError: No module named 'pwd'
+
+### Root cause
+
+`pwd` is consumed exactly once in `tools.py`, inside `_uid_name(uid)`:
+
+    def _uid_name(uid: str) -> str:
+        try:
+            return pwd.getpwuid(int(uid)).pw_name
+        except Exception:
+            return uid or "?"
+
+That helper is reachable only via `/proc/<pid>/status` parsing in the
+server-ops profile path — which itself is Linux-only because Windows
+doesn't have `/proc/`. So the only correct behavior on Windows is to
+return the raw uid string (the function's existing fallback).
+
+### Fix
+
+  * Removed `import pwd` from the module-level imports of `tools.py`.
+  * `_uid_name` now imports `pwd` inside the function with a try/except,
+    falling back to the raw uid when the import fails.
+  * The rest of `tools.py` (4000+ lines, including every chat tool
+    definition) now imports cleanly on Windows.
+
+### Desktop housekeeping (Windows + macOS + Linux)
+
+While confirming the fix, two operator-visible inefficiencies surfaced
+in `desktop_launcher.py` and shipped as part of this release:
+
+#### Backend log rotation on launch
+
+Pre-v1.6.80 builds wrote DEBUG-level httpcore spam and could leave
+behind 600+ MB `sparkbot-backend.log` files. v1.6.80 lowered the level
+but did nothing about the legacy file already on disk. v1.6.81 now
+rotates the prior log to `sparkbot-backend.log.1` on launch if it
+exceeds 50 MB:
+
+  * Preserves the previous run for one cycle of triage.
+  * Gives upgraders a clean slate immediately.
+  * Wrapped in try/except so log housekeeping cannot block startup.
+
+#### Stale PyInstaller `_MEI*` cleanup
+
+PyInstaller's runtime extraction tree lives at
+`%APPDATA%\Sparkbot\pyi-runtime\_MEI<pid>\` and is supposed to be
+deleted on graceful exit. But the desktop shell terminates abruptly
+under several common conditions (Tauri close, OS logout, app crash)
+and leaves the directories behind. Each is ~50 MB; observed installs
+accumulated 30+ dirs (~1.5 GB) over the v1.6.6x → v1.6.8x release line.
+
+v1.6.81's launcher now prunes the directory on each launch:
+
+  * Keeps the newest 2 as a safety margin.
+  * Always skips the live `sys._MEIPASS` (the directory the current
+    process is reading from).
+  * Wrapped in try/except — a stuck dir can't block startup.
+  * On the user's install this single change reclaims ~1.4 GB on the
+    first launch of v1.6.81.
+
+### CI cleanup
+
+Removed `.github/workflows/add-to-project.yml`. Leftover from the
+FastAPI full-stack template the repo was originally forked from. It
+targeted `https://github.com/orgs/fastapi/projects/2` with
+`secrets.PROJECTS_TOKEN`, neither of which Sparkpit owns or sets. It
+failed on every PR and every dependabot bump with a useless red X.
+
+### Tests
+
+  * `tests/api/routes/test_chat_tools_windows.py` (2 tests):
+    - `test_tools_module_imports_without_pwd` — asserts the whole
+      tools.py module body executes when `pwd` is unimportable.
+    - `test_uid_name_falls_back_to_raw_uid_without_pwd` — asserts the
+      function returns the raw uid string (or "?") instead of raising.
+  * Full services + new tests: 180 passed.
+
+### Version bumps
+
+Backend, frontend, Tauri shell, package lock, public downloader fallback
+links, service worker cache key, README, capabilities docs, public-
+download docs, and release notes advanced to v1.6.81.
