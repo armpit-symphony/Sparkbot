@@ -528,8 +528,12 @@ async def _execute_pending_confirmation(
         room_id=uuid.UUID(room_id),
         model=None,
     )
-    if decision.action == "deny":
-        result = f"POLICY DENIED: {decision.reason}"
+    if decision.action not in {"allow", "confirm"}:
+        result = (
+            f"POLICY DENIED: {decision.reason}"
+            if decision.action == "deny"
+            else f"POLICY BLOCKED: {decision.reason}"
+        )
     else:
         result = await guardian_suite.executive.exec_with_guard(
             tool_name=tool_name,

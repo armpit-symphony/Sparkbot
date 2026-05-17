@@ -1,0 +1,124 @@
+# Sparkbot Public Capability And Permission Model
+
+Date: 2026-05-17
+Branch: `public-release-capability-memory-roundtable`
+Scope: Public-release planning for Sparkbot only. This document does not wire LIMA AI OS, Arc Bot, LIMA Office, LIMA IT, robotics, or `Sparkbot_shell`.
+
+## Product Stance
+
+Sparkbot Public should feel like a capable self-hosted AI workstation, not a locked-down agent runner. The default experience should be:
+
+- Sparkbot reasons through the request and attempts useful work.
+- Configured tools are available when the owner has enabled them.
+- Risky actions ask for confirmation before execution.
+- Security blockers explain the reason and propose the next safe step.
+- Command Center Security makes guardrails stricter when the user chooses it.
+- Custom blockers/guardrails are user-owned and editable.
+- The profile pattern should later inform Arc Bot, custom bots, and LIMA runtime policy design, but no runtime wiring happens in this phase.
+
+## Current Implementation Anchors
+
+- Policy toggle: `SPARKBOT_GUARDIAN_POLICY_ENABLED` in `backend/app/services/guardian/policy.py:13`.
+- Custom guardrail env: `SPARKBOT_CUSTOM_GUARDRAILS` in `backend/app/services/guardian/policy.py:16`.
+- Custom guardrail matching: `backend/app/services/guardian/policy.py:46`.
+- Default personal-mode behavior: `backend/app/services/guardian/policy.py:594`.
+- Global Computer Control TTL path: `backend/app/services/guardian/policy.py:81`.
+- Tool policy registry with allow/confirm/privileged/deny actions: `backend/app/services/guardian/policy.py:105`, `backend/app/services/guardian/policy.py:131`.
+- Command Center Security toggle save: `backend/app/api/routes/chat/model.py:1056`.
+- Custom guardrail save: `backend/app/api/routes/chat/model.py:1079`.
+
+## Permission Actions
+
+| Action | Public meaning | Product behavior |
+|---|---|---|
+| `allow` | Safe enough for current profile and configured tool state. | Run the tool and summarize results. |
+| `confirm` | Risky or externally visible. | Show a clear yes/no confirmation with tool, target, effect, and cancel path. |
+| `privileged` | Requires operator PIN or break-glass session. | Explain the blocker, ask for PIN only when the user chooses to proceed, and offer a safe read-only alternative. |
+| `privileged_reveal` | Secret reveal or destructive Vault path. | Require break-glass and explicit confirmation. |
+| `deny` | Not supported or blocked by owner rule/profile. | Explain the rule and suggest the nearest safe next step. Never dead-end with only "blocked". |
+
+## Security Profiles
+
+### Free / Personal Mode
+
+Default public mode. Sparkbot is capable by default.
+
+Allowed:
+- Normal chat reasoning, model routing, memory recall/write, tasks/reminders, file reads, local/server diagnostics, browser reads, room-local ordinary writes, and safe tool use.
+- Configured Telegram/Discord/WhatsApp/GitHub bridges can read and reply in their linked context.
+
+Requires confirmation:
+- External sends, browser writes, file edits/deletes, package installs/builds, service control, scheduled write jobs, credential writes/reveals, terminal writes, and Git mutations.
+
+Blocked:
+- Unknown tools, unsupported real robot/drone/humanoid control, private/proprietary integrations, and owner-defined custom blockers if the user explicitly enables them for this mode later.
+
+### Balanced Mode
+
+Recommended public server/default shared-machine mode.
+
+Allowed:
+- Chat, memory, model routing, Workstation navigation, Round Table, file reads, browser reads, diagnostics, task/reminder reads, and configured connector reads.
+
+Requires confirmation:
+- File writes, terminal commands, browser form writes/clicks, external sends, connector writes, calendar/mail/Slack/GitHub writes, service changes, and scheduled jobs.
+
+Blocked:
+- Real robotics/IoT control, secret reveal without PIN, unconfigured connectors, private build tools, and custom blocker matches.
+
+### Locked Mode
+
+Strict mode for public internet, shared servers, demos, or cautious users.
+
+Allowed:
+- Chat, memory recall, memory inspection, model selection, read-only files, read-only browser fetches to public URLs, and Round Table discussion.
+
+Requires confirmation:
+- Memory writes/corrections, task/reminder writes, any connector reply, any browser click/fill, and any terminal/server command.
+
+Blocked:
+- Terminal writes, service management, Vault reveal/write, real robotics, private network browser targets, unsupported tools, and custom blocker matches unless the user enters a temporary break-glass flow.
+
+### Custom Mode
+
+User-owned profile built from one of the above profiles plus explicit rules.
+
+Allowed:
+- Everything the base profile allows, minus custom blocker matches.
+
+Requires confirmation:
+- Everything the base profile confirms, plus custom "confirm" rules when implemented.
+
+Blocked:
+- Exact tool blockers such as `tool:gmail_send`, regex blockers such as `regex:rm\s+-rf`, and plain text blocker phrases. Current implementation only supports block-style custom rules while Security is on.
+
+## Surface Matrix
+
+| Surface | Personal | Balanced | Locked | Custom |
+|---|---|---|---|---|
+| Chat | Allow reasoning, memory, safe tools. Confirm risky tools. | Same, with more writes confirmed. | Reasoning and read-only tools by default. | Base profile plus user rules. |
+| Workstation | Allow navigation, setup, model seats, Round Table. Confirm risky desks/tools. | Hide or confirm terminal/browser/server tools. | Show core desks only; advanced tools disabled until approved. | Base profile plus user rules. |
+| Round Table | Allow manager-led discussion and memory recall. Confirm risky tool calls. | Same; stricter on participant tool use. | Discussion-only unless approved. | Base profile plus meeting-specific user rules later. |
+| Telegram | Read/reply in linked private context when configured. Confirm external sends outside context. | Confirm sends and write-like actions. | Confirm every reply/action. | Base profile plus channel rules. |
+| Discord | Same as Telegram. | Same as Telegram. | Same as Telegram. | Base profile plus channel rules. |
+| Terminal | Read/list sessions allowed; writes confirm. | Reads allowed; writes confirm; service control confirm/PIN. | Disabled or PIN-required. | Base profile plus command regex blockers. |
+| Browser | Open/read public pages allowed; writes confirm. | Reads allowed; clicks/fills confirm. | Read-only unless approved. | Base profile plus URL/action blockers. |
+| Files | Read allowed; ordinary writes confirm when outside safe workspace. | Reads allowed; all writes confirm. | Read-only by default. | Base profile plus path blockers. |
+| Server/PC tools | Diagnostics allowed in Personal; service changes confirm. | Diagnostics allowed; gated writes confirm/PIN. | PIN-required or blocked by default. | Base profile plus host/service allowlists. |
+
+## Public MVP Recommendation
+
+Ship with Personal, Balanced, Locked, and Custom profile names in Command Center, but implement them as clear policy presets over the existing policy engine before adding a full custom-rule DSL. The first safe step is to rename the current binary "Security on/off" into a profile selector while preserving the existing env contract:
+
+- Personal maps to `SPARKBOT_GUARDIAN_POLICY_ENABLED=false`.
+- Balanced maps to `SPARKBOT_GUARDIAN_POLICY_ENABLED=true` with default confirmations but fewer hard denies.
+- Locked maps to `SPARKBOT_GUARDIAN_POLICY_ENABLED=true` with terminal/server/browser writes off unless break-glass is active.
+- Custom stores user blockers and later user confirmation/block rules.
+
+P0 principle: every `deny` or `privileged` outcome must give the user an understandable reason and one useful safe alternative.
+
+## Safe Patch Applied In This Phase
+
+Confirmed approval executors now refuse to run re-decided `privileged` or `privileged_reveal` outcomes. This preserves the "risky actions require the right permission" rule while keeping normal `confirm` approvals capable.
+
+Remaining profile work is product-facing: turn the current binary Security toggle into named Personal/Balanced/Locked/Custom profiles with clear explanations.

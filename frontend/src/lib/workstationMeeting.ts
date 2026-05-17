@@ -465,8 +465,9 @@ export async function launchMeetingRoom({
     headers: { "Content-Type": "application/json" },
     credentials: "include",
     body: JSON.stringify({
-      type: "notes",
+      type: "agenda",
       content_markdown: artifactMarkdown,
+      meta_json: { source: "meeting_launch_scaffold", draft: true, memory_rollup: false },
     }),
   }).catch(() => {})
 
@@ -600,7 +601,11 @@ export async function launchTaskMeeting({
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
-    body: JSON.stringify({ type: "notes", content_markdown: artifactMarkdown }),
+    body: JSON.stringify({
+      type: "agenda",
+      content_markdown: artifactMarkdown,
+      meta_json: { source: "meeting_launch_scaffold", draft: true, memory_rollup: false },
+    }),
   }).catch(() => {})
 
   await persistMeetingManifest(roomId, roomName, protocolLabel, preparedSeats)

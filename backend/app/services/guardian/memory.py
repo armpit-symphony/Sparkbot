@@ -958,6 +958,17 @@ def _artifact_rollup_lines(content: str, *, max_lines: int = 14) -> list[str]:
             continue
         if line.startswith("#"):
             continue
+        placeholder = line.lower().strip(" -*_[].\t")
+        if placeholder in {
+            "none recorded yet",
+            "none noted",
+            "none",
+            "n/a",
+            "to be determined",
+            "to be defined",
+            "meeting in progress",
+        }:
+            continue
         if current_heading and current_heading not in allowed_headings:
             continue
         if line.lower() in {"(none noted)", "- (none noted)", "none noted", "n/a"}:

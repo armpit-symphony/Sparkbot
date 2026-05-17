@@ -512,7 +512,12 @@ def create_chat_meeting_artifact(
         from app.services.guardian import memory as guardian_memory
 
         artifact_meta = meta_json if isinstance(meta_json, dict) else {}
-        if not artifact_meta.get("parent_notes_id"):
+        should_roll_up_to_memory = (
+            not artifact_meta.get("parent_notes_id")
+            and not artifact_meta.get("draft")
+            and artifact_meta.get("memory_rollup", True) is not False
+        )
+        if should_roll_up_to_memory:
             guardian_memory.remember_meeting_artifact(
                 user_id=str(created_by_user_id),
                 room_id=str(room_id),

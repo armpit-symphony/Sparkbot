@@ -1095,9 +1095,13 @@ async def stream_room_message(
                 room_id=room_id,
                 model=None,
             )
-            if decision.action == "deny":
+            if decision.action not in {"allow", "confirm"}:
                 verification = None
-                result = f"POLICY DENIED: {decision.reason}"
+                result = (
+                    f"POLICY DENIED: {decision.reason}"
+                    if decision.action == "deny"
+                    else f"POLICY BLOCKED: {decision.reason}"
+                )
             else:
                 result = await guardian_suite.executive.exec_with_guard(
                     tool_name=tool_name,
@@ -1980,7 +1984,14 @@ async def stream_room_message(
                     )
                 except Exception:
                     pass
-                if meeting_status and meeting_status != "continue":
+                should_save_manager_wrapup = (
+                    parse_status
+                    and participant_handle == chair_handle
+                    and meeting_phase in {"manager_summary", "continue_or_operator_input"}
+                    and meeting_status
+                    and meeting_status != "continue"
+                )
+                if should_save_manager_wrapup:
                     try:
                         create_chat_meeting_artifact(
                             session=db2,

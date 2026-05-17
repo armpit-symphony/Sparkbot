@@ -312,8 +312,12 @@ async def _execute_dashboard_approval(
         model=None,
     )
 
-    if decision.action == "deny":
-        result = f"POLICY DENIED: {decision.reason}"
+    if decision.action not in {"allow", "confirm"}:
+        result = (
+            f"POLICY DENIED: {decision.reason}"
+            if decision.action == "deny"
+            else f"POLICY BLOCKED: {decision.reason}"
+        )
         verification = None
     else:
         result = await guardian_suite.executive.exec_with_guard(

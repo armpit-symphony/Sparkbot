@@ -308,6 +308,7 @@ async def run_meeting_heartbeat(
         participant_handle: str,
         phase_prompt: str,
         chair_handle: str,
+        meeting_phase: str,
         parse_status: bool = False,
         default_status: str = "recommendation_ready",
     ) -> dict[str, Any]:
@@ -389,7 +390,11 @@ async def run_meeting_heartbeat(
 
         label = _agent_label(participant_handle, agent_info)
         bot_user = _get_or_create_agent_bot_user(session, participant_handle)
-        meta_json: dict[str, Any] = {"agent": participant_handle, "source": MEETING_HEARTBEAT_SOURCE}
+        meta_json: dict[str, Any] = {
+            "agent": participant_handle,
+            "source": MEETING_HEARTBEAT_SOURCE,
+            "meeting_phase": meeting_phase,
+        }
         if agent_routing_payload:
             meta_json["token_guardian"] = agent_routing_payload
         if meeting_status:
@@ -412,7 +417,14 @@ async def run_meeting_heartbeat(
             )
         except Exception:
             pass
-        if meeting_status and meeting_status != "continue":
+        should_save_manager_wrapup = (
+            parse_status
+            and participant_handle == chair_handle
+            and meeting_phase in {"manager_summary", "final_heartbeat_synthesis"}
+            and meeting_status
+            and meeting_status != "continue"
+        )
+        if should_save_manager_wrapup:
             try:
                 create_chat_meeting_artifact(
                     session=session,
@@ -423,6 +435,7 @@ async def run_meeting_heartbeat(
                     meta_json={
                         "source": MEETING_HEARTBEAT_SOURCE,
                         "agent": participant_handle,
+                        "meeting_phase": meeting_phase,
                         "meeting_status": meeting_status,
                     },
                 )
@@ -446,6 +459,7 @@ async def run_meeting_heartbeat(
             "and assign the next focus. Keep it concise and do not ask who should speak next."
         ),
         chair_handle=chair_handle,
+        meeting_phase="manager_assessment",
     )
     turns_used += 1
     if opening_result.get("halted"):
@@ -468,6 +482,7 @@ async def run_meeting_heartbeat(
             "or execution detail. End with a concrete takeaway."
             ),
             chair_handle=chair_handle,
+            meeting_phase="assigned_work_pass",
         )
         turns_used += 1
         if gather_result.get("halted"):
@@ -499,6 +514,7 @@ async def run_meeting_heartbeat(
             "- <why continue or stop now>\n"
         ),
         chair_handle=chair_handle,
+        meeting_phase="manager_summary",
         parse_status=True,
         default_status="recommendation_ready",
     )
@@ -522,6 +538,7 @@ async def run_meeting_heartbeat(
                     "Add only non-duplicative value and keep it tight."
                 ),
                 chair_handle=chair_handle,
+                meeting_phase="heartbeat_refinement",
             )
             turns_used += 1
             if refine_result.get("halted"):
@@ -551,6 +568,7 @@ async def run_meeting_heartbeat(
                     "- <why the room is stopping>\n"
                 ),
                 chair_handle=chair_handle,
+                meeting_phase="final_heartbeat_synthesis",
                 parse_status=True,
                 default_status="recommendation_ready",
             )

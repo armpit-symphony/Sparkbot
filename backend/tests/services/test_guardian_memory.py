@@ -133,6 +133,28 @@ def test_meeting_artifact_rollup_deduplicates_repeated_content(monkeypatch, tmp_
     assert events[0].metadata["rollup_fingerprint"]
 
 
+def test_meeting_artifact_rollup_skips_placeholder_scaffolds(monkeypatch, tmp_path: Path) -> None:
+    _reset_memory_guardian(monkeypatch, tmp_path)
+    markdown = (
+        "## Discussion\n"
+        "_Meeting in progress._\n\n"
+        "## Decisions\n"
+        "- _None recorded yet._\n\n"
+        "## Action Items\n"
+        "- [ ] _None recorded yet._\n\n"
+        "## Next Steps\n"
+        "- _To be determined._\n"
+    )
+
+    assert not memory.remember_meeting_artifact(
+        user_id="user-1",
+        room_id="meeting-room",
+        artifact_id="artifact-placeholder",
+        artifact_type="agenda",
+        content_markdown=markdown,
+    )
+
+
 def test_memory_guardian_uses_desktop_data_dir_when_specific_dir_absent(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.delenv("SPARKBOT_MEMORY_GUARDIAN_DATA_DIR", raising=False)
     monkeypatch.setenv("SPARKBOT_DATA_DIR", str(tmp_path / "desktop-data"))
