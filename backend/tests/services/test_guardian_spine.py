@@ -125,6 +125,32 @@ def test_guardian_spine_captures_meeting_artifact(monkeypatch, tmp_path) -> None
         assert meeting_file.exists()
 
 
+def test_draft_meeting_artifact_does_not_roll_up_to_memory(monkeypatch, tmp_path) -> None:
+    _reload_spine(monkeypatch, tmp_path)
+    calls: list[dict[str, object]] = []
+
+    from app.services.guardian import memory as guardian_memory
+
+    monkeypatch.setattr(
+        guardian_memory,
+        "remember_meeting_artifact",
+        lambda **kwargs: calls.append(kwargs) or True,
+    )
+    with _session() as session:
+        user, room = _seed_room(session)
+
+        create_chat_meeting_artifact(
+            session=session,
+            room_id=room.id,
+            created_by_user_id=user.id,
+            type=MeetingArtifactType.AGENDA.value,
+            content_markdown="## Draft\n\nMeeting in progress.",
+            meta_json={"draft": True, "memory_rollup": False},
+        )
+
+    assert calls == []
+
+
 def test_guardian_spine_ingests_structured_subsystem_events_with_projects_and_lineage(monkeypatch, tmp_path) -> None:
     spine = _reload_spine(monkeypatch, tmp_path)
     with _session() as session:

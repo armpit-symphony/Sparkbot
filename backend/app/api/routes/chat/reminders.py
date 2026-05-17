@@ -67,6 +67,18 @@ async def _fire_one(reminder: Reminder, session: Session) -> None:
             sender_type="BOT",
         )
         msg_id = str(msg.id)
+        try:
+            from app.services.guardian import memory as guardian_memory
+            guardian_memory.remember_bridge_message(
+                user_id=str(reminder.created_by),
+                room_id=str(reminder.room_id),
+                bridge="reminder",
+                role="assistant",
+                content=f"Reminder fired: {reminder.message}",
+                metadata={"source": "reminder.fired", "reminder_id": str(reminder.id)},
+            )
+        except Exception:
+            pass
         session.close()
 
         # Broadcast to any connected WebSocket clients
@@ -221,6 +233,18 @@ def create_room_reminder(
         fire_at=dt,
         recurrence=recurrence,
     )
+    try:
+        from app.services.guardian import memory as guardian_memory
+        guardian_memory.remember_bridge_message(
+            user_id=str(current_user.id),
+            room_id=str(room_id),
+            bridge="reminder",
+            role="system",
+            content=f"Reminder created for {dt.isoformat()}: {reminder.message}",
+            metadata={"source": "reminder.created", "reminder_id": str(reminder.id), "recurrence": recurrence.value},
+        )
+    except Exception:
+        pass
     return _fmt(reminder)
 
 

@@ -101,8 +101,8 @@ This is the right public pattern, but it must avoid noisy spam:
 
 ## P0 Memory Findings
 
-- Slack is disconnected from the shared memory substrate. Because Slack is now confirmed as a public baseline connector, this remains `P0` before extraction.
-- Meeting Room UI still depends on localStorage meeting metadata even though backend heartbeat has a persisted manifest.
+- Slack was disconnected from the shared memory substrate. This pass wires Slack inbound/outbound event memory through the shared connector adapter; outbound Slack tool permissions still need a public UX pass.
+- Meeting Room UI now loads backend `meeting_manifest` artifacts before localStorage cache; assignment display UI still needs work.
 - Round Table memory is directionally right, but public MVP needs an explicit rule: only manager wrap-ups/checkpoints create shared meeting memory.
 - Launch scaffold artifacts must never become shared memory notes.
 
@@ -131,3 +131,43 @@ The reusable learning is the shape of the memory contract:
 - `visibility`
 
 Do not move this to LIMA in this phase. Stabilize it in Sparkbot Public first, then use it as design input for future runtime memory.
+
+## P0 Stabilization Update - 2026-05-17
+
+Branch: `public-release-p0-memory-guardrails-roundtable`
+
+Implemented:
+
+- Added a shared connector memory adapter, `remember_bridge_message`, in `backend/app/services/guardian/memory.py`.
+- Slack inbound events now create/use a `Slack Bridge` memory room, write inbound/outbound messages through the shared adapter, and read Guardian memory before calling the LLM.
+- Task CRUD now writes source-labeled task memory events through the shared adapter.
+- Reminder creation and fired reminder messages now write source-labeled memory events.
+- Upload/file and image analysis paths now write source-labeled file memory events.
+- Bridge memory can mirror into Shared Work Memory when `SPARKBOT_UNIFIED_CHAT_MEMORY_ENABLED=true`.
+- Meaningful connector `system` events are allowed through the adapter without opening generic chat memory to system noise.
+
+Connected or already connected:
+
+| Surface | Status |
+|---|---|
+| Chat | Connected through Guardian room memory and shared chat memory when enabled. |
+| Workstation | Meeting manifests now persist to backend artifacts and reload into Meeting Room UI; ordinary UI clicks remain non-memory. |
+| Round Table | Participant turns write room memory; manager wrap-up/checkpoint notes roll up to shared memory. |
+| Agents/custom agents | Connected when they speak through chat/Round Table routes. |
+| Tasks | Connected through `task.created` and `task.updated` bridge events. |
+| Reminders | Connected through `reminder.created` and `reminder.fired` bridge events. |
+| Uploads/files/photos | Connected through `file.uploaded` and `file.analysis` bridge events. |
+| Telegram/Discord/WhatsApp/GitHub | Already use Guardian memory context in their bridge flows. |
+| Slack | Connected in this pass as the public baseline connector pattern. |
+
+Still disconnected or intentionally deferred:
+
+- Workstation seat edits, desk clicks, panel actions, and Invite Wing draft choices are not memory events yet.
+- Controls/model preferences persist through config/env, not memory. Non-secret preference memory should be added later without storing credentials.
+- Browser/terminal future action memory should be handled through permissioned tool events, not ad hoc UI events.
+
+Regression coverage added:
+
+- Shared bridge memory route, including Slack-style user events and task-style system events.
+- Draft/scaffold meeting artifacts do not roll up to memory.
+- Manager wrap-up/checkpoint notes can still become shared memory through the existing meeting artifact rollup path.

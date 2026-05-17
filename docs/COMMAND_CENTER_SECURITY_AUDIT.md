@@ -71,7 +71,7 @@ The policy engine is real, not fake:
 | Binary Security | Current "on/off" copy hides the product model. | Users may think Sparkbot is either unsafe or randomly blocked. | `P0` |
 | Strict Security + Computer Control off | Gated read/execute tools can require PIN even for useful diagnostics (`backend/app/services/guardian/policy.py:661`). | Feels like a locked machine instead of a permissioned assistant. | `P0` |
 | Deny wording | Denies return policy text but do not always propose a next safe step (`backend/app/services/guardian/policy.py:650`). | Dead-end blocker experience. | `P0` |
-| Auto break-glass | DM auto-triggers `/breakglass` after privileged events (`frontend/src/pages/SparkbotDmPage.tsx:4575`). | Trust boundary is unclear. | `P1` |
+| Auto break-glass | DM previously auto-triggered `/breakglass` after privileged events; this pass removed the hidden send and now prompts the user to type `/breakglass <reason>`. | Trust boundary is clearer; full modal still needed. | `PARTIAL_DONE` |
 | Custom blockers | User rules are env-backed text, not structured owned policy records. | Hard to explain, audit, edit, export, or reuse. | `P1` |
 | Tool guardrail rejection | Secret-like args are rejected before execution (`backend/app/services/guardian/tool_guardrails.py:45`). | Correct safety behavior, but UX should redirect to Vault rather than only reject. | `P1` |
 
@@ -126,3 +126,34 @@ Changed paths:
 - `backend/app/services/discord_bridge.py`
 
 Remaining work: make the UI for these blocked approval results tell the user exactly how to proceed, for example "activate break-glass, then retry the action" or "use a read-only alternative".
+
+## P0 Stabilization Update - 2026-05-17
+
+Branch: `public-release-p0-memory-guardrails-roundtable`
+
+Implemented:
+
+- Backend model config now exposes persisted Security profiles: `personal`, `balanced`, `locked`, and `custom`.
+- Profile persistence uses `SPARKBOT_SECURITY_PROFILE`.
+- `personal` maps to `SPARKBOT_GUARDIAN_POLICY_ENABLED=false`, preserving Phil's direction that Free / Personal mode is capable by default and terminal/browser capability is available when configured, with confirmations for risky actions.
+- `balanced`, `locked`, and `custom` map to policy enforcement on.
+- Command Center Security now shows a profile selector with copy for each profile.
+- Custom mode is labeled honestly: owner blocker text is persisted, while typed allow/confirm custom rules are draft/future work.
+- The old binary toggle remains as a compatibility control, but its copy now says "Compatibility guardrails" instead of implying the complete profile system is only on/off.
+- DM breakglass UX no longer silently sends `/breakglass`; elevated confirmation now tells the user to type `/breakglass <reason>` to start the PIN flow or choose a read-only alternative.
+
+Current truthfulness status:
+
+| Area | Status |
+|---|---|
+| Profile selected/reloaded | Persisted through `/api/v1/chat/models/config`. |
+| Custom blockers | Persisted as owner-authored blocker text; not a full typed rule system yet. |
+| Free / Personal capable default | Implemented as profile mapping to policy-off personal mode while retaining confirmations for risky actions. |
+| Balanced/Locked distinction | Named and persisted, but both still use the current strict policy engine; deeper per-profile policy tuning remains P1/P0 depending on QA. |
+| Breakglass/elevated confirmation wording | Improved to avoid hidden privileged approval. |
+
+Remaining:
+
+- Add structured custom guardrail records with action, scope, explanation, enabled state, and owner metadata.
+- Tune Balanced vs Locked behavior in the policy engine so they are more than named presets.
+- Add a dedicated approval modal for normal confirmation, elevated confirmation, and breakglass/privileged access.

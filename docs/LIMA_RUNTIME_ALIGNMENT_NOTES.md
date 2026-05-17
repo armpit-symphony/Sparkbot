@@ -85,3 +85,21 @@ Do not move these into public core or LIMA wiring during this phase:
 ## Recommendation
 
 Use Sparkbot Public as the UX proving ground. Once users can understand, edit, and trust Sparkbot's profiles and memory continuity, extract the policy and memory contract as design input for LIMA runtime review.
+
+## P0 Stabilization Update - 2026-05-17
+
+Branch: `public-release-p0-memory-guardrails-roundtable`
+
+Observed reusable design learning:
+
+- Slack bridge continuity is now a concrete public baseline pattern: connector event -> source-labeled memory -> shared work memory when enabled -> LLM context. This should inform Arc Bot/custom bot connector bridges later.
+- Security profiles are now persisted in Sparkbot config, but Balanced/Locked still need deeper behavior separation before they become a reusable runtime contract.
+- Custom guardrails remain owner blocker text, not structured records. The future LIMA/runtime-facing lesson is the desired record shape, not this env-backed storage.
+- Round Table assignment persistence proves a lightweight chaired-meeting contract: chair, phase, handle, assignment, artifact metadata, and non-rollup memory flag.
+- Robo teaser behavior now demonstrates a disabled-manifest state: visible product teaser, dry-run/demo contract allowed, live execution blocked by public default.
+
+Still do not move:
+
+- No Sparkbot code from this pass should be copied into LIMA runtime.
+- No LIMA AI OS, Arc Bot, LIMA Office, LIMA IT, robotics, or IoT execution wiring was added.
+- Sparkbot Public should keep proving the UX before any runtime extraction or contract hardening.

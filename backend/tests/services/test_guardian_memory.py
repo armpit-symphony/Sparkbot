@@ -292,6 +292,40 @@ def test_chat_messages_roll_into_user_shared_work_memory(monkeypatch, tmp_path: 
     assert any(item["session_id"] == memory._shared_work_session("user-1") for item in recalled)
 
 
+def test_bridge_messages_use_shared_memory_route(monkeypatch, tmp_path: Path) -> None:
+    _reset_memory_guardian(monkeypatch, tmp_path)
+    monkeypatch.setenv("SPARKBOT_UNIFIED_CHAT_MEMORY_ENABLED", "true")
+
+    assert memory.remember_bridge_message(
+        user_id="user-1",
+        room_id="slack-room",
+        bridge="slack",
+        role="user",
+        content="The Slack thread decided the public baseline connector should reuse permissions and memory.",
+        metadata={"channel": "public-readiness"},
+    )
+    assert memory.remember_bridge_message(
+        user_id="user-1",
+        room_id="task-room",
+        bridge="task",
+        role="system",
+        content="Task created: verify shared bridge memory before extraction.",
+        metadata={"source": "task.created"},
+    )
+
+    context = memory.build_memory_context(
+        user_id="user-1",
+        room_id="main-room",
+        query="What did Slack decide about the baseline connector?",
+    )
+
+    assert "Shared Work Memory" in context
+    assert "public baseline connector" in context
+    events = list(memory._guardian().ledger.iter_events(session_id=memory._shared_work_session("user-1")))
+    assert any((event.metadata or {}).get("scope_type") == "shared_bridge" for event in events)
+    assert any("shared bridge memory" in event.content for event in events)
+
+
 def test_shared_chat_memory_stays_user_scoped(monkeypatch, tmp_path: Path) -> None:
     _reset_memory_guardian(monkeypatch, tmp_path)
     monkeypatch.setenv("SPARKBOT_UNIFIED_CHAT_MEMORY_ENABLED", "true")

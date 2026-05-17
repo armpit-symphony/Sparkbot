@@ -46,6 +46,16 @@ export interface ModelsControlsConfig {
   global_computer_control_expires_at?: number | null
   global_computer_control_ttl_remaining?: number | null
   security_guardrails_enabled?: boolean
+  security_profile?: {
+    id: "personal" | "balanced" | "locked" | "custom"
+    label: string
+    status?: string
+  }
+  security_profiles?: Array<{
+    id: "personal" | "balanced" | "locked" | "custom"
+    label: string
+    description: string
+  }>
   custom_guardrails?: string
   agent_overrides: Record<string, { route: string; model?: string }>
   available_agents: Array<{
@@ -422,6 +432,7 @@ export function useControlsState({ roomId, onStatusMessage }: UseControlsStateOp
   const [executionSaved, setExecutionSaved] = useState(false)
   const [executionError, setExecutionError] = useState("")
   const [customGuardrails, setCustomGuardrails] = useState("")
+  const [securityProfile, setSecurityProfile] = useState<"personal" | "balanced" | "locked" | "custom">("personal")
   const [savingPin, setSavingPin] = useState(false)
   const [pinSaved, setPinSaved] = useState(false)
   const [pinError, setPinError] = useState("")
@@ -441,8 +452,9 @@ export function useControlsState({ roomId, onStatusMessage }: UseControlsStateOp
     setModelsConfig(config)
     setTokenGuardianMode(config.token_guardian_mode || "shadow")
     setCustomGuardrails(config.custom_guardrails ?? "")
+    setSecurityProfile(config.security_profile?.id ?? (config.security_guardrails_enabled ? "balanced" : "personal"))
     setModelStack(prev => config.stack ?? prev)
-    const validProviders = new Set(["openrouter", "ollama", "openai", "anthropic", "google", "groq", "minimax", "xai"])
+    const validProviders = new Set(["openrouter", "ollama", "openai", "openai_codex", "claude_sub", "anthropic", "google", "groq", "minimax", "xai"])
     const savedProvider = config.default_selection?.provider ?? "openrouter"
     const resolvedProvider = (validProviders.has(savedProvider) ? savedProvider : "openrouter")
     const savedModel = config.default_selection?.model || ""
@@ -662,6 +674,33 @@ export function useControlsState({ roomId, onStatusMessage }: UseControlsStateOp
       setTimeout(() => setExecutionSaved(false), 3000)
     } catch {
       setExecutionError("Could not update Security guardrails.")
+    } finally {
+      setSavingExecution(false)
+    }
+  }, [applyControlsConfig, notify])
+
+  const saveSecurityProfile = useCallback(async (profile: "personal" | "balanced" | "locked" | "custom") => {
+    setSavingExecution(true)
+    setExecutionError("")
+    setExecutionSaved(false)
+    try {
+      const res = await apiFetch("/api/v1/chat/models/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ security_profile: profile }),
+      })
+      const data = await res.json().catch(() => ({ detail: "Could not save Security profile." }))
+      if (!res.ok) {
+        setExecutionError(data.detail ?? "Could not save Security profile.")
+        return
+      }
+      applyControlsConfig(data)
+      setExecutionSaved(true)
+      notify(`Security profile set to ${data.security_profile?.label ?? profile}.`)
+      setTimeout(() => setExecutionSaved(false), 3000)
+    } catch {
+      setExecutionError("Could not save Security profile.")
     } finally {
       setSavingExecution(false)
     }
@@ -1276,6 +1315,7 @@ export function useControlsState({ roomId, onStatusMessage }: UseControlsStateOp
     controlsDashboard,
     // Execution gate
     savingExecution, executionSaved, executionError, toggleExecutionGate,
+    securityProfile, setSecurityProfile, saveSecurityProfile,
     customGuardrails, setCustomGuardrails, saveCustomGuardrails,
     // PIN
     savingPin, pinSaved, pinError, saveOperatorPin,

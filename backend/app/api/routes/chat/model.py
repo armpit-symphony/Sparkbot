@@ -83,6 +83,38 @@ _PROVIDER_AUTH_MODE_ENV_KEYS = {
     "openai_auth_mode": "OPENAI_AUTH_MODE",
     "anthropic_auth_mode": "ANTHROPIC_AUTH_MODE",
 }
+SECURITY_PROFILE_ENV = "SPARKBOT_SECURITY_PROFILE"
+SECURITY_PROFILE_IDS = {"personal", "balanced", "locked", "custom"}
+SECURITY_PROFILE_LABELS = {
+    "personal": "Free / Personal",
+    "balanced": "Balanced",
+    "locked": "Locked",
+    "custom": "Custom",
+}
+
+
+def _security_profile_id() -> str:
+    raw = os.getenv(SECURITY_PROFILE_ENV, "").strip().lower()
+    if raw in SECURITY_PROFILE_IDS:
+        return raw
+    return "balanced" if security_guardrails_enabled() else "personal"
+
+
+def _security_profile_payload() -> dict[str, str]:
+    profile_id = _security_profile_id()
+    return {
+        "id": profile_id,
+        "label": SECURITY_PROFILE_LABELS.get(profile_id, "Free / Personal"),
+        "status": (
+            "Custom blocker text is persisted; typed allow/confirm rules are draft."
+            if profile_id == "custom"
+            else "Persisted Security profile."
+        ),
+    }
+
+
+def _profile_enables_guardrails(profile_id: str) -> bool:
+    return profile_id in {"balanced", "locked", "custom"}
 
 
 def _provider_saved_auth_mode(provider_id: str) -> str:
@@ -464,6 +496,29 @@ async def _build_controls_config(current_user: CurrentChatUser, notices: list[st
         "global_computer_control_expires_at": global_control["expires_at"],
         "global_computer_control_ttl_remaining": global_control["ttl_remaining"],
         "security_guardrails_enabled": security_guardrails_enabled(),
+        "security_profile": _security_profile_payload(),
+        "security_profiles": [
+            {
+                "id": "personal",
+                "label": "Free / Personal",
+                "description": "Terminal and browser are available when configured; risky writes, sends, deletes, and secrets confirm.",
+            },
+            {
+                "id": "balanced",
+                "label": "Balanced",
+                "description": "More write-like actions confirm, connector sends are gated, and custom blockers apply.",
+            },
+            {
+                "id": "locked",
+                "label": "Locked",
+                "description": "High-risk actions require explicit approval or break-glass before execution.",
+            },
+            {
+                "id": "custom",
+                "label": "Custom",
+                "description": "Draft user-owned blocker rules edited in Command Center Security; typed allow/confirm rules are future work.",
+            },
+        ],
         "custom_guardrails": custom_guardrails_text(),
         "agent_overrides": get_agent_model_overrides(),
         "available_agents": [
@@ -539,6 +594,7 @@ async def build_safe_runtime_state(current_user: CurrentChatUser) -> dict[str, A
         "routing_policy": config.get("routing_policy") or {},
         "token_guardian_mode": str(config.get("token_guardian_mode") or "unknown"),
         "security_guardrails_enabled": bool(config.get("security_guardrails_enabled")),
+        "security_profile": config.get("security_profile") or {},
         "agent_overrides": config.get("agent_overrides") or {},
         "ollama_status": config.get("ollama_status") or {},
         "openrouter_configured": bool((provider_flags.get("openrouter") or {}).get("configured")),
@@ -657,6 +713,7 @@ class ControlsConfigUpdate(BaseModel):
     token_guardian_mode: str | None = Field(default=None, pattern="^(off|shadow|live)$")
     global_computer_control: bool | None = None
     security_guardrails_enabled: bool | None = None
+    security_profile: str | None = Field(default=None, pattern="^(personal|balanced|locked|custom)$")
     custom_guardrails: str | None = Field(default=None, max_length=4000)
 
 
@@ -1057,6 +1114,8 @@ async def update_models_config(
         new_state = bool(body.security_guardrails_enabled)
         prior_state = security_guardrails_enabled()
         env_updates["SPARKBOT_GUARDIAN_POLICY_ENABLED"] = "true" if new_state else "false"
+        if body.security_profile is None:
+            env_updates[SECURITY_PROFILE_ENV] = "balanced" if new_state else "personal"
         if new_state != prior_state:
             try:
                 from app.crud import create_audit_log
@@ -1075,6 +1134,14 @@ async def update_models_config(
             notices.append("Security guardrails are ON. Strict Security, PIN, allowlist, and custom block rules are enforced.")
         else:
             notices.append("Security guardrails are OFF. Routine actions run freely; writes, deletes, sends, service control, and critical changes still ask yes/no.")
+
+    if body.security_profile is not None:
+        profile_id = str(body.security_profile or "personal").strip().lower()
+        if profile_id not in SECURITY_PROFILE_IDS:
+            raise HTTPException(status_code=400, detail="Unknown Security profile.")
+        env_updates[SECURITY_PROFILE_ENV] = profile_id
+        env_updates["SPARKBOT_GUARDIAN_POLICY_ENABLED"] = "true" if _profile_enables_guardrails(profile_id) else "false"
+        notices.append(f"Security profile set to {SECURITY_PROFILE_LABELS.get(profile_id, profile_id)}.")
 
     if body.custom_guardrails is not None:
         raw_rules = str(body.custom_guardrails or "")

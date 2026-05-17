@@ -40,6 +40,7 @@ from app.crud import (
     validate_chat_invite_token,
 )
 from app.models import ChatMessage, ChatRoom, ChatRoomInvite, ChatRoomMember, ChatUser, RoomRole, UserType
+from app.services.guardian.meeting_assignments import persist_meeting_assignments
 from app.schemas.chat import (
     MeetingArtifactCreate,
     MeetingArtifactResponse,
@@ -2099,6 +2100,18 @@ async def stream_room_message(
             for event in assignment_result["events"]:
                 yield event
             turns_used += 1
+            try:
+                persist_meeting_assignments(
+                    session=session,
+                    room_id=room_id,
+                    created_by_user_id=current_user.id,
+                    chair_handle=chair_handle,
+                    participant_handles=valid_participants,
+                    assignment_text=str(assignment_result.get("content") or ""),
+                    meeting_phase="assignments",
+                )
+            except Exception:
+                log.warning("persist_meeting_assignments failed", exc_info=True)
             if assignment_result.get("halted"):
                 yield f"data: {json.dumps({'type': 'done'})}\n\n"
                 return
@@ -2181,6 +2194,18 @@ async def stream_room_message(
                 for event in continue_result["events"]:
                     yield event
                 turns_used += 1
+                try:
+                    persist_meeting_assignments(
+                        session=session,
+                        room_id=room_id,
+                        created_by_user_id=current_user.id,
+                        chair_handle=chair_handle,
+                        participant_handles=valid_participants,
+                        assignment_text=str(continue_result.get("content") or ""),
+                        meeting_phase="continue_or_operator_input",
+                    )
+                except Exception:
+                    log.warning("persist_meeting_assignments failed", exc_info=True)
                 if continue_result.get("halted"):
                     yield f"data: {json.dumps({'type': 'done'})}\n\n"
                     return

@@ -27,6 +27,7 @@ from typing import Optional
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Request, Response
+from sqlmodel import Session, select
 
 router = APIRouter(tags=["slack"])
 
@@ -37,6 +38,7 @@ _SLACK_API = "https://slack.com/api"
 # In-memory dedup cache: event_id → unix timestamp
 _seen_events: dict[str, float] = {}
 _DEDUP_TTL = 300.0  # 5 minutes
+_SLACK_MEMORY_ROOM_NAME = "Slack Bridge"
 
 
 def _verify_slack_signature(body: bytes, timestamp: str, signature: str) -> bool:
@@ -73,24 +75,105 @@ async def _slack_reply(channel: str, text: str, thread_ts: Optional[str]) -> Non
         pass  # best-effort
 
 
+def _get_or_create_slack_memory_context(session: Session) -> tuple[str, str]:
+    from app.models import ChatRoom, ChatRoomMember, ChatUser, RoomRole, UserType
+
+    owner_username = os.getenv("SPARKBOT_SLACK_OWNER_USERNAME", "sparkbot-user").strip() or "sparkbot-user"
+    owner = session.exec(select(ChatUser).where(ChatUser.username == owner_username)).scalar_one_or_none()
+    if not owner:
+        owner = ChatUser(username=owner_username, type=UserType.HUMAN, is_active=True)
+        session.add(owner)
+        session.commit()
+        session.refresh(owner)
+
+    room = session.exec(select(ChatRoom).where(ChatRoom.name == _SLACK_MEMORY_ROOM_NAME)).first()
+    if not room:
+        room = ChatRoom(
+            name=_SLACK_MEMORY_ROOM_NAME,
+            description="Public baseline Slack connector memory room.",
+            created_by=owner.id,
+        )
+        session.add(room)
+        session.commit()
+        session.refresh(room)
+
+    membership = session.exec(
+        select(ChatRoomMember).where(ChatRoomMember.room_id == room.id).where(ChatRoomMember.user_id == owner.id)
+    ).scalar_one_or_none()
+    if not membership:
+        session.add(ChatRoomMember(room_id=room.id, user_id=owner.id, role=RoomRole.OWNER))
+        session.commit()
+
+    return str(owner.id), str(room.id)
+
+
 async def _handle_slack_event(text: str, channel: str, thread_ts: Optional[str]) -> None:
     """Process a Slack message through the Sparkbot LLM and reply to Slack."""
     from app.api.routes.chat.llm import SYSTEM_PROMPT, stream_chat_with_tools
+    from app.api.deps import get_db
+    from app.services.guardian import memory as guardian_memory
+
+    db_gen = get_db()
+    db = next(db_gen)
+    user_id, room_id = _get_or_create_slack_memory_context(db)
+    try:
+        guardian_memory.remember_bridge_message(
+            user_id=user_id,
+            room_id=room_id,
+            bridge="slack",
+            role="user",
+            content=text,
+            metadata={"slack_channel": channel, "slack_thread_ts": thread_ts or ""},
+        )
+    except Exception:
+        pass
+    try:
+        memory_context = guardian_memory.build_memory_context(
+            user_id=user_id,
+            room_id=room_id,
+            query=text,
+        )
+    except Exception:
+        memory_context = ""
+    system_prompt = SYSTEM_PROMPT
+    if memory_context:
+        system_prompt += f"\n\n{memory_context}"
 
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": system_prompt},
         {"role": "user", "content": text},
     ]
     tokens: list[str] = []
     try:
-        async for event in stream_chat_with_tools(messages):
+        async for event in stream_chat_with_tools(
+            messages,
+            user_id=user_id,
+            db_session=db,
+            room_id=room_id,
+            agent_name="slack",
+            room_execution_allowed=False,
+        ):
             if event.get("type") == "token":
                 tokens.append(event["token"])
     except Exception as exc:
+        db_gen.close()
         await _slack_reply(channel, f"⚠️ Sparkbot error: {exc}", thread_ts)
         return
 
     response = "".join(tokens).strip()
+    try:
+        if response:
+            guardian_memory.remember_bridge_message(
+                user_id=user_id,
+                room_id=room_id,
+                bridge="slack",
+                role="assistant",
+                content=response,
+                metadata={"slack_channel": channel, "slack_thread_ts": thread_ts or ""},
+            )
+    except Exception:
+        pass
+    db_gen.close()
     if response:
         await _slack_reply(channel, response, thread_ts)
 

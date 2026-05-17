@@ -18,6 +18,7 @@ from app.crud import (
 )
 from app.models import ChatRoom, ChatUser, UserType
 from app.services.guardian import get_guardian_suite
+from app.services.guardian.meeting_assignments import latest_meeting_assignments, persist_meeting_assignments
 
 
 MEETING_MANIFEST_SOURCE = "meeting_manifest"
@@ -281,6 +282,16 @@ async def run_meeting_heartbeat(
         )
     except Exception:
         memory_context = ""
+    persisted_assignments = latest_meeting_assignments(session=session, room_id=room_uuid)
+    assignment_context = ""
+    if persisted_assignments:
+        assignment_lines = [
+            f"- @{item.get('handle')}: {item.get('assignment')}"
+            for item in persisted_assignments
+            if item.get("handle") and item.get("assignment")
+        ]
+        if assignment_lines:
+            assignment_context = "## Persisted Round Table Assignments\n" + "\n".join(assignment_lines)
 
     user_is_operator = guardian_suite.auth.is_operator_identity(
         username=current_user.username,
@@ -334,6 +345,8 @@ async def run_meeting_heartbeat(
             p_system = p_base
         if memory_context:
             p_system += f"\n\n{memory_context}"
+        if assignment_context:
+            p_system += f"\n\n{assignment_context}"
 
         agent_full_text = ""
         agent_routing_payload = None
@@ -456,12 +469,24 @@ async def run_meeting_heartbeat(
         phase_prompt=(
             "Current phase: manager_assessment.\n"
             "Seat 1 is the meeting manager. Pick up from the current room state, assess what changed or remains open, "
-            "and assign the next focus. Keep it concise and do not ask who should speak next."
+            "and assign the next focus to each participant by @handle. Keep it concise and do not ask who should speak next."
         ),
         chair_handle=chair_handle,
         meeting_phase="manager_assessment",
     )
     turns_used += 1
+    try:
+        persist_meeting_assignments(
+            session=session,
+            room_id=room_uuid,
+            created_by_user_id=current_user.id,
+            chair_handle=chair_handle,
+            participant_handles=participants,
+            assignment_text=str(opening_result.get("content") or ""),
+            meeting_phase="manager_assessment",
+        )
+    except Exception:
+        pass
     if opening_result.get("halted"):
         return {
             "tool": HEARTBEAT_TOOL_NAME,

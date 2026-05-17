@@ -5,6 +5,19 @@ Goal: Stabilize current Sparkbot before extracting a public shell into `Sparkbot
 
 This queue is intentionally small enough for follow-up Codex phases. Do not copy code to `Sparkbot_shell` until the P0 blockers are closed.
 
+## P0 Stabilization Status - 2026-05-17
+
+Branch `public-release-p0-memory-guardrails-roundtable` moved several prior blockers forward:
+
+- Backend-backed Round Table manifests now load into Meeting Room UI before localStorage cache.
+- Round Table heartbeat scheduling is best-effort and no longer blocks launch.
+- Frontend model provider allowlists include `openai_codex` and `claude_sub`.
+- Seat 1 Round Table assignments persist as structured `meeting_assignments` artifacts.
+- Slack is wired as the public baseline connector pattern for shared memory/context.
+- Command Center Security profiles persist as Personal/Balanced/Locked/Custom.
+- Hidden DM auto-breakglass was removed.
+- Robo defaults to teaser-only backend/tool behavior, blocking live robotics control while allowing dry-run/demo contracts.
+
 ## 1. P0 Blockers Before Extraction
 
 1. Unify public chat route.
@@ -16,15 +29,18 @@ This queue is intentionally small enough for follow-up Codex phases. Do not copy
    - Store seats, handles, models, route, chair, and protocol in backend meeting artifact metadata or a first-class table.
    - Load meeting metadata from backend before localStorage.
    - Keep localStorage only as a draft/cache.
+   - Status: `PARTIAL_DONE` - backend manifest artifacts already existed and Meeting Room now loads them first; first-class table and UI assignment display remain.
    - Evidence: `frontend/src/lib/workstationMeeting.ts:22`, `frontend/src/lib/workstationMeeting.ts:344`, `frontend/src/pages/MeetingRoomPage.tsx:123`.
 
 3. Make Round Table heartbeat non-blocking.
    - If Task Guardian heartbeat scheduling fails, launch the meeting anyway and show a warning.
+   - Status: `DONE` - heartbeat task creation is now best-effort during launch.
    - Evidence: `frontend/src/lib/workstationMeeting.ts:187`, `frontend/src/lib/workstationMeeting.ts:199`.
 
 4. Fix model provider allowlist mismatch.
    - Add `openai_codex` and `claude_sub` to the initial frontend `validProviders` set.
    - Add regression coverage for loading saved Codex/Claude subscription defaults.
+   - Status: `DONE` for runtime allowlist; add focused frontend persistence test later if the project adds frontend test harness coverage.
    - Evidence: `frontend/src/hooks/useControlsState.ts:445`, `frontend/src/hooks/useControlsState.ts:786`.
 
 5. Move Invite Wing credentials out of browser storage.
@@ -47,6 +63,7 @@ This queue is intentionally small enough for follow-up Codex phases. Do not copy
    - Remove or hard-disable `lima_robot_command` from public tool catalog.
    - Hide robotics endpoints behind a private build flag or remove from public route registration.
    - Replace top-tab Robo action with a static teaser card.
+   - Status: `PARTIAL_DONE` - public default `SPARKBOT_ROBO_TEASER_ONLY=true` hides the chat robot tool, returns no live tool list, blocks non-dry-run robotics commands, and blocks emergency stop. UI teaser copy still needs public pass.
    - Evidence: `frontend/src/components/Common/SparkbotSurfaceTabs.tsx:42`, `backend/app/api/routes/chat/robotics.py:22`, `backend/app/api/routes/chat/tools.py:2014`.
 
 9. Clean public source-bundle exclusions and private path references.
@@ -92,6 +109,7 @@ This queue is intentionally small enough for follow-up Codex phases. Do not copy
 8. Improve Guardian confirmation UI.
    - Replace automatic hidden `/breakglass` flow with explicit PIN/approval modal.
    - Show action summary, TTL, and cancel path.
+   - Status: `PARTIAL_DONE` - hidden `/breakglass` auto-send removed; full modal still needed.
 
 9. Rename template residue.
    - `package.json` name from `fastapi-full-stack-template` to `sparkbot`.

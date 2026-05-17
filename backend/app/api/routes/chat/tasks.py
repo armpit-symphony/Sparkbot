@@ -124,6 +124,18 @@ def create_room_task(
         task_master_spine.register_created_task(task=task, session=session, actor_id=str(current_user.id))
     except Exception:
         pass
+    try:
+        from app.services.guardian import memory as guardian_memory
+        guardian_memory.remember_bridge_message(
+            user_id=str(current_user.id),
+            room_id=str(room_id),
+            bridge="task",
+            role="system",
+            content=f"Task created: {task.title}. {task.description or ''}".strip(),
+            metadata={"source": "task.created", "task_id": str(task.id), "status": "open"},
+        )
+    except Exception:
+        pass
     return _fmt(task)
 
 
@@ -168,6 +180,25 @@ def update_room_task(
             assigned_to=new_assignee,
             actor_id=str(current_user.id),
         )
+
+    try:
+        from app.services.guardian import memory as guardian_memory
+        if task_in.status or "assigned_to" in task_in.model_fields_set:
+            memory_bits = [f"Task updated: {task.title}."]
+            if task_in.status:
+                memory_bits.append(f"Status: {task.status.value if hasattr(task.status, 'value') else task.status}.")
+            if "assigned_to" in task_in.model_fields_set:
+                memory_bits.append(f"Assigned to: {task.assigned_to or 'unassigned'}.")
+            guardian_memory.remember_bridge_message(
+                user_id=str(current_user.id),
+                room_id=str(room_id),
+                bridge="task",
+                role="system",
+                content=" ".join(memory_bits),
+                metadata={"source": "task.updated", "task_id": str(task.id)},
+            )
+    except Exception:
+        pass
 
     return _fmt(task)
 

@@ -35,6 +35,21 @@ _SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN", "").strip()
 _SLACK_DEFAULT_CHANNEL = os.getenv("SLACK_DEFAULT_CHANNEL", "").strip()
 _SLACK_API = "https://slack.com/api"
 
+
+def _robo_teaser_only_enabled() -> bool:
+    return os.getenv("SPARKBOT_ROBO_TEASER_ONLY", "true").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
+
+
+_ROBO_TEASER_TOOL_MESSAGE = (
+    "Robo is teaser/demo-only in the public core. Dry-run command contracts are allowed, "
+    "but live robotics control is disabled."
+)
+
 # ─── Notion config ────────────────────────────────────────────────────────────
 
 _NOTION_TOKEN = os.getenv("NOTION_TOKEN", "").strip()
@@ -2069,7 +2084,7 @@ def _dedupe_tool_definitions(*sources: list[dict]) -> list[dict]:
 
 TOOL_DEFINITIONS = _dedupe_tool_definitions(
     list(TOOL_DEFINITIONS),
-    _ROBOTICS_TOOL_DEFINITIONS,
+    [] if _robo_teaser_only_enabled() else _ROBOTICS_TOOL_DEFINITIONS,
     _VAULT_TOOL_DEFINITIONS,
     _skill_registry.definitions,
 )
@@ -5380,6 +5395,8 @@ async def _lima_robot_command(
     from app.services.lima_robotics_bridge import LimaBridgeError, execute_robot_command
 
     env = environment if environment in {"replay", "simulation", "real_hardware"} else "simulation"
+    if _robo_teaser_only_enabled() and (env == "real_hardware" or not dry_run):
+        return _ROBO_TEASER_TOOL_MESSAGE
     try:
         payload = await execute_robot_command(
             source_user=user_id or "chat",

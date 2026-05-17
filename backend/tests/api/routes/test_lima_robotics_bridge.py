@@ -54,6 +54,7 @@ def test_robotics_status_reports_unconfigured_bridge(client: TestClient, monkeyp
     payload = response.json()
     assert payload["configured"] is False
     assert payload["mcpUrlConfigured"] is False
+    assert payload["teaser_only"] is True
 
 
 def test_robotics_command_dry_run_does_not_need_bridge(client: TestClient, monkeypatch) -> None:
@@ -72,3 +73,19 @@ def test_robotics_command_dry_run_does_not_need_bridge(client: TestClient, monke
     assert payload["executed"] is False
     assert payload["contract"]["mcp_tool_name"] == "relative_move"
     assert payload["contract"]["risk_level"] == "low"
+
+
+def test_public_robo_teaser_blocks_live_command_paths(client: TestClient, monkeypatch) -> None:
+    monkeypatch.delenv("SPARKBOT_ROBO_TEASER_ONLY", raising=False)
+    response = client.post(
+        f"{settings.API_V1_STR}/chat/robotics/command",
+        headers=_chat_headers(),
+        json={
+            "requested_action": "move forward 0.5 meters",
+            "environment": "simulation",
+            "dry_run": False,
+        },
+    )
+
+    assert response.status_code == 403
+    assert "teaser/demo-only" in response.json()["detail"]

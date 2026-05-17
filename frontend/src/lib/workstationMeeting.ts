@@ -51,6 +51,11 @@ export interface WorkstationMeetingRoomMeta {
   seats: WorkstationMeetingSeatMeta[]
 }
 
+interface MeetingManifestArtifact {
+  created_at?: string
+  meta_json?: Record<string, unknown> | null
+}
+
 export interface LaunchMeetingRoomOptions {
   roomName?: string
   seats: WorkstationMeetingSeatMeta[]
@@ -360,6 +365,58 @@ export function loadMeetingRoomMeta(roomId: string): WorkstationMeetingRoomMeta 
   }
 }
 
+function metaFromMeetingManifest(roomId: string, artifact: MeetingManifestArtifact): WorkstationMeetingRoomMeta | null {
+  const meta = artifact.meta_json
+  if (!meta || meta.source !== "meeting_manifest") return null
+  const rawParticipants = Array.isArray(meta.participants) ? meta.participants : []
+  const seats = rawParticipants
+    .map((item, index): WorkstationMeetingSeatMeta | null => {
+      if (!item || typeof item !== "object") return null
+      const participant = item as Record<string, unknown>
+      const handle = String(participant.handle || participant.agentHandle || participant.label || `seat_${index + 1}`)
+      const label = String(participant.label || handle.replace(/_/g, " "))
+      return {
+        seatIndex: Number(participant.seatIndex ?? participant.seat_index ?? index),
+        stationId: String(participant.stationId || participant.station_id || handle),
+        label,
+        accentHex: String(participant.accentHex || participant.accent_hex || "#60a5fa"),
+        agentHandle: slugifyMeetingHandle(handle, `seat_${index + 1}`),
+        agentProvisioning: "builtin" as const,
+        modelId: typeof participant.modelId === "string" ? participant.modelId : undefined,
+        route: typeof participant.route === "string" ? participant.route : undefined,
+      }
+    })
+    .filter((seat): seat is WorkstationMeetingSeatMeta => seat !== null)
+  if (seats.length === 0) return null
+  return {
+    roomId,
+    roomName: String(meta.room_name || meta.roomName || "Roundtable"),
+    launchedAt: artifact.created_at || new Date().toISOString(),
+    protocolLabel: String(meta.protocol_label || meta.protocolLabel || "Autonomous meeting"),
+    seats,
+  }
+}
+
+export async function loadMeetingRoomMetaFromBackend(roomId: string): Promise<WorkstationMeetingRoomMeta | null> {
+  try {
+    const response = await apiFetch(`/api/v1/chat/rooms/${roomId}/artifacts?type=agenda&limit=20`, {
+      credentials: "include",
+    })
+    if (!response.ok) return null
+    const artifacts = (await response.json()) as MeetingManifestArtifact[]
+    for (const artifact of artifacts) {
+      const meta = metaFromMeetingManifest(roomId, artifact)
+      if (meta) {
+        saveMeetingRoomMeta(meta)
+        return meta
+      }
+    }
+  } catch {
+    return null
+  }
+  return null
+}
+
 export function listMeetingRoomMetas(): WorkstationMeetingRoomMeta[] {
   if (typeof window === "undefined") return []
   const metas: WorkstationMeetingRoomMeta[] = []
@@ -472,7 +529,7 @@ export async function launchMeetingRoom({
   }).catch(() => {})
 
   await persistMeetingManifest(roomId, roomName, protocolLabel, preparedSeats)
-  await ensureMeetingHeartbeatTask(roomId, roomName)
+  await ensureMeetingHeartbeatTask(roomId, roomName).catch(() => {})
 
   const meetingMeta: WorkstationMeetingRoomMeta = {
     roomId,
@@ -609,7 +666,7 @@ export async function launchTaskMeeting({
   }).catch(() => {})
 
   await persistMeetingManifest(roomId, roomName, protocolLabel, preparedSeats)
-  await ensureMeetingHeartbeatTask(roomId, roomName)
+  await ensureMeetingHeartbeatTask(roomId, roomName).catch(() => {})
 
   const meetingMeta: WorkstationMeetingRoomMeta = {
     roomId,

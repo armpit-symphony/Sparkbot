@@ -31,6 +31,16 @@ export interface SparkbotControlsConfig {
   global_computer_control_expires_at?: number | null
   global_computer_control_ttl_remaining?: number | null
   security_guardrails_enabled?: boolean
+  security_profile?: {
+    id: "personal" | "balanced" | "locked" | "custom"
+    label: string
+    status?: string
+  }
+  security_profiles?: Array<{
+    id: "personal" | "balanced" | "locked" | "custom"
+    label: string
+    description: string
+  }>
   custom_guardrails?: string
   agent_overrides: Record<
     string,

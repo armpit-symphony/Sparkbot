@@ -70,10 +70,10 @@ Evidence after patch:
 
 | Gap | Impact | Priority | Recommended fix |
 |---|---|---|---|
-| Assignments are not structured/persisted. | Participants follow prompt context, but UI cannot show durable assignment cards. | `P1` | Parse/store Seat 1 assignments as meeting artifact metadata or room tasks. |
+| Assignments are structured/persisted but not displayed. | Backend can store parsed assignment objects, but UI cannot show durable assignment cards yet. | `P1` | Render latest `meeting_assignments` artifact metadata in Meeting Room. |
 | Meeting UI does not show phase strongly enough. | Users cannot see why agents are speaking in sequence. | `P1` | Surface current phase, manager, queue, and status in Meeting Room. |
-| Meeting Room UI still loads seat metadata from localStorage. | Reopened/shared meetings can lose seat display state. | `P0` | Load `meeting_manifest` artifact from backend before localStorage. |
-| Heartbeat launch can block meeting launch. | Task Guardian issue can block core public hook. | `P0` | Make heartbeat scheduling best-effort in Workstation launch. |
+| Meeting Room UI backend manifest load is partial. | It loads persisted manifest first, but still has no explicit error/status when backend manifest is absent. | `P1` | Keep backend manifest primary and show cache/fallback state. |
+| Heartbeat launch previously blocked meeting launch. | Task Guardian issue no longer blocks core public hook. | `DONE_THIS_PHASE` | Add optional warning toast when heartbeat scheduling fails. |
 | Manager final notes are saved as `notes`, same as manual notes. | Artifact list can mix launch/checkpoint/manual outputs. | `P1` | Add artifact meta `source=manager_wrapup` and UI label "Manager wrap-up". |
 | The launch placeholder artifact can look like notes. | Users may think notes were generated before discussion. | `DONE_THIS_PHASE` | Launch scaffold now saves as draft `agenda` with memory rollup disabled. |
 | Approval execution paths can run `privileged` decisions. | Meeting participants/tool approvals can bypass intended PIN path. | `DONE_THIS_PHASE` | Approval executors now execute only `allow`/`confirm` decisions. |
@@ -108,3 +108,36 @@ Round Table is public-ready when:
 - No generated notes happen outside manager wrap-up/checkpoint/manual user action.
 - Final manager summary becomes shared memory without duplicate spam.
 - Tool calls inside meetings use the same permission model as chat.
+
+## P0 Stabilization Update - 2026-05-17
+
+Branch: `public-release-p0-memory-guardrails-roundtable`
+
+Implemented:
+
+- Added `backend/app/services/guardian/meeting_assignments.py`.
+- Seat 1 assignment turns now parse structured assignment lines by participant handle and persist them as `action_items` meeting artifacts with `meta_json.source=meeting_assignments`.
+- Assignment artifacts carry `assigned_by`, `meeting_phase`, `assignments`, `assignment_count`, and `memory_rollup=false`.
+- Meeting heartbeat now loads the latest persisted assignments and injects them into follow-up participant prompts.
+- Workstation Round Table launch now treats heartbeat task creation as best-effort, so a Task Guardian scheduling issue does not block the meeting.
+- Meeting Room UI now attempts backend `meeting_manifest` artifact load before using localStorage cache.
+- Per-turn generated notes remain disabled except manager wrap-up/checkpoint/manual notes generation.
+
+Current assignment persistence status:
+
+| Behavior | Status |
+|---|---|
+| Seat 1 manager explicit | Implemented as first valid participant/chair. |
+| First pass all participants give ideas | Already implemented. |
+| Manager assesses | Already implemented. |
+| Manager assigns jobs | Implemented in prompt and now persisted when parseable. |
+| Second pass uses assignments | Uses discussion history immediately; heartbeat also receives persisted assignment context. |
+| Assignments survive refresh/reopen | Backend artifacts persist; UI display cards are not built yet. |
+| Manager wrap-up saves notes | Implemented through notes artifact rollup. |
+| Normal participant turns generate notes | Disabled. |
+
+Remaining before public beta:
+
+- Show persisted assignments in the Meeting Room UI as cards or a compact table.
+- Add phase/status display so users can see first pass, manager assessment, assignments, second pass, and wrap-up.
+- Consider storing assignments as first-class room tasks only after the artifact metadata path proves stable.

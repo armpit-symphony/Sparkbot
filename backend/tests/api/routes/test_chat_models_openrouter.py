@@ -170,6 +170,52 @@ def test_models_config_supports_openrouter_default_with_local_override(
     }
 
 
+def test_models_config_persists_security_profile(client: TestClient, monkeypatch) -> None:
+    operator_id = _ensure_chat_user("sparkbot-user")
+    headers = _chat_headers_for_user(operator_id)
+    saved_updates: dict[str, str] = {}
+
+    monkeypatch.setattr(model_route, "_write_env_updates", lambda updates: saved_updates.update(updates))
+    monkeypatch.delenv("SPARKBOT_SECURITY_PROFILE", raising=False)
+    monkeypatch.delenv("SPARKBOT_GUARDIAN_POLICY_ENABLED", raising=False)
+
+    response = client.post(
+        f"{settings.API_V1_STR}/chat/models/config",
+        headers=headers,
+        json={"security_profile": "locked"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["security_profile"]["id"] == "locked"
+    assert payload["security_guardrails_enabled"] is True
+    assert saved_updates["SPARKBOT_SECURITY_PROFILE"] == "locked"
+    assert saved_updates["SPARKBOT_GUARDIAN_POLICY_ENABLED"] == "true"
+
+
+def test_models_config_personal_profile_keeps_capable_default(client: TestClient, monkeypatch) -> None:
+    operator_id = _ensure_chat_user("sparkbot-user")
+    headers = _chat_headers_for_user(operator_id)
+    saved_updates: dict[str, str] = {}
+
+    monkeypatch.setattr(model_route, "_write_env_updates", lambda updates: saved_updates.update(updates))
+    monkeypatch.setenv("SPARKBOT_SECURITY_PROFILE", "balanced")
+    monkeypatch.setenv("SPARKBOT_GUARDIAN_POLICY_ENABLED", "true")
+
+    response = client.post(
+        f"{settings.API_V1_STR}/chat/models/config",
+        headers=headers,
+        json={"security_profile": "personal"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["security_profile"]["id"] == "personal"
+    assert payload["security_guardrails_enabled"] is False
+    assert saved_updates["SPARKBOT_SECURITY_PROFILE"] == "personal"
+    assert saved_updates["SPARKBOT_GUARDIAN_POLICY_ENABLED"] == "false"
+
+
 def test_chat_model_selector_persists_primary_route(client: TestClient, monkeypatch) -> None:
     operator_id = _ensure_chat_user("sparkbot-user")
     headers = _chat_headers_for_user(operator_id)

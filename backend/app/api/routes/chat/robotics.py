@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException
@@ -17,6 +18,21 @@ from app.services.lima_robotics_bridge import (
 )
 
 router = APIRouter(prefix="/robotics", tags=["chat-robotics"])
+
+
+def robo_teaser_only_enabled() -> bool:
+    return os.getenv("SPARKBOT_ROBO_TEASER_ONLY", "true").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
+
+
+_ROBO_TEASER_DETAIL = (
+    "Robo is teaser/demo-only in the public core. Dry-run command contracts are allowed, "
+    "but live robotics control is disabled."
+)
 
 
 class RobotCommandRequest(BaseModel):
@@ -74,13 +90,25 @@ def _audit_robotics(
 def robotics_status(current_user: CurrentChatUser) -> dict[str, Any]:
     if not current_user:
         raise HTTPException(status_code=401, detail="Authentication required")
-    return bridge_status()
+    status = bridge_status()
+    status["teaser_only"] = robo_teaser_only_enabled()
+    if status["teaser_only"]:
+        status["public_note"] = _ROBO_TEASER_DETAIL
+    return status
 
 
 @router.get("/tools")
 async def robotics_tools(current_user: CurrentChatUser) -> dict[str, Any]:
     if not current_user:
         raise HTTPException(status_code=401, detail="Authentication required")
+    if robo_teaser_only_enabled():
+        return {
+            "tools": [],
+            "count": 0,
+            "bridge": robotics_status(current_user),
+            "teaser_only": True,
+            "detail": _ROBO_TEASER_DETAIL,
+        }
     try:
         tools = await list_lima_tools()
     except LimaBridgeError as exc:
@@ -94,6 +122,8 @@ async def robotics_command(
     current_user: CurrentChatUser,
     session: SessionDep,
 ) -> dict[str, Any]:
+    if robo_teaser_only_enabled() and (body.environment == "real_hardware" or not body.dry_run):
+        raise HTTPException(status_code=403, detail=_ROBO_TEASER_DETAIL)
     try:
         result = await execute_robot_command(
             source_user=current_user.username or str(current_user.id),
@@ -116,6 +146,8 @@ async def robotics_emergency_stop(
     current_user: CurrentChatUser,
     session: SessionDep,
 ) -> dict[str, Any]:
+    if robo_teaser_only_enabled():
+        raise HTTPException(status_code=403, detail=_ROBO_TEASER_DETAIL)
     try:
         result = await emergency_stop(
             source_user=current_user.username or str(current_user.id),

@@ -903,6 +903,87 @@ def remember_chat_message(*, user_id: str, room_id: str, role: str, content: str
     return stored
 
 
+def remember_bridge_message(
+    *,
+    user_id: str,
+    room_id: str,
+    bridge: str,
+    role: str,
+    content: str,
+    metadata: dict[str, Any] | None = None,
+) -> bool:
+    """Store a connector message through the same room/shared memory substrate as chat."""
+    bridge_name = re.sub(r"[^a-z0-9_.-]+", "_", (bridge or "bridge").strip().lower()).strip("_") or "bridge"
+    role_label = str(role or "").strip().lower() or "system"
+    if role_label == "system":
+        text = _safe_text(content, limit=4000)
+        should_store = len(text) >= _chat_memory_min_chars() and not _CHAT_NOISE_RE.match(text)
+    else:
+        should_store, _reason = _should_store_chat_message(role=role_label, content=content)
+    if not should_store:
+        return False
+    event_meta = {
+        "user_id": user_id,
+        "room_id": room_id,
+        "surface": bridge_name,
+        "bridge": bridge_name,
+        **_sanitize_metadata(metadata or {}),
+    }
+    stored = _append_event(
+        event_type=EventType.MESSAGE,
+        role=role_label,
+        content=content,
+        session_id=_room_session(user_id, room_id),
+        metadata=event_meta,
+        source=f"{bridge_name}.{role_label}",
+        confidence=0.88 if role_label == "user" else 0.68,
+    )
+    if stored:
+        try:
+            last_event = _guardian().ledger.get_recent(n=1, session_id=_room_session(user_id, room_id))[0]
+            _remember_snapshot_candidate(
+                user_id=user_id,
+                room_id=room_id,
+                indexed=bool(last_event.metadata.get("candidate_indexed")),
+            )
+            _maybe_persist_profile_snapshot(user_id=user_id, room_id=room_id)
+        except Exception:
+            pass
+    if stored and unified_chat_memory_enabled():
+        try:
+            shared_content = _safe_text(content, limit=1200)
+            if shared_content:
+                fingerprint = hashlib.sha256(
+                    "\n".join([bridge_name, user_id, room_id, role_label, shared_content]).encode("utf-8")
+                ).hexdigest()
+                duplicate = False
+                for event in _guardian().ledger.iter_events(session_id=_shared_work_session(user_id)):
+                    meta = dict(event.metadata or {})
+                    if meta.get("bridge_fingerprint") == fingerprint and _is_event_active_for_prompt(event):
+                        duplicate = True
+                        break
+                if not duplicate:
+                    _append_event(
+                        event_type=EventType.MESSAGE,
+                        role=role_label,
+                        content=f"{bridge_name.title()} from {room_id} ({role_label}): {shared_content}",
+                        session_id=_shared_work_session(user_id),
+                        metadata={
+                            "user_id": user_id,
+                            "room_id": room_id,
+                            "scope_type": "shared_bridge",
+                            "surface": bridge_name,
+                            "bridge": bridge_name,
+                            "bridge_fingerprint": fingerprint,
+                        },
+                        source=f"{bridge_name}.{role_label}.shared",
+                        confidence=0.8 if role_label == "user" else 0.66,
+                    )
+        except Exception:
+            pass
+    return stored
+
+
 def remember_tool_event(
     *,
     user_id: str,

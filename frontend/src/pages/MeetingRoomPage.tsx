@@ -12,6 +12,7 @@ import {
   launchMeetingRoom,
   listMeetingRoomMetas,
   loadMeetingRoomMeta,
+  loadMeetingRoomMetaFromBackend,
   prepareMeetingSeats,
   saveMeetingRoomMeta,
   type WorkstationMeetingRoomMeta,
@@ -120,7 +121,17 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
   }, [])
 
   useEffect(() => {
-    setMeetingMeta(loadMeetingRoomMeta(roomId))
+    let cancelled = false
+    const cached = loadMeetingRoomMeta(roomId)
+    setMeetingMeta(cached)
+    loadMeetingRoomMetaFromBackend(roomId)
+      .then((meta) => {
+        if (!cancelled && meta) setMeetingMeta(meta)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
   }, [roomId])
 
   useEffect(() => {
@@ -234,17 +245,18 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
     if (!res.ok) return
     const rooms = await res.json()
     const metaIndex = new Map(listMeetingRoomMetas().map((meta) => [meta.roomId, meta]))
-    const nextRooms = (Array.isArray(rooms) ? rooms : [])
+    const meetingCandidates = (Array.isArray(rooms) ? rooms : [])
       .filter((candidate) => candidate.meeting_mode_enabled)
-      .map((candidate) => ({
+    const nextRooms = await Promise.all(meetingCandidates.map(async (candidate) => ({
         id: candidate.id,
         name: candidate.name,
         description: candidate.description,
         created_at: candidate.created_at,
         updated_at: candidate.updated_at,
         meeting_mode_enabled: candidate.meeting_mode_enabled,
-        meta: metaIndex.get(candidate.id) ?? null,
-      }))
+        meta: await loadMeetingRoomMetaFromBackend(candidate.id).catch(() => null) ?? metaIndex.get(candidate.id) ?? null,
+      })))
+    nextRooms
       .sort(
         (left, right) =>
           Date.parse(right.updated_at || right.created_at || "") -

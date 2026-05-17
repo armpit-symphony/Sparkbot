@@ -126,3 +126,23 @@ P0 principle: every `deny` or `privileged` outcome must give the user an underst
 Confirmed approval executors now refuse to run re-decided `privileged` or `privileged_reveal` outcomes. This preserves the "risky actions require the right permission" rule while keeping normal `confirm` approvals capable.
 
 Remaining profile work is product-facing: turn the current binary Security toggle into named Personal/Balanced/Locked/Custom profiles with clear explanations.
+
+## P0 Stabilization Update - 2026-05-17
+
+Branch: `public-release-p0-memory-guardrails-roundtable`
+
+Implemented:
+
+- Command Center model config now has persisted `security_profile` and `security_profiles` fields.
+- Free / Personal is the capable-by-default public profile. It leaves terminal/browser capability available when configured and relies on existing confirmation gates for risky actions.
+- Balanced, Locked, and Custom are now named/persisted profiles instead of only conceptual docs.
+- Custom guardrails remain user-owned blocker text in Command Center Security. The UI marks typed custom allow/confirm rules as draft rather than claiming full enforcement.
+- DM privileged/elevated flow no longer starts breakglass silently.
+- Slack is documented and partially wired as the public baseline connector pattern: shared memory, same LLM route, and same permission context concepts.
+- Robo remains visible but public default backend/tool behavior is teaser-only: dry-run contracts can exist, but live robotics control is blocked unless a private env flag disables teaser mode.
+
+Still true:
+
+- This phase does not wire LIMA AI OS, Arc Bot, LIMA Office, LIMA IT, or real robotics/IoT.
+- The profile contract is reusable design learning for Arc Bot/custom bots/LIMA runtime policy later, not runtime coupling now.
+- `Sparkbot_shell` remains untouched.

@@ -317,6 +317,28 @@ export function CommandCenterOperations({ refreshNonce, onRefresh }: CommandCent
     await reloadWithStatus(next ? "Security guardrails enabled." : "Security guardrails disabled.")
   }
 
+  async function saveSecurityProfile(profile: string) {
+    setMessage("")
+    setError("")
+    const response = await apiFetch("/api/v1/chat/models/config", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ security_profile: profile }),
+    })
+    if (!response.ok) {
+      const data = await response.json().catch(() => null)
+      setError(data?.detail ?? "Security profile could not be updated.")
+      return
+    }
+    const data = await response.json().catch(() => null)
+    if (data) {
+      setConfig(data as SparkbotControlsConfig)
+      setCustomGuardrailsDraft((data as SparkbotControlsConfig).custom_guardrails ?? customGuardrailsDraft)
+    }
+    await reloadWithStatus(`Security profile set to ${(data as SparkbotControlsConfig | null)?.security_profile?.label ?? profile}.`)
+  }
+
   async function saveCustomGuardrails() {
     setMessage("")
     setError("")
@@ -519,11 +541,14 @@ export function CommandCenterOperations({ refreshNonce, onRefresh }: CommandCent
         <SecurityCard
           active={securityGuardrailsActive}
           customGuardrails={customGuardrailsDraft}
+          securityProfile={config?.security_profile}
+          securityProfiles={config?.security_profiles}
           securityStatus={securityStatus}
           onCustomGuardrailsChange={setCustomGuardrailsDraft}
           onSaveCustomGuardrails={saveCustomGuardrails}
           room={room}
           guardianStatus={guardianStatus}
+          onSaveSecurityProfile={saveSecurityProfile}
           onToggle={toggleSecurityGuardrails}
           onSetPin={setPin}
           onRotatePassphrase={rotatePassphrase}
@@ -725,11 +750,14 @@ function Metric({ label, value }: { label: string; value: string }) {
 function SecurityCard({
   active,
   customGuardrails,
+  securityProfile,
+  securityProfiles,
   securityStatus,
   onCustomGuardrailsChange,
   onSaveCustomGuardrails,
   room,
   guardianStatus,
+  onSaveSecurityProfile,
   onToggle,
   onSetPin,
   onRotatePassphrase,
@@ -738,11 +766,14 @@ function SecurityCard({
 }: {
   active: boolean
   customGuardrails: string
+  securityProfile?: SparkbotControlsConfig["security_profile"]
+  securityProfiles?: SparkbotControlsConfig["security_profiles"]
   securityStatus: SecurityStatus | null
   onCustomGuardrailsChange: (value: string) => void
   onSaveCustomGuardrails: () => void
   room: RoomInfo | null
   guardianStatus: GuardianStatus | null
+  onSaveSecurityProfile: (profile: string) => void
   onToggle: () => void
   onSetPin: (currentPin: string, pin: string, pinConfirm: string) => void
   onRotatePassphrase: (passphrase: string) => Promise<boolean>
@@ -760,6 +791,14 @@ function SecurityCard({
   const insecureEnvFiles = securityStatus?.env_files.filter((file) => file.exists && file.secure === false) ?? []
   const enabledRiskyFeatures = Object.entries(securityStatus?.features ?? {}).filter(([, feature]) => feature.enabled)
   const providerEnvKeys = securityStatus?.provider_secrets.filter((secret) => secret.configured_in_env) ?? []
+  const profileOptions = securityProfiles?.length ? securityProfiles : [
+    { id: "personal" as const, label: "Free / Personal", description: "Capable by default; risky actions confirm." },
+    { id: "balanced" as const, label: "Balanced", description: "More write-like actions confirm; custom blockers apply." },
+    { id: "locked" as const, label: "Locked", description: "High-risk actions require explicit approval or break-glass." },
+    { id: "custom" as const, label: "Custom", description: "Draft owner-defined blockers; typed rules are future work." },
+  ]
+  const profileId = securityProfile?.id ?? (active ? "balanced" : "personal")
+  const currentProfile = profileOptions.find((profile) => profile.id === profileId) ?? profileOptions[0]
 
   useEffect(() => {
     if (securityStatus) {
@@ -820,6 +859,29 @@ function SecurityCard({
             good={insecureEnvFiles.length === 0}
           />
         </div>
+        <div className="rounded-lg border bg-muted/20 px-3 py-3">
+          <label className="text-xs font-medium text-muted-foreground" htmlFor="command-center-security-profile">
+            Security profile
+          </label>
+          <select
+            id="command-center-security-profile"
+            value={profileId}
+            onChange={(event) => onSaveSecurityProfile(event.target.value)}
+            className="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+          >
+            {profileOptions.map((profile) => (
+              <option key={profile.id} value={profile.id}>{profile.label}</option>
+            ))}
+          </select>
+          <div className="mt-2 text-xs text-muted-foreground">
+            {currentProfile?.description}
+          </div>
+          {profileId === "custom" ? (
+            <div className="mt-2 rounded-md border border-dashed px-2 py-1.5 text-xs text-muted-foreground">
+              Custom mode currently enforces owner blocker text. Typed allow/confirm rules are planned, not fully wired yet.
+            </div>
+          ) : null}
+        </div>
         <div className={`rounded-lg border px-3 py-3 ${active ? "border-blue-500/30 bg-blue-500/10" : "bg-muted/20"}`}>
           <div className="flex items-center justify-between gap-3">
             <label className="flex min-w-0 items-start gap-3">
@@ -830,16 +892,16 @@ function SecurityCard({
                 className="mt-0.5 h-4 w-4"
               />
               <div>
-              <div className="text-sm font-semibold">Security {active ? "on" : "off"}</div>
+              <div className="text-sm font-semibold">Compatibility guardrails {active ? "on" : "off"}</div>
               <div className="mt-1 text-xs text-muted-foreground">
                 {active
-                  ? "Strict Security guardrails, PIN prompts, service allowlists, and custom blockers are active."
-                  : "Default owner mode: routine actions run; writes, deletes, sends, and service changes still ask yes/no."}
+                  ? "The current profile maps to strict policy enforcement, PIN prompts, allowlists, and custom blockers."
+                  : "Free / Personal mode is active: routine work runs; risky writes, deletes, sends, and service changes still confirm."}
               </div>
               </div>
             </label>
             <Button size="sm" variant={active ? "outline" : "default"} onClick={onToggle}>
-              {active ? "Turn off" : "Turn on"}
+              {active ? "Use Personal" : "Use Balanced"}
             </Button>
           </div>
         </div>
@@ -1014,7 +1076,7 @@ function SecurityCard({
           </div>
         </div>
         <div className="rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground">
-          Rules apply when Security is on. Vault, destructive edits, deletes, and external sends still use the existing approval and break-glass protections.
+          Custom blocker text applies in Balanced, Locked, and Custom profiles. Vault, destructive edits, deletes, and external sends still use the existing approval and break-glass protections.
         </div>
       </CardContent>
     </Card>

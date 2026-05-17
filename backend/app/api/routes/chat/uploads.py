@@ -149,6 +149,24 @@ async def upload_file(
     )
     human_msg_id = str(human_msg.id)
     human_msg_uuid = human_msg.id
+    try:
+        from app.services.guardian import memory as guardian_memory
+        guardian_memory.remember_bridge_message(
+            user_id=str(current_user.id),
+            room_id=str(room_id),
+            bridge="file_upload",
+            role="user",
+            content=f"Uploaded {'image' if is_image else 'file'} {filename_safe}. {caption.strip()}".strip(),
+            metadata={
+                "source": "file.uploaded",
+                "file_id": file_id,
+                "filename": filename_safe,
+                "content_type": content_type,
+                "is_image": is_image,
+            },
+        )
+    except Exception:
+        pass
 
     # Build conversation history for context
     history_msgs, _, _ = get_chat_messages(session=session, room_id=room_id, limit=10)
@@ -229,6 +247,18 @@ async def upload_file(
                     reply_to_id=human_msg_uuid,
                 )
                 bot_reply_id = str(bot_reply.id)
+                try:
+                    from app.services.guardian import memory as guardian_memory
+                    guardian_memory.remember_bridge_message(
+                        user_id=str(current_user.id),
+                        room_id=str(room_id),
+                        bridge="file_upload",
+                        role="assistant",
+                        content=full_text,
+                        metadata={"source": "file.analysis", "file_id": file_id, "filename": filename_safe},
+                    )
+                except Exception:
+                    pass
             finally:
                 db_gen.close()
             yield f"data: {json.dumps({'type': 'done', 'message_id': bot_reply_id, 'file_url': file_url})}\n\n"

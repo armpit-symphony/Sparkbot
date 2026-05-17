@@ -3089,7 +3089,7 @@ function SparkbotDmPage({ controlsSurface = false }: SparkbotDmPageProps = {}) {
     setModelsConfig(config)
     setTokenGuardianMode(config.token_guardian_mode || "shadow")
     setModelStack(prev => config.stack ?? prev)
-    const _validProviders = new Set(["openrouter", "ollama", "openai", "anthropic", "google", "groq", "minimax", "xai"])
+    const _validProviders = new Set(["openrouter", "ollama", "openai", "openai_codex", "claude_sub", "anthropic", "google", "groq", "minimax", "xai"])
     const _savedProvider = config.default_selection?.provider ?? "openrouter"
     const _resolvedProvider = (_validProviders.has(_savedProvider) ? _savedProvider : "openrouter")
     const _savedModel = config.default_selection?.model || ""
@@ -4572,23 +4572,14 @@ function SparkbotDmPage({ controlsSurface = false }: SparkbotDmPageProps = {}) {
               setAwaitingBreakglassPin(false)
               return
             } else if (ev.type === "privileged_required") {
-              // Auto-trigger breakglass flow: send /breakglass silently and prompt for PIN
+              const toolName = ev.tool ? String(ev.tool).replace(/_/g, " ") : "this action"
               setMessages(prev => prev.map(m => m.id === tempBotId ? {
                 ...m,
-                content: "This action requires break-glass authorization. Enter your 6-digit PIN to unlock:",
+                content: `Elevated confirmation required for ${toolName}. Type \`/breakglass <reason>\` to start the operator PIN flow, or cancel and use a read-only alternative.`,
                 isStreaming: false,
                 toolActivity: undefined,
               } : m))
-              // Auto-send /breakglass to backend so user just needs to enter PIN next
-              try {
-                await apiFetch(`/api/v1/chat/rooms/${roomId}/messages`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  credentials: "include",
-                  body: JSON.stringify({ content: "/breakglass" }),
-                })
-              } catch { /* ignore */ }
-              setAwaitingBreakglassPin(true)
+              setAwaitingBreakglassPin(false)
               return
             } else if (ev.type === "done") {
               setMessages(prev => prev.map(m => m.id === tempBotId ? { ...m, id: ev.message_id, isStreaming: false, toolActivity: undefined } : m))
@@ -4775,22 +4766,14 @@ function SparkbotDmPage({ controlsSurface = false }: SparkbotDmPageProps = {}) {
               drainQueue = false
               return
             } else if (ev.type === "privileged_required") {
-              // Auto-trigger breakglass flow: send /breakglass silently and prompt for PIN
+              const toolName = ev.tool ? String(ev.tool).replace(/_/g, " ") : "this action"
               setMessages(prev => prev.map(m => m.id === tempBotId ? {
                 ...m,
-                content: "This action requires break-glass authorization. Enter your 6-digit PIN to unlock:",
+                content: `Elevated confirmation required for ${toolName}. Type \`/breakglass <reason>\` to start the operator PIN flow, or cancel and use a read-only alternative.`,
                 isStreaming: false,
                 toolActivity: undefined,
               } : m))
-              try {
-                await apiFetch(`/api/v1/chat/rooms/${roomId}/messages`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  credentials: "include",
-                  body: JSON.stringify({ content: "/breakglass" }),
-                })
-              } catch { /* ignore */ }
-              setAwaitingBreakglassPin(true)
+              setAwaitingBreakglassPin(false)
               drainQueue = false
               return
             } else if (ev.type === "done") {
