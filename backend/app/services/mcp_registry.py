@@ -5,6 +5,7 @@ from typing import Any, Literal, TypedDict
 
 from app.services.guardian import get_guardian_suite
 from app.services.guardian import task_guardian as tg
+from app.services.lima_robotics_bridge import ROBO_PREVIEW_DETAIL, private_robo_bridge_enabled
 
 McpPolicyTag = Literal[
     "read-only",
@@ -119,47 +120,47 @@ MCP_TOOL_MANIFESTS: list[McpToolManifest] = [
         "dryRunSupport": "native",
     },
     {
-        "id": "lima.navigate",
+        "id": "robo_preview.navigate",
         "name": "navigate / follow_route / return_home",
-        "owner": "LIMA Robotics OS",
+        "owner": "Robo Preview",
         "runtime": "lima-robo-os",
-        "description": "Move a robot through a route or send it home through LIMA MCP skills.",
+        "description": "Preview a future route or motion demo. Public Sparkbot does not execute real hardware control.",
         "policy": ["robot-motion", "write"],
         "riskLevel": "critical",
-        "requiredSecrets": ["LIMA_MCP_URL or local LIMA daemon"],
+        "requiredSecrets": ["Private Robo bridge URL"],
         "healthSource": "external-mcp",
         "dryRunSupport": "required-before-motion",
     },
     {
-        "id": "lima.inspect",
+        "id": "robo_preview.inspect",
         "name": "inspect / detect_object / report_status",
-        "owner": "LIMA Robotics OS",
+        "owner": "Robo Preview",
         "runtime": "lima-robo-os",
-        "description": "Read robot state, perception streams, object detections, and inspection reports.",
+        "description": "Preview future read-only runtime inspection demos.",
         "policy": ["read-only"],
         "riskLevel": "medium",
-        "requiredSecrets": ["LIMA_MCP_URL or local LIMA daemon"],
+        "requiredSecrets": ["Private Robo bridge URL"],
         "healthSource": "external-mcp",
         "dryRunSupport": "native",
     },
     {
-        "id": "lima.stop",
+        "id": "robo_preview.stop",
         "name": "stop",
-        "owner": "LIMA Robotics OS",
+        "owner": "Robo Preview",
         "runtime": "lima-robo-os",
-        "description": "Stop active robot motion or an active blueprint immediately.",
+        "description": "Preview future stop/emergency contracts. Public Sparkbot does not execute real hardware control.",
         "policy": ["robot-motion", "write"],
         "riskLevel": "critical",
-        "requiredSecrets": ["LIMA_MCP_URL or local LIMA daemon"],
+        "requiredSecrets": ["Private Robo bridge URL"],
         "healthSource": "external-mcp",
         "dryRunSupport": "required-before-motion",
     },
     {
-        "id": "lima.replay_simulation",
+        "id": "robo_preview.replay_simulation",
         "name": "replay / simulation blueprints",
-        "owner": "LIMA Robotics OS",
+        "owner": "Robo Preview",
         "runtime": "lima-robo-os",
-        "description": "Run no-hardware robot demos through replay data or MuJoCo simulation.",
+        "description": "Preview future no-hardware demos through replay or simulation plans.",
         "policy": ["read-only"],
         "riskLevel": "low",
         "requiredSecrets": [],
@@ -187,10 +188,10 @@ MCP_POLICY_TOOL_NAMES = {
     "sparkbot.task_guardian": "guardian_schedule_task",
     "sparkbot.guardian_vault": "vault_add_secret",
     "sparkbot.memory_recall": "memory_recall",
-    "lima.navigate": "lima.navigate",
-    "lima.inspect": "lima.inspect",
-    "lima.stop": "lima.stop",
-    "lima.replay_simulation": "lima.replay_simulation",
+    "robo_preview.navigate": "robo_preview.navigate",
+    "robo_preview.inspect": "robo_preview.inspect",
+    "robo_preview.stop": "robo_preview.stop",
+    "robo_preview.replay_simulation": "robo_preview.replay_simulation",
 }
 
 MCP_SAMPLE_TOOL_ARGS: dict[str, dict[str, Any]] = {
@@ -214,16 +215,16 @@ MCP_SAMPLE_TOOL_ARGS: dict[str, dict[str, Any]] = {
     },
     "vault_add_secret": {"alias": "example_secret", "policy": "use_only"},
     "memory_recall": {"query": "recent project decisions", "limit": 5},
-    "lima.navigate": {"route": "demo_route", "mode": "simulation"},
-    "lima.inspect": {"target": "demo_camera", "mode": "replay"},
-    "lima.stop": {"target": "active_blueprint", "mode": "simulation"},
-    "lima.replay_simulation": {"blueprint": "unitree-go2-agentic-mcp", "mode": "simulation"},
+    "robo_preview.navigate": {"route": "demo_route", "mode": "simulation"},
+    "robo_preview.inspect": {"target": "demo_camera", "mode": "replay"},
+    "robo_preview.stop": {"target": "active_blueprint", "mode": "simulation"},
+    "robo_preview.replay_simulation": {"blueprint": "public-preview-demo", "mode": "simulation"},
 }
 
 MCP_EXECUTION_NOTES = {
-    "lima.navigate": "Robot motion stays blocked until a dry run, active limits, and operator approval are present.",
-    "lima.stop": "Stop is safety-critical robot motion; keep it available but audited and operator-scoped.",
-    "lima.replay_simulation": "Replay/simulation is demo-ready and does not require robot hardware.",
+    "robo_preview.navigate": "Robo Preview is non-executing in public mode; private bridge execution requires an explicit private gate.",
+    "robo_preview.stop": "Public Robo Preview does not expose live stop or emergency-control paths.",
+    "robo_preview.replay_simulation": "Replay/simulation is preview-only and does not require robot hardware.",
     "sparkbot.guardian_vault": "Secret values are never included in dry-run output.",
 }
 
@@ -248,10 +249,18 @@ def _env_or_vault_has(env_var: str, alias: str) -> bool:
 
 def _manifest_status(manifest: McpToolManifest) -> dict[str, Any]:
     if manifest["healthSource"] == "external-mcp":
-        bridge_configured = bool(os.getenv("LIMA_MCP_URL", "").strip()) or bool(
-            os.getenv("LIMA_DAEMON_URL", "").strip()
+        private_bridge_enabled = private_robo_bridge_enabled()
+        bridge_configured = private_bridge_enabled and (
+            bool(os.getenv("LIMA_MCP_URL", "").strip()) or bool(os.getenv("LIMA_DAEMON_URL", "").strip())
         )
-        if manifest["id"] == "lima.replay_simulation":
+        if manifest["id"].startswith("robo_preview.") and not private_bridge_enabled:
+            return {
+                "state": "preview-only",
+                "label": "Preview only",
+                "configured": False,
+                "details": ROBO_PREVIEW_DETAIL,
+            }
+        if manifest["id"] == "robo_preview.replay_simulation":
             return {
                 "state": "demo-ready",
                 "label": "Demo-ready",
@@ -260,9 +269,9 @@ def _manifest_status(manifest: McpToolManifest) -> dict[str, Any]:
             }
         return {
             "state": "configured" if bridge_configured else "bridge-needed",
-            "label": "Bridge configured" if bridge_configured else "Bridge needed",
+            "label": "Private bridge configured" if bridge_configured else "Private bridge needed",
             "configured": bridge_configured,
-            "details": "Set LIMA_MCP_URL or LIMA_DAEMON_URL when the LIMA MCP bridge is available.",
+            "details": "Private R&D bridge execution requires the explicit private bridge flag and endpoint.",
         }
 
     if manifest["id"] == "sparkbot.google_calendar":
@@ -448,7 +457,11 @@ def get_mcp_registry() -> dict[str, Any]:
             "vaultConfigured": bool(os.getenv("SPARKBOT_VAULT_KEY", "").strip()),
             "taskGuardianEnabled": _truthy_env("SPARKBOT_TASK_GUARDIAN_ENABLED", True),
             "taskGuardianWriteEnabled": tg.TASK_GUARDIAN_WRITE_ENABLED,
-            "limaBridgeConfigured": bool(os.getenv("LIMA_MCP_URL", "").strip())
-            or bool(os.getenv("LIMA_DAEMON_URL", "").strip()),
+            "limaBridgeConfigured": private_robo_bridge_enabled()
+            and (
+                bool(os.getenv("LIMA_MCP_URL", "").strip())
+                or bool(os.getenv("LIMA_DAEMON_URL", "").strip())
+            ),
+            "roboPreviewOnly": not private_robo_bridge_enabled(),
         },
     }

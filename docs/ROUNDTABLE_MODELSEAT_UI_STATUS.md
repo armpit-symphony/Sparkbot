@@ -45,7 +45,22 @@ This pass polishes the public model-seat flow across Workstation, Round Table, M
 ## Remaining Blockers
 
 1. Browser QA the model-seat editor and Round Table chair picker with live local endpoints and Vault-backed cloud seats.
-2. Add a uniqueness-safe model-seat selector value if Phil expects multiple seats with the same provider/model id.
-3. Tune Balanced vs Locked guardrail behavior separation.
-4. Run the approved artifact/.venv/Robo public-stub cleanup branch.
-5. Refresh the Sparkbot_shell extraction map after the remaining cleanup branches land.
+2. Browser QA duplicate-seat behavior with multiple seats using the same provider/model id.
+3. Browser QA Balanced vs Locked guardrail labels through pending-confirm and elevated-confirm flows.
+4. Refresh the Sparkbot_shell extraction map after validation lands.
+
+## Artifact / Selector Cleanup Update - 2026-05-18
+
+Branch: `public-release-artifact-guardrail-robo-cleanup`
+
+Implemented:
+
+- Workstation Specialty Wing model override selectors now use stable `seat:<modelSeatId>` values for model-seat options.
+- Workstation Round Table chair picker and Meeting Room per-seat selectors now preserve the selected `modelSeatId` instead of resolving by first matching model id.
+- Command Center and legacy DM Controls agent override selectors can save `seat:<modelSeatId>` values, so two seats with the same model id remain distinguishable.
+- Saved agent overrides still store only non-secret `route`, `model`, and `model_seat_id`; credentials remain backend/Vault-owned.
+
+Remaining:
+
+- Browser-test duplicate model-seat selection across Workstation, Meeting Room, Command Center, and DM Controls.
+- Add focused frontend helper tests if/when the frontend test harness is expanded.

@@ -56,3 +56,22 @@ The script still builds a package from committed source with `git archive`, then
 - LIMA AI OS, Arc Bot, LIMA Office, and LIMA IT were not wired.
 - Real robotics/IoT control was not implemented.
 - No secrets were added or moved into frontend/browser storage.
+
+## Artifact / Robo / Guardrail Cleanup Update - 2026-05-18
+
+Branch: `public-release-artifact-guardrail-robo-cleanup`
+
+Completed in this pass:
+
+- Removed tracked `.venv-ci/` and `backend/.venv-ci/` files from Git while keeping the ignore rules in place for local validation environments.
+- Added a Windows-safe package fallback: public `.zip` artifacts still use `zip` when available, otherwise `scripts/package-public-download.sh` uses Python stdlib `zipfile`.
+- Changed the default Robo backend boundary to public-safe `Robo Preview`: default service calls return non-executing preview contracts, `/tools` exposes no live robotics tools, and emergency stop/live control stay unavailable in public mode.
+- Kept the private bridge source available only behind `SPARKBOT_PRIVATE_ROBO_BRIDGE_ENABLED`; setting `SPARKBOT_ROBO_TEASER_ONLY=false` alone is not enough to execute bridge calls.
+- Aligned backend MCP registry manifests to `robo_preview.*` public preview names instead of LIMA-labelled motion/control manifests.
+- Added first policy-engine separation for Balanced versus Locked: Balanced confirms high-risk configured actions, while Locked requires elevated approval/break-glass for high-risk actions.
+- Hardened model-seat selector values to use stable `seat:<modelSeatId>` where visible selectors offer model seats, preventing duplicate model-id collisions.
+
+Remaining risks:
+
+- Private Robo/LIMA bridge source still exists in the R&D repo by design, but public packages continue to exclude private runtime research docs and public/default runtime behavior is stubbed.
+- Full typed Custom guardrail records remain future work; Custom currently enforces user-owned blocker text.

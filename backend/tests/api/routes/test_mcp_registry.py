@@ -32,7 +32,8 @@ def test_mcp_registry_requires_auth(client: TestClient) -> None:
     assert response.status_code in {401, 403}
 
 
-def test_mcp_registry_returns_policy_manifests(client: TestClient) -> None:
+def test_mcp_registry_returns_policy_manifests(client: TestClient, monkeypatch) -> None:
+    monkeypatch.delenv("SPARKBOT_PRIVATE_ROBO_BRIDGE_ENABLED", raising=False)
     response = client.get(
         f"{settings.API_V1_STR}/chat/mcp/registry",
         headers=_chat_headers(),
@@ -42,18 +43,21 @@ def test_mcp_registry_returns_policy_manifests(client: TestClient) -> None:
 
     manifests = {entry["id"]: entry for entry in payload["manifests"]}
     assert "sparkbot.shell_run" in manifests
-    assert "lima.navigate" in manifests
+    assert "robo_preview.navigate" in manifests
+    assert "lima.navigate" not in manifests
 
-    lima_nav = manifests["lima.navigate"]
-    assert lima_nav["runtime"] == "lima-robo-os"
-    assert "robot-motion" in lima_nav["policy"]
-    assert lima_nav["riskLevel"] == "critical"
-    assert lima_nav["approvalRequired"] is True
-    assert lima_nav["explainPlanRequired"] is True
-    assert lima_nav["status"]["state"] in {"configured", "bridge-needed"}
+    robo_nav = manifests["robo_preview.navigate"]
+    assert robo_nav["owner"] == "Robo Preview"
+    assert robo_nav["runtime"] == "lima-robo-os"
+    assert "robot-motion" in robo_nav["policy"]
+    assert robo_nav["riskLevel"] == "critical"
+    assert robo_nav["approvalRequired"] is True
+    assert robo_nav["explainPlanRequired"] is True
+    assert robo_nav["status"]["state"] == "preview-only"
 
     assert payload["runTimeline"][0] == "User request"
     assert payload["health"]["sparkbotApiLive"] is True
+    assert payload["health"]["roboPreviewOnly"] is True
 
 
 def test_mcp_explain_plan_returns_policy_dry_run(client: TestClient, monkeypatch) -> None:
@@ -62,7 +66,7 @@ def test_mcp_explain_plan_returns_policy_dry_run(client: TestClient, monkeypatch
         f"{settings.API_V1_STR}/chat/mcp/explain-plan",
         headers=_chat_headers(),
         json={
-            "manifest_id": "lima.navigate",
+            "manifest_id": "robo_preview.navigate",
             "user_request": "Send the demo robot through a patrol route.",
         },
     )
@@ -72,8 +76,8 @@ def test_mcp_explain_plan_returns_policy_dry_run(client: TestClient, monkeypatch
     assert payload["simulationOnly"] is True
     assert payload["runId"]
     assert payload["runStatus"] in {"awaiting_approval", "blocked"}
-    assert payload["manifest"]["id"] == "lima.navigate"
-    assert payload["policyToolName"] == "lima.navigate"
+    assert payload["manifest"]["id"] == "robo_preview.navigate"
+    assert payload["policyToolName"] == "robo_preview.navigate"
     assert payload["dryRunRequired"] is True
     assert payload["approvalRequired"] is True
     assert payload["canExecuteNow"] is False
@@ -93,7 +97,7 @@ def test_mcp_runs_list_includes_created_plan(client: TestClient) -> None:
     plan_response = client.post(
         f"{settings.API_V1_STR}/chat/mcp/explain-plan",
         headers=headers,
-        json={"manifest_id": "lima.replay_simulation", "user_request": "Preview robot replay."},
+        json={"manifest_id": "robo_preview.replay_simulation", "user_request": "Preview robot replay."},
     )
     assert plan_response.status_code == 200
     run_id = plan_response.json()["runId"]
@@ -107,7 +111,7 @@ def test_mcp_runs_list_includes_created_plan(client: TestClient) -> None:
     assert detail_response.status_code == 200
     detail = detail_response.json()
     assert detail["id"] == run_id
-    assert detail["manifestId"] == "lima.replay_simulation"
+    assert detail["manifestId"] == "robo_preview.replay_simulation"
     assert detail["plan"]["simulationOnly"] is True
 
 
@@ -116,7 +120,7 @@ def test_mcp_run_approval_lifecycle_is_non_executing(client: TestClient) -> None
     plan_response = client.post(
         f"{settings.API_V1_STR}/chat/mcp/explain-plan",
         headers=headers,
-        json={"manifest_id": "lima.replay_simulation", "user_request": "Approve replay preview."},
+        json={"manifest_id": "robo_preview.replay_simulation", "user_request": "Approve replay preview."},
     )
     assert plan_response.status_code == 200
     run_id = plan_response.json()["runId"]
@@ -149,7 +153,7 @@ def test_mcp_run_approval_lifecycle_is_non_executing(client: TestClient) -> None
     deny_plan_response = client.post(
         f"{settings.API_V1_STR}/chat/mcp/explain-plan",
         headers=headers,
-        json={"manifest_id": "lima.replay_simulation", "user_request": "Deny replay preview."},
+        json={"manifest_id": "robo_preview.replay_simulation", "user_request": "Deny replay preview."},
     )
     assert deny_plan_response.status_code == 200
     deny_run_id = deny_plan_response.json()["runId"]

@@ -76,6 +76,7 @@ Remaining:
 
 1. Browser-test against live Ollama, LM Studio, and llama.cpp / llama-server endpoints.
 2. Add richer endpoint status refresh controls in the model-seat editor if browser QA shows users need manual recheck feedback.
+3. Browser-test duplicate Local AI seats that share the same model id; selectors now use `seat:<modelSeatId>` values where seats are exposed.
 
 ## Validation
 

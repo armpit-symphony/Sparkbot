@@ -5,7 +5,9 @@ import { ArrowLeft, Info, Loader2, Users } from "lucide-react"
 import {
   buildControlsModelGroups,
   fetchControlsConfig,
-  routeForModelOverride,
+  modelSelectionValue,
+  modelSelectionValueFromParts,
+  resolveControlsModelSelection,
   type SparkbotControlsConfig,
 } from "@/lib/sparkbotControls"
 import SparkbotSurfaceTabs from "@/components/Common/SparkbotSurfaceTabs"
@@ -291,13 +293,11 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
     saveMeetingRoomMeta(nextMeta)
   }
 
-  function handleSeatModelChange(seatIndex: number, modelId: string) {
+  function handleSeatModelChange(seatIndex: number, selectionValue: string) {
     if (!meetingMeta) return
-    const matchedSeat = controlsConfig?.model_seats?.find((seat) =>
-      seat.enabled
-      && (seat.show_in_round_table || seat.show_in_specialty_wing)
-      && seat.model_id === modelId
-    )
+    const selection = resolveControlsModelSelection(controlsConfig, selectionValue)
+    const modelId = selection.modelId
+    const matchedSeat = selection.modelSeat
     const nextSeats = meetingMeta.seats.map((seat) => {
       if (seat.seatIndex !== seatIndex) return seat
       if (!modelId) {
@@ -315,7 +315,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
       return {
         ...seat,
         modelId,
-        route: routeForModelOverride(modelId),
+        route: selection.route,
         modelSeatId: matchedSeat?.id,
         modelSeatConfigured: matchedSeat ? Boolean(matchedSeat.configured) : undefined,
         modelSeatSetupStatus: matchedSeat?.setup_status,
@@ -1004,7 +1004,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                               ))}
                             </select>
                             <select
-                              value={seat.modelId ?? ""}
+                              value={modelSelectionValueFromParts(seat.modelId, seat.modelSeatId)}
                               onChange={(event) => handleSeatModelChange(seat.seatIndex, event.target.value)}
                               disabled={modelGroups.length === 0}
                               style={{
@@ -1022,7 +1022,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                               {modelGroups.map((group) => (
                                 <optgroup key={group.id} label={group.label}>
                                   {group.models.map((model) => (
-                                    <option key={`${group.id}:${model.modelSeatId ?? model.id}`} value={model.id}>{model.label}</option>
+                                    <option key={`${group.id}:${model.modelSeatId ?? model.id}`} value={modelSelectionValue(model)}>{model.label}</option>
                                   ))}
                                 </optgroup>
                               ))}

@@ -18,6 +18,7 @@ import {
 import {
   CONTROLS_AUTOOPEN_KEY,
   CONTROLS_ONBOARDING_KEY,
+  MODEL_SEAT_SELECTION_PREFIX,
   controlsOnboardingComplete,
   isControlsSearchOpen,
 } from "@/lib/sparkbotControls"
@@ -2625,15 +2626,15 @@ function SparkbotSettingsDialog({
                 {routingAgents.map((agent) => {
                   const override = agentOverrides[agent.name] ?? { route: "default", model: "" }
                   const route = override.route
-                  const modelValue = override.model ?? ""
+                  const modelValue = override.model_seat_id ? `${MODEL_SEAT_SELECTION_PREFIX}${override.model_seat_id}` : override.model ?? ""
                   const routeProviderMap: Record<string, string> = {
                     openrouter: "openrouter", local: "ollama", openai: "openai", openai_codex: "openai_codex",
-                    anthropic: "anthropic", claude_sub: "claude_sub", google: "google", groq: "groq",
+                    local_ai: "local_ai", anthropic: "anthropic", claude_sub: "claude_sub", google: "google", groq: "groq",
                     minimax: "minimax", xai: "xai",
                   }
                   const routeLabels: Record<string, string> = {
                     openrouter: "OpenRouter", local: "Local (Ollama)", openai: "OpenAI", openai_codex: "Codex Subscription",
-                    anthropic: "Anthropic", claude_sub: "Claude Subscription", google: "Google", groq: "Groq",
+                    local_ai: "Local AI endpoint", anthropic: "Anthropic", claude_sub: "Claude Subscription", google: "Google", groq: "Groq",
                     minimax: "MiniMax", xai: "xAI",
                   }
                   const providerForRoute = routeProviderMap[route] ?? ""
@@ -2644,6 +2645,13 @@ function SparkbotSettingsDialog({
                       : providerForRoute
                         ? directProviderModels(providerForRoute)
                         : []
+                  const modelSeatsForRoute = (modelsConfig?.model_seats ?? []).filter((seat) =>
+                    seat.enabled
+                    && seat.show_in_specialty_wing
+                    && seat.model_id
+                    && providerForRoute
+                    && seat.provider === providerForRoute
+                  )
                   const selectedModel = modelValue || ""
 
                   return (
@@ -2673,9 +2681,10 @@ function SparkbotSettingsDialog({
                           <option value="xai">xAI</option>
                           <option value="openrouter">OpenRouter</option>
                           <option value="local">Local (Ollama)</option>
+                          <option value="local_ai">Local AI endpoint</option>
                         </select>
 
-                        {route !== "default" && modelsForRoute.length > 0 && (
+                        {route !== "default" && (modelsForRoute.length > 0 || modelSeatsForRoute.length > 0) && (
                           <select
                             value={selectedModel}
                             onChange={(e) => onAgentOverrideChange(agent.name, "model", e.target.value)}
@@ -2691,6 +2700,15 @@ function SparkbotSettingsDialog({
                                   : modelsConfig?.model_labels?.[modelId] ?? modelId}
                               </option>
                             ))}
+                            {modelSeatsForRoute.length > 0 && (
+                              <optgroup label="Model seats">
+                                {modelSeatsForRoute.map((seat) => (
+                                  <option key={seat.id} value={`${MODEL_SEAT_SELECTION_PREFIX}${seat.id}`}>
+                                    {seat.label}{seat.model_id ? ` (${modelsConfig?.model_labels?.[seat.model_id] ?? seat.model_id})` : ""}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )}
                           </select>
                         )}
                       </div>
@@ -3622,7 +3640,7 @@ function SparkbotDmPage({ controlsSurface = false }: SparkbotDmPageProps = {}) {
   ) => {
     const routeToProviderPrefix: Record<string, string> = {
       openrouter: "openrouter/", local: "ollama/", openai: "gpt-", openai_codex: "openai-codex/", anthropic: "claude",
-      claude_sub: "claude-sub/", google: "gemini/", groq: "groq/", minimax: "minimax/", xai: "xai/",
+      local_ai: "local/", claude_sub: "claude-sub/", google: "gemini/", groq: "groq/", minimax: "minimax/", xai: "xai/",
     }
     setAgentOverrides((prev) => {
       const current = prev[agentName] ?? { route: "default", model: "" }
@@ -3645,6 +3663,15 @@ function SparkbotDmPage({ controlsSurface = false }: SparkbotDmPageProps = {}) {
         }
       }
       if (field === "model") {
+        if (value.startsWith(MODEL_SEAT_SELECTION_PREFIX)) {
+          const seatId = value.slice(MODEL_SEAT_SELECTION_PREFIX.length)
+          const seat = modelsConfig?.model_seats?.find((item) =>
+            item.show_in_specialty_wing
+            && item.enabled
+            && item.id === seatId
+          )
+          return { ...prev, [agentName]: { ...current, model: seat?.model_id ?? "", model_seat_id: seat?.id ?? seatId } }
+        }
         const seat = modelsConfig?.model_seats?.find((item) =>
           item.show_in_specialty_wing
           && item.enabled
@@ -3866,11 +3893,17 @@ function SparkbotDmPage({ controlsSurface = false }: SparkbotDmPageProps = {}) {
           return [agent.name, { route: "default", model: "", model_seat_id: "" }]
         }
         const model = override.model.trim()
-        const matchedSeat = modelsConfig?.model_seats?.find((seat) =>
-          seat.show_in_specialty_wing
-          && seat.enabled
-          && seat.model_id === model
-        )
+        const matchedSeat = override.model_seat_id
+          ? modelsConfig?.model_seats?.find((seat) =>
+            seat.show_in_specialty_wing
+            && seat.enabled
+            && seat.id === override.model_seat_id
+          )
+          : modelsConfig?.model_seats?.find((seat) =>
+            seat.show_in_specialty_wing
+            && seat.enabled
+            && seat.model_id === model
+          )
         return [
           agent.name,
           {

@@ -63,6 +63,15 @@ Branch `public-release-roundtable-modelseat-ui-polish` moved the final model-sea
 - Command Center AI Setup now includes a model-seat editor with write-only credential entry and backend/Vault-owned credential storage.
 - Backend model-seat payloads now include setup-needed/unreachable/disabled/ready status so local and Vault-backed seats do not fail silently.
 
+Branch `public-release-artifact-guardrail-robo-cleanup` moved the final artifact/Robo/guardrail hygiene blockers forward:
+
+- Tracked `.venv-ci/` and `backend/.venv-ci/` files were removed from Git and remain ignored going forward.
+- Public package `.zip` creation now falls back to Python stdlib `zipfile` when the `zip` binary is missing on Windows/Git Bash.
+- Public/default Robo backend calls now return non-executing Robo Preview contracts; private bridge execution requires the explicit private bridge flag.
+- Backend MCP manifests now use `robo_preview.*` public preview names instead of LIMA-labelled control manifests.
+- Balanced and Locked now differ in backend policy behavior.
+- Visible model-seat selectors now prefer stable `seat:<modelSeatId>` values to avoid duplicate model-id collisions.
+
 ## 1. P0 Blockers Before Extraction
 
 1. Unify public chat route.
@@ -112,13 +121,13 @@ Branch `public-release-roundtable-modelseat-ui-polish` moved the final model-sea
    - Remove or hard-disable `lima_robot_command` from public tool catalog.
    - Hide robotics endpoints behind a private build flag or remove from public route registration.
    - Replace top-tab Robo action with a static teaser card.
-   - Status: `DONE_THIS_PHASE` for public default UI plus prior backend guard. Public default `SPARKBOT_ROBO_TEASER_ONLY=true` hides the chat robot tool, returns no live tool list, blocks non-dry-run robotics commands, and blocks emergency stop. The Workstation default Robo panel is now static teaser copy; the operational registry panel is dev/private-flag only.
+   - Status: `DONE_THIS_PHASE` for public default UI and backend stub boundary. Public default `SPARKBOT_ROBO_TEASER_ONLY=true` hides the chat robot tool, returns no live tool list, blocks non-dry-run robotics commands, blocks emergency stop, and returns non-executing Robo Preview contracts for dry-run preview requests. Private bridge execution also requires `SPARKBOT_PRIVATE_ROBO_BRIDGE_ENABLED=true`.
    - Evidence: `frontend/src/components/Common/SparkbotSurfaceTabs.tsx:42`, `backend/app/api/routes/chat/robotics.py:22`, `backend/app/api/routes/chat/tools.py:2014`.
 
 9. Clean public source-bundle exclusions and private path references.
    - Exclude `docs/audits/*`, `docs/lima-robo-os-integration.md`, private deployment checklists, and extraction handoff docs from public packages.
    - Rewrite or move `remote.sparkpitlabs.com`, `/home/sparky`, `api.sparkpitlabs.com`, Kalshi, OpenClaw, and WEPO references before packaging.
-   - Status: `PARTIAL_DONE_THIS_PHASE` - package exclusions are expanded and current README/capabilities public copy was scrubbed. Tracked `.venv-ci` files remain in Git but are pruned from package output. Full public extraction should still replace Robo/LIMA backend bridge source with a stub.
+   - Status: `DONE_FIRST_PASS` - package exclusions are expanded, current README/capabilities public copy was scrubbed, tracked `.venv-ci` files were removed from Git, and public packaging has a Windows-safe Python zip fallback. Private bridge source remains in the R&D repo behind an explicit private gate and excluded docs.
    - Evidence: `scripts/package-public-download.sh`, `README.md`, `docs/capabilities.md`, `docs/public-downloads.md`, `backend/app/api/routes/chat/tools.py`.
 
 10. Rewrite built-in public agent prompts.
@@ -133,7 +142,7 @@ Branch `public-release-roundtable-modelseat-ui-polish` moved the final model-sea
 
 12. Make local AI native across public model surfaces.
    - Support Ollama, LM Studio, llama.cpp / llama-server, generic OpenAI-compatible endpoints, and custom local endpoints from AI Setup, model seats, Chat, Round Table, and Specialty Wing.
-   - Status: `PARTIAL_DONE` - backend routing, AI Setup config, default Local AI model seat, Round Table invite routing, Specialty Wing model-seat override paths, setup-needed status, and a Command Center model-seat editor are implemented. Remaining work is live endpoint browser QA and duplicate-model-id selector hardening.
+   - Status: `PARTIAL_DONE` - backend routing, AI Setup config, default Local AI model seat, Round Table invite routing, Specialty Wing model-seat override paths, setup-needed status, a Command Center model-seat editor, and stable `seat:<modelSeatId>` selector values are implemented. Remaining work is live endpoint browser QA.
    - Evidence: `backend/app/services/local_ai.py`, `backend/app/api/routes/chat/model.py`, `backend/app/api/routes/chat/llm.py`, `frontend/src/components/CommandCenter/SetupPanels.tsx`, `frontend/src/pages/WorkstationPage.tsx`.
 
 ## 2. P1 Polish Before Public Beta

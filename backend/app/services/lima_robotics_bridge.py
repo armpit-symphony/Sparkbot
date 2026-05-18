@@ -22,10 +22,24 @@ MOTION_TOOL_NAMES = {
     "execute_sport_command",
     "agent_send",
 }
+PRIVATE_ROBO_BRIDGE_ENV = "SPARKBOT_PRIVATE_ROBO_BRIDGE_ENABLED"
+ROBO_PREVIEW_DETAIL = (
+    "Robo Preview is a public-safe, non-executing demo surface. "
+    "Real robotics, IoT, drone, or hardware control is disabled unless a private R&D bridge is explicitly enabled."
+)
 
 
 class LimaBridgeError(RuntimeError):
     """Raised when a configured LIMA bridge cannot satisfy a request."""
+
+
+def private_robo_bridge_enabled() -> bool:
+    return os.getenv(PRIVATE_ROBO_BRIDGE_ENV, "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 def configured_mcp_url() -> str:
@@ -34,6 +48,17 @@ def configured_mcp_url() -> str:
 
 def bridge_status() -> dict[str, Any]:
     url = configured_mcp_url()
+    if not private_robo_bridge_enabled():
+        return {
+            "configured": False,
+            "mcpUrlConfigured": False,
+            "privateBridgeConfigured": bool(url),
+            "privateBridgeEnabled": False,
+            "safeTarget": "",
+            "mode": "robo_preview",
+            "previewOnly": True,
+            "message": ROBO_PREVIEW_DETAIL,
+        }
     parsed = urlparse(url) if url else None
     safe_target = ""
     if parsed and parsed.scheme and parsed.netloc:
@@ -63,6 +88,8 @@ def _jsonrpc_payload(method: str, params: dict[str, Any] | None = None) -> dict[
 
 
 async def _mcp_call(method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    if not private_robo_bridge_enabled():
+        raise LimaBridgeError("Robo Preview is active; private bridge execution is not enabled.")
     url = configured_mcp_url()
     if not url:
         raise LimaBridgeError("LIMA_MCP_URL is not configured.")
@@ -84,6 +111,8 @@ async def _mcp_call(method: str, params: dict[str, Any] | None = None) -> dict[s
 
 
 async def list_lima_tools() -> list[dict[str, Any]]:
+    if not private_robo_bridge_enabled():
+        return []
     await _mcp_call("initialize")
     result = await _mcp_call("tools/list")
     tools = result.get("tools", [])
@@ -236,6 +265,44 @@ def command_contract(
     }
 
 
+def public_preview_contract(
+    *,
+    source_user: str,
+    robot_id: str,
+    environment: RobotEnvironment,
+    requested_action: str,
+    mcp_tool_name: str = "",
+    mcp_args: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    resolved = resolve_robot_command(
+        requested_action,
+        mcp_tool_name=mcp_tool_name,
+        mcp_args=mcp_args,
+    )
+    classification = {
+        "riskLevel": "blocked",
+        "approvalRequired": False,
+        "guardianDecision": "preview_only",
+        "reason": ROBO_PREVIEW_DETAIL,
+    }
+    contract = command_contract(
+        source_user=source_user,
+        robot_id=robot_id,
+        environment=environment,
+        requested_action=requested_action,
+        resolved=resolved,
+        classification=classification,
+    )
+    return {
+        "executed": False,
+        "blocked": True,
+        "preview_only": True,
+        "contract": contract,
+        "bridge": bridge_status(),
+        "message": ROBO_PREVIEW_DETAIL,
+    }
+
+
 async def execute_robot_command(
     *,
     source_user: str,
@@ -246,6 +313,15 @@ async def execute_robot_command(
     mcp_args: dict[str, Any] | None = None,
     dry_run: bool = False,
 ) -> dict[str, Any]:
+    if not private_robo_bridge_enabled():
+        return public_preview_contract(
+            source_user=source_user,
+            robot_id=robot_id,
+            environment=environment,
+            requested_action=requested_action,
+            mcp_tool_name=mcp_tool_name,
+            mcp_args=mcp_args,
+        )
     resolved = resolve_robot_command(
         requested_action,
         mcp_tool_name=mcp_tool_name,
@@ -287,6 +363,8 @@ async def execute_robot_command(
 
 
 async def emergency_stop(*, source_user: str, robot_id: str = "default") -> dict[str, Any]:
+    if not private_robo_bridge_enabled():
+        raise LimaBridgeError("Robo Preview does not expose live emergency-stop control.")
     tools = await list_lima_tools()
     names = {str(tool.get("name") or "") for tool in tools if isinstance(tool, dict)}
     tool_name = next((candidate for candidate in STOP_TOOL_CANDIDATES if candidate in names), "agent_send")

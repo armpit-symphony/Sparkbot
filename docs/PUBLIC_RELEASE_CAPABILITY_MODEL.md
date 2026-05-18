@@ -161,9 +161,22 @@ Implemented public truthfulness changes:
 
 Remaining policy work:
 
-- Balanced and Locked still need deeper behavioral separation in the policy engine.
+- Balanced and Locked now have first-pass backend behavior separation; browser QA should verify the pending-confirm and elevated-confirm UI labels match.
 - Browser, shell, files, and connector writes should show profile-specific confirmation/block labels in the UI.
 - Custom guardrails need typed user-owned allow/confirm/block records before Custom mode can claim full enforcement.
+
+## Artifact / Guardrail Cleanup Update - 2026-05-18
+
+Branch: `public-release-artifact-guardrail-robo-cleanup`
+
+Profile behavior now implemented in backend policy:
+
+- Free / Personal: capable by default when tools are configured; risky writes, deletes, sends, credential access, service control, and critical changes still ask confirmation.
+- Balanced: configured high-risk shell, browser, external send, file/delete/install, server/PC, and Robo Preview actions ask confirmation even when capability is enabled.
+- Locked: high-risk write/execute actions require elevated approval or break-glass; non-operators get a blocker explanation and next safe step.
+- Custom: uses the same high-risk posture as Balanced plus user-owned blocker text. Typed allow/confirm/block records remain future work and should not be claimed as fully enforced.
+
+Robo remains preview-only in public/default mode. Private Robo bridge execution requires an explicit private env gate and is not part of public core.
 
 ## Invite Wing Update - 2026-05-17
 

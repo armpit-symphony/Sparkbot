@@ -22,6 +22,7 @@ import type {
   ModelSeatSaveInput,
 } from "@/hooks/useControlsState"
 import { AGENT_TEMPLATES } from "@/hooks/useControlsState"
+import { MODEL_SEAT_SELECTION_PREFIX } from "@/lib/sparkbotControls"
 
 // ─── Shared helpers ──────────────────────────────────────────────────────────
 
@@ -1498,7 +1499,7 @@ export function AgentsPanel(props: SetupPanelProps) {
           {routingAgents.map((agent) => {
             const override = agentOverrides[agent.name] ?? { route: "default", model: "" }
             const route = override.route
-            const modelValue = override.model ?? ""
+            const modelValue = override.model_seat_id ? `${MODEL_SEAT_SELECTION_PREFIX}${override.model_seat_id}` : override.model ?? ""
             const routeProviderMap: Record<string, string> = {
               openrouter: "openrouter", local: "ollama", openai: "openai", openai_codex: "openai_codex",
               local_ai: "local_ai", anthropic: "anthropic", claude_sub: "claude_sub", google: "google", groq: "groq", minimax: "minimax", xai: "xai",
@@ -1515,6 +1516,13 @@ export function AgentsPanel(props: SetupPanelProps) {
                 : providerForRoute
                   ? directProviderModels(providerForRoute)
                   : []
+            const modelSeatsForRoute = (modelsConfig?.model_seats ?? []).filter((seat) =>
+              seat.enabled
+              && seat.show_in_specialty_wing
+              && seat.model_id
+              && providerForRoute
+              && seat.provider === providerForRoute
+            )
 
             return (
               <div key={agent.name} className="rounded-lg border bg-muted/30 px-3 py-3">
@@ -1542,7 +1550,7 @@ export function AgentsPanel(props: SetupPanelProps) {
                     <option value="local">Local (Ollama)</option>
                     <option value="local_ai">Local AI endpoint</option>
                   </select>
-                  {route !== "default" && modelsForRoute.length > 0 && (
+                  {route !== "default" && (modelsForRoute.length > 0 || modelSeatsForRoute.length > 0) && (
                     <select value={modelValue} onChange={(e) => onAgentOverrideChange(agent.name, "model", e.target.value)}
                       className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none">
                       <option value="">{`Use default ${routeLabels[route] ?? route} model`}</option>
@@ -1553,6 +1561,15 @@ export function AgentsPanel(props: SetupPanelProps) {
                             : modelsConfig?.model_labels?.[modelId] ?? modelId}
                         </option>
                       ))}
+                      {modelSeatsForRoute.length > 0 && (
+                        <optgroup label="Model seats">
+                          {modelSeatsForRoute.map((seat) => (
+                            <option key={seat.id} value={`${MODEL_SEAT_SELECTION_PREFIX}${seat.id}`}>
+                              {seat.label}{seat.model_id ? ` (${modelsConfig?.model_labels?.[seat.model_id] ?? seat.model_id})` : ""}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
                     </select>
                   )}
                 </div>

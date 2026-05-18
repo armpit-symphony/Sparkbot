@@ -112,6 +112,8 @@ python3 sparkbot-cli.py
 bash scripts/package-public-download.sh
 ```
 
+The script keeps the normal Unix `zip` path when `zip` is installed. On Windows/Git Bash hosts where `zip` is missing, it falls back to Python's standard-library `zipfile` module, so builders do not need WSL just to create the `.zip` artifact. Python is still required because the script also reads package metadata.
+
 Default output:
 
 - `dist/public-download/latest/sparkbot-latest.tar.gz`

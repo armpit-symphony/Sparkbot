@@ -238,6 +238,26 @@ Run a focused public extraction-blocker phase:
 
 1. Run the artifact/.venv/Robo/guardrail cleanup branch that Phil approved.
 2. Browser QA Round Table model-seat selection and Local AI setup against live endpoints.
+
+## Artifact / Guardrail / Robo Cleanup Update - 2026-05-18
+
+Branch: `public-release-artifact-guardrail-robo-cleanup`
+
+Completed in this pass:
+
+- Tracked `.venv-ci/` and `backend/.venv-ci/` files were removed from Git; ignore rules remain so local CI virtualenvs stay untracked.
+- Public packaging now has a Windows-safe `.zip` fallback through Python stdlib `zipfile` when the `zip` binary is missing.
+- Robo default behavior is now a true public preview boundary: public/default calls return non-executing preview contracts, `/tools` returns no live Robo tools, and emergency stop/live control are blocked.
+- Private Robo bridge execution now requires `SPARKBOT_PRIVATE_ROBO_BRIDGE_ENABLED=true` in addition to any teaser-mode override.
+- Backend MCP registry now exposes `robo_preview.*` manifests in public mode rather than LIMA-labelled motion/control manifests.
+- Balanced and Locked profile behavior now differs in the policy engine: Balanced confirms high-risk configured actions; Locked requires elevated approval or break-glass for high-risk actions.
+- Model-seat selectors now use stable `seat:<modelSeatId>` values where seats are selectable, avoiding ambiguity when multiple seats share the same model id.
+
+Remaining after this pass:
+
+- Browser QA the public package artifact, Command Center Security profiles, Robo Preview panel, and duplicate-seat selector behavior.
+- Build typed Custom guardrail records later; current Custom mode is honest blocker-text enforcement.
+- Refresh the Sparkbot_shell extraction map after validation.
 3. Refresh the Sparkbot_shell extraction map after cleanup passes.
 4. Start the first shell import layer only after package exclusions, Robo stubbing, and extraction map refresh are complete.
 

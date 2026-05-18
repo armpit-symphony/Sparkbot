@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect } from "react"
 import { apiFetch } from "@/lib/apiBase"
 import {
   CONTROLS_ONBOARDING_KEY,
+  MODEL_SEAT_SELECTION_PREFIX,
   controlsOnboardingComplete,
 } from "@/lib/sparkbotControls"
 
@@ -999,6 +1000,22 @@ export function useControlsState({ roomId, onStatusMessage }: UseControlsStateOp
         }
       }
       if (field === "model") {
+        if (value.startsWith(MODEL_SEAT_SELECTION_PREFIX)) {
+          const seatId = value.slice(MODEL_SEAT_SELECTION_PREFIX.length)
+          const seat = modelsConfig?.model_seats?.find((item) =>
+            item.show_in_specialty_wing
+            && item.enabled
+            && item.id === seatId
+          )
+          return {
+            ...prev,
+            [agentName]: {
+              ...current,
+              model: seat?.model_id ?? "",
+              model_seat_id: seat?.id ?? seatId,
+            },
+          }
+        }
         const seat = modelsConfig?.model_seats?.find((item) =>
           item.show_in_specialty_wing
           && item.enabled
@@ -1218,11 +1235,17 @@ export function useControlsState({ roomId, onStatusMessage }: UseControlsStateOp
         const override = agentOverrides[agent.name] ?? { route: "default", model: "" }
         if (override.route === "default") return [agent.name, { route: "default", model: "", model_seat_id: "" }]
         const model = override.model.trim()
-        const matchedSeat = modelsConfig?.model_seats?.find((seat) =>
-          seat.show_in_specialty_wing
-          && seat.enabled
-          && seat.model_id === model
-        )
+        const matchedSeat = override.model_seat_id
+          ? modelsConfig?.model_seats?.find((seat) =>
+            seat.show_in_specialty_wing
+            && seat.enabled
+            && seat.id === override.model_seat_id
+          )
+          : modelsConfig?.model_seats?.find((seat) =>
+            seat.show_in_specialty_wing
+            && seat.enabled
+            && seat.model_id === model
+          )
         return [
           agent.name,
           {

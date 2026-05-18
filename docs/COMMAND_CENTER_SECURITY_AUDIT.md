@@ -155,5 +155,30 @@ Current truthfulness status:
 Remaining:
 
 - Add structured custom guardrail records with action, scope, explanation, enabled state, and owner metadata.
-- Tune Balanced vs Locked behavior in the policy engine so they are more than named presets.
+- Browser-test Balanced and Locked decisions through the full pending-confirm/elevated-confirm UI.
 - Add a dedicated approval modal for normal confirmation, elevated confirmation, and breakglass/privileged access.
+
+## Artifact / Guardrail Cleanup Update - 2026-05-18
+
+Branch: `public-release-artifact-guardrail-robo-cleanup`
+
+Implemented:
+
+- `backend/app/services/guardian/policy.py` now reads `SPARKBOT_SECURITY_PROFILE`.
+- Balanced confirms high-risk configured actions, including shell/browser/external-send/file/install/server/PC/Robo Preview categories, even when Computer Control is enabled.
+- Locked requires elevated approval or break-glass for high-risk write/execute actions and blocks non-operators with a safe-next-step explanation.
+- Personal remains capable by default when configured and still asks confirmation for risky categories.
+- Custom remains honest: user-owned blocker text is enforced, while typed allow/confirm/block rule records remain future work.
+
+Current truthfulness status:
+
+| Area | Status |
+|---|---|
+| Balanced vs Locked | First behavioral separation implemented in backend policy. |
+| Custom guardrails | Blocker text only; no claim of full typed rule enforcement. |
+| Breakglass wording | Still uses elevated approval/break-glass terminology; no privileged reveal is treated as normal approval. |
+
+Remaining:
+
+- Browser QA Command Center profile copy against actual pending-confirm / elevated-confirm flows.
+- Add structured Custom guardrail records and validation UI after public shell extraction map refresh.

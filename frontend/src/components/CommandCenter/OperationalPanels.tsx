@@ -793,8 +793,8 @@ function SecurityCard({
   const providerEnvKeys = securityStatus?.provider_secrets.filter((secret) => secret.configured_in_env) ?? []
   const profileOptions = securityProfiles?.length ? securityProfiles : [
     { id: "personal" as const, label: "Free / Personal", description: "Capable by default; risky actions confirm." },
-    { id: "balanced" as const, label: "Balanced", description: "More write-like actions confirm; custom blockers apply." },
-    { id: "locked" as const, label: "Locked", description: "High-risk actions require explicit approval or break-glass." },
+    { id: "balanced" as const, label: "Balanced", description: "High-risk tool use asks confirmation; custom blockers apply." },
+    { id: "locked" as const, label: "Locked", description: "High-risk actions wait for elevated approval or break-glass." },
     { id: "custom" as const, label: "Custom", description: "Draft owner-defined blockers; typed rules are future work." },
   ]
   const profileId = securityProfile?.id ?? (active ? "balanced" : "personal")

@@ -131,6 +131,17 @@ export interface ControlsModelGroup {
   models: ControlsModelOption[]
 }
 
+export type ControlsModelSeat = NonNullable<SparkbotControlsConfig["model_seats"]>[number]
+
+export interface ControlsModelSelection {
+  modelId: string
+  route: string
+  modelSeatId?: string
+  modelSeat?: ControlsModelSeat
+}
+
+export const MODEL_SEAT_SELECTION_PREFIX = "seat:"
+
 export interface ChatEntryTarget {
   to: "/dm"
   search?: {
@@ -170,6 +181,37 @@ export function routeForModelOverride(model: string): string {
     return provider
   }
   return "default"
+}
+
+export function modelSelectionValue(option: ControlsModelOption): string {
+  return option.modelSeatId ? `${MODEL_SEAT_SELECTION_PREFIX}${option.modelSeatId}` : option.id
+}
+
+export function modelSelectionValueFromParts(modelId?: string, modelSeatId?: string): string {
+  if (modelSeatId) return `${MODEL_SEAT_SELECTION_PREFIX}${modelSeatId}`
+  return modelId ?? ""
+}
+
+export function resolveControlsModelSelection(
+  config: SparkbotControlsConfig | null,
+  selectionValue: string,
+): ControlsModelSelection {
+  const value = selectionValue.trim()
+  if (!value) {
+    return { modelId: "", route: "default" }
+  }
+  if (value.startsWith(MODEL_SEAT_SELECTION_PREFIX)) {
+    const modelSeatId = value.slice(MODEL_SEAT_SELECTION_PREFIX.length)
+    const modelSeat = config?.model_seats?.find((seat) => seat.id === modelSeatId)
+    const modelId = modelSeat?.model_id ?? ""
+    return {
+      modelId,
+      route: modelId ? routeForModelOverride(modelId) : "default",
+      modelSeatId: modelSeat?.id ?? modelSeatId,
+      modelSeat,
+    }
+  }
+  return { modelId: value, route: routeForModelOverride(value) }
 }
 
 export function agentDisplayName(name: string): string {
