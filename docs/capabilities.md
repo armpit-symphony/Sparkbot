@@ -521,6 +521,7 @@ SEARCH_CACHE_TTL_SECONDS=300   # cache identical queries (default 300s)
 | MiniMax | `MINIMAX_API_KEY` | MiniMax M2.5 |
 | OpenRouter | `OPENROUTER_API_KEY` | 100+ models via one key |
 | Ollama | `OLLAMA_BASE_URL` | Local models — **not recommended for tool-heavy tasks** |
+| Local AI endpoint | `SPARKBOT_LOCAL_AI_BASE_URL` | LM Studio, llama.cpp / llama-server, or any OpenAI-compatible local endpoint |
 
 ### Model Stack
 
@@ -537,7 +538,7 @@ Switch live from chat: `/model <id>` — changes take effect immediately for you
 
 ### Invite Wing (Per-Seat API Keys)
 
-Seat any model into a Workstation desk with its own Model ID and API Key. At meeting launch, requests route directly to that provider using your key — bypassing the default stack. Supports Claude, Codex/GPT, Grok, Gemini, and Ollama.
+Seat any model into a Workstation desk with its own Model ID and backend-owned credential or no-key local endpoint config. At meeting launch, requests route directly to that provider using the saved backend route, bypassing the default stack. Supports Claude, Codex/GPT, Grok, Gemini, Ollama, and local OpenAI-compatible endpoints.
 
 **Claude Subscription (OAuth).** When the provider is **Anthropic**, the invite modal shows an `API Key / Claude Subscription` segmented toggle. Picking **Claude Subscription** lets you paste an OAuth access token (`sk-ant-oat01-...`) instead of an `sk-ant-api03-...` API key. Anthropic allows Claude Pro/Max plans to drive API calls via OAuth with no per-token billing.
 
@@ -1207,6 +1208,11 @@ GROQ_API_KEY=gsk_...
 MINIMAX_API_KEY=...
 OPENROUTER_API_KEY=sk-or-...
 OLLAMA_BASE_URL=http://localhost:11434
+SPARKBOT_LOCAL_AI_ENABLED=true
+SPARKBOT_LOCAL_AI_RUNTIME=lmstudio          # ollama | lmstudio | llamacpp | openai_compatible | custom
+SPARKBOT_LOCAL_AI_BASE_URL=http://localhost:1234/v1
+SPARKBOT_LOCAL_AI_MODEL=local/my-local-model
+SPARKBOT_LOCAL_AI_AUTH_MODE=none            # none | api_key
 SPARKBOT_MODEL=gpt-4o-mini
 SPARKBOT_BACKUP_MODEL=claude-sonnet-4-5
 SPARKBOT_BACKUP_MODEL_2=gemini/gemini-2.0-flash

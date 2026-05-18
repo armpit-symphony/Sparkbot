@@ -51,6 +51,21 @@ def test_llm_accepts_dynamic_openrouter_and_ollama_models(monkeypatch) -> None:
     assert llm.get_model(agent_name="researcher") == "ollama/custom-local:latest"
 
 
+def test_llm_accepts_generic_local_endpoint_models(monkeypatch) -> None:
+    monkeypatch.setenv("SPARKBOT_LOCAL_AI_ENABLED", "true")
+    monkeypatch.setenv("SPARKBOT_LOCAL_AI_BASE_URL", "http://localhost:1234/v1")
+    monkeypatch.setenv("SPARKBOT_LOCAL_AI_MODEL", "local/lmstudio-test")
+    monkeypatch.setenv(
+        "SPARKBOT_AGENT_MODEL_OVERRIDES_JSON",
+        '{"researcher":{"route":"local_ai","model":"local/lmstudio-test"}}',
+    )
+
+    assert llm.is_valid_model("local/lmstudio-test")
+    assert llm.model_provider("local/lmstudio-test") == "local_ai"
+    assert llm.model_label("local/lmstudio-test") == "Local AI Â· lmstudio-test"
+    assert llm.get_model(agent_name="researcher") == "local/lmstudio-test"
+
+
 def test_codex_cli_timeout_defaults_to_long_running(monkeypatch) -> None:
     monkeypatch.delenv("SPARKBOT_CODEX_CLI_TIMEOUT_SECONDS", raising=False)
     assert llm._codex_cli_timeout_seconds() == 7200.0
@@ -171,6 +186,84 @@ def test_models_config_supports_openrouter_default_with_local_override(
     }
 
 
+def test_models_config_saves_local_ai_runtime_and_ollama_base_url(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    operator_id = _ensure_chat_user("sparkbot-user")
+    headers = _chat_headers_for_user(operator_id)
+    saved_updates: dict[str, str] = {}
+
+    async def fake_ollama_status():
+        return {"reachable": False, "models_available": False, "models": [], "model_ids": []}
+
+    async def fake_local_ai_status(**kwargs):
+        return {
+            "provider_type": "local",
+            "provider": "local_ai",
+            "local_runtime": "lmstudio",
+            "base_url": "http://localhost:1234/v1",
+            "model_id": "local/lmstudio-test",
+            "enabled": True,
+            "auth_mode": "none",
+            "supports_chat": True,
+            "supports_embeddings": False,
+            "supports_tools": False,
+            "reachable": True,
+            "models": ["lmstudio-test"],
+            "model_ids": ["local/lmstudio-test"],
+            "models_available": True,
+        }
+
+    monkeypatch.setattr(model_route, "_write_env_updates", lambda updates: saved_updates.update(updates))
+    monkeypatch.setattr(model_route, "get_ollama_status", fake_ollama_status)
+    monkeypatch.setattr(model_route, "get_local_ai_status", fake_local_ai_status)
+
+    response = client.post(
+        f"{settings.API_V1_STR}/chat/models/config",
+        headers=headers,
+        json={
+            "default_selection": {
+                "provider": "local_ai",
+                "model": "local/lmstudio-test",
+            },
+            "local_runtime": {
+                "default_local_model": "local/lmstudio-test",
+                "local_runtime": "lmstudio",
+                "base_url": "http://localhost:1234/v1",
+                "auth_mode": "none",
+                "enabled": True,
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["default_selection"]["provider"] == "local_ai"
+    assert payload["local_runtime"]["default_local_model"] == "local/lmstudio-test"
+    assert payload["local_ai_status"]["reachable"] is True
+    assert saved_updates["SPARKBOT_LOCAL_AI_MODEL"] == "local/lmstudio-test"
+    assert saved_updates["SPARKBOT_LOCAL_AI_RUNTIME"] == "lmstudio"
+    assert saved_updates["SPARKBOT_LOCAL_AI_BASE_URL"] == "http://localhost:1234/v1"
+    assert saved_updates["SPARKBOT_LOCAL_AI_AUTH_MODE"] == "none"
+    assert saved_updates["SPARKBOT_LOCAL_AI_ENABLED"] == "true"
+
+    response = client.post(
+        f"{settings.API_V1_STR}/chat/models/config",
+        headers=headers,
+        json={
+            "local_runtime": {
+                "default_local_model": "ollama/custom-local:latest",
+                "local_runtime": "ollama",
+                "base_url": "http://127.0.0.1:11435",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert saved_updates["OLLAMA_API_BASE"] == "http://127.0.0.1:11435"
+
+
 def test_models_config_persists_security_profile(client: TestClient, monkeypatch) -> None:
     operator_id = _ensure_chat_user("sparkbot-user")
     headers = _chat_headers_for_user(operator_id)
@@ -263,6 +356,81 @@ def test_models_config_saves_model_seat_credentials_to_vault_only(client: TestCl
     assert grok_seat["model_id"] == "xai/grok-4.20-multi-agent-0309"
 
 
+def test_models_config_saves_local_model_seat_without_frontend_secret(client: TestClient, monkeypatch) -> None:
+    operator_id = _ensure_chat_user("sparkbot-user")
+    headers = _chat_headers_for_user(operator_id)
+    saved_updates: dict[str, str] = {}
+    vault_writes: list[dict[str, str]] = []
+
+    async def fake_ollama_status():
+        return {"reachable": False, "models_available": False, "models": [], "model_ids": []}
+
+    async def fake_local_ai_status():
+        return {
+            "provider_type": "local",
+            "provider": "local_ai",
+            "local_runtime": "llamacpp",
+            "base_url": "http://localhost:8080/v1",
+            "model_id": "local/llama-test",
+            "enabled": True,
+            "auth_mode": "none",
+            "supports_chat": True,
+            "supports_embeddings": False,
+            "supports_tools": False,
+            "reachable": True,
+            "models": ["llama-test"],
+            "model_ids": ["local/llama-test"],
+            "models_available": True,
+        }
+
+    def fake_apply_env_updates(updates: dict[str, str]) -> None:
+        for key, value in updates.items():
+            monkeypatch.setenv(key, value)
+
+    monkeypatch.setenv("SPARKBOT_OPERATOR_USERNAMES", "sparkbot-user")
+    monkeypatch.delenv("SPARKBOT_MODEL_SEATS_JSON", raising=False)
+    monkeypatch.setattr(model_route, "_write_env_updates", lambda updates: saved_updates.update(updates))
+    monkeypatch.setattr(model_route, "_apply_env_updates", fake_apply_env_updates)
+    monkeypatch.setattr(model_route, "_upsert_vault_secret", lambda **kwargs: vault_writes.append(kwargs) or True)
+    monkeypatch.setattr(model_route, "get_ollama_status", fake_ollama_status)
+    monkeypatch.setattr(model_route, "get_local_ai_status", fake_local_ai_status)
+
+    response = client.post(
+        f"{settings.API_V1_STR}/chat/models/config",
+        headers=headers,
+        json={
+            "model_seats": [
+                {
+                    "id": "invite-local",
+                    "label": "Local llama.cpp",
+                    "company": "Local",
+                    "provider": "local_ai",
+                    "auth_mode": "none",
+                    "model_id": "local/llama-test",
+                    "local_runtime": "llamacpp",
+                    "base_url": "http://localhost:8080/v1",
+                    "enabled": True,
+                    "show_in_round_table": True,
+                    "show_in_specialty_wing": True,
+                }
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    local_seat = next(seat for seat in payload["model_seats"] if seat["id"] == "invite-local")
+    assert local_seat["provider"] == "local_ai"
+    assert local_seat["auth_mode"] == "none"
+    assert local_seat["model_id"] == "local/llama-test"
+    assert local_seat["base_url"] == "http://localhost:8080/v1"
+    assert local_seat["configured"] is True
+    assert vault_writes == []
+    assert "credential_configured" in json.dumps(payload["model_seats"])
+    assert "local-secret" not in json.dumps(payload["model_seats"])
+    assert "SPARKBOT_MODEL_SEATS_JSON" in saved_updates
+
+
 def test_invite_route_resolves_model_seat_secret_backend_side(client: TestClient, monkeypatch) -> None:
     operator_id = _ensure_chat_user("sparkbot-user")
     headers = _chat_headers_for_user(operator_id)
@@ -308,6 +476,56 @@ def test_invite_route_resolves_model_seat_secret_backend_side(client: TestClient
         "api_key": "xai-secret-value",
         "auth_mode": "api_key",
     }
+
+
+def test_invite_route_allows_local_model_seat_without_secret(client: TestClient, monkeypatch) -> None:
+    operator_id = _ensure_chat_user("sparkbot-user")
+    headers = _chat_headers_for_user(operator_id)
+    captured: dict[str, object] = {}
+
+    monkeypatch.setenv("SPARKBOT_OPERATOR_USERNAMES", "sparkbot-user")
+    monkeypatch.setenv(
+        "SPARKBOT_MODEL_SEATS_JSON",
+        json.dumps(
+            [
+                {
+                    "id": "invite-local",
+                    "label": "Local AI",
+                    "company": "Local",
+                    "provider": "local_ai",
+                    "auth_mode": "none",
+                    "model_id": "local/llama-test",
+                    "local_runtime": "lmstudio",
+                    "base_url": "http://localhost:1234/v1",
+                    "enabled": True,
+                    "show_in_round_table": True,
+                    "show_in_specialty_wing": True,
+                    "notes": "",
+                }
+            ]
+        ),
+    )
+    monkeypatch.setattr(model_route, "_use_model_seat_secret", lambda seat_id, current_user: None)
+    monkeypatch.setattr(
+        model_route,
+        "set_invite_agent_config",
+        lambda agent_name, **kwargs: captured.update({"agent_name": agent_name, **kwargs}),
+    )
+
+    response = client.post(
+        f"{settings.API_V1_STR}/chat/agents/local_seat/invite-route",
+        headers=headers,
+        json={"model_seat_id": "invite-local"},
+    )
+
+    assert response.status_code == 200
+    assert captured == {
+        "agent_name": "local_seat",
+        "model": "local/llama-test",
+        "api_key": None,
+        "auth_mode": "none",
+    }
+    assert response.json()["credential_from_vault"] is False
 
 
 def test_agent_override_preserves_model_seat_without_exposing_secret(client: TestClient, monkeypatch) -> None:
@@ -621,6 +839,47 @@ def test_locked_local_completion_returns_clear_error_without_cloud_fallback(monk
         )
 
     assert calls == ["ollama/custom-local:latest"]
+
+
+def test_local_ai_completion_uses_openai_compatible_base_url(monkeypatch) -> None:
+    calls: list[tuple[str, str | None, str | None]] = []
+
+    class _FakeMessage:
+        tool_calls = None
+        content = "LOCAL_OK"
+
+    class _FakeResponse:
+        choices = [SimpleNamespace(finish_reason="stop", message=_FakeMessage())]
+
+    async def fake_acompletion(*, model: str, **kwargs):
+        calls.append((model, kwargs.get("api_base"), kwargs.get("api_key")))
+        return _FakeResponse()
+
+    monkeypatch.setenv("SPARKBOT_LOCAL_AI_ENABLED", "true")
+    monkeypatch.setenv("SPARKBOT_LOCAL_AI_BASE_URL", "http://localhost:1234/v1")
+    monkeypatch.setenv("SPARKBOT_LOCAL_AI_MODEL", "local/lmstudio-test")
+    monkeypatch.setattr(llm.litellm, "acompletion", fake_acompletion)
+
+    route_context = {
+        "route": "local_ai",
+        "provider_locked": True,
+        "requested_provider": "local_ai",
+        "model": "local/lmstudio-test",
+        "local_ai_base_url": "http://localhost:1234/v1",
+    }
+
+    chosen_model, response = asyncio.run(
+        llm._acompletion_with_fallback(
+            model="local/lmstudio-test",
+            route_context=route_context,
+            messages=[{"role": "user", "content": "test"}],
+            stream=False,
+        )
+    )
+
+    assert chosen_model == "local/lmstudio-test"
+    assert response.choices[0].message.content == "LOCAL_OK"
+    assert calls == [("openai/lmstudio-test", "http://localhost:1234/v1", "local-ai")]
 
 
 def test_locked_provider_retries_without_tools_before_failing(monkeypatch) -> None:

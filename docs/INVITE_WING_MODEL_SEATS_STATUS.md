@@ -14,6 +14,7 @@ Default public seats:
 | Codex / OpenAI | OpenAI Codex subscription | `openai-codex/gpt-5.3-codex` | Keep |
 | Claude / Anthropic | Anthropic | `claude-sonnet-4-6` | Keep |
 | Grok / xAI | xAI | `xai/grok-4.20-multi-agent-0309` | Keep |
+| Local AI | Ollama, LM Studio, llama.cpp, or OpenAI-compatible local endpoint | `local/local-model` | Keep |
 
 ## Implementation Status
 
@@ -58,3 +59,21 @@ Implemented:
 ## Package Cleanup Note - 2026-05-17
 
 The package/prompt cleanup pass did not change Invite Wing behavior. It did keep the public positioning: Codex/OpenAI, Claude/Anthropic, and Grok/xAI remain editable default model seats, credentials stay backend/Vault-owned, and public package exclusions now remove internal readiness/status docs from generated source bundles.
+
+## Local AI Update - 2026-05-17
+
+Branch: `public-release-local-ai-integration`
+
+Implemented:
+
+- Added `invite-local` as the default Local AI model seat.
+- Local seats can use `auth_mode=none` for localhost or user-owned local/LAN endpoints.
+- Local seats preserve non-secret `local_runtime`, `base_url`, `model_id`, enabled state, and Round Table/Specialty Wing visibility.
+- Round Table invite route setup now accepts local model seats without requiring a Vault credential.
+- Specialty Wing overrides can select local model seats while keeping any optional API key backend-only.
+
+Remaining:
+
+1. Add a full Command Center model-seat editor for all default seats, including Local AI.
+2. Add setup-needed badges when a local model seat is selected but the endpoint is not reachable.
+3. Browser-test Local AI setup against live Ollama, LM Studio, and llama.cpp endpoints.

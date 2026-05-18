@@ -185,6 +185,27 @@ Remaining after this pass:
 - Add final Round Table assignment display/phase UI polish.
 - Refresh the Sparkbot_shell extraction map.
 
+## Local AI Integration Update - 2026-05-17
+
+Branch: `public-release-local-ai-integration`
+
+Completed in this pass:
+
+- Added a public local provider abstraction for Ollama, LM Studio, llama.cpp / llama-server, generic OpenAI-compatible endpoints, and custom local endpoints.
+- Added a backend local AI status/config helper and route without introducing new dependencies or probing unconfigured local endpoints by default.
+- Kept Ollama first-class and fixed AI Setup so editable Ollama base URLs save through the existing config route.
+- Added a default `invite-local` model seat with no-key local auth, editable runtime/base URL/model id metadata, and Round Table plus Specialty Wing visibility.
+- Routed `local/<model-id>` chat completions through the existing LiteLLM/OpenAI-compatible path with backend-owned base URL and optional backend-only API key.
+- Updated Invite Wing, Specialty Wing, Round Table invite route setup, and Command Center AI Setup to recognize local model seats without storing secrets in browser storage.
+- Added targeted tests for local config persistence, no-secret model seats, backend route setup, and local completion routing.
+
+Remaining after this pass:
+
+- Add a full Command Center model-seat editor for local and cloud seats.
+- Add visible setup-needed badges where a selected local endpoint is unreachable or unconfigured.
+- Browser-test local setup against live Ollama and a live OpenAI-compatible local server.
+- Keep embedded/local runtime runner work out of public MVP until the external endpoint path is stable.
+
 ## Recommended Next Phase
 
 Run a focused public extraction-blocker phase:

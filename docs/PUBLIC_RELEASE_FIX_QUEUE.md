@@ -47,6 +47,14 @@ Branch `public-release-package-prompt-cleanup` moved package/prompt blockers for
 - Current README/capabilities copy presents Robo as teaser-only **Robo Preview** and replaces private host-inspection paths with generic local service/log-root language.
 - Web search key fallback no longer reads an OpenClaw config path; use `BRAVE_SEARCH_API_KEY` or explicit `SPARKBOT_SEARCH_CONFIG_PATH`.
 
+Branch `public-release-local-ai-integration` moved local model readiness forward:
+
+- Added a public local provider abstraction for Ollama, LM Studio, llama.cpp / llama-server, generic OpenAI-compatible endpoints, and custom local endpoints.
+- Kept Ollama first-class while adding editable base URL persistence from AI Setup.
+- Added a default Local AI Invite Wing model seat that can appear in Round Table and Specialty Wing without a browser-stored secret.
+- Routed `local/<model-id>` chat/model-seat requests through a backend-owned OpenAI-compatible local adapter.
+- Added targeted backend tests for local config persistence, no-secret local seats, route setup, and local completion routing.
+
 ## 1. P0 Blockers Before Extraction
 
 1. Unify public chat route.
@@ -114,6 +122,11 @@ Branch `public-release-package-prompt-cleanup` moved package/prompt blockers for
    - Route meaningful chat, connector, meeting, model-seat, agent, task, file, and approval events through a shared source-labeled context interface.
    - Status: `PARTIAL_DONE` - chat, external connectors, meeting rollups, model-seat metadata, and existing task/file/reminder adapters are aligned. Approval summaries and Workstation UI intent events remain follow-ups.
    - Evidence: `backend/app/services/guardian/memory.py`, `backend/app/services/model_seats.py`.
+
+12. Make local AI native across public model surfaces.
+   - Support Ollama, LM Studio, llama.cpp / llama-server, generic OpenAI-compatible endpoints, and custom local endpoints from AI Setup, model seats, Chat, Round Table, and Specialty Wing.
+   - Status: `PARTIAL_DONE_THIS_PHASE` - backend routing, AI Setup config, default Local AI model seat, Round Table invite routing, and Specialty Wing model-seat override paths are implemented. Remaining work is full Command Center seat editing, live endpoint browser QA, and setup-needed badges.
+   - Evidence: `backend/app/services/local_ai.py`, `backend/app/api/routes/chat/model.py`, `backend/app/api/routes/chat/llm.py`, `frontend/src/components/CommandCenter/SetupPanels.tsx`, `frontend/src/pages/WorkstationPage.tsx`.
 
 ## 2. P1 Polish Before Public Beta
 
@@ -237,9 +250,9 @@ Branch `public-release-package-prompt-cleanup` moved package/prompt blockers for
 
 Phase B2 should be a focused P0/P1 stabilization patch:
 
-1. Tune Balanced vs Locked policy behavior.
-2. Add final Round Table assignment display/phase UI polish.
-3. Refresh the Sparkbot_shell extraction map.
+1. Add final Round Table assignment display/phase UI polish.
+2. Refresh the Sparkbot_shell extraction map.
+3. Run browser QA for Local AI setup against live Ollama and a live OpenAI-compatible endpoint.
 4. Replace Robo/LIMA backend bridge source with a public stub before extraction.
 5. Remove tracked `.venv-ci` files from Git if approved.
 6. Converge remaining "Controls" copy into AI setup versus Command Center.

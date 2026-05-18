@@ -105,7 +105,7 @@ interface ProjectRoom {
   seats: Array<string | null>
 }
 
-type InviteAuthMode = "api_key" | "oauth" | "codex_sub"
+type InviteAuthMode = "none" | "api_key" | "oauth" | "codex_sub"
 
 interface InviteConfig {
   label: string
@@ -114,6 +114,8 @@ interface InviteConfig {
   description: string
   modelId?: string
   authMode?: InviteAuthMode
+  localRuntime?: string
+  baseUrl?: string
   enabled?: boolean
   showInRoundTable?: boolean
   showInSpecialtyWing?: boolean
@@ -179,6 +181,7 @@ function resolveInviteStation(
     modelSeatId: station.id,
     modelSeatConfigured: Boolean(config.configured),
     ...(config.authMode ? { inviteAuthMode: config.authMode } : {}),
+    routeMode: config.providerId === "ollama" ? "local" : config.providerId === "local_ai" ? "local_ai" : station.routeMode,
     showInRoundTable: config.showInRoundTable !== false,
     showInSpecialtyWing: config.showInSpecialtyWing !== false,
   }
@@ -195,6 +198,8 @@ function buildConfiguredInvites(config: SparkbotControlsConfig | null): Map<stri
       description: seat.notes || "",
       modelId: seat.model_id || undefined,
       authMode: seat.auth_mode,
+      localRuntime: seat.local_runtime,
+      baseUrl: seat.base_url,
       enabled: seat.enabled,
       showInRoundTable: seat.show_in_round_table,
       showInSpecialtyWing: seat.show_in_specialty_wing,
@@ -846,6 +851,7 @@ const PROVIDER_OPTIONS = [
   { value: "xai", label: "xAI (Grok)", company: "xAI" },
   { value: "google", label: "Google (Gemini)", company: "Google" },
   { value: "ollama", label: "Ollama (Local)", company: "Ollama" },
+  { value: "local_ai", label: "Local AI endpoint", company: "Local" },
   { value: "openrouter", label: "OpenRouter / custom", company: "Custom" },
 ]
 
@@ -855,6 +861,7 @@ const MODEL_ID_PLACEHOLDER: Record<string, string> = {
   openai: "e.g. gpt-5.3-codex",
   xai: "e.g. xai/grok-4.20-multi-agent-0309",
   ollama: "e.g. ollama/phi4-mini",
+  local_ai: "e.g. local/llama-3.2-3b-instruct",
   google: "e.g. gemini/gemini-1.5-pro",
   openrouter: "e.g. openrouter/openai/gpt-4o",
 }
@@ -864,6 +871,7 @@ const DEFAULT_INVITE_MODELS: Record<string, string> = {
   openai_codex: "openai-codex/gpt-5.3-codex",
   openai: "gpt-5.3-codex",
   xai: "xai/grok-4.20-multi-agent-0309",
+  local_ai: "local/local-model",
 }
 
 function InviteConfigModal({ station, onSave, onCancel }: InviteConfigModalProps) {
@@ -874,6 +882,7 @@ function InviteConfigModal({ station, onSave, onCancel }: InviteConfigModalProps
     station.modelSeatId === "invite-claude" || station.id === "invite-claude" ? "anthropic" :
     station.modelSeatId === "invite-gpt" || station.id === "invite-gpt" ? "openai_codex" :
     station.modelSeatId === "invite-custom" || station.id === "invite-custom" ? "xai" :
+    station.modelSeatId === "invite-local" || station.id === "invite-local" ? "local_ai" :
     "openrouter"
   const [provider, setProvider] = useState(defaultProvider)
   const [description, setDescription] = useState(station.description || "")
@@ -886,11 +895,15 @@ function InviteConfigModal({ station, onSave, onCancel }: InviteConfigModalProps
         ? DEFAULT_INVITE_MODELS.openai_codex
         : station.id === "invite-custom"
           ? DEFAULT_INVITE_MODELS.xai
+          : station.id === "invite-local"
+            ? DEFAULT_INVITE_MODELS.local_ai
           : "",
   )
   const [credential, setCredential] = useState("")
+  const [baseUrl, setBaseUrl] = useState(station.id === "invite-local" ? "http://localhost:1234/v1" : "")
+  const [localRuntime, setLocalRuntime] = useState("openai_compatible")
   const [authMode, setAuthMode] = useState<InviteAuthMode>(
-    station.id === "invite-gpt" ? "codex_sub" : "api_key",
+    station.id === "invite-gpt" ? "codex_sub" : station.id === "invite-local" ? "none" : "api_key",
   )
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState("")
@@ -900,14 +913,17 @@ function InviteConfigModal({ station, onSave, onCancel }: InviteConfigModalProps
   const providerOption = PROVIDER_OPTIONS.find((option) => option.value === provider)
   const supportsClaudeOAuth = provider === "anthropic"
   const supportsCodexSub = provider === "openai_codex"
-  const showsAuthModeToggle = supportsClaudeOAuth || supportsCodexSub
+  const supportsNoAuth = provider === "local_ai"
+  const showsAuthModeToggle = supportsClaudeOAuth || supportsCodexSub || supportsNoAuth
   const authModeOptions: InviteAuthMode[] = supportsClaudeOAuth
     ? ["api_key", "oauth"]
     : supportsCodexSub
       ? ["codex_sub"]
-      : ["api_key"]
+      : supportsNoAuth
+        ? ["none", "api_key"]
+        : ["api_key"]
   const effectiveAuthMode: InviteAuthMode =
-    supportsClaudeOAuth || supportsCodexSub ? authMode : "api_key"
+    supportsClaudeOAuth || supportsCodexSub || supportsNoAuth ? authMode : "api_key"
 
   useEffect(() => {
     const fallbackModel = DEFAULT_INVITE_MODELS[provider]
@@ -916,6 +932,9 @@ function InviteConfigModal({ station, onSave, onCancel }: InviteConfigModalProps
     }
     if (provider === "openai_codex") {
       setAuthMode("codex_sub")
+    } else if (provider === "local_ai") {
+      setAuthMode((current) => current === "api_key" ? "api_key" : "none")
+      setBaseUrl((current) => current.trim() || "http://localhost:1234/v1")
     } else if (provider === "anthropic" && authMode === "codex_sub") {
       setAuthMode("api_key")
     } else if (provider !== "anthropic") {
@@ -928,14 +947,20 @@ function InviteConfigModal({ station, onSave, onCancel }: InviteConfigModalProps
     setSaving(true)
     setSaveError("")
     try {
+      const cleanedModelId = modelId.trim()
+      const effectiveModelId = provider === "local_ai" && cleanedModelId && !cleanedModelId.startsWith("local/")
+        ? `local/${cleanedModelId}`
+        : cleanedModelId
       await onSave(station.id, {
         label: label.trim(),
         provider: providerOption?.company ?? provider,
         providerId: provider,
         description: description.trim(),
-        modelId: modelId.trim() || undefined,
+        modelId: effectiveModelId || undefined,
         credential: credential.trim() || undefined,
         authMode: effectiveAuthMode,
+        localRuntime: provider === "local_ai" ? localRuntime : undefined,
+        baseUrl: provider === "local_ai" ? baseUrl.trim() : undefined,
         enabled: true,
         showInRoundTable: true,
         showInSpecialtyWing: true,
@@ -945,7 +970,7 @@ function InviteConfigModal({ station, onSave, onCancel }: InviteConfigModalProps
     } finally {
       setSaving(false)
     }
-  }, [canSave, saving, station.id, label, providerOption?.company, provider, description, modelId, credential, effectiveAuthMode, onSave])
+  }, [baseUrl, canSave, saving, station.id, label, providerOption?.company, provider, description, modelId, credential, effectiveAuthMode, localRuntime, onSave])
 
   const inputStyle: React.CSSProperties = {
     width: "100%",
@@ -1089,9 +1114,38 @@ function InviteConfigModal({ station, onSave, onCancel }: InviteConfigModalProps
             <div style={{ fontSize: 10, color: "#4b5563", marginTop: 4 }}>
               {provider === "ollama"
                 ? "No API key needed - Ollama runs locally."
+                : provider === "local_ai"
+                  ? "Use local/<model-id> for LM Studio, llama.cpp, or another OpenAI-compatible local endpoint."
                 : "This model id is saved as backend-owned seat config for Round Table and Specialty Wing."}
             </div>
           </div>
+          {provider === "local_ai" && (
+            <div>
+              <label style={labelStyle}>Endpoint</label>
+              <input
+                style={inputStyle}
+                type="text"
+                value={baseUrl}
+                onChange={(e) => setBaseUrl(e.target.value)}
+                placeholder="http://localhost:1234/v1"
+                maxLength={240}
+                spellCheck={false}
+              />
+              <div style={{ marginTop: 8 }}>
+                <label style={labelStyle}>Runtime</label>
+                <select
+                  style={{ ...inputStyle, cursor: "pointer" }}
+                  value={localRuntime}
+                  onChange={(e) => setLocalRuntime(e.target.value)}
+                >
+                  <option value="lmstudio">LM Studio</option>
+                  <option value="llamacpp">llama.cpp / llama-server</option>
+                  <option value="openai_compatible">OpenAI-compatible</option>
+                  <option value="custom">Custom</option>
+                </select>
+              </div>
+            </div>
+          )}
           {provider !== "ollama" && (
             <div>
               {showsAuthModeToggle && (
@@ -1118,13 +1172,13 @@ function InviteConfigModal({ station, onSave, onCancel }: InviteConfigModalProps
                           cursor: "pointer",
                         }}
                       >
-                        {mode === "api_key" ? "API Key" : "Subscription"}
+                              {mode === "none" ? "No Key" : mode === "api_key" ? "API Key" : "Subscription"}
                       </button>
                     )
                   })}
                 </div>
               )}
-              {effectiveAuthMode !== "codex_sub" && (
+              {effectiveAuthMode !== "codex_sub" && effectiveAuthMode !== "none" && (
                 <>
               <label style={labelStyle}>
                 {effectiveAuthMode === "oauth" ? "Claude OAuth token" : "API key"}
@@ -1151,6 +1205,14 @@ function InviteConfigModal({ station, onSave, onCancel }: InviteConfigModalProps
                   <>
                     Codex subscription seats use backend/CLI sign-in. Sparkbot does not store subscription
                     passwords or browser cookies for this seat.
+                  </>
+                ) : effectiveAuthMode === "none" ? (
+                  <>
+                    Local endpoint seats do not require a key unless your local server is configured to require one.
+                  </>
+                ) : provider === "local_ai" ? (
+                  <>
+                    Optional local endpoint API keys are saved in Guardian Vault by the backend.
                   </>
                 ) : provider === "xai" ? (
                   <>
@@ -4781,6 +4843,8 @@ export default function WorkstationPage() {
       provider: config.providerId ?? config.provider,
       auth_mode: config.authMode ?? "api_key",
       model_id: config.modelId ?? "",
+      local_runtime: config.localRuntime ?? "",
+      base_url: config.baseUrl ?? "",
       enabled: config.enabled ?? true,
       show_in_round_table: config.showInRoundTable ?? true,
       show_in_specialty_wing: config.showInSpecialtyWing ?? true,

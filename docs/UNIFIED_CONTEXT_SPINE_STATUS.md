@@ -129,3 +129,20 @@ Preserved:
 ## Package Cleanup Note - 2026-05-17
 
 The package/prompt cleanup pass completed the public package exclusions and built-in prompt rewrite items tracked here. It did not alter unified context behavior.
+
+## Local AI Update - 2026-05-17
+
+Branch: `public-release-local-ai-integration`
+
+Local model responses now use the same public model routing and memory/context surfaces as other model-seat responses:
+
+- `local/<model-id>` is recognized as provider `local_ai`.
+- Local model-seat metadata can carry `model_seat_id`, `provider=local_ai`, `local_runtime`, and model id without exposing secrets.
+- Chat/DM local responses flow through the existing chat response path that already reads shared context and writes chat memory.
+- Round Table local invite seats use the same participant route setup as cloud Invite Wing seats, so manager wrap-up/checkpoint memory behavior stays unchanged.
+- Specialty Wing agents can select a local model seat and keep context labels aligned with other agent/model-seat runs.
+
+Still deferred:
+
+- Add dedicated public-safe confirmation memory summaries for local endpoint setup failures or risky local tool actions.
+- Add richer source labels for Workstation UI-only local seat edits without creating noisy memory spam.

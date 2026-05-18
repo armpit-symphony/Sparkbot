@@ -40,6 +40,19 @@ from app.services.model_seats import (
     model_seat_secret_alias,
     normalize_model_seat_provider,
 )
+from app.services.local_ai import (
+    LOCAL_AI_AUTH_MODE_ENV,
+    LOCAL_AI_BASE_URL_ENV,
+    LOCAL_AI_DISPLAY_NAME_ENV,
+    LOCAL_AI_ENABLED_ENV,
+    LOCAL_AI_MODEL_ENV,
+    LOCAL_AI_RUNTIME_ENV,
+    get_local_ai_status,
+    local_ai_config,
+    local_default_base_url,
+    normalize_local_model_id,
+    normalize_local_runtime,
+)
 from app.api.routes.chat.llm import (
     AGENT_MODEL_OVERRIDES_ENV,
     AVAILABLE_MODELS,
@@ -340,7 +353,10 @@ def _env_or_vault_has_secret(env_var: str, vault_alias: str) -> bool:
         return False
 
 
-def _provider_catalog(ollama_status: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+def _provider_catalog(
+    ollama_status: dict[str, Any] | None = None,
+    local_ai_status: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     models_by_provider: dict[str, list[str]] = {}
     for model in AVAILABLE_MODELS:
         provider = model_provider(model)
@@ -408,6 +424,32 @@ def _provider_catalog(ollama_status: dict[str, Any] | None = None) -> list[dict[
             "models": sorted(models_by_provider.get("ollama", [])),
         }
     )
+    local_ai_status = local_ai_status or local_ai_config()
+    saved_local_ai_model = bool(os.getenv(LOCAL_AI_MODEL_ENV, "").strip())
+    local_ai_configured = (
+        bool(local_ai_status.get("enabled"))
+        or saved_local_ai_model
+        or primary_model.startswith("local/")
+        or any(
+            str((value or {}).get("route") or "").strip().lower() == "local_ai"
+            for value in get_agent_model_overrides().values()
+        )
+    )
+    items.append(
+        {
+            "id": "local_ai",
+            "label": "Local AI endpoint",
+            "configured": local_ai_configured,
+            "reachable": bool(local_ai_status.get("reachable")) if "reachable" in local_ai_status else None,
+            "models_available": bool(local_ai_status.get("models_available")),
+            "available_models": list(local_ai_status.get("model_ids") or []),
+            "models": sorted(models_by_provider.get("local_ai", [])),
+            "auth_modes": ["none", "api_key"],
+            "saved_auth_mode": str(local_ai_status.get("auth_mode") or "none"),
+            "local_runtime": str(local_ai_status.get("local_runtime") or "openai_compatible"),
+            "base_url": str(local_ai_status.get("base_url") or local_default_base_url()),
+        }
+    )
     return items
 
 
@@ -446,9 +488,12 @@ def _clean_model_seat_record(item: "ModelSeatInput", existing: dict[str, Any] | 
     if model_id and not is_valid_model(model_id):
         raise HTTPException(status_code=400, detail=f"Unknown model '{model_id}' for model seat '{seat_id}'.")
     provider = _normalize_model_seat_provider(item.provider if item.provider is not None else base.get("provider"), model_id)
-    auth_mode = str(item.auth_mode if item.auth_mode is not None else base.get("auth_mode") or "api_key").strip().lower()
+    auth_mode_default = "none" if provider == "local_ai" else "api_key"
+    auth_mode = str(item.auth_mode if item.auth_mode is not None else base.get("auth_mode") or auth_mode_default).strip().lower()
     if auth_mode not in MODEL_SEAT_AUTH_MODES:
-        auth_mode = "api_key"
+        auth_mode = auth_mode_default
+    local_runtime = normalize_local_runtime(item.local_runtime if item.local_runtime is not None else base.get("local_runtime"))
+    base_url = str(item.base_url if item.base_url is not None else base.get("base_url") or "").strip()
     return {
         "id": seat_id,
         "label": str(item.label if item.label is not None else base.get("label") or seat_id).strip()[:80],
@@ -456,6 +501,8 @@ def _clean_model_seat_record(item: "ModelSeatInput", existing: dict[str, Any] | 
         "provider": provider,
         "auth_mode": auth_mode,
         "model_id": model_id,
+        "local_runtime": local_runtime if provider == "local_ai" else "",
+        "base_url": base_url[:300] if provider == "local_ai" else "",
         "enabled": bool(base.get("enabled", True) if item.enabled is None else item.enabled),
         "show_in_round_table": bool(base.get("show_in_round_table", True) if item.show_in_round_table is None else item.show_in_round_table),
         "show_in_specialty_wing": bool(base.get("show_in_specialty_wing", True) if item.show_in_specialty_wing is None else item.show_in_specialty_wing),
@@ -470,6 +517,10 @@ def _model_seat_configured(seat: dict[str, Any], providers: list[dict[str, Any]]
         return True
     if provider_id == "ollama":
         return bool(provider and (provider.get("models_available") or provider.get("configured") or provider.get("reachable")))
+    if provider_id == "local_ai":
+        auth_mode = str(seat.get("auth_mode") or "none").strip().lower()
+        if auth_mode == "none" and str(seat.get("model_id") or "").strip().startswith("local/"):
+            return bool(seat.get("base_url") or (provider and (provider.get("configured") or provider.get("reachable"))))
     return bool(provider and (provider.get("configured") or provider.get("models_available")))
 
 
@@ -489,8 +540,10 @@ def _model_seat_payload(providers: list[dict[str, Any]]) -> list[dict[str, Any]]
                 "label": str(seat.get("label") or seat_id),
                 "company": str(seat.get("company") or provider),
                 "provider": provider,
-                "auth_mode": str(seat.get("auth_mode") or "api_key"),
+                "auth_mode": str(seat.get("auth_mode") or ("none" if provider == "local_ai" else "api_key")),
                 "model_id": model_id,
+                "local_runtime": str(seat.get("local_runtime") or ""),
+                "base_url": str(seat.get("base_url") or ""),
                 "enabled": bool(seat.get("enabled", True)),
                 "show_in_round_table": bool(seat.get("show_in_round_table", True)),
                 "show_in_specialty_wing": bool(seat.get("show_in_specialty_wing", True)),
@@ -582,6 +635,7 @@ def _build_comms_status() -> dict[str, Any]:
 async def _build_controls_config(current_user: CurrentChatUser, notices: list[str] | None = None) -> dict[str, Any]:
     _reload_persisted_env()
     ollama_status = await get_ollama_status()
+    local_ai_status = await get_local_ai_status()
     # Only expose a model in default_selection/stack when the user has explicitly
     # configured one.  Fall back to empty string so the UI shows a clean slate on
     # first launch instead of pre-selecting our hardcoded fallbacks.
@@ -589,7 +643,7 @@ async def _build_controls_config(current_user: CurrentChatUser, notices: list[st
     _display_model = _configured_primary or ""
     _configured_local = os.getenv(LOCAL_DEFAULT_MODEL_ENV, "").strip()
     global_control = global_bypass_status()
-    providers = _provider_catalog(ollama_status=ollama_status)
+    providers = _provider_catalog(ollama_status=ollama_status, local_ai_status=local_ai_status)
     model_seats = _model_seat_payload(providers)
     return {
         "active_model": get_model(str(current_user.id)),
@@ -601,7 +655,11 @@ async def _build_controls_config(current_user: CurrentChatUser, notices: list[st
         },
         "local_runtime": {
             "default_local_model": _configured_local,
+            **local_ai_config(model_id=_configured_local if _configured_local.startswith("local/") else None),
             "base_url": os.getenv("OLLAMA_API_BASE", "http://localhost:11434").strip() or "http://localhost:11434",
+            "ollama_base_url": os.getenv("OLLAMA_API_BASE", "http://localhost:11434").strip() or "http://localhost:11434",
+            "local_ai_base_url": str(local_ai_status.get("base_url") or local_default_base_url()),
+            "local_ai_status": local_ai_status,
         },
         "routing_policy": {
             "default_provider_authoritative": True,
@@ -678,9 +736,15 @@ async def _build_controls_config(current_user: CurrentChatUser, notices: list[st
                 for seat in model_seats
                 if str(seat.get("model_id") or "").strip()
             },
+            **{
+                str(model_id): model_label(str(model_id))
+                for model_id in list(local_ai_status.get("model_ids") or [])
+                if str(model_id or "").strip()
+            },
         },
         "comms": _build_comms_status(),
         "ollama_status": ollama_status,
+        "local_ai_status": local_ai_status,
         "notices": notices or [],
     }
 
@@ -711,7 +775,7 @@ async def build_safe_runtime_state(current_user: CurrentChatUser) -> dict[str, A
         "default_selection": config.get("default_selection") or {},
         "model_stack": config.get("stack") or {},
         "local_runtime": config.get("local_runtime") or {},
-        "default_route_mode": "local" if default_provider == "ollama" else "cloud",
+        "default_route_mode": "local" if default_provider in {"ollama", "local_ai"} else "cloud",
         "routing_policy": config.get("routing_policy") or {},
         "token_guardian_mode": str(config.get("token_guardian_mode") or "unknown"),
         "security_guardrails_enabled": bool(config.get("security_guardrails_enabled")),
@@ -730,6 +794,7 @@ async def build_safe_runtime_state(current_user: CurrentChatUser) -> dict[str, A
             for seat in list(config.get("model_seats") or [])
         ],
         "ollama_status": config.get("ollama_status") or {},
+        "local_ai_status": config.get("local_ai_status") or {},
         "openrouter_configured": bool((provider_flags.get("openrouter") or {}).get("configured")),
         "providers": provider_flags,
         "breakglass": {
@@ -767,10 +832,23 @@ class ProviderSecretsInput(BaseModel):
     minimax_api_key: str | None = None
     xai_api_key: str | None = None
     ollama_base_url: str | None = None
+    local_ai_base_url: str | None = None
+    local_ai_runtime: str | None = None
+    local_ai_model: str | None = None
+    local_ai_auth_mode: str | None = None
+    local_ai_display_name: str | None = None
+    local_ai_enabled: bool | None = None
 
 
 class LocalRuntimeInput(BaseModel):
     default_local_model: str | None = None
+    provider_type: str | None = None
+    local_runtime: str | None = None
+    base_url: str | None = None
+    model_id: str | None = None
+    display_name: str | None = None
+    enabled: bool | None = None
+    auth_mode: str | None = None
 
 
 class RoutingPolicyInput(BaseModel):
@@ -784,6 +862,8 @@ class ModelSeatInput(BaseModel):
     provider: str | None = Field(default=None, max_length=80)
     auth_mode: str | None = Field(default=None, max_length=40)
     model_id: str | None = Field(default=None, max_length=160)
+    local_runtime: str | None = Field(default=None, max_length=80)
+    base_url: str | None = Field(default=None, max_length=300)
     enabled: bool | None = None
     show_in_round_table: bool | None = None
     show_in_specialty_wing: bool | None = None
@@ -1082,7 +1162,7 @@ def set_agent_invite_route(name: str, body: InviteRouteConfig, current_user: Cur
     if not current_user:
         raise HTTPException(status_code=401, detail="Authentication required")
     auth_mode = (body.auth_mode or "").strip().lower() or None
-    if auth_mode not in (None, "api_key", "oauth", "codex_sub"):
+    if auth_mode not in (None, "none", "api_key", "oauth", "codex_sub"):
         auth_mode = None
     model = (body.model or "").strip() or None
     api_key = (body.api_key or "").strip() or None
@@ -1095,9 +1175,11 @@ def set_agent_invite_route(name: str, body: InviteRouteConfig, current_user: Cur
             raise HTTPException(status_code=400, detail=f"Model seat '{seat_id}' is disabled.")
         model = model or str(seat.get("model_id") or "").strip() or None
         auth_mode = auth_mode or str(seat.get("auth_mode") or "api_key").strip().lower()
-        if auth_mode not in (None, "api_key", "oauth", "codex_sub"):
+        if auth_mode not in (None, "none", "api_key", "oauth", "codex_sub"):
             auth_mode = None
-        api_key = _use_model_seat_secret(seat_id, current_user)
+        provider = _normalize_model_seat_provider(str(seat.get("provider") or ""), model or "")
+        if auth_mode in {"api_key", "oauth"} or (provider != "local_ai" and auth_mode not in {"none", "codex_sub"}):
+            api_key = _use_model_seat_secret(seat_id, current_user)
     set_invite_agent_config(
         name.lower().strip(),
         model=model,
@@ -1128,6 +1210,10 @@ def set_current_model(body: ModelSelect, current_user: CurrentChatUser) -> dict:
         updates[OPENROUTER_DEFAULT_MODEL_ENV] = chosen
     if provider == "ollama":
         updates[LOCAL_DEFAULT_MODEL_ENV] = chosen
+    if provider == "local_ai":
+        updates[LOCAL_DEFAULT_MODEL_ENV] = chosen
+        updates[LOCAL_AI_MODEL_ENV] = chosen
+        updates[LOCAL_AI_ENABLED_ENV] = "true"
     _write_env_updates(updates)
     _apply_env_updates(updates)
     return {
@@ -1152,6 +1238,12 @@ async def get_models_config(current_user: CurrentChatUser) -> dict[str, Any]:
 async def ollama_status(current_user: CurrentChatUser) -> dict:
     """Check Ollama server connectivity and list available local models."""
     return await get_ollama_status()
+
+
+@router.get("/local-ai/status")
+async def local_ai_status(current_user: CurrentChatUser) -> dict:
+    """Check OpenAI-compatible local endpoint connectivity and model list."""
+    return await get_local_ai_status()
 
 
 @router.get("/models/latency")
@@ -1267,13 +1359,17 @@ async def update_models_config(
             _stack_env[DEFAULT_PROVIDER_ENV] = _new_primary_provider
         if _new_primary_provider == "openrouter":
             _stack_env[OPENROUTER_DEFAULT_MODEL_ENV] = stack["primary"]
+        if _new_primary_provider == "local_ai":
+            _stack_env[LOCAL_DEFAULT_MODEL_ENV] = stack["primary"]
+            _stack_env[LOCAL_AI_MODEL_ENV] = stack["primary"]
+            _stack_env[LOCAL_AI_ENABLED_ENV] = "true"
         env_updates.update(_stack_env)
         notices.append("Model stack updated for Sparkbot.")
 
     if body.default_selection is not None:
         provider = str(body.default_selection.get("provider") or "").strip().lower()
         model = str(body.default_selection.get("model") or "").strip()
-        if provider not in {"openrouter", "ollama", "openai", "openai_codex", "claude_sub", "anthropic", "google", "groq", "minimax", "xai"}:
+        if provider not in {"openrouter", "ollama", "local_ai", "openai", "openai_codex", "claude_sub", "anthropic", "google", "groq", "minimax", "xai"}:
             raise HTTPException(status_code=400, detail="Unknown default provider.")
         if not is_valid_model(model):
             raise HTTPException(status_code=400, detail=f"Unknown model '{model}'.")
@@ -1291,16 +1387,42 @@ async def update_models_config(
             env_updates[OPENROUTER_DEFAULT_MODEL_ENV] = model
         if provider == "ollama":
             env_updates[LOCAL_DEFAULT_MODEL_ENV] = model
+        if provider == "local_ai":
+            env_updates[LOCAL_DEFAULT_MODEL_ENV] = model
+            env_updates[LOCAL_AI_MODEL_ENV] = model
+            env_updates[LOCAL_AI_ENABLED_ENV] = "true"
         notices.append(f"Default model set to {model_label(model)}.")
 
-    if body.local_runtime is not None and body.local_runtime.default_local_model is not None:
-        local_model = str(body.local_runtime.default_local_model or "").strip()
-        if not local_model:
-            raise HTTPException(status_code=400, detail="Default local model cannot be empty.")
-        if not is_valid_model(local_model) or model_provider(local_model) != "ollama":
-            raise HTTPException(status_code=400, detail=f"Local runtime model '{local_model}' must be an Ollama model.")
-        env_updates[LOCAL_DEFAULT_MODEL_ENV] = local_model
-        notices.append(f"Preferred local model set to {model_label(local_model)}.")
+    if body.local_runtime is not None:
+        local_model = str(body.local_runtime.default_local_model or body.local_runtime.model_id or "").strip()
+        if local_model:
+            if not is_valid_model(local_model) or model_provider(local_model) not in {"ollama", "local_ai"}:
+                raise HTTPException(status_code=400, detail=f"Local runtime model '{local_model}' must be an Ollama or local endpoint model.")
+            env_updates[LOCAL_DEFAULT_MODEL_ENV] = local_model
+            if model_provider(local_model) == "local_ai":
+                env_updates[LOCAL_AI_MODEL_ENV] = local_model
+                env_updates[LOCAL_AI_ENABLED_ENV] = "true"
+            notices.append(f"Preferred local model set to {model_label(local_model)}.")
+        if body.local_runtime.base_url:
+            runtime = normalize_local_runtime(body.local_runtime.local_runtime)
+            if runtime == "ollama" or (local_model and model_provider(local_model) == "ollama"):
+                env_updates["OLLAMA_API_BASE"] = str(body.local_runtime.base_url).strip()
+                notices.append("Ollama base URL stored for runtime use.")
+            else:
+                env_updates[LOCAL_AI_BASE_URL_ENV] = str(body.local_runtime.base_url).strip()
+                notices.append("Local AI endpoint URL stored for runtime use.")
+        if body.local_runtime.local_runtime:
+            runtime = normalize_local_runtime(body.local_runtime.local_runtime)
+            if runtime != "ollama":
+                env_updates[LOCAL_AI_RUNTIME_ENV] = runtime
+        if body.local_runtime.display_name:
+            env_updates[LOCAL_AI_DISPLAY_NAME_ENV] = str(body.local_runtime.display_name).strip()
+        if body.local_runtime.auth_mode:
+            auth_mode = str(body.local_runtime.auth_mode).strip().lower()
+            if auth_mode in {"none", "api_key"}:
+                env_updates[LOCAL_AI_AUTH_MODE_ENV] = auth_mode
+        if body.local_runtime.enabled is not None:
+            env_updates[LOCAL_AI_ENABLED_ENV] = "true" if body.local_runtime.enabled else "false"
 
     if body.routing_policy is not None and body.routing_policy.cross_provider_fallback is not None:
         enabled = bool(body.routing_policy.cross_provider_fallback)
@@ -1381,8 +1503,8 @@ async def update_models_config(
 
     if body.agent_overrides is not None:
         cleaned: dict[str, dict[str, str]] = {}
-        _route_to_provider = {"openrouter": "openrouter", "local": "ollama", "openai": "openai", "openai_codex": "openai_codex", "claude_sub": "claude_sub", "anthropic": "anthropic", "google": "google", "groq": "groq", "minimax": "minimax", "xai": "xai"}
-        _provider_to_route = {"ollama": "local"}
+        _route_to_provider = {"openrouter": "openrouter", "local": "ollama", "local_ai": "local_ai", "openai": "openai", "openai_codex": "openai_codex", "claude_sub": "claude_sub", "anthropic": "anthropic", "google": "google", "groq": "groq", "minimax": "minimax", "xai": "xai"}
+        _provider_to_route = {"ollama": "local", "local_ai": "local_ai"}
         for agent_name, value in body.agent_overrides.items():
             route = str((value or {}).get("route") or "default").strip().lower()
             model = str((value or {}).get("model") or "").strip()
@@ -1395,8 +1517,8 @@ async def update_models_config(
                     raise HTTPException(status_code=404, detail=f"Model seat '{model_seat_id}' not found for agent '{agent_name}'.")
                 if not bool(seat.get("enabled", True)):
                     raise HTTPException(status_code=400, detail=f"Model seat '{model_seat_id}' is disabled.")
-                if not bool(seat.get("show_in_specialty_wing", True)):
-                    raise HTTPException(status_code=400, detail=f"Model seat '{model_seat_id}' is not enabled for Specialty Wing.")
+                if not (bool(seat.get("show_in_specialty_wing", True)) or bool(seat.get("show_in_round_table", True))):
+                    raise HTTPException(status_code=400, detail=f"Model seat '{model_seat_id}' is not enabled for Specialty Wing or Round Table.")
                 seat_model = str(seat.get("model_id") or "").strip()
                 seat_provider = _normalize_model_seat_provider(str(seat.get("provider") or ""), seat_model)
                 if not model and seat_model:
@@ -1457,6 +1579,26 @@ async def update_models_config(
         if body.providers.ollama_base_url:
             env_updates["OLLAMA_API_BASE"] = body.providers.ollama_base_url
             notices.append("OLLAMA_API_BASE stored for runtime use.")
+        if body.providers.local_ai_base_url:
+            env_updates[LOCAL_AI_BASE_URL_ENV] = body.providers.local_ai_base_url
+            notices.append("Local AI endpoint URL stored for runtime use.")
+        if body.providers.local_ai_runtime:
+            env_updates[LOCAL_AI_RUNTIME_ENV] = normalize_local_runtime(body.providers.local_ai_runtime)
+        if body.providers.local_ai_model:
+            local_model = normalize_local_model_id(body.providers.local_ai_model)
+            if not is_valid_model(local_model) or model_provider(local_model) != "local_ai":
+                raise HTTPException(status_code=400, detail=f"Local AI model '{local_model}' must use the local/ prefix.")
+            env_updates[LOCAL_AI_MODEL_ENV] = local_model
+            env_updates[LOCAL_DEFAULT_MODEL_ENV] = local_model
+            notices.append(f"Local AI endpoint model set to {model_label(local_model)}.")
+        if body.providers.local_ai_auth_mode:
+            auth_mode = str(body.providers.local_ai_auth_mode).strip().lower()
+            if auth_mode in {"none", "api_key"}:
+                env_updates[LOCAL_AI_AUTH_MODE_ENV] = auth_mode
+        if body.providers.local_ai_display_name:
+            env_updates[LOCAL_AI_DISPLAY_NAME_ENV] = str(body.providers.local_ai_display_name).strip()
+        if body.providers.local_ai_enabled is not None:
+            env_updates[LOCAL_AI_ENABLED_ENV] = "true" if body.providers.local_ai_enabled else "false"
 
     if body.comms is not None:
         if body.comms.telegram is not None:

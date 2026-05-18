@@ -41,7 +41,7 @@ export interface WorkstationMeetingSeatMeta {
   route?: string
   modelSeatId?: string
   modelSeatConfigured?: boolean
-  inviteAuthMode?: "api_key" | "oauth" | "codex_sub"
+  inviteAuthMode?: "none" | "api_key" | "oauth" | "codex_sub"
 }
 
 export interface WorkstationMeetingRoomMeta {
@@ -96,6 +96,9 @@ function providerReadyForSeat(
   if (!provider) return false
   if (providerId === "ollama") {
     return provider.models_available === true || (provider.configured && provider.reachable === true)
+  }
+  if (providerId === "local_ai") {
+    return provider.configured === true || provider.reachable === true || Boolean(seat.modelSeatConfigured)
   }
   return provider.configured || provider.models_available === true
 }
@@ -725,7 +728,7 @@ async function ensureInviteAgentRoutes(seats: WorkstationMeetingSeatMeta[]): Pro
   for (const seat of seats) {
     if (seat.agentProvisioning !== "custom" || !seat.agentHandle) continue
     if (!seat.modelId && !seat.modelSeatId) continue
-    await apiFetch(`/api/v1/chat/agents/${encodeURIComponent(seat.agentHandle)}/invite-route`, {
+    const response = await apiFetch(`/api/v1/chat/agents/${encodeURIComponent(seat.agentHandle)}/invite-route`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
@@ -735,5 +738,9 @@ async function ensureInviteAgentRoutes(seats: WorkstationMeetingSeatMeta[]): Pro
         auth_mode: seat.inviteAuthMode || null,
       }),
     })
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({ detail: "Could not prepare meeting model-seat route." }))
+      throw new Error(String(detail.detail ?? "Could not prepare meeting model-seat route."))
+    }
   }
 }

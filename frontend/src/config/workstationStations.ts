@@ -25,7 +25,7 @@ export interface Station {
   isInviteSlot?: boolean
   modelSeatId?: string
   modelSeatConfigured?: boolean
-  inviteAuthMode?: "api_key" | "oauth" | "codex_sub"
+  inviteAuthMode?: "none" | "api_key" | "oauth" | "codex_sub"
   showInRoundTable?: boolean
   showInSpecialtyWing?: boolean
   shellType?: "bash" | "zsh" | "ssh" | "powershell"
@@ -100,6 +100,21 @@ export const INVITE_DESKS: Station[] = [
     capabilities: ["xAI direct", "Reasoning", "Dedicated history"],
     invitePrompt:
       "Configure an xAI API key to activate this desk.",
+    isInviteSlot: true,
+  },
+  {
+    id: "invite-local",
+    label: "Local AI",
+    subtitle: "Invite Desk",
+    type: "invite",
+    status: "empty",
+    icon: Plus,
+    accentHex: "#34d399",
+    description:
+      "Connect LM Studio, llama.cpp, or another OpenAI-compatible local endpoint as a model seat.",
+    capabilities: ["Local endpoint", "No default secret", "Round Table-ready"],
+    invitePrompt:
+      "Configure a local OpenAI-compatible endpoint to activate this desk.",
     isInviteSlot: true,
   },
 ]

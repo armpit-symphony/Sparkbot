@@ -62,7 +62,7 @@ The desktop app is the easiest path for one person. Docker and systemd deploymen
 
 ### Intelligence & Memory
 - **Relationship memory** — personal CRM built from conversation; remember facts, notes, and interaction history for any person
-- **Multi-model** — OpenAI API, OpenAI Codex subscription, Anthropic, Google, Groq, MiniMax, OpenRouter, Ollama — switch live with `/model`
+- **Multi-model** — OpenAI API, OpenAI Codex subscription, Anthropic, Google, Groq, MiniMax, OpenRouter, Ollama, LM Studio, llama.cpp, and other local OpenAI-compatible endpoints — switch live with `/model`
 - **Model stack** — configure Primary, two Backups, and a Heavy Hitter; Sparkbot auto-routes and falls back across providers
 - **Multi-agent rooms** — mention `@researcher`, `@coder`, `@writer`, `@analyst`, `@meetings_manager`, `@web_designer`, `@marketing_agent`, `@business_analyst`, or any custom agent for a specialist response
 - **Spawn agents** — create named agents with custom system prompts and first-class identity metadata from 11 specialty templates
@@ -90,7 +90,7 @@ The desktop app is the easiest path for one person. Docker and systemd deploymen
 - **Command Center** — Sparkbot's unified operational hub includes AI Setup, security profiles/PIN controls, comms connectors, agent management, Room Persona, System Health, and advanced operator panels
 - **Phone access** — the full workstation now opens on phone-sized screens as a horizontally scrollable operations map instead of blocking mobile users
 - **Robo Preview** — teaser/demo panel for future runtime, PC/server, and robotics-adjacent work; real robotics/IoT control is not wired in the public core
-- **Invite Wing** — customizable model seats for Codex/OpenAI, Claude/Anthropic, Grok/xAI, and future providers; configured seats can join Round Table meetings
+- **Invite Wing** — customizable model seats for Codex/OpenAI, Claude/Anthropic, Grok/xAI, Local AI, and future providers; configured seats can join Round Table meetings
 - **Round Table** — autonomous multi-agent meeting room; all agents contribute without you typing between turns
 - **Company Operations** — view all Guardian Tasks across every room, active meetings, and launch project rooms in one click
 - **Task-linked meetings** — hit **Meet** on any task and a pre-seeded project room opens
@@ -146,7 +146,7 @@ Go to [armpit-symphony.github.io/Sparkbot](https://armpit-symphony.github.io/Spa
 
 **Step 2 — Add a provider key**
 
-On first launch, Sparkbot opens **Sparkbot Controls**. Paste at least one LLM API key, or configure a local Ollama model if you want local-only model execution.
+On first launch, Sparkbot opens **Sparkbot Controls**. Paste at least one LLM API key, or configure a local AI provider such as Ollama, LM Studio, llama.cpp / llama-server, or another OpenAI-compatible endpoint if you want local-only model execution.
 
 | Provider | Where to get a key |
 |----------|--------------------|
@@ -156,6 +156,7 @@ On first launch, Sparkbot opens **Sparkbot Controls**. Paste at least one LLM AP
 | Groq | [console.groq.com](https://console.groq.com) |
 | MiniMax | [minimax.io](https://www.minimax.io) |
 | OpenRouter | [openrouter.ai](https://openrouter.ai) — one key, 100+ models |
+| Local AI | No key required for default localhost Ollama, LM Studio, llama.cpp, or OpenAI-compatible endpoints |
 
 **Using ChatGPT Codex subscription instead of an OpenAI API key**
 

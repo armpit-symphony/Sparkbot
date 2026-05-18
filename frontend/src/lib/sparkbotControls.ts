@@ -20,6 +20,19 @@ export interface SparkbotControlsConfig {
   local_runtime: {
     default_local_model: string
     base_url: string
+    ollama_base_url?: string
+    local_ai_base_url?: string
+    local_runtime?: string
+    model_id?: string
+    enabled?: boolean
+    auth_mode?: "none" | "api_key"
+    local_ai_status?: {
+      reachable: boolean
+      base_url: string
+      models: string[]
+      model_ids?: string[]
+      models_available?: boolean
+    }
   }
   model_labels?: Record<string, string>
   routing_policy?: {
@@ -55,8 +68,10 @@ export interface SparkbotControlsConfig {
     label: string
     company?: string
     provider: string
-    auth_mode?: "api_key" | "oauth" | "codex_sub"
+    auth_mode?: "none" | "api_key" | "oauth" | "codex_sub"
     model_id?: string
+    local_runtime?: string
+    base_url?: string
     enabled: boolean
     show_in_round_table: boolean
     show_in_specialty_wing: boolean
@@ -88,6 +103,14 @@ export interface SparkbotControlsConfig {
     models: string[]
     model_ids?: string[]
     models_available?: boolean
+  }
+  local_ai_status?: {
+    reachable: boolean
+    base_url: string
+    models: string[]
+    model_ids?: string[]
+    models_available?: boolean
+    local_runtime?: string
   }
 }
 
@@ -124,6 +147,7 @@ export function providerForModel(model: string): string {
   if (model.startsWith("openai-codex/")) return "openai_codex"
   if (model.startsWith("claude-sub/")) return "claude_sub"
   if (model.startsWith("ollama/")) return "ollama"
+  if (model.startsWith("local/")) return "local_ai"
   if (model.startsWith("gpt-") || model.startsWith("codex-")) return "openai"
   if (model.startsWith("claude")) return "anthropic"
   if (model.startsWith("gemini/")) return "google"
@@ -136,7 +160,7 @@ export function providerForModel(model: string): string {
 export function routeForModelOverride(model: string): string {
   const provider = providerForModel(model)
   if (provider === "ollama") return "local"
-  if (["openrouter", "openai", "openai_codex", "claude_sub", "anthropic", "google", "groq", "minimax", "xai"].includes(provider)) {
+  if (["openrouter", "local_ai", "openai", "openai_codex", "claude_sub", "anthropic", "google", "groq", "minimax", "xai"].includes(provider)) {
     return provider
   }
   return "default"
@@ -162,6 +186,10 @@ export function buildControlsModelGroups(
     ...(config.ollama_status?.models ?? []).map((modelName) =>
       modelName.startsWith("ollama/") ? modelName : `ollama/${modelName}`,
     ),
+    ...(config.local_ai_status?.model_ids ?? []),
+    ...(config.local_ai_status?.models ?? []).map((modelName) =>
+      modelName.startsWith("local/") ? modelName : `local/${modelName}`,
+    ),
   ].filter(Boolean) as string[]
 
   const modelIds = Array.from(
@@ -185,7 +213,7 @@ export function buildControlsModelGroups(
   )
 
   const labelForModel = (modelId: string) =>
-    config.model_labels?.[modelId] ?? modelId.replace("ollama/", "")
+    config.model_labels?.[modelId] ?? modelId.replace("ollama/", "").replace("local/", "")
 
   const providerGroups: Array<{ id: string; label: string }> = [
     { id: "openrouter", label: "OpenRouter" },
@@ -198,6 +226,7 @@ export function buildControlsModelGroups(
     { id: "minimax", label: "MiniMax" },
     { id: "xai", label: "xAI" },
     { id: "ollama", label: "Local (Ollama)" },
+    { id: "local_ai", label: "Local AI endpoint" },
     { id: "other", label: "Other configured models" },
   ]
 

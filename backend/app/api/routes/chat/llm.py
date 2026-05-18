@@ -28,6 +28,15 @@ from app.services.model_seats import (
     model_seat_secret_alias,
     normalize_model_seat_provider,
 )
+from app.services.local_ai import (
+    LOCAL_AI_API_KEY_ENV,
+    LOCAL_AI_MODEL_ENV,
+    get_local_ai_status,
+    local_ai_enabled,
+    local_ai_litellm_kwargs,
+    local_ai_litellm_model,
+    normalize_local_model_id,
+)
 from app.services.guardian import improvement as guardian_improvement
 
 litellm.drop_params = True  # ignore unsupported params instead of erroring
@@ -587,6 +596,8 @@ def is_valid_model(model: str) -> bool:
         return True
     if normalized.startswith("ollama/"):
         return True
+    if normalized.startswith("local/"):
+        return True
     return False
 
 
@@ -600,6 +611,9 @@ def model_label(model: str) -> str:
     if normalized.startswith("ollama/"):
         slug = normalized.removeprefix("ollama/")
         return f"Local Ollama · {slug}"
+    if normalized.startswith("local/"):
+        slug = normalized.removeprefix("local/")
+        return f"Local AI Â· {slug}"
     return normalized
 
 
@@ -631,8 +645,11 @@ def get_local_default_model() -> str:
     configured = os.getenv(LOCAL_DEFAULT_MODEL_ENV, "").strip()
     if configured:
         return configured
+    configured_endpoint_model = normalize_local_model_id(os.getenv(LOCAL_AI_MODEL_ENV, "").strip())
+    if configured_endpoint_model:
+        return configured_endpoint_model
     primary = _default_model()
-    if model_provider(primary) == "ollama":
+    if model_provider(primary) in {"ollama", "local_ai"}:
         return primary
     return "ollama/phi4-mini"
 
@@ -945,7 +962,7 @@ def set_invite_agent_config(
         _invite_agent_configs.pop(key, None)
         return
     normalized_auth = (auth_mode or "").strip().lower()
-    if normalized_auth not in {"api_key", "oauth", "codex_sub"}:
+    if normalized_auth not in {"none", "api_key", "oauth", "codex_sub"}:
         normalized_auth = "api_key"
     entry: dict[str, str] = {}
     if model:
@@ -960,7 +977,7 @@ def get_invite_agent_config(agent_name: str) -> dict[str, str]:
     return _invite_agent_configs.get(agent_name.strip().lower(), {})
 
 
-VALID_AGENT_ROUTES = {"default", "openrouter", "local", "openai", "openai_codex", "claude_sub", "anthropic", "google", "groq", "minimax", "xai"}
+VALID_AGENT_ROUTES = {"default", "openrouter", "local", "local_ai", "openai", "openai_codex", "claude_sub", "anthropic", "google", "groq", "minimax", "xai"}
 
 
 def get_agent_model_overrides() -> dict[str, dict[str, str]]:
@@ -992,6 +1009,8 @@ def get_agent_model_overrides() -> dict[str, dict[str, str]]:
 def _route_for_model_seat_provider(provider: str) -> str:
     if provider == "ollama":
         return "local"
+    if provider == "local_ai":
+        return "local_ai"
     return provider if provider in VALID_AGENT_ROUTES else "default"
 
 
@@ -1016,6 +1035,8 @@ def _use_model_seat_secret_for_agent(seat_id: str, *, agent_name: str) -> str | 
 def _model_seat_requires_vault_secret(*, provider: str, auth_mode: str) -> bool:
     normalized_provider = (provider or "").strip().lower()
     normalized_auth = (auth_mode or "").strip().lower()
+    if normalized_provider == "local_ai" and normalized_auth in {"", "none"}:
+        return False
     if normalized_provider in {"openai_codex", "claude_sub"} and normalized_auth in {"codex_sub", "cli", "claude_cli"}:
         return False
     return normalized_auth in {"api_key", "oauth"}
@@ -1058,8 +1079,11 @@ def get_agent_route_context(
     override_model_seat_id = str((override or {}).get("model_seat_id") or "").strip().lower()
     if override_model_seat_id:
         seat = model_seat_by_id(override_model_seat_id, model_provider_func=model_provider)
-        if seat and bool(seat.get("enabled", True)) and bool(seat.get("show_in_specialty_wing", True)):
+        if seat and bool(seat.get("enabled", True)) and (
+            bool(seat.get("show_in_specialty_wing", True)) or bool(seat.get("show_in_round_table", True))
+        ):
             seat_model = str(seat.get("model_id") or "").strip()
+            seat_local_base_url = str(seat.get("base_url") or "").strip()
             seat_provider = normalize_model_seat_provider(
                 str(seat.get("provider") or ""),
                 seat_model,
@@ -1068,32 +1092,38 @@ def get_agent_route_context(
             if not invite_model and seat_model:
                 invite_model = seat_model
             invite_auth_mode = str(seat.get("auth_mode") or invite_auth_mode or "api_key").strip().lower()
-            if invite_auth_mode not in {"api_key", "oauth", "codex_sub"}:
+            if invite_auth_mode not in {"none", "api_key", "oauth", "codex_sub"}:
                 invite_auth_mode = "api_key"
-            invite_api_key = _use_model_seat_secret_for_agent(
-                override_model_seat_id,
-                agent_name=effective_agent,
-            ) or invite_api_key
+            seat_needs_secret = _model_seat_requires_vault_secret(provider=seat_provider, auth_mode=invite_auth_mode)
+            if seat_needs_secret:
+                invite_api_key = _use_model_seat_secret_for_agent(
+                    override_model_seat_id,
+                    agent_name=effective_agent,
+                ) or invite_api_key
             model_seat_setup_required = (
                 not invite_api_key
-                and _model_seat_requires_vault_secret(provider=seat_provider, auth_mode=invite_auth_mode)
+                and seat_needs_secret
             )
             if route == "default":
                 route = _route_for_model_seat_provider(seat_provider)
         else:
             model_seat_setup_required = True
             seat_provider = ""
+            seat_local_base_url = ""
             invite_auth_mode = "api_key"
             seat_model = ""
     else:
         model_seat_setup_required = False
         seat_provider = ""
+        seat_local_base_url = ""
 
     override_model = invite_model or str((override or {}).get("model") or "").strip()
     chosen_model = default_model
     if route == "openrouter":
         chosen_model = override_model or get_openrouter_default_model()
     elif route == "local":
+        chosen_model = override_model or get_local_default_model()
+    elif route == "local_ai":
         chosen_model = override_model or get_local_default_model()
     elif route in {"openai", "openai_codex", "claude_sub", "anthropic", "google", "groq", "minimax", "xai"}:
         # Provider-specific route: use the override model or find first model for that provider
@@ -1121,6 +1151,8 @@ def get_agent_route_context(
     }
     if override_model_seat_id:
         ctx["model_seat_id"] = override_model_seat_id
+        if seat_local_base_url:
+            ctx["local_ai_base_url"] = seat_local_base_url
         if model_seat_setup_required:
             ctx["model_seat_setup_required"] = True
             ctx["model_seat_setup_message"] = (
@@ -1156,6 +1188,8 @@ def model_provider(model: str) -> str:
         return "xai"
     if normalized.startswith("ollama/"):
         return "ollama"
+    if normalized.startswith("local/"):
+        return "local_ai"
     return "other"
 
 
@@ -1182,6 +1216,8 @@ def model_is_configured(model: str) -> bool:
     if provider == "ollama":
         # Ollama is always "configured" — it's local, no API key needed
         return True
+    if provider == "local_ai":
+        return local_ai_enabled()
     return bool((model or "").strip())
 
 
@@ -1203,6 +1239,8 @@ def _global_provider_auth_config(provider: str) -> tuple[str | None, str]:
         return None, "codex_cli"
     if normalized == "claude_sub":
         return None, "claude_cli"
+    if normalized == "local_ai":
+        return os.getenv(LOCAL_AI_API_KEY_ENV, "").strip() or None, "api_key"
     return None, "api_key"
 
 
@@ -1392,6 +1430,16 @@ async def _ensure_locked_route_ready(route_context: dict[str, Any]) -> None:
                 f"Local Ollama is forced for this agent, but model '{model_name}' is not downloaded on this machine."
             )
         return
+    if locked_provider == "local_ai":
+        local_status = await get_local_ai_status(
+            base_url=str(route_context.get("local_ai_base_url") or "").strip() or None,
+            api_key=str(route_context.get("invite_api_key") or "").strip() or None,
+        )
+        if not local_status.get("reachable"):
+            raise RuntimeError(
+                f"Local AI endpoint is forced for this agent, but no OpenAI-compatible endpoint is reachable at {local_status['base_url']}."
+            )
+        return
     if locked_provider == "openai_codex":
         if not _codex_cli_auth_available():
             raise RuntimeError(
@@ -1456,6 +1504,12 @@ def _format_locked_route_error(route_context: dict[str, Any], error: Exception) 
         return (
             f"Local Ollama is forced for this agent, but model '{model_name}' could not run. "
             f"Make sure Ollama is running and the model is downloaded, or change this agent back to Use default. Details: {error}"
+        )
+    if locked_provider == "local_ai":
+        return (
+            f"Local AI endpoint is forced for this agent, but model '{model_name}' could not run. "
+            f"Make sure LM Studio, llama.cpp, or the configured OpenAI-compatible endpoint is running, "
+            f"or change this agent back to Use default. Details: {error}"
         )
     if locked_provider == "openai_codex":
         return (
@@ -1749,7 +1803,7 @@ def _should_retry_without_tools(error: Exception, candidate: str, kwargs: dict[s
         )
     ):
         return True
-    if provider in {"ollama", "minimax"} and any(
+    if provider in {"ollama", "local_ai", "minimax"} and any(
         token in text for token in ("bad_request_error", "invalid", "unsupported", "tool", "function")
     ):
         return True
@@ -1841,6 +1895,18 @@ async def _acompletion_with_fallback(
                 provider_auth_mode = invite_auth_mode
             else:
                 provider_api_key, provider_auth_mode = _global_provider_auth_config(candidate_provider)
+            completion_model = (
+                local_ai_litellm_model(candidate)
+                if candidate_provider == "local_ai"
+                else candidate
+            )
+            if candidate_provider == "local_ai":
+                call_kwargs.update(
+                    local_ai_litellm_kwargs(
+                        base_url=str((route_context or {}).get("local_ai_base_url") or "").strip() or None,
+                        api_key=provider_api_key,
+                    )
+                )
             if candidate_provider == "openai_codex":
                 _t0 = time.perf_counter()
                 response = await _codex_cli_acompletion(model=candidate, **call_kwargs)
@@ -1878,7 +1944,7 @@ async def _acompletion_with_fallback(
                     prior_headers.setdefault("anthropic-beta", "oauth-2025-04-20")
                     call_kwargs["extra_headers"] = prior_headers
             _t0 = time.perf_counter()
-            response = await litellm.acompletion(model=candidate, **call_kwargs)
+            response = await litellm.acompletion(model=completion_model, **call_kwargs)
             record_latency(candidate, time.perf_counter() - _t0)
             log.info(
                 "LLM route applied: route=%s requested_provider=%s requested_model=%s cross_provider_fallback=%s applied_provider=%s applied_model=%s latency_s=%.2f",
@@ -1916,7 +1982,7 @@ async def _acompletion_with_fallback(
                     no_tool_kwargs = {k: v for k, v in call_kwargs.items()
                                       if k not in ("tools", "tool_choice")}
                     _t0 = time.perf_counter()
-                    response = await litellm.acompletion(model=candidate, **no_tool_kwargs)
+                    response = await litellm.acompletion(model=completion_model, **no_tool_kwargs)
                     record_latency(candidate, time.perf_counter() - _t0)
                     log.warning(
                         "tool-enabled request rejected by %s — retried without tools successfully",
@@ -1933,7 +1999,7 @@ async def _acompletion_with_fallback(
                     try:
                         shrink_kwargs = _trim_tools_in_kwargs(call_kwargs, shrink_target)
                         _t0 = time.perf_counter()
-                        response = await litellm.acompletion(model=candidate, **shrink_kwargs)
+                        response = await litellm.acompletion(model=completion_model, **shrink_kwargs)
                         record_latency(candidate, time.perf_counter() - _t0)
                         log.warning(
                             "tool list rejected as too long by %s — retried with %s tools (was %s)",
@@ -1950,7 +2016,7 @@ async def _acompletion_with_fallback(
                 try:
                     safe_kwargs = _minimax_safe_kwargs(call_kwargs)
                     _t0 = time.perf_counter()
-                    response = await litellm.acompletion(model=candidate, **safe_kwargs)
+                    response = await litellm.acompletion(model=completion_model, **safe_kwargs)
                     record_latency(candidate, time.perf_counter() - _t0)
                     log.warning(
                         "MiniMax rejected chat settings for %s; retried with safe text-only settings successfully",

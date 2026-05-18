@@ -37,6 +37,20 @@ export interface ModelsControlsConfig {
   local_runtime: {
     default_local_model: string
     base_url: string
+    ollama_base_url?: string
+    local_ai_base_url?: string
+    local_runtime?: string
+    model_id?: string
+    enabled?: boolean
+    auth_mode?: "none" | "api_key"
+    local_ai_status?: {
+      reachable: boolean
+      base_url: string
+      models: string[]
+      model_ids?: string[]
+      models_available?: boolean
+      local_runtime?: string
+    }
   }
   routing_policy?: {
     default_provider_authoritative: boolean
@@ -63,8 +77,10 @@ export interface ModelsControlsConfig {
     label: string
     company?: string
     provider: string
-    auth_mode?: "api_key" | "oauth" | "codex_sub"
+    auth_mode?: "none" | "api_key" | "oauth" | "codex_sub"
     model_id?: string
+    local_runtime?: string
+    base_url?: string
     enabled: boolean
     show_in_round_table: boolean
     show_in_specialty_wing: boolean
@@ -85,6 +101,14 @@ export interface ModelsControlsConfig {
     models: string[]
     model_ids?: string[]
     models_available?: boolean
+  }
+  local_ai_status?: {
+    reachable: boolean
+    base_url: string
+    models: string[]
+    model_ids?: string[]
+    models_available?: boolean
+    local_runtime?: string
   }
   comms: {
     telegram: {
@@ -154,10 +178,15 @@ export interface ProviderTokenDrafts {
   groq_api_key: string
   minimax_api_key: string
   xai_api_key: string
+  local_ai_runtime: string
+  local_ai_base_url: string
+  local_ai_model: string
+  local_ai_auth_mode: "none" | "api_key"
+  local_ai_enabled: string
 }
 
 export interface DefaultModelSelectionForm {
-  provider: "openrouter" | "ollama" | "openai" | "openai_codex" | "claude_sub" | "anthropic" | "google" | "groq" | "minimax" | "xai"
+  provider: "openrouter" | "ollama" | "local_ai" | "openai" | "openai_codex" | "claude_sub" | "anthropic" | "google" | "groq" | "minimax" | "xai"
   model: string
 }
 
@@ -426,6 +455,8 @@ export function useControlsState({ roomId, onStatusMessage }: UseControlsStateOp
     openrouter_api_key: "", openai_api_key: "", openai_auth_mode: "api_key",
     anthropic_api_key: "", anthropic_auth_mode: "api_key",
     google_api_key: "", groq_api_key: "", minimax_api_key: "", xai_api_key: "",
+    local_ai_runtime: "openai_compatible", local_ai_base_url: "http://localhost:1234/v1",
+    local_ai_model: "", local_ai_auth_mode: "none", local_ai_enabled: "",
   })
   const [commsForm, setCommsForm] = useState<CommsForm>({ ...EMPTY_COMMS })
   const [commsOpenSection, setCommsOpenSection] = useState<string | null>(null)
@@ -475,7 +506,7 @@ export function useControlsState({ roomId, onStatusMessage }: UseControlsStateOp
     setCustomGuardrails(config.custom_guardrails ?? "")
     setSecurityProfile(config.security_profile?.id ?? (config.security_guardrails_enabled ? "balanced" : "personal"))
     setModelStack(prev => config.stack ?? prev)
-    const validProviders = new Set(["openrouter", "ollama", "openai", "openai_codex", "claude_sub", "anthropic", "google", "groq", "minimax", "xai"])
+    const validProviders = new Set(["openrouter", "ollama", "local_ai", "openai", "openai_codex", "claude_sub", "anthropic", "google", "groq", "minimax", "xai"])
     const savedProvider = config.default_selection?.provider ?? "openrouter"
     const resolvedProvider = (validProviders.has(savedProvider) ? savedProvider : "openrouter")
     const savedModel = config.default_selection?.model || ""
@@ -492,6 +523,11 @@ export function useControlsState({ roomId, onStatusMessage }: UseControlsStateOp
         (config.providers?.find((p) => p.id === "openai")?.saved_auth_mode as "api_key" | "codex_sub") || "api_key",
       anthropic_auth_mode:
         (config.providers?.find((p) => p.id === "anthropic")?.saved_auth_mode as "api_key" | "oauth") || "api_key",
+      local_ai_runtime: config.local_runtime?.local_runtime || "openai_compatible",
+      local_ai_base_url: config.local_runtime?.local_ai_base_url || config.local_ai_status?.base_url || "http://localhost:1234/v1",
+      local_ai_model: config.local_runtime?.model_id || "",
+      local_ai_auth_mode: (config.local_runtime?.auth_mode as "none" | "api_key") || "none",
+      local_ai_enabled: config.local_runtime?.enabled ? "true" : "",
     }))
     setLocalDefaultModel(config.local_runtime?.default_local_model || "")
     setAgentOverrides(
@@ -870,12 +906,14 @@ export function useControlsState({ roomId, onStatusMessage }: UseControlsStateOp
 
   const handleDefaultSelectionChange = useCallback((field: keyof DefaultModelSelectionForm, value: string) => {
     if (field === "provider") {
-      const validProviders = new Set(["openrouter", "ollama", "openai", "openai_codex", "claude_sub", "anthropic", "google", "groq", "minimax", "xai"])
+      const validProviders = new Set(["openrouter", "ollama", "local_ai", "openai", "openai_codex", "claude_sub", "anthropic", "google", "groq", "minimax", "xai"])
       const nextProvider = (validProviders.has(value) ? value : "openrouter") as DefaultModelSelectionForm["provider"]
       setDefaultSelection((prev) => {
         let nextModel = ""
         if (nextProvider === "ollama") {
           nextModel = localDefaultModel
+        } else if (nextProvider === "local_ai") {
+          nextModel = providerDrafts.local_ai_model || modelsConfig?.local_ai_status?.model_ids?.[0] || "local/local-model"
         } else if (nextProvider === "openrouter") {
           if (prev.model.startsWith("openrouter/")) {
             nextModel = prev.model
@@ -895,12 +933,12 @@ export function useControlsState({ roomId, onStatusMessage }: UseControlsStateOp
       return
     }
     setDefaultSelection((prev) => ({ ...prev, [field]: value }))
-  }, [localDefaultModel, modelsConfig?.providers, openRouterModels])
+  }, [localDefaultModel, modelsConfig?.providers, modelsConfig?.local_ai_status?.model_ids, openRouterModels, providerDrafts.local_ai_model])
 
   const handleLocalDefaultModelChange = useCallback((value: string) => {
     setLocalDefaultModel(value)
     setDefaultSelection((prev) => (
-      prev.provider === "ollama" ? { ...prev, model: value } : prev
+      prev.provider === "ollama" || prev.provider === "local_ai" ? { ...prev, model: value } : prev
     ))
   }, [])
 
@@ -919,7 +957,7 @@ export function useControlsState({ roomId, onStatusMessage }: UseControlsStateOp
   ) => {
     const routeToProviderPrefix: Record<string, string> = {
       openrouter: "openrouter/", local: "ollama/", openai: "gpt-", openai_codex: "openai-codex/", anthropic: "claude",
-      claude_sub: "claude-sub/", google: "gemini/", groq: "groq/", minimax: "minimax/", xai: "xai/",
+      local_ai: "local/", claude_sub: "claude-sub/", google: "gemini/", groq: "groq/", minimax: "minimax/", xai: "xai/",
     }
     setAgentOverrides((prev) => {
       const current = prev[agentName] ?? { route: "default", model: "" }
@@ -955,7 +993,11 @@ export function useControlsState({ roomId, onStatusMessage }: UseControlsStateOp
 
   const saveProviderTokens = useCallback(async () => {
     const payload = Object.fromEntries(
-      Object.entries(providerDrafts).filter(([, value]) => value.trim())
+      Object.entries(providerDrafts).filter(([key, value]) => {
+        if (!value.trim()) return false
+        if (key.startsWith("local_ai_")) return defaultSelection.provider === "local_ai"
+        return true
+      })
     )
     if (!Object.keys(payload).length) {
       setSettingsError("Paste at least one provider credential before saving.")
@@ -980,6 +1022,11 @@ export function useControlsState({ roomId, onStatusMessage }: UseControlsStateOp
           openrouter_api_key: "", openai_api_key: "", openai_auth_mode: providerDrafts.openai_auth_mode,
           anthropic_api_key: "", anthropic_auth_mode: providerDrafts.anthropic_auth_mode,
           google_api_key: "", groq_api_key: "", minimax_api_key: "", xai_api_key: "",
+          local_ai_runtime: providerDrafts.local_ai_runtime,
+          local_ai_base_url: providerDrafts.local_ai_base_url,
+          local_ai_model: providerDrafts.local_ai_model,
+          local_ai_auth_mode: providerDrafts.local_ai_auth_mode,
+          local_ai_enabled: providerDrafts.local_ai_enabled,
         })
         if (payload.openrouter_api_key) {
           await loadOpenRouterModels()
@@ -991,7 +1038,7 @@ export function useControlsState({ roomId, onStatusMessage }: UseControlsStateOp
     } finally {
       setSavingProviderTokens(false)
     }
-  }, [applyControlsConfig, loadOpenRouterModels, providerDrafts, refreshControls, notify])
+  }, [applyControlsConfig, defaultSelection.provider, loadOpenRouterModels, providerDrafts, refreshControls, notify])
 
   const saveModelStack = useCallback(async () => {
     if (!modelStack?.primary?.trim() || !modelStack?.heavy_hitter?.trim()) {
@@ -1029,12 +1076,14 @@ export function useControlsState({ roomId, onStatusMessage }: UseControlsStateOp
   const saveDefaultSelection = useCallback(async () => {
     const chosenDefaultModel = defaultSelection.provider === "ollama"
       ? localDefaultModel
+      : defaultSelection.provider === "local_ai"
+      ? (defaultSelection.model.trim() || providerDrafts.local_ai_model.trim() || "local/local-model")
       : defaultSelection.model.trim()
-    const chosenLocalModel = localDefaultModel.trim()
+    const chosenLocalModel = (defaultSelection.provider === "local_ai" ? chosenDefaultModel : localDefaultModel).trim()
 
     if (!chosenDefaultModel) {
       const providerNames: Record<string, string> = {
-        openrouter: "OpenRouter", ollama: "Ollama", openai: "OpenAI", openai_codex: "OpenAI Codex Subscription",
+        openrouter: "OpenRouter", ollama: "Ollama", local_ai: "Local AI endpoint", openai: "OpenAI", openai_codex: "OpenAI Codex Subscription",
         anthropic: "Anthropic", google: "Google", groq: "Groq", minimax: "MiniMax", xai: "xAI",
       }
       const pName = providerNames[defaultSelection.provider] ?? defaultSelection.provider
@@ -1043,6 +1092,8 @@ export function useControlsState({ roomId, onStatusMessage }: UseControlsStateOp
           ? "Choose an OpenRouter model before saving the default."
           : defaultSelection.provider === "ollama"
           ? "Choose a local Ollama model before saving the default."
+          : defaultSelection.provider === "local_ai"
+          ? "Enter a local model id before saving the default."
           : `Choose a ${pName} model before saving the default.`,
       )
       return
@@ -1085,7 +1136,20 @@ export function useControlsState({ roomId, onStatusMessage }: UseControlsStateOp
         routing_policy: { cross_provider_fallback: routingPolicy.crossProviderFallback },
       }
       if (chosenLocalModel) {
-        requestBody.local_runtime = { default_local_model: chosenLocalModel }
+        requestBody.local_runtime = defaultSelection.provider === "local_ai"
+          ? {
+              default_local_model: chosenLocalModel.startsWith("local/") ? chosenLocalModel : `local/${chosenLocalModel}`,
+              model_id: chosenLocalModel.startsWith("local/") ? chosenLocalModel : `local/${chosenLocalModel}`,
+              local_runtime: providerDrafts.local_ai_runtime || "openai_compatible",
+              base_url: providerDrafts.local_ai_base_url || "http://localhost:1234/v1",
+              auth_mode: providerDrafts.local_ai_auth_mode || "none",
+              enabled: true,
+            }
+          : {
+              default_local_model: chosenLocalModel,
+              local_runtime: "ollama",
+              base_url: ollamaBaseUrl,
+            }
       }
       if (hasOrKeyDraft) {
         requestBody.providers = { openrouter_api_key: providerDrafts.openrouter_api_key.trim() }
@@ -1109,6 +1173,8 @@ export function useControlsState({ roomId, onStatusMessage }: UseControlsStateOp
         notify(
           defaultSelection.provider === "ollama"
             ? `Default local model set to **${chosenDefaultModel}**.`
+            : defaultSelection.provider === "local_ai"
+            ? `Default local AI endpoint model set to **${chosenDefaultModel}**.`
             : `Default model set to **${chosenDefaultModel}**.`,
         )
       }
@@ -1119,7 +1185,7 @@ export function useControlsState({ roomId, onStatusMessage }: UseControlsStateOp
     }
   }, [
     applyControlsConfig, defaultSelection, loadOpenRouterModels, routingPolicy.crossProviderFallback,
-    localDefaultModel, modelsConfig, pageHasOpenRouterConfigured, providerDrafts, refreshControls, openRouterModels, notify,
+    localDefaultModel, modelsConfig, ollamaBaseUrl, pageHasOpenRouterConfigured, providerDrafts, refreshControls, openRouterModels, notify,
   ])
 
   const saveAgentOverrides = useCallback(async () => {

@@ -139,8 +139,10 @@ function useSetupHelpers(props: SetupPanelProps) {
     new Set([
       localDefaultModel,
       ...(ollamaStatus?.models ?? []).map((m) => m.startsWith("ollama/") ? m : `ollama/${m}`),
+      ...(modelsConfig?.local_ai_status?.model_ids ?? []),
+      ...(modelsConfig?.local_ai_status?.models ?? []).map((m) => m.startsWith("local/") ? m : `local/${m}`),
     ].filter(Boolean)),
-  ), [localDefaultModel, ollamaStatus])
+  ), [localDefaultModel, modelsConfig?.local_ai_status, ollamaStatus])
 
   const stackModelOptions = useMemo(() => Array.from(
     new Set([
@@ -155,7 +157,7 @@ function useSetupHelpers(props: SetupPanelProps) {
   const modelOptionLabel = (modelId: string) =>
     modelsConfig?.model_labels?.[modelId]
     ?? openRouterModels.find((m) => m.id === modelId)?.label
-    ?? modelId.replace("ollama/", "")
+    ?? modelId.replace("ollama/", "").replace("local/", "")
 
   const providerOrder: Array<[string, string, (id: string) => boolean]> = [
     ["openrouter", "OpenRouter (OPENROUTER_API_KEY)", (id) => id.startsWith("openrouter/")],
@@ -168,6 +170,7 @@ function useSetupHelpers(props: SetupPanelProps) {
     ["groq", "Groq direct (GROQ_API_KEY)", (id) => id.startsWith("groq/")],
     ["minimax", "MiniMax direct (MINIMAX_API_KEY)", (id) => id.startsWith("minimax/")],
     ["ollama", "Local (Ollama — no API key)", (id) => id.startsWith("ollama/")],
+    ["local_ai", "Local AI endpoint - LM Studio / llama.cpp", (id) => id.startsWith("local/")],
   ]
   const stackModelGroups = providerOrder
     .map(([, label, test]) => ({ label, models: stackModelOptions.filter(test) }))
@@ -295,6 +298,7 @@ export function AISetupPanel(props: SetupPanelProps) {
                   ["openrouter", "OpenRouter"], ["openai", "OpenAI"], ["openai_codex", "Codex Sub"],
                   ["anthropic", "Anthropic"], ["claude_sub", "Claude Sub"], ["google", "Google"],
                   ["groq", "Groq"], ["minimax", "MiniMax"], ["xai", "xAI"], ["ollama", "Local (Ollama)"],
+                  ["local_ai", "Local endpoint"],
                 ] as [string, string][]).map(([providerId, label]) => (
                   <button
                     key={providerId}
@@ -423,6 +427,76 @@ export function AISetupPanel(props: SetupPanelProps) {
                       ))}
                     </select>
                   </div>
+                </div>
+              ) : defaultSelection.provider === "local_ai" ? (
+                <div className="space-y-3">
+                  <div className="rounded-md border bg-background px-3 py-2">
+                    <div className="text-xs font-semibold">OpenAI-compatible local endpoint</div>
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      Use LM Studio, llama.cpp / llama-server, or another local OpenAI-compatible server. No API key is required unless you configured one on that endpoint.
+                    </p>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-muted-foreground">Runtime</label>
+                    <select
+                      value={providerDrafts.local_ai_runtime}
+                      onChange={(e) => onProviderDraftChange("local_ai_runtime", e.target.value)}
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                    >
+                      <option value="lmstudio">LM Studio</option>
+                      <option value="llamacpp">llama.cpp / llama-server</option>
+                      <option value="openai_compatible">OpenAI-compatible endpoint</option>
+                      <option value="custom">Custom local endpoint</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-muted-foreground">Endpoint URL</label>
+                    <input
+                      type="text"
+                      value={providerDrafts.local_ai_base_url}
+                      onChange={(e) => onProviderDraftChange("local_ai_base_url", e.target.value)}
+                      placeholder="http://localhost:1234/v1"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-muted-foreground">Model id</label>
+                    <input
+                      type="text"
+                      value={defaultSelection.model.startsWith("local/") ? defaultSelection.model : providerDrafts.local_ai_model}
+                      onChange={(e) => {
+                        const rawModel = e.target.value.trim()
+                        const nextModel = rawModel ? (rawModel.startsWith("local/") ? rawModel : `local/${rawModel}`) : ""
+                        onProviderDraftChange("local_ai_model", nextModel)
+                        onLocalDefaultModelChange(nextModel)
+                        onDefaultSelectionChange("model", nextModel)
+                      }}
+                      placeholder="local/llama-3.2-3b-instruct"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                    />
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      Sparkbot routes this through the backend. The frontend stores only display/config values, not credentials.
+                    </p>
+                  </div>
+                  {(modelsConfig?.local_ai_status?.model_ids?.length ?? 0) > 0 && (
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-muted-foreground">Detected models</label>
+                      <select
+                        value={defaultSelection.model.startsWith("local/") ? defaultSelection.model : ""}
+                        onChange={(e) => {
+                          onProviderDraftChange("local_ai_model", e.target.value)
+                          onLocalDefaultModelChange(e.target.value)
+                          onDefaultSelectionChange("model", e.target.value)
+                        }}
+                        className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none"
+                      >
+                        <option value="">Choose a detected local endpoint model</option>
+                        {(modelsConfig?.local_ai_status?.model_ids ?? []).map((m) => (
+                          <option key={m} value={m}>{modelsConfig?.model_labels?.[m] ?? m.replace("local/", "")}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
               ) : directProviderKeyField[defaultSelection.provider] !== undefined ? (
                 <div className="space-y-3">

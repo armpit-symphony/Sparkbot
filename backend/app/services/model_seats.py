@@ -12,7 +12,7 @@ import re
 from typing import Any, Callable
 
 MODEL_SEATS_ENV = "SPARKBOT_MODEL_SEATS_JSON"
-MODEL_SEAT_AUTH_MODES = {"api_key", "oauth", "codex_sub"}
+MODEL_SEAT_AUTH_MODES = {"none", "api_key", "oauth", "codex_sub"}
 MODEL_SEAT_PROVIDER_ALIASES = {
     "anthropic": "anthropic",
     "claude": "anthropic",
@@ -23,6 +23,19 @@ MODEL_SEAT_PROVIDER_ALIASES = {
     "groq": "groq",
     "minimax": "minimax",
     "ollama": "ollama",
+    "local": "local_ai",
+    "local_ai": "local_ai",
+    "local-ai": "local_ai",
+    "lmstudio": "local_ai",
+    "lm_studio": "local_ai",
+    "lm-studio": "local_ai",
+    "llamacpp": "local_ai",
+    "llama_cpp": "local_ai",
+    "llama.cpp": "local_ai",
+    "llama-server": "local_ai",
+    "openai_compatible": "local_ai",
+    "openai-compatible": "local_ai",
+    "custom_local": "local_ai",
     "openai": "openai",
     "openai_codex": "openai_codex",
     "openai-codex": "openai_codex",
@@ -66,6 +79,20 @@ MODEL_SEAT_DEFAULTS: list[dict[str, Any]] = [
         "show_in_round_table": True,
         "show_in_specialty_wing": True,
         "notes": "Default Grok model seat for agentic reasoning.",
+    },
+    {
+        "id": "invite-local",
+        "label": "Local AI",
+        "company": "Local",
+        "provider": "local_ai",
+        "auth_mode": "none",
+        "model_id": "local/local-model",
+        "local_runtime": "openai_compatible",
+        "base_url": "http://localhost:1234/v1",
+        "enabled": True,
+        "show_in_round_table": True,
+        "show_in_specialty_wing": True,
+        "notes": "Default local endpoint seat for LM Studio, llama.cpp, and OpenAI-compatible local servers.",
     },
 ]
 
@@ -132,6 +159,8 @@ def merged_model_seats(
             "show_in_round_table",
             "show_in_specialty_wing",
             "notes",
+            "local_runtime",
+            "base_url",
         ):
             if key in override:
                 base[key] = override[key]
