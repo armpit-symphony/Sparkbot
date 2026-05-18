@@ -161,9 +161,22 @@ Implemented public truthfulness changes:
 
 Remaining policy work:
 
-- Balanced and Locked still need deeper behavioral separation in the policy engine.
+- Balanced and Locked now have first-pass backend behavior separation; browser QA should verify the pending-confirm and elevated-confirm UI labels match.
 - Browser, shell, files, and connector writes should show profile-specific confirmation/block labels in the UI.
 - Custom guardrails need typed user-owned allow/confirm/block records before Custom mode can claim full enforcement.
+
+## Artifact / Guardrail Cleanup Update - 2026-05-18
+
+Branch: `public-release-artifact-guardrail-robo-cleanup`
+
+Profile behavior now implemented in backend policy:
+
+- Free / Personal: capable by default when tools are configured; risky writes, deletes, sends, credential access, service control, and critical changes still ask confirmation.
+- Balanced: configured high-risk shell, browser, external send, file/delete/install, server/PC, and Robo Preview actions ask confirmation even when capability is enabled.
+- Locked: high-risk write/execute actions require elevated approval or break-glass; non-operators get a blocker explanation and next safe step.
+- Custom: uses the same high-risk posture as Balanced plus user-owned blocker text. Typed allow/confirm/block records remain future work and should not be claimed as fully enforced.
+
+Robo remains preview-only in public/default mode. Private Robo bridge execution requires an explicit private env gate and is not part of public core.
 
 ## Invite Wing Update - 2026-05-17
 
@@ -199,3 +212,16 @@ Profile implication:
 - Personal and Balanced can run read-only health checks when Task Guardian is enabled.
 - Locked should still allow owner-approved read-only health checks, while write-like remediation stays blocked or elevated.
 - Custom guardrails may later add user-owned blockers for specific health checks, delivery channels, or host paths.
+
+## Final Cleanup Update - 2026-05-18
+
+Branch: `public-release-final-cleanup-assessment`
+
+Capability model updates:
+
+- Public/default Robo remains preview-only. Real robotics/IoT bridge execution requires a private R&D flag and is excluded from public core behavior.
+- Command Center Security reports `private_robo_bridge` through `SPARKBOT_PRIVATE_ROBO_BRIDGE_ENABLED`, avoiding stale LIMA-labelled feature status in the public UI.
+- Public package generation replaces the private R&D Robo bridge implementation with a non-executing Robo Preview stub.
+- Balanced and Locked are now behaviorally different in backend policy for high-risk configured actions.
+- Task Guardian health checks expose app, Telegram, Discord, and Slack delivery choices, but app/in-room delivery remains default and external sends remain owner opt-in.
+- Public Docker/server defaults keep `BACKEND_WORKERS=1` until recurring schedulers have a leader lock or dedicated singleton worker.

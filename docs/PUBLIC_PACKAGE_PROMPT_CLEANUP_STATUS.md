@@ -40,15 +40,15 @@ The script still builds a package from committed source with `git archive`, then
 | `password`, `passphrase`, `secret`, `token` | Keep when describing security/config fields; never include real values | No real secrets found; packaging removes dotenv/key/log/database artifacts |
 | `Vault`, `breakglass` | Keep as public security concepts but avoid proprietary internals | Current copy favors elevated confirmation/security wording where user-facing |
 | `LIMA Office`, `Arc Bot`, `LIMA IT` | Do not wire into public core | No runtime wiring changed; readiness docs are excluded from packages |
-| `Robo OS`, robotics, MCP | Teaser-only/public-safe copy; private runtime code remains a blocker before extraction | README/capabilities rewritten to Robo Preview; backend bridge source remains guarded and documented as follow-up |
-| `.venv-ci` tracked files | Exclude from public package; remove from Git only with approval | Package pruning and `.gitignore` updated; tracked cleanup remains |
+| `Robo OS`, robotics, MCP | Teaser-only/public-safe copy; private runtime code stays out of public packages | README/capabilities rewritten to Robo Preview; public packages replace private bridge source with a preview stub |
+| `.venv-ci` tracked files | Exclude from public package and remove from Git | Removed in `public-release-final-cleanup-assessment`; ignore rules remain |
 
 ## Remaining Risks
 
-- Tracked `.venv-ci` files still exist in Git history/current tracked source; this pass excludes them from generated public packages but does not remove tracked files from the repo.
-- Robo/LIMA backend bridge source still exists in the full R&D repo behind teaser/default guards. Public extraction should replace it with a true stub before Sparkbot_shell extraction.
+- Tracked `.venv-ci` files are removed from current source, but historical commits still contain them; `Sparkbot_shell` should import from cleaned source only.
+- Robo/LIMA backend bridge source still exists in the full R&D repo by design, behind explicit private gates. Public packages replace it with a Robo Preview stub, and public extraction should import the preview boundary only.
 - Some historical README rows still describe older Guardian/MCP work. Current product copy has been scrubbed; full release-history sanitization can be handled during extraction docs cleanup.
-- Balanced vs Locked behavior separation and final Round Table assignment UI polish remain separate P0/P1 phases.
+- Balanced vs Locked behavior separation has a first backend implementation, but still needs browser QA through the actual pending/elevated confirmation UI.
 
 ## Public/Private Boundary
 
@@ -56,3 +56,23 @@ The script still builds a package from committed source with `git archive`, then
 - LIMA AI OS, Arc Bot, LIMA Office, and LIMA IT were not wired.
 - Real robotics/IoT control was not implemented.
 - No secrets were added or moved into frontend/browser storage.
+
+## Artifact / Robo / Guardrail Cleanup Update - 2026-05-18
+
+Branch: `public-release-artifact-guardrail-robo-cleanup`
+
+Completed in this pass:
+
+- Removed tracked `.venv-ci/` and `backend/.venv-ci/` files from Git while keeping the ignore rules in place for local validation environments.
+- Added a Windows-safe package fallback: public `.zip` artifacts still use `zip` when available, otherwise `scripts/package-public-download.sh` uses Python stdlib `zipfile`.
+- Changed the default Robo backend boundary to public-safe `Robo Preview`: default service calls return non-executing preview contracts, `/tools` exposes no live robotics tools, and emergency stop/live control stay unavailable in public mode.
+- Kept the private bridge source available only behind `SPARKBOT_PRIVATE_ROBO_BRIDGE_ENABLED`; setting `SPARKBOT_ROBO_TEASER_ONLY=false` alone is not enough to execute bridge calls.
+- Public package generation replaces the private R&D Robo bridge implementation with a non-executing Robo Preview stub while leaving the R&D repo source intact.
+- Aligned backend MCP registry manifests to `robo_preview.*` public preview names instead of LIMA-labelled motion/control manifests.
+- Added first policy-engine separation for Balanced versus Locked: Balanced confirms high-risk configured actions, while Locked requires elevated approval/break-glass for high-risk actions.
+- Hardened model-seat selector values to use stable `seat:<modelSeatId>` where visible selectors offer model seats, preventing duplicate model-id collisions.
+
+Remaining risks:
+
+- Private Robo/LIMA bridge source still exists in the R&D repo by design, but public packages replace it with a preview stub and continue to exclude private runtime research docs.
+- Full typed Custom guardrail records remain future work; Custom currently enforces user-owned blocker text.

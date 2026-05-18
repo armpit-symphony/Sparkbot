@@ -751,12 +751,12 @@ async def _build_controls_config(current_user: CurrentChatUser, notices: list[st
             {
                 "id": "balanced",
                 "label": "Balanced",
-                "description": "More write-like actions confirm, connector sends are gated, and custom blockers apply.",
+                "description": "High-risk shell, browser, connector sends, deletes, installs, server/PC, and Robo Preview actions ask confirmation.",
             },
             {
                 "id": "locked",
                 "label": "Locked",
-                "description": "High-risk actions require explicit approval or break-glass before execution.",
+                "description": "High-risk actions are blocked until elevated approval or break-glass is active.",
             },
             {
                 "id": "custom",

@@ -36,7 +36,7 @@ public hostname, confirm these values before starting systemd:
 ENVIRONMENT=production
 FRONTEND_HOST=https://chat.example.com
 BACKEND_CORS_ORIGINS=https://chat.example.com
-BACKEND_WORKERS=2
+BACKEND_WORKERS=1
 WORKSTATION_LIVE_TERMINAL_ENABLED=false
 SECRET_KEY=REPLACE_WITH_RANDOM_64_HEX
 FIRST_SUPERUSER_PASSWORD=REPLACE_WITH_ADMIN_PASSWORD
@@ -75,9 +75,11 @@ Then choose **OpenAI Codex Subscription** in Controls with
 `compose.codex.yml` from `deployment.md`, which mounts only `auth.json`
 read-only into the backend container.
 
-Use 2 web/API workers for v1. Do not increase until background jobs are
-leader-locked and load-tested. Live terminal is raw shell access; keep it
-disabled on public deployments unless the instance is private and operator-only.
+Use one web/API worker for public v1 until background jobs are leader-locked or
+moved to a dedicated singleton worker. Higher worker counts can duplicate
+recurring health checks, reminders, and Task Guardian jobs. Live terminal is raw
+shell access; keep it disabled on public deployments unless the instance is
+private and operator-only.
 
 ## 2. Create the backend venv
 

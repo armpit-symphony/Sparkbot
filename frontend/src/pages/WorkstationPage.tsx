@@ -54,7 +54,9 @@ import {
   agentDisplayName,
   buildControlsModelGroups,
   fetchControlsConfig,
-  routeForModelOverride,
+  modelSelectionValue,
+  modelSelectionValueFromParts,
+  resolveControlsModelSelection,
   type SparkbotControlsConfig,
 } from "@/lib/sparkbotControls"
 import {
@@ -1412,6 +1414,7 @@ function StationDetailPanel({
     ? controlsConfig?.agent_overrides?.[station.agentHandle]
     : null
   const selectedModelId = agentOverride?.model ?? station.modelId ?? ""
+  const selectedModelSeatId = agentOverride?.model_seat_id || station.modelSeatId
   const defaultModelLabel =
     controlsConfig?.default_selection?.label
     || controlsConfig?.model_labels?.[controlsConfig?.default_selection?.model ?? ""]
@@ -1724,7 +1727,7 @@ function StationDetailPanel({
               </label>
               <select
                 id={`${id}-model-select`}
-                value={selectedModelId}
+                value={modelSelectionValueFromParts(selectedModelId, selectedModelSeatId)}
                 disabled={savingAgentModel === station.agentHandle || modelGroups.length === 0}
                 onChange={(event) => {
                   if (station.agentHandle) void onAgentModelChange(station.agentHandle, event.target.value)
@@ -1746,7 +1749,7 @@ function StationDetailPanel({
                 {modelGroups.map((group) => (
                   <optgroup key={group.id} label={group.label}>
                     {group.models.map((model) => (
-                      <option key={`${group.id}:${model.modelSeatId ?? model.id}`} value={model.id}>
+                      <option key={`${group.id}:${model.modelSeatId ?? model.id}`} value={modelSelectionValue(model)}>
                         {model.label}
                       </option>
                     ))}
@@ -2817,6 +2820,9 @@ function SeatPickerModal({
   const selectedModelId = assignedStation?.agentHandle
     ? controlsConfig?.agent_overrides?.[assignedStation.agentHandle]?.model ?? assignedStation.modelId ?? ""
     : assignedStation?.modelId ?? ""
+  const selectedModelSeatId = assignedStation?.agentHandle
+    ? controlsConfig?.agent_overrides?.[assignedStation.agentHandle]?.model_seat_id || assignedStation.modelSeatId
+    : assignedStation?.modelSeatId
   const defaultModelLabel =
     controlsConfig?.default_selection?.label
     || controlsConfig?.model_labels?.[controlsConfig?.default_selection?.model ?? ""]
@@ -2924,7 +2930,7 @@ function SeatPickerModal({
               </label>
               <select
                 id={`chair-${seatIndex}-model`}
-                value={selectedModelId}
+                value={modelSelectionValueFromParts(selectedModelId, selectedModelSeatId)}
                 disabled={savingAgentModel === assignedStation.agentHandle || modelGroups.length === 0}
                 onChange={(event) => {
                   if (assignedStation.agentHandle) void onAgentModelChange(assignedStation.agentHandle, event.target.value)
@@ -2945,7 +2951,7 @@ function SeatPickerModal({
                 {modelGroups.map((group) => (
                   <optgroup key={group.id} label={group.label}>
                     {group.models.map((model) => (
-                      <option key={`${group.id}:${model.modelSeatId ?? model.id}`} value={model.id}>
+                      <option key={`${group.id}:${model.modelSeatId ?? model.id}`} value={modelSelectionValue(model)}>
                         {model.label}
                       </option>
                     ))}
@@ -3349,7 +3355,7 @@ interface McpHealth {
   vaultConfigured: boolean | null
   taskGuardianEnabled: boolean | null
   taskGuardianWriteEnabled: boolean | null
-  limaBridgeConfigured: boolean | null
+  privateRoboBridgeConfigured: boolean | null
 }
 
 function riskColor(risk: McpRiskLevel): string {
@@ -3370,9 +3376,9 @@ function manifestHealthLabel(manifest: McpToolManifest, health: McpHealth): { la
     return { label: manifest.status.label, color: "#64748b" }
   }
   if (manifest.healthSource === "external-mcp") {
-    return manifest.id === "lima.replay_simulation"
-      ? { label: "Demo-ready", color: "#4ade80" }
-      : { label: "Bridge needed", color: "#fbbf24" }
+    return manifest.id === "robo_preview.replay_simulation"
+      ? { label: "Preview only", color: "#64748b" }
+      : { label: "Preview only", color: "#64748b" }
   }
   if (!health.sparkbotApiLive) return { label: "Checking", color: "#64748b" }
   if (manifest.healthSource === "guardian-vault") {
@@ -3509,7 +3515,7 @@ function McpControlPlanePanel({ onClose }: { onClose: () => void }) {
     vaultConfigured: null,
     taskGuardianEnabled: null,
     taskGuardianWriteEnabled: null,
-    limaBridgeConfigured: null,
+    privateRoboBridgeConfigured: null,
   })
 
   useEffect(() => {
@@ -3528,8 +3534,8 @@ function McpControlPlanePanel({ onClose }: { onClose: () => void }) {
             typeof nextRegistry.health.taskGuardianEnabled === "boolean" ? nextRegistry.health.taskGuardianEnabled : null,
           taskGuardianWriteEnabled:
             typeof nextRegistry.health.taskGuardianWriteEnabled === "boolean" ? nextRegistry.health.taskGuardianWriteEnabled : null,
-          limaBridgeConfigured:
-            typeof nextRegistry.health.limaBridgeConfigured === "boolean" ? nextRegistry.health.limaBridgeConfigured : null,
+          privateRoboBridgeConfigured:
+            typeof nextRegistry.health.privateRoboBridgeConfigured === "boolean" ? nextRegistry.health.privateRoboBridgeConfigured : null,
         })
         fetchMcpRuns(6)
           .then((payload) => {
@@ -3556,7 +3562,7 @@ function McpControlPlanePanel({ onClose }: { onClose: () => void }) {
       acc[manifest.runtime] += 1
       return acc
     },
-    { sparkbot: 0, "lima-robo-os": 0 },
+    { sparkbot: 0, "robo-preview": 0 },
   )
 
   async function handleExplainPlan(manifest: McpToolManifest) {
@@ -3673,7 +3679,7 @@ function McpControlPlanePanel({ onClose }: { onClose: () => void }) {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
           {[
             ["Sparkbot tools", String(runtimeCounts.sparkbot), health.apiBacked ? "Backend registry" : health.loading ? "Checking" : "Fallback registry"],
-            ["Robo preview", String(runtimeCounts["lima-robo-os"]), health.limaBridgeConfigured ? "Demo bridge configured" : "Demo manifests only"],
+            ["Robo preview", String(runtimeCounts["robo-preview"]), health.privateRoboBridgeConfigured ? "Private bridge configured" : "Preview manifests only"],
             ["Policy source", health.apiBacked ? "API" : "Local", "Typed manifests"],
           ].map(([label, value, detail]) => (
             <div key={label} style={{ border: `1px solid ${ACCENT}1f`, borderRadius: 8, backgroundColor: "#040d1a", padding: "10px 12px" }}>
@@ -4882,16 +4888,14 @@ export default function WorkstationPage() {
     })
   }, [])
 
-  const handleAgentModelChange = useCallback(async (agentName: string, modelId: string) => {
+  const handleAgentModelChange = useCallback(async (agentName: string, selectionValue: string) => {
     if (!controlsConfig) return
     setSavingAgentModel(agentName)
-    const matchedSeat = controlsConfig.model_seats?.find((seat) =>
-      seat.enabled
-      && seat.show_in_specialty_wing
-      && seat.model_id === modelId
-    )
+    const selection = resolveControlsModelSelection(controlsConfig, selectionValue)
+    const modelId = selection.modelId
+    const matchedSeat = selection.modelSeat?.show_in_specialty_wing ? selection.modelSeat : undefined
     const nextOverride = modelId
-      ? { route: routeForModelOverride(modelId), model: modelId, model_seat_id: matchedSeat?.id ?? "" }
+      ? { route: selection.route, model: modelId, model_seat_id: matchedSeat?.id ?? "" }
       : { route: "default", model: "", model_seat_id: "" }
     const nextOverrides = {
       ...(controlsConfig.agent_overrides ?? {}),

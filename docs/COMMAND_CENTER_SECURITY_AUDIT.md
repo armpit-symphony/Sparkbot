@@ -155,5 +155,46 @@ Current truthfulness status:
 Remaining:
 
 - Add structured custom guardrail records with action, scope, explanation, enabled state, and owner metadata.
-- Tune Balanced vs Locked behavior in the policy engine so they are more than named presets.
+- Browser-test Balanced and Locked decisions through the full pending-confirm/elevated-confirm UI.
 - Add a dedicated approval modal for normal confirmation, elevated confirmation, and breakglass/privileged access.
+
+## Artifact / Guardrail Cleanup Update - 2026-05-18
+
+Branch: `public-release-artifact-guardrail-robo-cleanup`
+
+Implemented:
+
+- `backend/app/services/guardian/policy.py` now reads `SPARKBOT_SECURITY_PROFILE`.
+- Balanced confirms high-risk configured actions, including shell/browser/external-send/file/install/server/PC/Robo Preview categories, even when Computer Control is enabled.
+- Locked requires elevated approval or break-glass for high-risk write/execute actions and blocks non-operators with a safe-next-step explanation.
+- Personal remains capable by default when configured and still asks confirmation for risky categories.
+- Custom remains honest: user-owned blocker text is enforced, while typed allow/confirm/block rule records remain future work.
+
+Current truthfulness status:
+
+| Area | Status |
+|---|---|
+| Balanced vs Locked | First behavioral separation implemented in backend policy. |
+| Custom guardrails | Blocker text only; no claim of full typed rule enforcement. |
+| Breakglass wording | Still uses elevated approval/break-glass terminology; no privileged reveal is treated as normal approval. |
+
+Remaining:
+
+- Browser QA Command Center profile copy against actual pending-confirm / elevated-confirm flows.
+- Add structured Custom guardrail records and validation UI after public shell extraction map refresh.
+
+## Final Cleanup Update - 2026-05-18
+
+Branch: `public-release-final-cleanup-assessment`
+
+Additional cleanup:
+
+- Command Center security status now tracks `private_robo_bridge` through `SPARKBOT_PRIVATE_ROBO_BRIDGE_ENABLED` instead of the stale `LIMA_ROBOTICS_ENABLED` key.
+- Robo Preview remains the public/default surface; private bridge state is visible as a risky feature only when explicitly enabled.
+- Public MCP registry health now reports `privateRoboBridgeConfigured` and Robo Preview runtime labels; public packages replace the private bridge implementation with a non-executing stub.
+- Public Docker/server defaults now use `BACKEND_WORKERS=1` because Guardian/Task Guardian/reminder schedulers start per backend process and do not yet have a DB-backed leadership lease.
+
+Assessment:
+
+- Personal/Free, Balanced, and Locked are truthful enough for browser QA: Personal is capable by default with confirmations, Balanced confirms high-risk configured actions, and Locked requires elevated approval or break-glass for high-risk actions.
+- Custom remains truthful as blocker-text enforcement only. Do not claim full typed custom rule enforcement until structured rules exist.

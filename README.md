@@ -468,7 +468,7 @@ SPARKBOT_PASSPHRASE=<strong passphrase>
 FIRST_SUPERUSER_PASSWORD=<strong admin password>
 FRONTEND_HOST=https://chat.example.com
 BACKEND_CORS_ORIGINS=https://chat.example.com
-BACKEND_WORKERS=2
+BACKEND_WORKERS=1
 WORKSTATION_LIVE_TERMINAL_ENABLED=false
 ```
 
@@ -476,7 +476,7 @@ Choose SQLite with `DATABASE_TYPE=sqlite` and `SPARKBOT_DATA_DIR`, or PostgreSQL
 
 And at least one provider key: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `GROQ_API_KEY`, `MINIMAX_API_KEY`, or `OPENROUTER_API_KEY`.
 
-For public v1, keep web/API workers at `2`. Do not increase API workers until recurring background jobs are leader-locked or moved into a dedicated singleton worker and load-tested. Live terminal is raw shell access; leave it disabled for public deployments unless the instance is private and operator-only.
+For public v1, keep web/API workers at `1` unless you deploy a dedicated singleton scheduler or DB-backed leader lock. Higher API worker counts can duplicate recurring health checks, reminders, and Task Guardian jobs. Live terminal is raw shell access; leave it disabled for public deployments unless the instance is private and operator-only.
 
 For the full list of every environment variable, see **[docs/capabilities.md — Environment Variables](./docs/capabilities.md#environment-variables--full-reference)**.
 

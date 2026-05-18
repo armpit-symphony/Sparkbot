@@ -2,6 +2,11 @@ import pytest
 
 from app.services.guardian.policy import decide_tool_use, simulate_tool_policy
 
+
+@pytest.fixture(autouse=True)
+def _clear_profile_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SPARKBOT_SECURITY_PROFILE", raising=False)
+
 # ── Personal mode (default, SPARKBOT_GUARDIAN_POLICY_ENABLED unset / false) ──
 
 def test_security_off_allows_reads_and_confirms_high_risk_tools_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -36,6 +41,64 @@ def test_custom_security_guardrail_ignored_when_security_off(monkeypatch: pytest
     decision = decide_tool_use("gmail_send", {"to": "person@example.com"}, room_execution_allowed=True)
 
     assert decision.action == "confirm"
+
+
+def test_balanced_confirms_high_risk_when_capability_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SPARKBOT_GUARDIAN_POLICY_ENABLED", "true")
+    monkeypatch.setenv("SPARKBOT_SECURITY_PROFILE", "balanced")
+
+    decision = decide_tool_use(
+        "server_read_command",
+        {"command": "Get-Process"},
+        room_execution_allowed=True,
+        is_operator=True,
+    )
+
+    assert decision.action == "confirm"
+    assert "Balanced Security" in decision.reason
+
+
+def test_locked_requires_elevated_approval_for_high_risk_when_capability_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SPARKBOT_GUARDIAN_POLICY_ENABLED", "true")
+    monkeypatch.setenv("SPARKBOT_SECURITY_PROFILE", "locked")
+
+    decision = decide_tool_use(
+        "server_read_command",
+        {"command": "Get-Process"},
+        room_execution_allowed=True,
+        is_operator=True,
+    )
+
+    assert decision.action == "privileged"
+    assert "Locked mode" in decision.reason
+
+
+def test_locked_allows_high_risk_after_breakglass(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SPARKBOT_GUARDIAN_POLICY_ENABLED", "true")
+    monkeypatch.setenv("SPARKBOT_SECURITY_PROFILE", "locked")
+
+    decision = decide_tool_use(
+        "server_read_command",
+        {"command": "Get-Process"},
+        room_execution_allowed=True,
+        is_operator=True,
+        is_privileged=True,
+    )
+
+    assert decision.action == "allow"
+    assert "Locked mode" in decision.reason
+
+
+def test_custom_profile_uses_blockers_without_claiming_typed_rules(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SPARKBOT_GUARDIAN_POLICY_ENABLED", "true")
+    monkeypatch.setenv("SPARKBOT_SECURITY_PROFILE", "custom")
+    monkeypatch.setenv("SPARKBOT_CUSTOM_GUARDRAILS", '["tool:gmail_send"]')
+
+    blocked = decide_tool_use("gmail_send", {"to": "person@example.com"}, room_execution_allowed=True)
+    confirmed = decide_tool_use("server_read_command", {"command": "uptime"}, room_execution_allowed=True)
+
+    assert blocked.action == "deny"
+    assert confirmed.action == "confirm"
 
 
 def test_unknown_tools_stay_denied_when_security_off(monkeypatch: pytest.MonkeyPatch) -> None:

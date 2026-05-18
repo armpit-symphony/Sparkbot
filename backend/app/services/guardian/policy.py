@@ -14,11 +14,20 @@ def _policy_enabled() -> bool:
 
 
 CUSTOM_GUARDRAILS_ENV = "SPARKBOT_CUSTOM_GUARDRAILS"
+SECURITY_PROFILE_ENV = "SPARKBOT_SECURITY_PROFILE"
+SECURITY_PROFILE_IDS = {"personal", "balanced", "locked", "custom"}
 
 
 def security_guardrails_enabled() -> bool:
     """Public status helper used by tools, APIs, and UI config."""
     return _policy_enabled()
+
+
+def security_profile_id() -> str:
+    raw = os.getenv(SECURITY_PROFILE_ENV, "").strip().lower()
+    if raw in SECURITY_PROFILE_IDS:
+        return raw
+    return "balanced" if _policy_enabled() else "personal"
 
 
 def custom_guardrails_text() -> str:
@@ -334,6 +343,40 @@ def _build_policy_registry() -> dict[str, ToolPolicy]:
         high_risk=False,
     )
     add(
+        "robo_preview.navigate",
+        scope="execute",
+        resource="robot_preview",
+        default_action="confirm",
+        action_type="robot_preview",
+        high_risk=True,
+        requires_execution_gate=True,
+    )
+    add(
+        "robo_preview.inspect",
+        scope="read",
+        resource="robot_preview",
+        default_action="allow",
+        action_type="robot_preview_read",
+        high_risk=False,
+    )
+    add(
+        "robo_preview.stop",
+        scope="execute",
+        resource="robot_preview",
+        default_action="confirm",
+        action_type="robot_preview",
+        high_risk=True,
+        requires_execution_gate=True,
+    )
+    add(
+        "robo_preview.replay_simulation",
+        scope="read",
+        resource="robot_preview",
+        default_action="allow",
+        action_type="robot_preview_read",
+        high_risk=False,
+    )
+    add(
         "lima_robot_command",
         scope="execute",
         resource="robot",
@@ -605,7 +648,7 @@ def decide_tool_use(
     # yes/no or PIN. Enable Command Center Security for strict allowlists and
     # custom blockers.
     # Switch on Command Center Security, or set
-    # SPARKBOT_GUARDIAN_POLICY_ENABLED=true, to enforce the strict guide rails.
+    # SPARKBOT_GUARDIAN_POLICY_ENABLED=true, to enforce the strict guardrails.
     if not _policy_enabled():
         if policy.default_action == "deny":
             action: PolicyAction = "deny"
@@ -625,6 +668,81 @@ def decide_tool_use(
             reason=(
                 "Security guardrails are off; routine reads and ordinary writes are allowed. "
                 "Only tools classified as dangerous, destructive, external-send, service-control, credential, or critical changes require confirmation."
+            ),
+        )
+
+    profile_id = security_profile_id()
+
+    if policy.default_action == "deny":
+        return PolicyDecision(
+            tool_name=tool_name,
+            scope=policy.scope,
+            resource=policy.resource,
+            action="deny",
+            action_type=policy.action_type,
+            high_risk=policy.high_risk,
+            reason=f"Tool '{tool_name}' is not approved by Sparkbot policy.",
+        )
+
+    if (
+        profile_id == "locked"
+        and policy.high_risk
+        and policy.scope in {"write", "execute"}
+        and not tool_name.startswith("vault_")
+    ):
+        if is_privileged:
+            return PolicyDecision(
+                tool_name=tool_name,
+                scope=policy.scope,
+                resource=policy.resource,
+                action="allow",
+                action_type=policy.action_type,
+                high_risk=policy.high_risk,
+                reason="Locked mode: break-glass session is active, so this high-risk action may proceed.",
+            )
+        if is_operator:
+            return PolicyDecision(
+                tool_name=tool_name,
+                scope=policy.scope,
+                resource=policy.resource,
+                action="privileged",
+                action_type=policy.action_type,
+                high_risk=policy.high_risk,
+                reason=(
+                    "Locked mode blocks high-risk shell, browser, external-send, file, server/PC, and Robo Preview actions "
+                    "until an operator uses elevated approval or break-glass."
+                ),
+            )
+        return PolicyDecision(
+            tool_name=tool_name,
+            scope=policy.scope,
+            resource=policy.resource,
+            action="deny",
+            action_type=policy.action_type,
+            high_risk=policy.high_risk,
+            reason=(
+                "Locked mode blocks high-risk actions by default. Ask a configured Sparkbot operator "
+                "to approve the next safe step."
+            ),
+        )
+
+    if (
+        profile_id in {"balanced", "custom"}
+        and room_execution_allowed
+        and policy.high_risk
+        and policy.scope in {"write", "execute"}
+        and not tool_name.startswith("vault_")
+    ):
+        return PolicyDecision(
+            tool_name=tool_name,
+            scope=policy.scope,
+            resource=policy.resource,
+            action="confirm",
+            action_type=policy.action_type,
+            high_risk=policy.high_risk,
+            reason=(
+                "Balanced Security requires confirmation for high-risk shell, browser, external-send, "
+                "file, install, server/PC, or Robo Preview actions even when capability is enabled."
             ),
         )
 
@@ -652,17 +770,6 @@ def decide_tool_use(
                 "Computer Control is on for this room; routine non-vault actions are allowed. "
                 "Edits, deletes, sends, and critical changes still require yes/no confirmation."
             ),
-        )
-
-    if policy.default_action == "deny":
-        return PolicyDecision(
-            tool_name=tool_name,
-            scope=policy.scope,
-            resource=policy.resource,
-            action="deny",
-            action_type=policy.action_type,
-            high_risk=policy.high_risk,
-            reason=f"Tool '{tool_name}' is not approved by Sparkbot policy.",
         )
 
     if policy.requires_execution_gate and not room_execution_allowed:
@@ -832,6 +939,7 @@ def simulate_tool_policy(
     return {
         "simulation_only": True,
         "policy_enabled": _policy_enabled(),
+        "security_profile": security_profile_id(),
         "tool_name": decision.tool_name,
         "tool_args_keys": sorted(str(key) for key in (args or {}).keys()),
         "classification": {

@@ -238,6 +238,26 @@ Run a focused public extraction-blocker phase:
 
 1. Run the artifact/.venv/Robo/guardrail cleanup branch that Phil approved.
 2. Browser QA Round Table model-seat selection and Local AI setup against live endpoints.
+
+## Artifact / Guardrail / Robo Cleanup Update - 2026-05-18
+
+Branch: `public-release-artifact-guardrail-robo-cleanup`
+
+Completed in this pass:
+
+- Tracked `.venv-ci/` and `backend/.venv-ci/` files were removed from Git; ignore rules remain so local CI virtualenvs stay untracked.
+- Public packaging now has a Windows-safe `.zip` fallback through Python stdlib `zipfile` when the `zip` binary is missing.
+- Robo default behavior is now a true public preview boundary: public/default calls return non-executing preview contracts, `/tools` returns no live Robo tools, and emergency stop/live control are blocked.
+- Private Robo bridge execution now requires `SPARKBOT_PRIVATE_ROBO_BRIDGE_ENABLED=true` in addition to any teaser-mode override.
+- Backend MCP registry now exposes `robo_preview.*` manifests in public mode rather than LIMA-labelled motion/control manifests.
+- Balanced and Locked profile behavior now differs in the policy engine: Balanced confirms high-risk configured actions; Locked requires elevated approval or break-glass for high-risk actions.
+- Model-seat selectors now use stable `seat:<modelSeatId>` values where seats are selectable, avoiding ambiguity when multiple seats share the same model id.
+
+Remaining after this pass:
+
+- Browser QA the public package artifact, Command Center Security profiles, Robo Preview panel, and duplicate-seat selector behavior.
+- Build typed Custom guardrail records later; current Custom mode is honest blocker-text enforcement.
+- Refresh the Sparkbot_shell extraction map after validation.
 3. Refresh the Sparkbot_shell extraction map after cleanup passes.
 4. Start the first shell import layer only after package exclusions, Robo stubbing, and extraction map refresh are complete.
 
@@ -264,7 +284,32 @@ Completed in this pass:
 
 Remaining after this pass:
 
-- Add a simple delivery-channel picker instead of editing JSON for Telegram/Discord/Slack.
+- Browser QA the simple delivery-channel picker for Telegram/Discord/Slack.
 - Browser QA the Task Guardian template cards and latest-report display.
 - Decide whether the first-run flow should offer PC Health Check on desktop and Server Health Check on server installs.
 - Add multi-worker scheduler leadership/locking before recommending high-frequency jobs in public beta.
+
+## Final Cleanup Assessment Update - 2026-05-18
+
+Branch: `public-release-final-cleanup-assessment`
+
+Completed in this pass:
+
+- Integrated the approved artifact/Robo/guardrail cleanup after the Task Guardian health-check branch.
+- Removed tracked `.venv-ci/` and `backend/.venv-ci/` files from Git while keeping ignore rules in place.
+- Kept the Windows-safe public package `.zip` fallback through Python stdlib `zipfile`.
+- Kept Robo Preview as the public/default backend behavior and kept private bridge execution behind `SPARKBOT_PRIVATE_ROBO_BRIDGE_ENABLED=true`.
+- Public package generation replaces the private R&D Robo bridge implementation with a non-executing Robo Preview stub.
+- Public MCP registry runtime/status labels now use Robo Preview wording instead of LIMA runtime labels.
+- Updated Command Center security status to report the private Robo bridge flag instead of a stale robotics env name.
+- Kept Balanced and Locked behavior distinct in backend policy: Balanced confirms high-risk configured actions; Locked requires elevated approval or break-glass.
+- Added a non-JSON health-report delivery picker for app, Telegram, Discord, and Slack in Command Center Task Guardian.
+- Changed public Docker/server worker defaults to `BACKEND_WORKERS=1` until recurring jobs have scheduler leadership/locking.
+- Added `docs/PUBLIC_RELEASE_ASSESSMENT_SNAPSHOT.md` as the stopping-point readiness snapshot.
+
+Remaining after this pass:
+
+- Browser QA the public surfaces before starting `Sparkbot_shell` extraction.
+- Live QA Ollama/local OpenAI-compatible endpoints and connector health delivery.
+- Package QA on Windows/Git Bash and Linux clean clones.
+- Refresh the `Sparkbot_shell` extraction map after QA, then decide whether Layer 1 import can start.

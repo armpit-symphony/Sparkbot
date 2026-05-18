@@ -47,8 +47,8 @@ def _robo_teaser_only_enabled() -> bool:
 
 
 _ROBO_TEASER_TOOL_MESSAGE = (
-    "Robo is teaser/demo-only in the public core. Dry-run command contracts are allowed, "
-    "but live robotics control is disabled."
+    "Robo Preview is a public-safe, non-executing demo surface. "
+    "Real robotics, IoT, drone, or hardware control is disabled unless a private R&D bridge is explicitly enabled."
 )
 
 # ─── Notion config ────────────────────────────────────────────────────────────

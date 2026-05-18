@@ -49,7 +49,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 WORKDIR /app/backend/
 
-# Use 2 web/API workers for v1. Do not increase until background jobs are
-# leader-locked and load-tested.
-ENV BACKEND_WORKERS=2
-CMD ["sh", "-c", "fastapi run --workers ${BACKEND_WORKERS:-2} app/main.py"]
+# Use one worker by default until scheduled jobs have a DB-backed leader lock.
+# Operators may override BACKEND_WORKERS after accepting duplicate-job risk or
+# deploying a dedicated singleton scheduler.
+ENV BACKEND_WORKERS=1
+CMD ["sh", "-c", "fastapi run --workers ${BACKEND_WORKERS:-1} app/main.py"]

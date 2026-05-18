@@ -29,7 +29,7 @@ _PUBLIC_FRONTEND_HEADERS = {
 }
 _RISKY_FEATURE_ENV = {
     "live_terminal": "WORKSTATION_LIVE_TERMINAL_ENABLED",
-    "robotics_bridge": "LIMA_ROBOTICS_ENABLED",
+    "private_robo_bridge": "SPARKBOT_PRIVATE_ROBO_BRIDGE_ENABLED",
     "global_computer_control": "SPARKBOT_GLOBAL_COMPUTER_CONTROL",
     "telegram_bridge": "TELEGRAM_ENABLED",
     "discord_bridge": "DISCORD_ENABLED",

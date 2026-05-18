@@ -11,6 +11,7 @@ from app.api.deps import CurrentChatUser, SessionDep
 from app.crud import create_audit_log
 from app.services.lima_robotics_bridge import (
     LimaBridgeError,
+    ROBO_PREVIEW_DETAIL,
     bridge_status,
     emergency_stop,
     execute_robot_command,
@@ -29,10 +30,8 @@ def robo_teaser_only_enabled() -> bool:
     }
 
 
-_ROBO_TEASER_DETAIL = (
-    "Robo is teaser/demo-only in the public core. Dry-run command contracts are allowed, "
-    "but live robotics control is disabled."
-)
+_ROBO_TEASER_DETAIL = ROBO_PREVIEW_DETAIL
+_ROBO_EMERGENCY_STOP_DETAIL = "Robo Preview does not expose live emergency-stop control in the public core."
 
 
 class RobotCommandRequest(BaseModel):
@@ -59,7 +58,7 @@ def _audit_robotics(
     contract = contract if isinstance(contract, dict) else {}
     create_audit_log(
         session,
-        tool_name=f"lima_robotics_{action}",
+        tool_name=f"robo_preview_{action}",
         tool_input=json.dumps(
             {
                 "command_id": contract.get("command_id"),
@@ -82,7 +81,7 @@ def _audit_robotics(
         ),
         user_id=current_user.id,
         room_id=None,
-        agent_name="lima_robotics_bridge",
+        agent_name="robo_preview",
     )
 
 
@@ -147,7 +146,7 @@ async def robotics_emergency_stop(
     session: SessionDep,
 ) -> dict[str, Any]:
     if robo_teaser_only_enabled():
-        raise HTTPException(status_code=403, detail=_ROBO_TEASER_DETAIL)
+        raise HTTPException(status_code=403, detail=_ROBO_EMERGENCY_STOP_DETAIL)
     try:
         result = await emergency_stop(
             source_user=current_user.username or str(current_user.id),

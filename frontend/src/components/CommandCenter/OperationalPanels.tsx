@@ -172,6 +172,48 @@ const TASK_TOOL_OPTIONS = [
   "list_reminders",
 ]
 
+const HEALTH_DELIVERY_OPTIONS = [
+  { id: "app", label: "App / room", description: "Always saved in task history." },
+  { id: "telegram", label: "Telegram", description: "Send only when Telegram is configured." },
+  { id: "discord", label: "Discord", description: "Send only when Discord is configured." },
+  { id: "slack", label: "Slack", description: "Send only when Slack is configured." },
+]
+
+function parseJsonRecord(value: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(value) as unknown
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null
+  } catch {
+    return null
+  }
+}
+
+function normalizeHealthDeliveryChannels(raw: unknown): string[] {
+  const values = Array.isArray(raw)
+    ? raw
+    : typeof raw === "string"
+      ? raw.replace(/,/g, " ").split(/\s+/)
+      : []
+  const allowed = new Set(HEALTH_DELIVERY_OPTIONS.map((option) => option.id))
+  const channels = ["app"]
+  for (const value of values) {
+    const channel = String(value).trim().toLowerCase()
+    if (allowed.has(channel) && !channels.includes(channel)) {
+      channels.push(channel)
+    }
+  }
+  return channels
+}
+
+function withHealthDeliveryChannels(args: Record<string, unknown>, channels: string[]): Record<string, unknown> {
+  return {
+    ...args,
+    delivery_channels: normalizeHealthDeliveryChannels(channels),
+  }
+}
+
 function formatRelativeTime(value: string | null | undefined): string {
   if (!value) return "-"
   const date = new Date(value)
@@ -820,8 +862,8 @@ function SecurityCard({
   const providerEnvKeys = securityStatus?.provider_secrets.filter((secret) => secret.configured_in_env) ?? []
   const profileOptions = securityProfiles?.length ? securityProfiles : [
     { id: "personal" as const, label: "Free / Personal", description: "Capable by default; risky actions confirm." },
-    { id: "balanced" as const, label: "Balanced", description: "More write-like actions confirm; custom blockers apply." },
-    { id: "locked" as const, label: "Locked", description: "High-risk actions require explicit approval or break-glass." },
+    { id: "balanced" as const, label: "Balanced", description: "High-risk tool use asks confirmation; custom blockers apply." },
+    { id: "locked" as const, label: "Locked", description: "High-risk actions wait for elevated approval or break-glass." },
     { id: "custom" as const, label: "Custom", description: "Draft owner-defined blockers; typed rules are future work." },
   ]
   const profileId = securityProfile?.id ?? (active ? "balanced" : "personal")
@@ -1146,20 +1188,40 @@ function TaskGuardianCard({
   const [toolName, setToolName] = useState(TASK_TOOL_OPTIONS[0] ?? "sparkbot_health_check")
   const [schedule, setSchedule] = useState("daily-local:06:00")
   const [args, setArgs] = useState("{}")
+  const [deliveryChannels, setDeliveryChannels] = useState<string[]>(["app"])
   const canCreate = Boolean(room && name.trim() && toolName.trim() && schedule.trim())
+  const healthToolSelected = toolName === "sparkbot_health_check"
+
+  useEffect(() => {
+    if (!healthToolSelected) return
+    const parsed = parseJsonRecord(args)
+    if (!parsed) return
+    setDeliveryChannels(normalizeHealthDeliveryChannels(parsed.delivery_channels))
+  }, [args, healthToolSelected])
 
   function submitTask() {
     if (!canCreate) return
     onCreateTask({ name: name.trim(), toolName, schedule: schedule.trim(), args })
     setName("")
     setArgs("{}")
+    setDeliveryChannels(["app"])
   }
 
   function fillTemplate(template: GuardianTaskTemplate) {
     setName(template.name)
     setToolName(template.tool_name)
     setSchedule(template.schedule)
-    setArgs(JSON.stringify(template.tool_args ?? {}, null, 2))
+    const templateArgs = template.tool_args ?? {}
+    if (template.tool_name !== "sparkbot_health_check") {
+      setDeliveryChannels(["app"])
+      setArgs(JSON.stringify(templateArgs, null, 2))
+      return
+    }
+    const nextDeliveryChannels = normalizeHealthDeliveryChannels(
+      templateArgs.delivery_channels ?? template.delivery_channels,
+    )
+    setDeliveryChannels(nextDeliveryChannels)
+    setArgs(JSON.stringify(withHealthDeliveryChannels(templateArgs, nextDeliveryChannels), null, 2))
   }
 
   function addTemplate(template: GuardianTaskTemplate) {
@@ -1170,6 +1232,28 @@ function TaskGuardianCard({
       args: JSON.stringify(template.tool_args ?? {}),
       enabled: template.enabled,
     })
+  }
+
+  function selectToolName(nextToolName: string) {
+    setToolName(nextToolName)
+    if (nextToolName === "sparkbot_health_check") {
+      const parsedArgs = parseJsonRecord(args) ?? {}
+      setArgs(JSON.stringify(withHealthDeliveryChannels(parsedArgs, deliveryChannels), null, 2))
+    }
+  }
+
+  function setDeliveryChannel(channel: string, enabled: boolean) {
+    const next = new Set(deliveryChannels)
+    next.add("app")
+    if (enabled) {
+      next.add(channel)
+    } else if (channel !== "app") {
+      next.delete(channel)
+    }
+    const normalized = normalizeHealthDeliveryChannels(Array.from(next))
+    setDeliveryChannels(normalized)
+    const parsedArgs = parseJsonRecord(args) ?? {}
+    setArgs(JSON.stringify(withHealthDeliveryChannels(parsedArgs, normalized), null, 2))
   }
 
   return (
@@ -1212,14 +1296,14 @@ function TaskGuardianCard({
                   <Badge variant="secondary">{template.default_schedule_label ?? template.schedule}</Badge>
                 </div>
                 <div className="mt-2 text-xs text-muted-foreground">
-                  Read-only, app-only by default. Edit the JSON to add Telegram, Discord, or Slack delivery after those connectors are configured.
+                  Read-only and app-only by default. Edit the template to choose optional Telegram, Discord, or Slack delivery after those connectors are configured.
                 </div>
                 <div className="mt-3 flex flex-wrap justify-end gap-2">
                   <Button size="sm" variant="outline" onClick={() => fillTemplate(template)} disabled={!room}>
                     Edit template
                   </Button>
                   <Button size="sm" onClick={() => addTemplate(template)} disabled={!room}>
-                    Add disabled
+                    {template.tool_name === "sparkbot_health_check" ? "Add disabled health check" : "Add disabled"}
                   </Button>
                 </div>
               </div>
@@ -1236,7 +1320,7 @@ function TaskGuardianCard({
           />
           <select
             value={toolName}
-            onChange={(event) => setToolName(event.target.value)}
+            onChange={(event) => selectToolName(event.target.value)}
             className="rounded-md border bg-background px-3 py-2 text-sm outline-none"
             disabled={!room}
           >
@@ -1251,6 +1335,34 @@ function TaskGuardianCard({
             className="rounded-md border bg-background px-3 py-2 text-sm outline-none md:col-span-2"
             disabled={!room}
           />
+          {healthToolSelected ? (
+            <div className="rounded-md border bg-background px-3 py-2 md:col-span-2">
+              <div className="text-xs font-semibold text-muted-foreground">Health report delivery</div>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                {HEALTH_DELIVERY_OPTIONS.map((option) => {
+                  const appChannel = option.id === "app"
+                  return (
+                    <label key={option.id} className="flex items-start gap-2 rounded-md border bg-muted/20 px-2 py-2 text-xs">
+                      <input
+                        type="checkbox"
+                        checked={deliveryChannels.includes(option.id)}
+                        disabled={!room || appChannel}
+                        onChange={(event) => setDeliveryChannel(option.id, event.currentTarget.checked)}
+                        className="mt-0.5 h-3.5 w-3.5"
+                      />
+                      <span>
+                        <span className="block font-medium text-foreground">{option.label}</span>
+                        <span className="block text-muted-foreground">{option.description}</span>
+                      </span>
+                    </label>
+                  )
+                })}
+              </div>
+              <div className="mt-2 text-xs text-muted-foreground">
+                External sends are opt-in and use existing connector configuration; failed sends are reported without failing the health check.
+              </div>
+            </div>
+          ) : null}
           <textarea
             value={args}
             onChange={(event) => setArgs(event.target.value)}

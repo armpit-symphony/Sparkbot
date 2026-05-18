@@ -71,6 +71,15 @@ Branch `public-release-task-guardian-health-checks` moved Task Guardian public u
 - Health task summaries write source-labeled shared memory as `task_guardian.health.pc` or `task_guardian.health.server`.
 - Optional report delivery can use configured Telegram, Discord, or Slack channels without storing connector secrets in the frontend.
 
+Branch `public-release-artifact-guardrail-robo-cleanup` moved the final artifact/Robo/guardrail hygiene blockers forward:
+
+- Tracked `.venv-ci/` and `backend/.venv-ci/` files were removed from Git and remain ignored going forward.
+- Public package `.zip` creation now falls back to Python stdlib `zipfile` when the `zip` binary is missing on Windows/Git Bash.
+- Public/default Robo backend calls now return non-executing Robo Preview contracts; private bridge execution requires the explicit private bridge flag.
+- Backend MCP manifests now use `robo_preview.*` public preview names instead of LIMA-labelled control manifests.
+- Balanced and Locked now differ in backend policy behavior.
+- Visible model-seat selectors now prefer stable `seat:<modelSeatId>` values to avoid duplicate model-id collisions.
+
 ## 1. P0 Blockers Before Extraction
 
 1. Unify public chat route.
@@ -120,13 +129,13 @@ Branch `public-release-task-guardian-health-checks` moved Task Guardian public u
    - Remove or hard-disable `lima_robot_command` from public tool catalog.
    - Hide robotics endpoints behind a private build flag or remove from public route registration.
    - Replace top-tab Robo action with a static teaser card.
-   - Status: `DONE_THIS_PHASE` for public default UI plus prior backend guard. Public default `SPARKBOT_ROBO_TEASER_ONLY=true` hides the chat robot tool, returns no live tool list, blocks non-dry-run robotics commands, and blocks emergency stop. The Workstation default Robo panel is now static teaser copy; the operational registry panel is dev/private-flag only.
+   - Status: `DONE_THIS_PHASE` for public default UI and backend stub boundary. Public default `SPARKBOT_ROBO_TEASER_ONLY=true` hides the chat robot tool, returns no live tool list, blocks non-dry-run robotics commands, blocks emergency stop, and returns non-executing Robo Preview contracts for dry-run preview requests. Private bridge execution also requires `SPARKBOT_PRIVATE_ROBO_BRIDGE_ENABLED=true`.
    - Evidence: `frontend/src/components/Common/SparkbotSurfaceTabs.tsx:42`, `backend/app/api/routes/chat/robotics.py:22`, `backend/app/api/routes/chat/tools.py:2014`.
 
 9. Clean public source-bundle exclusions and private path references.
    - Exclude `docs/audits/*`, `docs/lima-robo-os-integration.md`, private deployment checklists, and extraction handoff docs from public packages.
    - Rewrite or move `remote.sparkpitlabs.com`, `/home/sparky`, `api.sparkpitlabs.com`, Kalshi, OpenClaw, and WEPO references before packaging.
-   - Status: `PARTIAL_DONE_THIS_PHASE` - package exclusions are expanded and current README/capabilities public copy was scrubbed. Tracked `.venv-ci` files remain in Git but are pruned from package output. Full public extraction should still replace Robo/LIMA backend bridge source with a stub.
+   - Status: `DONE_FIRST_PASS` - package exclusions are expanded, current README/capabilities public copy was scrubbed, tracked `.venv-ci` files were removed from Git, and public packaging has a Windows-safe Python zip fallback. Private bridge source remains in the R&D repo behind an explicit private gate and excluded docs.
    - Evidence: `scripts/package-public-download.sh`, `README.md`, `docs/capabilities.md`, `docs/public-downloads.md`, `backend/app/api/routes/chat/tools.py`.
 
 10. Rewrite built-in public agent prompts.
@@ -141,7 +150,7 @@ Branch `public-release-task-guardian-health-checks` moved Task Guardian public u
 
 12. Make local AI native across public model surfaces.
    - Support Ollama, LM Studio, llama.cpp / llama-server, generic OpenAI-compatible endpoints, and custom local endpoints from AI Setup, model seats, Chat, Round Table, and Specialty Wing.
-   - Status: `PARTIAL_DONE` - backend routing, AI Setup config, default Local AI model seat, Round Table invite routing, Specialty Wing model-seat override paths, setup-needed status, and a Command Center model-seat editor are implemented. Remaining work is live endpoint browser QA and duplicate-model-id selector hardening.
+   - Status: `PARTIAL_DONE` - backend routing, AI Setup config, default Local AI model seat, Round Table invite routing, Specialty Wing model-seat override paths, setup-needed status, a Command Center model-seat editor, and stable `seat:<modelSeatId>` selector values are implemented. Remaining work is live endpoint browser QA.
    - Evidence: `backend/app/services/local_ai.py`, `backend/app/api/routes/chat/model.py`, `backend/app/api/routes/chat/llm.py`, `frontend/src/components/CommandCenter/SetupPanels.tsx`, `frontend/src/pages/WorkstationPage.tsx`.
 
 ## 2. P1 Polish Before Public Beta
@@ -266,12 +275,23 @@ Branch `public-release-task-guardian-health-checks` moved Task Guardian public u
 
 ## Recommended Next Codex Phase
 
-Phase B2 should be a focused P0/P1 stabilization patch:
+Stop for assessment before writing another implementation prompt.
 
-1. Run the approved artifact/.venv/Robo/guardrail cleanup branch.
-2. Run browser QA for model-seat editing, Round Table model selection, Local AI setup against live Ollama, and a live OpenAI-compatible endpoint.
-3. Refresh the Sparkbot_shell extraction map.
-4. Start the first shell import layer after package/Robo/extraction-map cleanup is complete.
-5. Converge remaining "Controls" copy into AI setup versus Command Center.
+Completed final cleanup:
 
-After B2 passes build/tests, run browser QA on `/login`, `/dm`, `/workstation`, `/meeting/:roomId`, and `/spine`.
+- Artifact/.venv cleanup is implemented; tracked `.venv-ci/` and `backend/.venv-ci/` files are removed from Git and ignored going forward.
+- Windows-safe public package `.zip` fallback is implemented with Python stdlib `zipfile`.
+- Robo public/default backend behavior is non-executing Robo Preview; private bridge execution is gated by `SPARKBOT_PRIVATE_ROBO_BRIDGE_ENABLED=true`.
+- Public package generation replaces the private R&D Robo bridge implementation with a non-executing Robo Preview stub and keeps public registry labels in Robo Preview terms.
+- Balanced and Locked have first-pass backend behavior separation.
+- Task Guardian health checks have a non-JSON delivery picker for app, Telegram, Discord, and Slack.
+- Public Docker/server defaults use `BACKEND_WORKERS=1` until scheduler leadership/locking exists.
+
+Recommended assessment sequence:
+
+1. Browser QA `/login`, `/dm`, `/workstation`, `/meeting/:roomId`, Command Center AI Setup, Command Center Security, Task Guardian, and Robo Preview.
+2. Live QA Ollama and one OpenAI-compatible local endpoint.
+3. Live QA Telegram, Discord, and Slack health-report delivery.
+4. Package QA public artifacts on Windows/Git Bash and Linux clean clones.
+5. Refresh the `Sparkbot_shell` extraction map.
+6. Start Layer 1 shell import only after the QA results are reviewed.

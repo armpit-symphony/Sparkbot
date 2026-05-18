@@ -112,6 +112,8 @@ python3 sparkbot-cli.py
 bash scripts/package-public-download.sh
 ```
 
+The script keeps the normal Unix `zip` path when `zip` is installed. On Windows/Git Bash hosts where `zip` is missing, it falls back to Python's standard-library `zipfile` module, so builders do not need WSL just to create the `.zip` artifact. Python is still required because the script also reads package metadata.
+
 Default output:
 
 - `dist/public-download/latest/sparkbot-latest.tar.gz`
@@ -160,6 +162,7 @@ If `--notes-file` is provided, its plaintext body is appended under `Release not
 
 - Packaging source is exported with `git archive`, so the bundle is built from committed source, not local junk
 - Internal-only docs, readiness audits, private runtime research notes, historical release-note docs, and proposal scripts are removed from the staged public bundle
+- The private R&D Robo bridge implementation is replaced with a non-executing Robo Preview stub in the staged public bundle
 - Dotenv files, local databases, key/certificate files, logs, backup files, Python bytecode, cache directories, virtualenvs, `node_modules`, `dist`, `build`, and coverage directories are excluded
 - `SHA256SUMS` is regenerated on every run
 

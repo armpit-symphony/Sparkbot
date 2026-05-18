@@ -1183,7 +1183,7 @@ FIRST_SUPERUSER_PASSWORD=<strong>
 SPARKBOT_PASSPHRASE=<passphrase>
 FRONTEND_HOST=https://chat.example.com
 BACKEND_CORS_ORIGINS=https://chat.example.com
-BACKEND_WORKERS=2
+BACKEND_WORKERS=1
 ```
 
 ### Database
@@ -1231,7 +1231,7 @@ WORKSTATION_LIVE_TERMINAL_ENABLED=false        # set true only for private/opera
 V1_LOCAL_MODE=true                      # desktop app mode
 ```
 
-For public v1, `WORKSTATION_LIVE_TERMINAL_ENABLED` defaults to `false`. Enabling it exposes raw shell access through the Workstation terminal and must be limited to private, operator-only deployments. Keep `BACKEND_WORKERS=2`; do not increase API workers until recurring background jobs are leader-locked or moved to dedicated task workers and load-tested.
+For public v1, `WORKSTATION_LIVE_TERMINAL_ENABLED` defaults to `false`. Enabling it exposes raw shell access through the Workstation terminal and must be limited to private, operator-only deployments. Keep `BACKEND_WORKERS=1` until recurring background jobs are leader-locked or moved to dedicated task workers and load-tested; higher API worker counts can duplicate scheduled jobs.
 
 ### Guardian Security
 

@@ -10,7 +10,7 @@ export type McpPolicyTag =
 
 export type McpRiskLevel = "low" | "medium" | "high" | "critical"
 
-export type McpRuntime = "sparkbot" | "lima-robo-os"
+export type McpRuntime = "sparkbot" | "robo-preview"
 
 export interface McpToolManifest {
   id: string
@@ -122,8 +122,8 @@ export const MCP_TOOL_MANIFESTS: McpToolManifest[] = [
     id: "robo_preview.navigate",
     name: "navigate / follow_route / return_home",
     owner: "Robo Preview",
-    runtime: "lima-robo-os",
-    description: "Private preview manifest for future route/motion demos. Public Sparkbot does not execute real hardware control.",
+    runtime: "robo-preview",
+    description: "Public preview manifest for future route/motion demos. Public Sparkbot does not execute real hardware control.",
     policy: ["robot-motion", "write"],
     riskLevel: "critical",
     requiredSecrets: ["Private Robo bridge URL"],
@@ -134,8 +134,8 @@ export const MCP_TOOL_MANIFESTS: McpToolManifest[] = [
     id: "robo_preview.inspect",
     name: "inspect / detect_object / report_status",
     owner: "Robo Preview",
-    runtime: "lima-robo-os",
-    description: "Private preview manifest for future read-only runtime inspection demos.",
+    runtime: "robo-preview",
+    description: "Public preview manifest for future read-only runtime inspection demos.",
     policy: ["read-only"],
     riskLevel: "medium",
     requiredSecrets: ["Private Robo bridge URL"],
@@ -146,8 +146,8 @@ export const MCP_TOOL_MANIFESTS: McpToolManifest[] = [
     id: "robo_preview.stop",
     name: "stop",
     owner: "Robo Preview",
-    runtime: "lima-robo-os",
-    description: "Private preview manifest for future emergency/stop contracts. Public Sparkbot does not execute real hardware control.",
+    runtime: "robo-preview",
+    description: "Public preview manifest for future emergency/stop contracts. Public Sparkbot does not execute real hardware control.",
     policy: ["robot-motion", "write"],
     riskLevel: "critical",
     requiredSecrets: ["Private Robo bridge URL"],
@@ -158,8 +158,8 @@ export const MCP_TOOL_MANIFESTS: McpToolManifest[] = [
     id: "robo_preview.replay_simulation",
     name: "replay / simulation blueprints",
     owner: "Robo Preview",
-    runtime: "lima-robo-os",
-    description: "Private preview manifest for future no-hardware demos.",
+    runtime: "robo-preview",
+    description: "Public preview manifest for future no-hardware demos.",
     policy: ["read-only"],
     riskLevel: "low",
     requiredSecrets: [],
@@ -187,7 +187,7 @@ export interface McpRegistryResponse {
     vaultConfigured: boolean
     taskGuardianEnabled: boolean
     taskGuardianWriteEnabled: boolean
-    limaBridgeConfigured: boolean
+    privateRoboBridgeConfigured: boolean
   }
 }
 
@@ -240,7 +240,7 @@ export interface McpRunRecord {
   roomId: string | null
   manifestId: string
   manifestName: string
-  runtime: "sparkbot" | "lima-robo-os" | string
+  runtime: "sparkbot" | "robo-preview" | string
   policyToolName: string
   policyAction: string
   status: string
@@ -345,7 +345,7 @@ export const FALLBACK_MCP_REGISTRY: McpRegistryResponse = {
     vaultConfigured: false,
     taskGuardianEnabled: false,
     taskGuardianWriteEnabled: false,
-    limaBridgeConfigured: false,
+    privateRoboBridgeConfigured: false,
   },
 }
 

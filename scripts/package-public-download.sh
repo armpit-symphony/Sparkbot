@@ -84,13 +84,19 @@ if ! command -v git >/dev/null 2>&1; then
   exit 1
 fi
 
-if ! command -v python3 >/dev/null 2>&1; then
-  echo "python3 is required" >&2
-  exit 1
-fi
+find_python_bin() {
+  local candidate
+  for candidate in python3 python; do
+    if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c 'import sys' >/dev/null 2>&1; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
 
-if ! command -v zip >/dev/null 2>&1; then
-  echo "zip is required" >&2
+if ! python_bin="$(find_python_bin)"; then
+  echo "python3 or python is required" >&2
   exit 1
 fi
 
@@ -99,7 +105,7 @@ short_commit="$(git -C "$repo_root" rev-parse --short=12 "$commit")"
 tag_name="$(git -C "$repo_root" tag --points-at "$commit" | head -n 1 || true)"
 
 read_version_from_ref() {
-  git -C "$repo_root" show "${commit}:backend/pyproject.toml" | python3 -c '
+  git -C "$repo_root" show "${commit}:backend/pyproject.toml" | "$python_bin" -c '
 import sys
 
 if sys.version_info >= (3, 11):
@@ -160,6 +166,140 @@ rm -f \
   "$stage_repo"/docs/*LIMA*.md \
   "$stage_repo"/docs/lima-*.md
 
+# Public packages keep the Robo Preview API surface but replace the private
+# R&D bridge implementation with a non-executing stub. The full bridge source
+# remains only in the R&D repo behind explicit private flags.
+cat > "$stage_repo/backend/app/services/lima_robotics_bridge.py" <<'PY'
+from __future__ import annotations
+
+from typing import Any, Literal
+
+RobotEnvironment = Literal["replay", "simulation", "real_hardware"]
+RobotRiskLevel = Literal["read_only", "low", "medium", "high", "blocked"]
+PRIVATE_ROBO_BRIDGE_ENV = "SPARKBOT_PRIVATE_ROBO_BRIDGE_ENABLED"
+ROBO_PREVIEW_DETAIL = (
+    "Robo Preview is a public-safe, non-executing demo surface. "
+    "Real robotics, IoT, drone, or hardware control is not included in Sparkbot Public."
+)
+
+
+class LimaBridgeError(RuntimeError):
+    """Raised when a Robo Preview request asks for unavailable live control."""
+
+
+def private_robo_bridge_enabled() -> bool:
+    return False
+
+
+def configured_mcp_url() -> str:
+    return ""
+
+
+def bridge_status() -> dict[str, Any]:
+    return {
+        "configured": False,
+        "mcpUrlConfigured": False,
+        "privateBridgeConfigured": False,
+        "privateBridgeEnabled": False,
+        "safeTarget": "",
+        "mode": "robo_preview",
+        "previewOnly": True,
+        "message": ROBO_PREVIEW_DETAIL,
+    }
+
+
+async def list_lima_tools() -> list[dict[str, Any]]:
+    return []
+
+
+def resolve_robot_command(
+    requested_action: str,
+    *,
+    mcp_tool_name: str = "",
+    mcp_args: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return {
+        "toolName": mcp_tool_name or "robo_preview",
+        "arguments": dict(mcp_args or {}),
+        "parsedIntent": "preview_only",
+        "requestedAction": requested_action,
+    }
+
+
+def classify_robot_command(
+    *,
+    environment: RobotEnvironment,
+    tool_name: str,
+    arguments: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "riskLevel": "blocked",
+        "approvalRequired": False,
+        "guardianDecision": "preview_only",
+        "reason": ROBO_PREVIEW_DETAIL,
+    }
+
+
+def public_preview_contract(
+    *,
+    source_user: str,
+    robot_id: str,
+    environment: RobotEnvironment,
+    requested_action: str,
+    mcp_tool_name: str = "",
+    mcp_args: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    resolved = resolve_robot_command(
+        requested_action,
+        mcp_tool_name=mcp_tool_name,
+        mcp_args=mcp_args,
+    )
+    return {
+        "executed": False,
+        "blocked": True,
+        "preview_only": True,
+        "contract": {
+            "source_user": source_user,
+            "robot_id": robot_id,
+            "environment": environment,
+            "requested_action": requested_action,
+            "risk_level": "blocked",
+            "approval_required": False,
+            "guardian_decision": "preview_only",
+            "mcp_tool_name": resolved["toolName"],
+            "mcp_args": resolved["arguments"],
+            "parsed_intent": resolved["parsedIntent"],
+            "safety_reason": ROBO_PREVIEW_DETAIL,
+        },
+        "bridge": bridge_status(),
+        "message": ROBO_PREVIEW_DETAIL,
+    }
+
+
+async def execute_robot_command(
+    *,
+    source_user: str,
+    requested_action: str,
+    robot_id: str = "default",
+    environment: RobotEnvironment = "simulation",
+    mcp_tool_name: str = "",
+    mcp_args: dict[str, Any] | None = None,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    return public_preview_contract(
+        source_user=source_user,
+        robot_id=robot_id,
+        environment=environment,
+        requested_action=requested_action,
+        mcp_tool_name=mcp_tool_name,
+        mcp_args=mcp_args,
+    )
+
+
+async def emergency_stop(*, source_user: str, robot_id: str = "default") -> dict[str, Any]:
+    raise LimaBridgeError("Robo Preview does not expose live emergency-stop control.")
+PY
+
 # Remove desktop build artifacts not relevant to the Docker/CLI self-hosted install.
 rm -rf "$stage_repo/src-tauri"
 
@@ -192,10 +332,32 @@ rm -f \
   "$output_dir/$notes_name"
 
 tar -czf "$output_dir/$tarball_name" -C "$stage_dir" sparkbot-v2
-(
-  cd "$stage_dir"
-  zip -qr "$output_dir/$zip_name" sparkbot-v2
-)
+if command -v zip >/dev/null 2>&1; then
+  (
+    cd "$stage_dir"
+    zip -qr "$output_dir/$zip_name" sparkbot-v2
+  )
+else
+  "$python_bin" - "$stage_dir" "$output_dir/$zip_name" <<'PY'
+import os
+import sys
+import zipfile
+
+stage_dir, zip_path = sys.argv[1], sys.argv[2]
+source_root = os.path.join(stage_dir, "sparkbot-v2")
+if not os.path.isdir(source_root):
+    raise SystemExit(f"stage source not found: {source_root}")
+
+with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+    for root, dirs, files in os.walk(source_root):
+        dirs.sort()
+        files.sort()
+        for name in files:
+            path = os.path.join(root, name)
+            arcname = os.path.relpath(path, stage_dir).replace(os.sep, "/")
+            archive.write(path, arcname)
+PY
+fi
 
 cp "$repo_root/sparkbot-cli.py" "$output_dir/$cli_name"
 chmod 755 "$output_dir/$cli_name"
@@ -223,6 +385,7 @@ chmod 755 "$output_dir/$cli_name"
   echo "- docs/audits/ and public-readiness/status/audit docs"
   echo "- docs/release-notes/ historical release notes"
   echo "- private LIMA/Robo runtime research docs"
+  echo "- private Robo bridge implementation (replaced by public Robo Preview stub)"
   echo "- sparkbot-backend.spec (PyInstaller desktop build artifact)"
   echo "- copier.yml + .copier/ (project scaffolding config)"
   echo "- src-tauri/ (Tauri desktop shell source)"
