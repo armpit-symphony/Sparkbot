@@ -733,10 +733,11 @@ Task Guardian runs tools on a schedule and posts results back into the room.
 From chat: *"Every morning at 8am, run my morning briefing"*
 Or from the **Command Center → Task Guardian** panel.
 
-Supported schedule strings are `every:<seconds>`, `daily:<HH:MM>` in UTC, and `at:<ISO-8601 UTC datetime>` for one-shot runs. For a complete demo pack, see [Sparkbot Jarvis Demo Kit](./jarvis-demo-kit.md).
+Supported schedule strings are `every:<seconds>`, `daily:<HH:MM>` in UTC, `daily-local:<HH:MM>` in the host's local timezone, and `at:<ISO-8601 UTC datetime>` for one-shot runs. For a complete demo pack, see [Sparkbot Jarvis Demo Kit](./jarvis-demo-kit.md).
 
 ### Scheduled tools (suggested)
 
+- `sparkbot_health_check` - built-in PC/server health report templates; read-only, app-only by default, optional Telegram/Discord/Slack delivery when configured
 - `morning_briefing` — daily digest: weather, stocks, Gmail, calendar, news, reminders
 - `send_alert` — push a notification to Telegram/Discord from any scheduled job
 - `gmail_fetch_inbox` — hourly inbox check; pair with `send_alert` to push urgent emails to phone

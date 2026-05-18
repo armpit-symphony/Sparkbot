@@ -28,6 +28,7 @@ import httpx
 import jwt
 
 from app.services.guardian import get_guardian_suite
+from app.services.guardian.health_checks import HEALTH_CHECK_TOOL_NAME, run_health_check
 
 # ─── Slack config ─────────────────────────────────────────────────────────────
 
@@ -1586,6 +1587,44 @@ TOOL_DEFINITIONS = [
     {
         "type": "function",
         "function": {
+            "name": HEALTH_CHECK_TOOL_NAME,
+            "description": (
+                "Run a read-only Sparkbot Health Report for this PC or server. "
+                "Reports timestamp, SEV-1 assessment, system status, uptime, CPU/load, memory, "
+                "swap, disk, Sparkbot service status, connector status, local AI status, "
+                "passed checks, and recommended actions. Does not update packages, restart services, "
+                "or run destructive commands."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "mode": {
+                        "type": "string",
+                        "enum": ["pc", "server"],
+                        "description": "Health-check mode. Use pc for local workstation checks and server for server/container hosts.",
+                    },
+                    "delivery_channels": {
+                        "type": "array",
+                        "items": {"type": "string", "enum": ["app", "telegram", "discord", "slack"]},
+                        "description": "Optional report delivery targets. App-only is safest and is the default.",
+                    },
+                    "slack_channel": {
+                        "type": "string",
+                        "description": "Slack channel ID or name for opt-in Slack delivery.",
+                    },
+                    "thresholds": {
+                        "type": "object",
+                        "description": "Optional severity thresholds such as disk_warning_percent or disk_critical_percent.",
+                        "additionalProperties": True,
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "guardian_schedule_task",
             "description": (
                 "Schedule a Task Guardian job that runs a tool on a recurring schedule and posts the result "
@@ -1610,7 +1649,7 @@ TOOL_DEFINITIONS = [
                             "github_get_ci_status, slack_get_channel_history, notion_search, "
                             "confluence_search, gmail_fetch_inbox, gmail_search, drive_search, "
                             "calendar_list_events, server_read_command, ssh_read_command, "
-                            "list_tasks, list_reminders, morning_briefing. "
+                            "list_tasks, list_reminders, morning_briefing, sparkbot_health_check. "
                             "Write (requires confirmation + WRITE_ENABLED env var): "
                             "gmail_send, slack_send_message, calendar_create_event."
                         ),
@@ -1618,8 +1657,8 @@ TOOL_DEFINITIONS = [
                     "schedule": {
                         "type": "string",
                         "description": (
-                            "Run cadence: every:<seconds> for intervals, daily:<HH:MM> for a UTC daily run "
-                            "(e.g. daily:13:00 = 9am America/New_York during daylight time), "
+                            "Run cadence: every:<seconds> for intervals, daily:<HH:MM> for a UTC daily run, "
+                            "daily-local:<HH:MM> for a local daily run, "
                             "or at:<ISO-8601 UTC datetime> for a one-shot future run."
                         ),
                     },
@@ -6167,6 +6206,14 @@ async def execute_tool(
             dry_run=bool(args.get("dry_run", False)),
             user_id=user_id,
         )
+    if name == HEALTH_CHECK_TOOL_NAME:
+        result = await run_health_check(
+            args if isinstance(args, dict) else {},
+            user_id=user_id,
+            room_id=room_id,
+            session=session,
+        )
+        return str(result.get("report") or "")
     if name == "guardian_schedule_task":
         return await _guardian_schedule_task(
             name=args.get("name", ""),

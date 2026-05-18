@@ -181,3 +181,21 @@ Implemented:
 Remaining policy work:
 
 - Specialty Wing per-agent routing still needs a seat-specific credential binding when a model seat is configured only through Vault and not through a global provider/CLI auth path.
+
+## Task Guardian Health Check Update - 2026-05-17
+
+Branch: `public-release-task-guardian-health-checks`
+
+Implemented public capability behavior:
+
+- PC Health Check and Server Health Check are built-in Task Guardian templates, not hidden system mutations.
+- Health collection is read-only and safe by default: no package updates, no service restarts, no destructive commands, and no credential reveal.
+- Templates default to `daily-local:06:00`, disabled/app-only until the owner adds them.
+- Optional Telegram/Discord/Slack report delivery requires configured connectors and explicit task settings.
+- Reports use source-labeled memory summaries through `task_guardian.health.pc` and `task_guardian.health.server`.
+
+Profile implication:
+
+- Personal and Balanced can run read-only health checks when Task Guardian is enabled.
+- Locked should still allow owner-approved read-only health checks, while write-like remediation stays blocked or elevated.
+- Custom guardrails may later add user-owned blockers for specific health checks, delivery channels, or host paths.

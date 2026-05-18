@@ -849,6 +849,7 @@ interface SparkbotSettingsDialogProps {
 }
 
 const TASK_TOOL_OPTIONS = [
+  "sparkbot_health_check",
   "morning_briefing",
   "gmail_fetch_inbox",
   "gmail_search",
@@ -2750,13 +2751,13 @@ function SparkbotSettingsDialog({
               <input
                 value={taskSchedule}
                 onChange={(e) => onTaskScheduleChange(e.target.value)}
-                placeholder="daily:13:00, every:3600, or at:2026-04-24T14:00:00Z"
+                placeholder="daily-local:06:00, daily:13:00, every:3600, or at:2026-04-24T14:00:00Z"
                 className="rounded-md border bg-background px-3 py-2 text-sm outline-none md:col-span-2"
               />
               <textarea
                 value={taskArgs}
                 onChange={(e) => onTaskArgsChange(e.target.value)}
-                placeholder='{"max_emails": 5, "unread_only": true}'
+                placeholder='{"mode": "pc", "delivery_channels": ["app"]}'
                 rows={4}
                 className="rounded-md border bg-background px-3 py-2 text-sm font-mono outline-none md:col-span-2"
               />
@@ -3015,9 +3016,9 @@ function SparkbotDmPage({ controlsSurface = false }: SparkbotDmPageProps = {}) {
   const [guardianTasks, setGuardianTasks] = useState<GuardianTaskRecord[]>([])
   const [guardianRuns, setGuardianRuns] = useState<GuardianRunRecord[]>([])
   const [taskName, setTaskName] = useState("")
-  const [taskToolName, setTaskToolName] = useState("gmail_fetch_inbox")
-  const [taskSchedule, setTaskSchedule] = useState("every:3600")
-  const [taskArgs, setTaskArgs] = useState('{"max_emails": 5, "unread_only": true}')
+  const [taskToolName, setTaskToolName] = useState("sparkbot_health_check")
+  const [taskSchedule, setTaskSchedule] = useState("daily-local:06:00")
+  const [taskArgs, setTaskArgs] = useState('{"mode": "pc", "delivery_channels": ["app"]}')
   const [taskSaving, setTaskSaving] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
   const [recordingSeconds, setRecordingSeconds] = useState(0)

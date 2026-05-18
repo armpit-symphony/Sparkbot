@@ -205,6 +205,13 @@ def _build_policy_registry() -> dict[str, ToolPolicy]:
             default_action="allow",
             action_type="read",
         )
+    add(
+        "sparkbot_health_check",
+        scope="read",
+        resource="local_machine",
+        default_action="allow",
+        action_type="read",
+    )
 
     for tool_name, resource in (
         ("remember_fact", "memory"),

@@ -98,8 +98,9 @@ The desktop app is the easiest path for one person. Docker and systemd deploymen
 
 ### Proactive Mode & Scheduled Autonomy (Task Guardian)
 - **Scheduled jobs** — tell Sparkbot to run any tool on a schedule (hourly, daily, custom interval)
-- **Daily schedules** — use `daily:HH:MM` UTC schedules for predictable morning briefings and calendar previews
-- **Push alerts** — scheduled jobs can push results to your phone via Telegram or Discord — works even when you're away from the desktop
+- **Built-in health checks** — preload PC Health Check and Server Health Check templates for read-only Sparkbot Health Reports
+- **Daily schedules** — use `daily:HH:MM` UTC or `daily-local:HH:MM` local-time schedules for predictable morning briefings, health reports, and calendar previews
+- **Push alerts** — scheduled jobs can push results to your phone via Telegram, Discord, or Slack when explicitly configured
 - **Autonomous execution** — jobs run in the background and post results to the room
 - **Write-action scheduling** — opt-in to scheduled email, Slack, and calendar writes
 - **Verifier guardian** — each scheduled run is evaluated before commit; bounded retries with escalation
@@ -420,7 +421,10 @@ Supported schedule strings:
 |----------|---------|
 | `every:3600` | Run every hour |
 | `daily:13:00` | Run every day at 13:00 UTC, which is 9am America/New_York during daylight time |
+| `daily-local:06:00` | Run every day at 6:00 AM in the host's local timezone |
 | `at:2026-04-24T20:00:00Z` | Run once at an exact UTC timestamp |
+
+PC Health Check and Server Health Check are built-in Task Guardian templates. They are disabled until added by the owner, run read-only checks, default to app-only delivery, and can optionally send reports through configured Telegram, Discord, or Slack channels.
 
 For a copy-ready 9am demo flow, slide outline, security notes, and Task Guardian JSON payloads, see [docs/jarvis-demo-kit.md](./docs/jarvis-demo-kit.md).
 

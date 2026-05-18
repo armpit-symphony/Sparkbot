@@ -247,3 +247,24 @@ Run a focused public extraction-blocker phase:
 - Should Slack outbound sends be public beta core or "configured connector" advanced until the profile UI is tuned?
 - Should Robo teaser mention LIMA by name or only say "future robotics/runtime integrations"?
 - Should the Windows chmod assertions be made platform-aware, or should validation require a POSIX environment for env-permission checks?
+
+## Task Guardian Health Check Update - 2026-05-17
+
+Branch: `public-release-task-guardian-health-checks`
+
+Completed in this pass:
+
+- Added built-in PC Health Check and Server Health Check Task Guardian templates.
+- Added `daily-local:<HH:MM>` scheduling so the default health report can run at 6:00 AM in the host's local timezone.
+- Added a read-only health collector for uptime, CPU/load, memory, swap, disk, battery where available, Sparkbot process/task status, local AI status, connector status, and manual update posture.
+- Added a plain-text Sparkbot Health Report renderer with SEV-1/SEV-2/SEV-3 sections, passed checks, and recommended actions.
+- Wired health task summaries into shared memory with `task_guardian.health.pc` and `task_guardian.health.server` source labels.
+- Added Command Center Task Guardian template cards so owners can add disabled PC/server health jobs, inspect JSON, and choose delivery later.
+- Kept external delivery opt-in: app/task history by default, with Telegram, Discord, and Slack only when configured by the owner.
+
+Remaining after this pass:
+
+- Add a simple delivery-channel picker instead of editing JSON for Telegram/Discord/Slack.
+- Browser QA the Task Guardian template cards and latest-report display.
+- Decide whether the first-run flow should offer PC Health Check on desktop and Server Health Check on server installs.
+- Add multi-worker scheduler leadership/locking before recommending high-frequency jobs in public beta.

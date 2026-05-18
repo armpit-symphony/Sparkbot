@@ -16,6 +16,13 @@ from sqlmodel import Session
 from app.crud import create_audit_log, create_chat_message
 from app.models import ChatRoom, ChatUser, UserType
 from app.services.guardian.executive import exec_with_guard
+from app.services.guardian.health_checks import (
+    HEALTH_CHECK_TOOL_NAME,
+    delivery_channels_from_args,
+    health_source_label,
+    health_task_templates,
+    run_health_check,
+)
 from app.services.guardian.memory import remember_tool_event
 from app.services.guardian.policy import decide_tool_use
 from app.services.guardian.verifier import VerificationResult, verify_task_run
@@ -81,6 +88,7 @@ ALLOWED_TASK_TOOLS = {
     "memory_guardian_nightly",# verify recent memory events + export metrics
     "memory_hygiene_weekly", # mark stale/archive/proposals without hard deletion
     "memory_cleanup_monthly",# monthly deletion proposal lane; operator approval required
+    HEALTH_CHECK_TOOL_NAME,   # public-safe PC/server health report
 }
 
 # Write tools allowed in scheduled context when SPARKBOT_TASK_GUARDIAN_WRITE_ENABLED=true.
@@ -251,24 +259,24 @@ def _ensure_column(conn: sqlite3.Connection, table: str, column: str, column_def
 
 def _parse_schedule(schedule: str) -> tuple[str, str]:
     if ":" not in schedule:
-        raise ValueError("schedule must be every:<seconds>, daily:<HH:MM>, or at:<ISO-8601 datetime>")
+        raise ValueError("schedule must be every:<seconds>, daily:<HH:MM>, daily-local:<HH:MM>, or at:<ISO-8601 datetime>")
     kind, raw_value = schedule.split(":", 1)
     kind = kind.strip().lower()
     value = raw_value.strip()
-    if kind not in {"every", "daily", "at"}:
-        raise ValueError("schedule must start with every:, daily:, or at:")
+    if kind not in {"every", "daily", "daily-local", "at"}:
+        raise ValueError("schedule must start with every:, daily:, daily-local:, or at:")
     return kind, value
 
 
 def _parse_daily_time(value: str) -> tuple[int, int]:
     parts = value.split(":")
     if len(parts) != 2:
-        raise ValueError("daily schedule must be daily:<HH:MM> using 24-hour UTC time")
+        raise ValueError("daily schedule must use HH:MM in 24-hour time")
     try:
         hour = int(parts[0])
         minute = int(parts[1])
     except ValueError as exc:
-        raise ValueError("daily schedule must be daily:<HH:MM> using 24-hour UTC time") from exc
+        raise ValueError("daily schedule must use HH:MM in 24-hour time") from exc
     if hour < 0 or hour > 23 or minute < 0 or minute > 59:
         raise ValueError("daily schedule time must be between 00:00 and 23:59 UTC")
     return hour, minute
@@ -297,6 +305,13 @@ def _next_run_at(schedule: str, *, base: Optional[datetime] = None) -> str:
         if candidate <= base:
             candidate = candidate + timedelta(days=1)
         return candidate.isoformat()
+    if kind == "daily-local":
+        hour, minute = _parse_daily_time(value)
+        local_base = base.astimezone()
+        candidate = local_base.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if candidate <= local_base:
+            candidate = candidate + timedelta(days=1)
+        return candidate.astimezone(timezone.utc).isoformat()
     return _parse_at_datetime(value).isoformat()
 
 
@@ -333,6 +348,7 @@ def schedule_task(
     schedule: str,
     room_id: str,
     user_id: str,
+    enabled: bool = True,
 ) -> dict[str, Any]:
     if not _allowed_task_tool(tool_name):
         all_allowed = sorted(ALLOWED_TASK_TOOLS | (WRITE_TASK_TOOLS if TASK_GUARDIAN_WRITE_ENABLED else set()))
@@ -359,7 +375,7 @@ def schedule_task(
             """
             INSERT INTO guardian_tasks
             (id, room_id, user_id, name, tool_name, tool_args_json, schedule, enabled, created_at, updated_at, next_run_at, consecutive_failures, retry_budget)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, 0, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
             """,
             (
                 task_id,
@@ -369,6 +385,7 @@ def schedule_task(
                 tool_name,
                 payload,
                 schedule.strip(),
+                1 if enabled else 0,
                 now,
                 now,
                 next_run_at,
@@ -380,6 +397,7 @@ def schedule_task(
         "name": name.strip(),
         "tool_name": tool_name,
         "schedule": schedule.strip(),
+        "enabled": bool(enabled),
         "next_run_at": next_run_at,
         "retry_budget": TASK_GUARDIAN_DEFAULT_RETRY_BUDGET,
     }
@@ -414,6 +432,10 @@ def list_tasks_by_user(*, user_id: str, limit: int = 50) -> list[GuardianTask]:
             (user_id, max(1, min(limit, 200))),
         ).fetchall()
     return [GuardianTask(**dict(row)) for row in rows]
+
+
+def list_builtin_templates() -> list[dict[str, Any]]:
+    return health_task_templates()
 
 
 def list_runs(*, room_id: str, limit: int = 25) -> list[GuardianTaskRun]:
@@ -616,6 +638,83 @@ async def _broadcast_task_message(room_id: str, message_id: str, content: str) -
         pass
 
 
+def _task_args(task: GuardianTask) -> dict[str, Any]:
+    try:
+        parsed = json.loads(task.tool_args_json or "{}")
+    except Exception:
+        parsed = {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _memory_tool_name(task: GuardianTask) -> str:
+    if task.tool_name == HEALTH_CHECK_TOOL_NAME:
+        return health_source_label(_task_args(task).get("mode"))
+    return "guardian_task_run"
+
+
+async def _send_slack_health_notification(task_args: dict[str, Any], content: str) -> None:
+    channel = str(
+        task_args.get("slack_channel")
+        or task_args.get("delivery_slack_channel")
+        or os.getenv("SPARKBOT_HEALTH_SLACK_CHANNEL", "")
+    ).strip()
+    token = os.getenv("SLACK_BOT_TOKEN", "").strip()
+    if not channel:
+        raise RuntimeError("Slack health delivery needs slack_channel or SPARKBOT_HEALTH_SLACK_CHANNEL.")
+    if not token:
+        raise RuntimeError("Slack health delivery setup needed.")
+    import httpx
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        response = await client.post(
+            "https://slack.com/api/chat.postMessage",
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            json={"channel": channel, "text": content[:3500]},
+        )
+    data = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
+    if response.status_code >= 400 or not data.get("ok", False):
+        raise RuntimeError(f"Slack health delivery failed: {data.get('error') or response.status_code}")
+
+
+async def _deliver_task_notifications(task: GuardianTask, content: str) -> list[str]:
+    errors: list[str] = []
+    if task.tool_name == HEALTH_CHECK_TOOL_NAME:
+        args = _task_args(task)
+        channels = delivery_channels_from_args(args)
+        bridge_modules: list[tuple[str, str]] = []
+        if "telegram" in channels:
+            bridge_modules.append(("app.services.telegram_bridge", "Telegram"))
+        if "discord" in channels:
+            bridge_modules.append(("app.services.discord_bridge", "Discord"))
+        if "whatsapp" in channels:
+            bridge_modules.append(("app.services.whatsapp_bridge", "WhatsApp"))
+        for bridge_module, label in bridge_modules:
+            try:
+                import importlib as _il
+
+                await _il.import_module(bridge_module).send_room_notification(task.room_id, content)
+            except Exception as exc:
+                errors.append(f"{label}: {exc}")
+        if "slack" in channels:
+            try:
+                await _send_slack_health_notification(args, content)
+            except Exception as exc:
+                errors.append(f"Slack: {exc}")
+        return errors
+
+    for _bridge_module in (
+        "app.services.telegram_bridge",
+        "app.services.discord_bridge",
+        "app.services.whatsapp_bridge",
+    ):
+        try:
+            import importlib as _il
+            await _il.import_module(_bridge_module).send_room_notification(task.room_id, content)
+        except Exception as exc:
+            errors.append(f"{_bridge_module}: {exc}")
+    return errors
+
+
 async def _execute_internal_tool(task: GuardianTask, session: Session) -> tuple[str, str]:
     from app.api.routes.chat.llm import mask_tool_result_for_external
     from app.api.routes.chat.tools import execute_tool
@@ -653,6 +752,16 @@ async def _execute_internal_tool(task: GuardianTask, session: Session) -> tuple[
 
         payload = compact_deleted_memory_events()
         return "success", json.dumps(payload, ensure_ascii=False)
+
+    if task.tool_name == HEALTH_CHECK_TOOL_NAME:
+        tool_args = json.loads(task.tool_args_json or "{}")
+        payload = await run_health_check(
+            tool_args if isinstance(tool_args, dict) else {},
+            session=session,
+            room_id=task.room_id,
+            user_id=task.user_id,
+        )
+        return "success", str(payload.get("report") or "")
 
     if task.tool_name == "retrieval_eval":
         from app.services.guardian.retrieval_eval import run_retrieval_eval
@@ -808,7 +917,7 @@ async def run_task_once(task: GuardianTask, session: Session) -> dict[str, Any]:
         remember_tool_event(
             user_id=task.user_id,
             room_id=task.room_id,
-            tool_name="guardian_task_run",
+            tool_name=_memory_tool_name(task),
             args={"task_id": task.id, "tool_name": task.tool_name},
             result=f"{status}: {verification.summary} :: {excerpt}",
         )
@@ -858,16 +967,7 @@ async def run_task_once(task: GuardianTask, session: Session) -> dict[str, Any]:
         sender_type="BOT",
     )
     await _broadcast_task_message(task.room_id, str(msg.id), content)
-    for _bridge_module in (
-        "app.services.telegram_bridge",
-        "app.services.discord_bridge",
-        "app.services.whatsapp_bridge",
-    ):
-        try:
-            import importlib as _il
-            await _il.import_module(_bridge_module).send_room_notification(task.room_id, content)
-        except Exception:
-            pass
+    delivery_errors = await _deliver_task_notifications(task, content)
 
     return {
         "run_id": run_id,
@@ -883,6 +983,7 @@ async def run_task_once(task: GuardianTask, session: Session) -> dict[str, Any]:
         "consecutive_failures": followup["consecutive_failures"],
         "retry_budget": followup["retry_budget"],
         "escalated": followup["escalated"],
+        "delivery_errors": delivery_errors,
     }
 
 

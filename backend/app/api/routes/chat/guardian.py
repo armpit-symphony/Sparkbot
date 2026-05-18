@@ -305,6 +305,7 @@ class GuardianTaskCreate(BaseModel):
     tool_name: str = Field(..., max_length=100)
     schedule: str = Field(..., max_length=200)
     tool_args: dict = Field(default_factory=dict)
+    enabled: bool = True
 
 
 class GuardianTaskUpdate(BaseModel):
@@ -361,6 +362,16 @@ def list_room_guardian_tasks(
     }
 
 
+@router.get("/guardian/tasks/templates")
+def list_task_guardian_templates(
+    current_user: CurrentChatUser,
+) -> dict[str, Any]:
+    _require_guardian_operator(current_user)
+    return {
+        "items": get_guardian_suite().task_guardian.list_builtin_templates(),
+    }
+
+
 @router.get("/rooms/{room_id}/guardian/runs")
 def list_room_guardian_runs(
     room_id: uuid.UUID,
@@ -408,6 +419,7 @@ def create_room_guardian_task(
             schedule=task_in.schedule.strip(),
             room_id=str(room_id),
             user_id=str(current_user.id),
+            enabled=task_in.enabled,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

@@ -163,3 +163,19 @@ Still deferred:
 
 - Add public-safe confirmation/approval memory summaries without duplicating audit logs.
 - Browser QA model-seat context labels during real Round Table runs.
+
+## Task Guardian Health Check Update - 2026-05-17
+
+Branch: `public-release-task-guardian-health-checks`
+
+Context-spine-relevant changes:
+
+- Built-in PC Health Check and Server Health Check runs use `sparkbot_health_check` as a read-only Task Guardian tool.
+- Health summaries write to shared memory with source labels `task_guardian.health.pc` and `task_guardian.health.server`.
+- The memory summary is bounded to the verification summary and report excerpt, avoiding raw logs, secrets, or private paths.
+- Optional Telegram/Discord/Slack delivery is separate from memory persistence so connector send failures do not duplicate or fail the task run.
+
+Still deferred:
+
+- Add a user-visible memory inspector view for recent health reports.
+- Add richer connector delivery audit summaries without duplicating Task Guardian run memory.

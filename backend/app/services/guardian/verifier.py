@@ -57,6 +57,7 @@ _STRICT_READ_TOOLS = {
     "morning_briefing",
     "retrieval_eval",
     "memory_guardian_nightly",
+    "sparkbot_health_check",
 }
 _INTERACTIVE_VERIFY_ACTION_TYPES = {
     "write_external",

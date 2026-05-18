@@ -412,12 +412,19 @@ export const AGENT_TEMPLATES = [
 ]
 
 export const TASK_TOOL_OPTIONS = [
-  "health_check",
+  "sparkbot_health_check",
+  "morning_briefing",
   "memory_retrieval_stats",
   "memory_reindex",
-  "email_digest",
-  "telegram_send",
-  "github_create_issue",
+  "github_list_prs",
+  "github_get_ci_status",
+  "gmail_fetch_inbox",
+  "gmail_search",
+  "calendar_list_events",
+  "slack_get_channel_history",
+  "server_read_command",
+  "list_tasks",
+  "list_reminders",
 ]
 
 const LEGACY_COMMS_VISIBLE = true
@@ -488,9 +495,9 @@ export function useControlsState({ roomId, onStatusMessage }: UseControlsStateOp
   const [guardianTasks, setGuardianTasks] = useState<GuardianTaskRecord[]>([])
   const [guardianRuns, setGuardianRuns] = useState<GuardianRunRecord[]>([])
   const [taskName, setTaskName] = useState("")
-  const [taskToolName, setTaskToolName] = useState("gmail_fetch_inbox")
-  const [taskSchedule, setTaskSchedule] = useState("every:3600")
-  const [taskArgs, setTaskArgs] = useState('{"max_emails": 5, "unread_only": true}')
+  const [taskToolName, setTaskToolName] = useState("sparkbot_health_check")
+  const [taskSchedule, setTaskSchedule] = useState("daily-local:06:00")
+  const [taskArgs, setTaskArgs] = useState('{"mode": "pc", "delivery_channels": ["app"]}')
   const [taskSaving, setTaskSaving] = useState(false)
   const [skills, setSkills] = useState<SkillInfo[]>([])
   const [roomPersona, setRoomPersona] = useState("")

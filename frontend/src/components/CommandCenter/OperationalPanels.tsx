@@ -41,7 +41,22 @@ interface GuardianRunRecord {
   task_id: string
   status: string
   message?: string | null
+  output_excerpt?: string | null
   created_at: string
+}
+
+interface GuardianTaskTemplate {
+  id: string
+  name: string
+  description: string
+  tool_name: string
+  schedule: string
+  enabled: boolean
+  read_only?: boolean
+  source_label?: string
+  delivery_channels?: string[]
+  default_schedule_label?: string
+  tool_args: Record<string, unknown>
 }
 
 interface DashboardSummary {
@@ -142,12 +157,19 @@ interface CommandCenterOperationsProps {
 }
 
 const TASK_TOOL_OPTIONS = [
-  "health_check",
+  "sparkbot_health_check",
+  "morning_briefing",
   "memory_retrieval_stats",
   "memory_reindex",
-  "email_digest",
-  "telegram_send",
-  "github_create_issue",
+  "github_list_prs",
+  "github_get_ci_status",
+  "gmail_fetch_inbox",
+  "gmail_search",
+  "calendar_list_events",
+  "slack_get_channel_history",
+  "server_read_command",
+  "list_tasks",
+  "list_reminders",
 ]
 
 function formatRelativeTime(value: string | null | undefined): string {
@@ -189,6 +211,7 @@ export function CommandCenterOperations({ refreshNonce, onRefresh }: CommandCent
   const [securityStatus, setSecurityStatus] = useState<SecurityStatus | null>(null)
   const [dashboard, setDashboard] = useState<DashboardSummary | null>(null)
   const [health, setHealth] = useState<HealthCheck | null>(null)
+  const [taskTemplates, setTaskTemplates] = useState<GuardianTaskTemplate[]>([])
   const [tasks, setTasks] = useState<GuardianTaskRecord[]>([])
   const [runs, setRuns] = useState<GuardianRunRecord[]>([])
   const [loading, setLoading] = useState(true)
@@ -201,13 +224,14 @@ export function CommandCenterOperations({ refreshNonce, onRefresh }: CommandCent
     async function load() {
       setLoading(true)
       setError("")
-      const [roomResult, configResult, guardianResult, securityResult, dashboardResult, healthResult] = await Promise.all([
+      const [roomResult, configResult, guardianResult, securityResult, dashboardResult, healthResult, templatesResult] = await Promise.all([
         loadRoom(),
         fetchControlsConfig(),
         fetchGuardianStatus().catch(() => null),
         readJson<SecurityStatus>("/api/v1/chat/security/status"),
         readJson<DashboardSummary>("/api/v1/chat/dashboard/summary"),
         readJson<HealthCheck>("/api/v1/utils/health-check/"),
+        readJson<{ items?: GuardianTaskTemplate[] }>("/api/v1/chat/guardian/tasks/templates"),
       ])
 
       if (!alive) return
@@ -219,6 +243,7 @@ export function CommandCenterOperations({ refreshNonce, onRefresh }: CommandCent
       setSecurityStatus(securityResult)
       setDashboard(dashboardResult)
       setHealth(healthResult)
+      setTaskTemplates(templatesResult?.items ?? [])
 
       if (roomResult?.id) {
         const [tasksResult, runsResult] = await Promise.all([
@@ -445,7 +470,7 @@ export function CommandCenterOperations({ refreshNonce, onRefresh }: CommandCent
     await reloadWithStatus(enabled ? "Task Guardian job resumed." : "Task Guardian job paused.")
   }
 
-  async function createTask(input: { name: string; toolName: string; schedule: string; args: string }) {
+  async function createTask(input: { name: string; toolName: string; schedule: string; args: string; enabled?: boolean }) {
     if (!room) return
     let parsedArgs: Record<string, unknown>
     try {
@@ -463,7 +488,8 @@ export function CommandCenterOperations({ refreshNonce, onRefresh }: CommandCent
         name: input.name,
         tool_name: input.toolName,
         schedule: input.schedule,
-        args: parsedArgs,
+        tool_args: parsedArgs,
+        enabled: input.enabled ?? true,
       }),
     })
     if (!response.ok) {
@@ -559,6 +585,7 @@ export function CommandCenterOperations({ refreshNonce, onRefresh }: CommandCent
 
       <TaskGuardianCard
         guardianStatus={guardianStatus}
+        templates={taskTemplates}
         tasks={tasks}
         runs={runs}
         enabledTasks={enabledTasks}
@@ -1094,6 +1121,7 @@ function StatusPill({ label, value, good }: { label: string; value: string; good
 
 function TaskGuardianCard({
   guardianStatus,
+  templates,
   tasks,
   runs,
   enabledTasks,
@@ -1104,18 +1132,19 @@ function TaskGuardianCard({
   onSetTaskEnabled,
 }: {
   guardianStatus: GuardianStatus | null
+  templates: GuardianTaskTemplate[]
   tasks: GuardianTaskRecord[]
   runs: GuardianRunRecord[]
   enabledTasks: number
   room: RoomInfo | null
   onToggleWriteMode: () => void
-  onCreateTask: (input: { name: string; toolName: string; schedule: string; args: string }) => void
+  onCreateTask: (input: { name: string; toolName: string; schedule: string; args: string; enabled?: boolean }) => void
   onRunTask: (taskId: string) => void
   onSetTaskEnabled: (taskId: string, enabled: boolean) => void
 }) {
   const [name, setName] = useState("")
-  const [toolName, setToolName] = useState(TASK_TOOL_OPTIONS[0] ?? "health_check")
-  const [schedule, setSchedule] = useState("daily:13:00")
+  const [toolName, setToolName] = useState(TASK_TOOL_OPTIONS[0] ?? "sparkbot_health_check")
+  const [schedule, setSchedule] = useState("daily-local:06:00")
   const [args, setArgs] = useState("{}")
   const canCreate = Boolean(room && name.trim() && toolName.trim() && schedule.trim())
 
@@ -1124,6 +1153,23 @@ function TaskGuardianCard({
     onCreateTask({ name: name.trim(), toolName, schedule: schedule.trim(), args })
     setName("")
     setArgs("{}")
+  }
+
+  function fillTemplate(template: GuardianTaskTemplate) {
+    setName(template.name)
+    setToolName(template.tool_name)
+    setSchedule(template.schedule)
+    setArgs(JSON.stringify(template.tool_args ?? {}, null, 2))
+  }
+
+  function addTemplate(template: GuardianTaskTemplate) {
+    onCreateTask({
+      name: template.name,
+      toolName: template.tool_name,
+      schedule: template.schedule,
+      args: JSON.stringify(template.tool_args ?? {}),
+      enabled: template.enabled,
+    })
   }
 
   return (
@@ -1154,6 +1200,32 @@ function TaskGuardianCard({
           <Metric label="Enabled" value={String(enabledTasks)} />
           <Metric label="Recent runs" value={String(runs.length)} />
         </div>
+        {templates.length ? (
+          <div className="grid gap-3 md:grid-cols-2">
+            {templates.map((template) => (
+              <div key={template.id} className="rounded-lg border bg-muted/20 p-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <div className="text-sm font-semibold">{template.name}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">{template.description}</div>
+                  </div>
+                  <Badge variant="secondary">{template.default_schedule_label ?? template.schedule}</Badge>
+                </div>
+                <div className="mt-2 text-xs text-muted-foreground">
+                  Read-only, app-only by default. Edit the JSON to add Telegram, Discord, or Slack delivery after those connectors are configured.
+                </div>
+                <div className="mt-3 flex flex-wrap justify-end gap-2">
+                  <Button size="sm" variant="outline" onClick={() => fillTemplate(template)} disabled={!room}>
+                    Edit template
+                  </Button>
+                  <Button size="sm" onClick={() => addTemplate(template)} disabled={!room}>
+                    Add disabled
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
         <div className="grid gap-3 rounded-lg border bg-muted/20 p-3 md:grid-cols-2">
           <input
             value={name}
@@ -1175,7 +1247,7 @@ function TaskGuardianCard({
           <input
             value={schedule}
             onChange={(event) => setSchedule(event.target.value)}
-            placeholder="daily:13:00, every:3600, or at:2026-05-02T14:00:00Z"
+            placeholder="daily-local:06:00, daily:13:00, every:3600, or at:2026-05-02T14:00:00Z"
             className="rounded-md border bg-background px-3 py-2 text-sm outline-none md:col-span-2"
             disabled={!room}
           />
@@ -1240,6 +1312,11 @@ function TaskGuardianCard({
                 <span className="font-medium">{run.status.toUpperCase()}</span>
                 <span className="text-xs text-muted-foreground">{formatRelativeTime(run.created_at)}</span>
                 {run.message ? <span className="basis-full text-xs text-muted-foreground">{run.message}</span> : null}
+                {run.output_excerpt ? (
+                  <pre className="max-h-56 basis-full overflow-auto whitespace-pre-wrap rounded-md bg-muted/40 p-2 font-mono text-xs text-muted-foreground">
+                    {run.output_excerpt}
+                  </pre>
+                ) : null}
               </div>
             ))
           )}

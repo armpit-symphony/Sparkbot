@@ -64,6 +64,40 @@ def test_task_guardian_allows_memory_guardian_nightly(monkeypatch, tmp_path) -> 
     assert task.tool_name == "memory_guardian_nightly"
 
 
+def test_task_guardian_exposes_health_check_templates(monkeypatch, tmp_path) -> None:
+    task_guardian = _reload_task_guardian(monkeypatch, tmp_path)
+
+    templates = task_guardian.list_builtin_templates()
+    by_id = {template["id"]: template for template in templates}
+
+    assert set(by_id) == {"pc_health_check", "server_health_check"}
+    assert by_id["pc_health_check"]["tool_name"] == "sparkbot_health_check"
+    assert by_id["server_health_check"]["tool_name"] == "sparkbot_health_check"
+    assert by_id["pc_health_check"]["schedule"] == "daily-local:06:00"
+    assert by_id["server_health_check"]["enabled"] is False
+    assert by_id["pc_health_check"]["tool_args"]["delivery_channels"] == ["app"]
+
+
+def test_task_guardian_allows_disabled_health_check_template(monkeypatch, tmp_path) -> None:
+    task_guardian = _reload_task_guardian(monkeypatch, tmp_path)
+
+    scheduled = task_guardian.schedule_task(
+        name="PC Health Check",
+        tool_name="sparkbot_health_check",
+        tool_args={"mode": "pc", "delivery_channels": ["app"]},
+        schedule="daily-local:06:00",
+        room_id="room-123",
+        user_id="user-123",
+        enabled=False,
+    )
+
+    task = task_guardian.get_task(scheduled["id"])
+    assert task is not None
+    assert task.tool_name == "sparkbot_health_check"
+    assert bool(task.enabled) is False
+    assert scheduled["enabled"] is False
+
+
 def test_task_guardian_daily_schedule_calculates_next_utc_run(monkeypatch, tmp_path) -> None:
     task_guardian = _reload_task_guardian(monkeypatch, tmp_path)
 
@@ -71,6 +105,16 @@ def test_task_guardian_daily_schedule_calculates_next_utc_run(monkeypatch, tmp_p
 
     assert task_guardian._next_run_at("daily:13:00", base=base) == "2026-04-24T13:00:00+00:00"
     assert task_guardian._next_run_at("daily:09:00", base=base) == "2026-04-25T09:00:00+00:00"
+
+
+def test_task_guardian_daily_local_schedule_calculates_utc_run(monkeypatch, tmp_path) -> None:
+    task_guardian = _reload_task_guardian(monkeypatch, tmp_path)
+
+    base = datetime(2026, 4, 24, 12, 30, tzinfo=timezone.utc)
+    next_run = datetime.fromisoformat(task_guardian._next_run_at("daily-local:06:00", base=base))
+
+    assert next_run.tzinfo is not None
+    assert next_run > base
 
 
 def test_task_guardian_at_schedule_accepts_zulu_timestamp(monkeypatch, tmp_path) -> None:
@@ -141,6 +185,55 @@ def test_task_guardian_records_verified_run(monkeypatch, tmp_path) -> None:
     assert refreshed is not None
     assert refreshed.last_status == "verified"
     assert refreshed.last_verification_status == "verified"
+
+
+def test_task_guardian_health_run_writes_source_labeled_memory(monkeypatch, tmp_path) -> None:
+    task_guardian = _reload_task_guardian(monkeypatch, tmp_path)
+
+    room_id = str(uuid.uuid4())
+    user_id = str(uuid.uuid4())
+    scheduled = task_guardian.schedule_task(
+        name="PC Health Check",
+        tool_name="sparkbot_health_check",
+        tool_args={"mode": "pc", "delivery_channels": ["app"]},
+        schedule="daily-local:06:00",
+        room_id=room_id,
+        user_id=user_id,
+    )
+    task = task_guardian.get_task(scheduled["id"])
+    assert task is not None
+
+    async def _fake_health(args, **kwargs):
+        return {
+            "report": "Sparkbot Health Report - now\n\nSEV-1 Assessment:\nNONE\n\nSystem Status:\nNominal (PC)\n\nNo action required.",
+            "status": "Nominal",
+            "source_label": "task_guardian.health.pc",
+        }
+
+    class _FakeBot:
+        id = "bot-user"
+
+    remembered: list[dict] = []
+    monkeypatch.setattr(task_guardian, "run_health_check", _fake_health)
+    monkeypatch.setattr(task_guardian, "_find_or_create_bot_user", lambda _session: _FakeBot())
+    monkeypatch.setattr(task_guardian, "create_chat_message", lambda **kwargs: type("Msg", (), {"id": "msg-1"})())
+    monkeypatch.setattr(task_guardian, "create_audit_log", lambda **kwargs: None)
+    monkeypatch.setattr(task_guardian, "remember_tool_event", lambda **kwargs: remembered.append(kwargs))
+
+    async def _noop(*args, **kwargs):
+        return None
+
+    async def _no_delivery(*args, **kwargs):
+        return []
+
+    monkeypatch.setattr(task_guardian, "_broadcast_task_message", _noop)
+    monkeypatch.setattr(task_guardian, "_deliver_task_notifications", _no_delivery)
+
+    result = asyncio.run(task_guardian.run_task_once(task, object()))
+
+    assert result["status"] == "verified"
+    assert remembered
+    assert remembered[0]["tool_name"] == "task_guardian.health.pc"
 
 
 def test_task_guardian_retries_then_escalates_unverified_runs(monkeypatch, tmp_path) -> None:

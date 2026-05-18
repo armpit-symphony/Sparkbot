@@ -94,6 +94,7 @@ _CORE_TOOL_PRIORITY = {
     "gmail_search",
     "gmail_get_message",
     "gmail_send",
+    "sparkbot_health_check",
     "guardian_schedule_task",
     "guardian_list_tasks",
     "guardian_propose_improvement",

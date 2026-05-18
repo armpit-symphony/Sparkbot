@@ -63,6 +63,14 @@ Branch `public-release-roundtable-modelseat-ui-polish` moved the final model-sea
 - Command Center AI Setup now includes a model-seat editor with write-only credential entry and backend/Vault-owned credential storage.
 - Backend model-seat payloads now include setup-needed/unreachable/disabled/ready status so local and Vault-backed seats do not fail silently.
 
+Branch `public-release-task-guardian-health-checks` moved Task Guardian public utility forward:
+
+- Added built-in PC Health Check and Server Health Check templates.
+- Added `sparkbot_health_check` as a read-only Task Guardian tool with a plain-text Sparkbot Health Report renderer.
+- Added `daily-local:<HH:MM>` schedule support; built-in health templates default to 6:00 AM local time and disabled/app-only until the owner adds them.
+- Health task summaries write source-labeled shared memory as `task_guardian.health.pc` or `task_guardian.health.server`.
+- Optional report delivery can use configured Telegram, Discord, or Slack channels without storing connector secrets in the frontend.
+
 ## 1. P0 Blockers Before Extraction
 
 1. Unify public chat route.
@@ -167,6 +175,7 @@ Branch `public-release-roundtable-modelseat-ui-polish` moved the final model-sea
 7. Add simple task/reminder panels.
    - Keep slash commands, but expose basic task/reminder workflows without raw JSON.
    - Keep Task Guardian advanced.
+   - Status: `PARTIAL_DONE` - Command Center now shows built-in PC/server health-check templates with safe Add/Edit actions, but general task/reminder panels still need a non-JSON workflow.
 
 8. Improve Guardian confirmation UI.
    - Replace automatic hidden `/breakglass` flow with explicit PIN/approval modal.
