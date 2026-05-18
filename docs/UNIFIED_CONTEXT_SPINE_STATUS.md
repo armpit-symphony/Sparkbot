@@ -93,7 +93,7 @@ Not implemented:
 
 - A full Command Center model-seat editor.
 - Dynamic provider model discovery for every company.
-- A visible "setup needed" badge for every Specialty Wing model-seat mismatch.
+- A visible "setup needed" badge for every Specialty Wing model-seat mismatch. `DONE_FIRST_PASS_2026-05-18` for Command Center, Workstation chair picker, and Meeting Room seats.
 
 ## Duplicate Memory Spam Prevention
 
@@ -123,7 +123,7 @@ Preserved:
 1. Balanced vs Locked guardrail behavior separation.
 2. Final Round Table assignment UI polish.
 3. Add public-safe confirmation/approval memory summaries without duplicating audit logs.
-4. Add user-visible setup-needed indicators for Specialty Wing model seats that are selected but not configured.
+4. Add user-visible setup-needed indicators for Specialty Wing model seats that are selected but not configured. `DONE_FIRST_PASS_2026-05-18`
 5. Replace Robo/LIMA backend bridge source with a public stub before Sparkbot_shell extraction.
 
 ## Package Cleanup Note - 2026-05-17
@@ -146,3 +146,20 @@ Still deferred:
 
 - Add dedicated public-safe confirmation memory summaries for local endpoint setup failures or risky local tool actions.
 - Add richer source labels for Workstation UI-only local seat edits without creating noisy memory spam.
+
+## Round Table Model-Seat UI Update - 2026-05-18
+
+Branch: `public-release-roundtable-modelseat-ui-polish`
+
+Context-spine-relevant changes:
+
+- Shared model groups now surface enabled model seats with labels and public-safe setup status metadata.
+- Workstation and Meeting Room preserve `modelSeatId`, model id, route, setup status, and auth mode in Round Table seat metadata.
+- Meeting Room model changes do not carry credentials and clear stale model-seat routing when a seat agent changes.
+- Structured assignment display reads existing `meeting_assignments` artifacts instead of creating a new memory path.
+- Per-turn meeting notes remain disabled; manager wrap-up/checkpoint/manual paths remain the rollup paths.
+
+Still deferred:
+
+- Add public-safe confirmation/approval memory summaries without duplicating audit logs.
+- Browser QA model-seat context labels during real Round Table runs.

@@ -55,6 +55,14 @@ Branch `public-release-local-ai-integration` moved local model readiness forward
 - Routed `local/<model-id>` chat/model-seat requests through a backend-owned OpenAI-compatible local adapter.
 - Added targeted backend tests for local config persistence, no-secret local seats, route setup, and local completion routing.
 
+Branch `public-release-roundtable-modelseat-ui-polish` moved the final model-seat/Round Table UI blockers forward:
+
+- Workstation defaults Round Table seat 1 to the `meetings_manager` Specialty Wing office when available.
+- Workstation chair picker and Meeting Room participant controls now expose per-agent/per-seat model selection.
+- Meeting Room now shows Seat 1 manager status, current phase, selected model/model seat, setup-needed status, and latest structured assignment cards.
+- Command Center AI Setup now includes a model-seat editor with write-only credential entry and backend/Vault-owned credential storage.
+- Backend model-seat payloads now include setup-needed/unreachable/disabled/ready status so local and Vault-backed seats do not fail silently.
+
 ## 1. P0 Blockers Before Extraction
 
 1. Unify public chat route.
@@ -67,7 +75,7 @@ Branch `public-release-local-ai-integration` moved local model readiness forward
    - Store seats, handles, models, route, chair, and protocol in backend meeting artifact metadata or a first-class table.
    - Load meeting metadata from backend before localStorage.
    - Keep localStorage only as a draft/cache.
-   - Status: `PARTIAL_DONE` - backend manifest artifacts already existed and Meeting Room now loads them first; first-class table and UI assignment display remain.
+   - Status: `PARTIAL_DONE` - backend manifest artifacts already existed and Meeting Room now loads them first; assignment cards and phase display now render from persisted artifacts. A first-class table remains optional later.
    - Evidence: `frontend/src/lib/workstationMeeting.ts:22`, `frontend/src/lib/workstationMeeting.ts:344`, `frontend/src/pages/MeetingRoomPage.tsx:123`.
 
 3. Make Round Table heartbeat non-blocking.
@@ -125,7 +133,7 @@ Branch `public-release-local-ai-integration` moved local model readiness forward
 
 12. Make local AI native across public model surfaces.
    - Support Ollama, LM Studio, llama.cpp / llama-server, generic OpenAI-compatible endpoints, and custom local endpoints from AI Setup, model seats, Chat, Round Table, and Specialty Wing.
-   - Status: `PARTIAL_DONE_THIS_PHASE` - backend routing, AI Setup config, default Local AI model seat, Round Table invite routing, and Specialty Wing model-seat override paths are implemented. Remaining work is full Command Center seat editing, live endpoint browser QA, and setup-needed badges.
+   - Status: `PARTIAL_DONE` - backend routing, AI Setup config, default Local AI model seat, Round Table invite routing, Specialty Wing model-seat override paths, setup-needed status, and a Command Center model-seat editor are implemented. Remaining work is live endpoint browser QA and duplicate-model-id selector hardening.
    - Evidence: `backend/app/services/local_ai.py`, `backend/app/api/routes/chat/model.py`, `backend/app/api/routes/chat/llm.py`, `frontend/src/components/CommandCenter/SetupPanels.tsx`, `frontend/src/pages/WorkstationPage.tsx`.
 
 ## 2. P1 Polish Before Public Beta
@@ -142,6 +150,7 @@ Branch `public-release-local-ai-integration` moved local model readiness forward
 3. Add Round Table phase/status UI.
    - Show Seat 1 manager, current phase, participant queue, and status result.
    - Backend already has phase prompts; surface them as SSE metadata or derive from events.
+   - Status: `PARTIAL_DONE` - Seat 1 manager, phase label, per-seat models, setup-needed status, and persisted assignment cards are visible. Participant queue/status result can be refined after browser QA.
 
 4. Clean meeting notes UX.
    - Rename launch placeholder to agenda or hide until a real notes generation.
@@ -250,11 +259,10 @@ Branch `public-release-local-ai-integration` moved local model readiness forward
 
 Phase B2 should be a focused P0/P1 stabilization patch:
 
-1. Add final Round Table assignment display/phase UI polish.
-2. Refresh the Sparkbot_shell extraction map.
-3. Run browser QA for Local AI setup against live Ollama and a live OpenAI-compatible endpoint.
-4. Replace Robo/LIMA backend bridge source with a public stub before extraction.
-5. Remove tracked `.venv-ci` files from Git if approved.
-6. Converge remaining "Controls" copy into AI setup versus Command Center.
+1. Run the approved artifact/.venv/Robo/guardrail cleanup branch.
+2. Run browser QA for model-seat editing, Round Table model selection, Local AI setup against live Ollama, and a live OpenAI-compatible endpoint.
+3. Refresh the Sparkbot_shell extraction map.
+4. Start the first shell import layer after package/Robo/extraction-map cleanup is complete.
+5. Converge remaining "Controls" copy into AI setup versus Command Center.
 
 After B2 passes build/tests, run browser QA on `/login`, `/dm`, `/workstation`, `/meeting/:roomId`, and `/spine`.

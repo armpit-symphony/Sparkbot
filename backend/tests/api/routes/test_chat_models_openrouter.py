@@ -425,10 +425,115 @@ def test_models_config_saves_local_model_seat_without_frontend_secret(client: Te
     assert local_seat["model_id"] == "local/llama-test"
     assert local_seat["base_url"] == "http://localhost:8080/v1"
     assert local_seat["configured"] is True
+    assert local_seat["setup_status"] == "ready"
     assert vault_writes == []
     assert "credential_configured" in json.dumps(payload["model_seats"])
     assert "local-secret" not in json.dumps(payload["model_seats"])
     assert "SPARKBOT_MODEL_SEATS_JSON" in saved_updates
+
+
+def test_models_config_marks_unreachable_local_model_seat_setup_needed(client: TestClient, monkeypatch) -> None:
+    operator_id = _ensure_chat_user("sparkbot-user")
+    headers = _chat_headers_for_user(operator_id)
+    saved_updates: dict[str, str] = {}
+
+    async def fake_ollama_status():
+        return {"reachable": False, "models_available": False, "models": [], "model_ids": []}
+
+    async def fake_local_ai_status():
+        return {
+            "provider_type": "local",
+            "provider": "local_ai",
+            "local_runtime": "lmstudio",
+            "base_url": "http://localhost:1234/v1",
+            "model_id": "local/lmstudio-test",
+            "enabled": True,
+            "auth_mode": "none",
+            "supports_chat": True,
+            "supports_embeddings": False,
+            "supports_tools": False,
+            "reachable": False,
+            "models": [],
+            "model_ids": [],
+            "models_available": False,
+        }
+
+    monkeypatch.setenv("SPARKBOT_OPERATOR_USERNAMES", "sparkbot-user")
+    monkeypatch.delenv("SPARKBOT_MODEL_SEATS_JSON", raising=False)
+    monkeypatch.setattr(model_route, "_write_env_updates", lambda updates: saved_updates.update(updates))
+    monkeypatch.setattr(model_route, "_apply_env_updates", lambda updates: None)
+    monkeypatch.setattr(model_route, "get_ollama_status", fake_ollama_status)
+    monkeypatch.setattr(model_route, "get_local_ai_status", fake_local_ai_status)
+
+    response = client.post(
+        f"{settings.API_V1_STR}/chat/models/config",
+        headers=headers,
+        json={
+            "model_seats": [
+                {
+                    "id": "invite-local",
+                    "label": "Local LM Studio",
+                    "company": "Local",
+                    "provider": "local_ai",
+                    "auth_mode": "none",
+                    "model_id": "local/lmstudio-test",
+                    "local_runtime": "lmstudio",
+                    "base_url": "http://localhost:1234/v1",
+                    "enabled": True,
+                    "show_in_round_table": True,
+                    "show_in_specialty_wing": True,
+                }
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    local_seat = next(seat for seat in payload["model_seats"] if seat["id"] == "invite-local")
+    assert local_seat["configured"] is False
+    assert local_seat["setup_status"] == "unreachable"
+    assert "not reachable" in local_seat["setup_message"]
+    assert "SPARKBOT_MODEL_SEATS_JSON" in saved_updates
+
+
+def test_vault_backed_model_seat_missing_secret_reports_setup_needed(client: TestClient, monkeypatch) -> None:
+    operator_id = _ensure_chat_user("sparkbot-user")
+    headers = _chat_headers_for_user(operator_id)
+
+    async def fake_ollama_status():
+        return {"reachable": False, "models_available": False, "models": [], "model_ids": []}
+
+    monkeypatch.setenv("SPARKBOT_OPERATOR_USERNAMES", "sparkbot-user")
+    monkeypatch.setenv("XAI_API_KEY", "global-xai-key")
+    monkeypatch.setenv(
+        "SPARKBOT_MODEL_SEATS_JSON",
+        json.dumps(
+            [
+                {
+                    "id": "invite-custom",
+                    "label": "Grok Seat",
+                    "company": "xAI",
+                    "provider": "xai",
+                    "auth_mode": "api_key",
+                    "model_id": "xai/grok-4.20-multi-agent-0309",
+                    "enabled": True,
+                    "show_in_round_table": True,
+                    "show_in_specialty_wing": True,
+                }
+            ]
+        ),
+    )
+    monkeypatch.setattr(model_route, "get_ollama_status", fake_ollama_status)
+
+    response = client.get(f"{settings.API_V1_STR}/chat/models/config", headers=headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    grok_seat = next(seat for seat in payload["model_seats"] if seat["id"] == "invite-custom")
+    assert grok_seat["credential_configured"] is False
+    assert grok_seat["configured"] is False
+    assert grok_seat["setup_status"] == "setup_needed"
+    assert "credential" in grok_seat["setup_message"].lower()
 
 
 def test_invite_route_resolves_model_seat_secret_backend_side(client: TestClient, monkeypatch) -> None:

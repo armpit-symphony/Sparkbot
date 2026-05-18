@@ -2,6 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import { apiFetch } from "@/lib/apiBase"
 import { ArrowLeft, Info, Loader2, Users } from "lucide-react"
+import {
+  buildControlsModelGroups,
+  fetchControlsConfig,
+  routeForModelOverride,
+  type SparkbotControlsConfig,
+} from "@/lib/sparkbotControls"
 import SparkbotSurfaceTabs from "@/components/Common/SparkbotSurfaceTabs"
 import SparkbotSurfaceInfoDialog from "@/components/Common/SparkbotSurfaceInfoDialog"
 import ChatInput from "@/components/chat/ChatInput"
@@ -53,6 +59,36 @@ interface MeetingAgentOption {
   is_builtin?: boolean
 }
 
+interface MeetingAssignment {
+  handle?: string
+  assignment?: string
+}
+
+interface MeetingAssignmentArtifact {
+  id?: string
+  content_markdown?: string
+  created_at?: string
+  meta_json?: {
+    source?: string
+    meeting_phase?: string
+    assignments?: MeetingAssignment[]
+  } | null
+}
+
+function seatSetupStatusLabel(status?: string, configured?: boolean): string {
+  if (status === "ready" || configured) return "Ready"
+  if (status === "unreachable") return "Unreachable"
+  if (status === "disabled") return "Disabled"
+  return "Setup needed"
+}
+
+function seatSetupStatusColor(status?: string, configured?: boolean): string {
+  if (status === "ready" || configured) return "#4ade80"
+  if (status === "unreachable") return "#fbbf24"
+  if (status === "disabled") return "#64748b"
+  return "#93c5fd"
+}
+
 function isTransientMeetingError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error ?? "")
   return /network|fetch|failed|timeout|temporar|connection|body stream/i.test(message)
@@ -101,6 +137,9 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
   const [meetingRooms, setMeetingRooms] = useState<MeetingListItem[]>([])
   const [meetingActionId, setMeetingActionId] = useState<string | null>(null)
   const [agentOptions, setAgentOptions] = useState<MeetingAgentOption[]>([])
+  const [controlsConfig, setControlsConfig] = useState<SparkbotControlsConfig | null>(null)
+  const [latestAssignments, setLatestAssignments] = useState<MeetingAssignment[]>([])
+  const [meetingPhase, setMeetingPhase] = useState("")
   const [roomTasks, setRoomTasks] = useState<Array<{
     id: string; name: string; tool_name: string; schedule: string;
     enabled: boolean; last_status: string | null; last_run_at: string | null;
@@ -145,16 +184,26 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
         ])
       })
       .catch(() => setAgentOptions([]))
+    fetchControlsConfig().then(setControlsConfig).catch(() => setControlsConfig(null))
   }, [])
 
   useEffect(() => {
     if (!roomId) return
-    apiFetch(`/api/v1/chat/rooms/${roomId}/artifacts?type=notes&limit=1`, {
-      credentials: "include",
-    })
-      .then((r) => (r.ok ? r.json() : []))
-      .then((artifacts: Array<{ id: string; content_markdown: string; created_at: string }>) => {
-        if (artifacts.length > 0) setLatestArtifact(artifacts[0])
+    Promise.all([
+      apiFetch(`/api/v1/chat/rooms/${roomId}/artifacts?type=notes&limit=1`, { credentials: "include" }),
+      apiFetch(`/api/v1/chat/rooms/${roomId}/artifacts?type=action_items&limit=5`, { credentials: "include" }),
+    ])
+      .then(async ([notesRes, assignmentsRes]) => {
+        if (notesRes.ok) {
+          const artifacts: Array<{ id: string; content_markdown: string; created_at: string }> = await notesRes.json()
+          if (artifacts.length > 0) setLatestArtifact(artifacts[0])
+        }
+        if (assignmentsRes.ok) {
+          const artifacts = (await assignmentsRes.json()) as MeetingAssignmentArtifact[]
+          const assignmentArtifact = artifacts.find((artifact) => artifact.meta_json?.source === "meeting_assignments")
+          setLatestAssignments(assignmentArtifact?.meta_json?.assignments ?? [])
+          if (assignmentArtifact?.meta_json?.meeting_phase) setMeetingPhase(assignmentArtifact.meta_json.meeting_phase)
+        }
       })
       .catch(() => {})
   }, [roomId])
@@ -202,6 +251,14 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
     () => meetingMeta?.seats ?? [],
     [meetingMeta],
   )
+  const modelGroups = useMemo(
+    () => buildControlsModelGroups(controlsConfig),
+    [controlsConfig],
+  )
+  const currentPhaseLabel = useMemo(() => {
+    if (!meetingPhase) return "Ready"
+    return meetingPhase.replace(/[_-]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase())
+  }, [meetingPhase])
   const meetingAgentOptions = useMemo(
     () => agentOptions.filter((agent) => agent.name !== "sparkbot"),
     [agentOptions],
@@ -220,6 +277,50 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
         agentHandle: agent.name,
         agentProvisioning: agent.is_builtin === false ? "custom" as const : "builtin" as const,
         agentDescription: agent.description || seat.agentDescription,
+        modelId: undefined,
+        route: undefined,
+        modelSeatId: undefined,
+        modelSeatConfigured: undefined,
+        modelSeatSetupStatus: undefined,
+        modelSeatSetupMessage: undefined,
+        inviteAuthMode: undefined,
+      }
+    })
+    const nextMeta = { ...meetingMeta, seats: nextSeats }
+    setMeetingMeta(nextMeta)
+    saveMeetingRoomMeta(nextMeta)
+  }
+
+  function handleSeatModelChange(seatIndex: number, modelId: string) {
+    if (!meetingMeta) return
+    const matchedSeat = controlsConfig?.model_seats?.find((seat) =>
+      seat.enabled
+      && (seat.show_in_round_table || seat.show_in_specialty_wing)
+      && seat.model_id === modelId
+    )
+    const nextSeats = meetingMeta.seats.map((seat) => {
+      if (seat.seatIndex !== seatIndex) return seat
+      if (!modelId) {
+        return {
+          ...seat,
+          modelId: undefined,
+          route: undefined,
+          modelSeatId: undefined,
+          modelSeatConfigured: undefined,
+          modelSeatSetupStatus: undefined,
+          modelSeatSetupMessage: undefined,
+          inviteAuthMode: undefined,
+        }
+      }
+      return {
+        ...seat,
+        modelId,
+        route: routeForModelOverride(modelId),
+        modelSeatId: matchedSeat?.id,
+        modelSeatConfigured: matchedSeat ? Boolean(matchedSeat.configured) : undefined,
+        modelSeatSetupStatus: matchedSeat?.setup_status,
+        modelSeatSetupMessage: matchedSeat?.setup_message,
+        inviteAuthMode: matchedSeat?.auth_mode,
       }
     })
     const nextMeta = { ...meetingMeta, seats: nextSeats }
@@ -266,9 +367,10 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
   }
 
   const reloadMessages = async () => {
-    const [messagesRes, artifactRes] = await Promise.all([
+    const [messagesRes, artifactRes, assignmentsRes] = await Promise.all([
       apiFetch(`/api/v1/chat/rooms/${roomId}/messages`, { credentials: "include" }),
       apiFetch(`/api/v1/chat/rooms/${roomId}/artifacts?type=notes&limit=1`, { credentials: "include" }),
+      apiFetch(`/api/v1/chat/rooms/${roomId}/artifacts?type=action_items&limit=5`, { credentials: "include" }),
     ])
     if (messagesRes.ok) {
       const data = await messagesRes.json()
@@ -277,6 +379,12 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
     if (artifactRes.ok) {
       const artifacts = await artifactRes.json()
       setLatestArtifact(artifacts?.[0] ?? null)
+    }
+    if (assignmentsRes.ok) {
+      const artifacts = (await assignmentsRes.json()) as MeetingAssignmentArtifact[]
+      const assignmentArtifact = artifacts.find((artifact) => artifact.meta_json?.source === "meeting_assignments")
+      setLatestAssignments(assignmentArtifact?.meta_json?.assignments ?? [])
+      if (assignmentArtifact?.meta_json?.meeting_phase) setMeetingPhase(assignmentArtifact.meta_json.meeting_phase)
     }
     await reloadMeetingRooms()
   }
@@ -385,6 +493,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
     setStreamingToken("")
     setStreamingAgent(null)
     setStreamError("")
+    setMeetingPhase("preparing")
     setInputValue("")
 
     try {
@@ -449,6 +558,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
               // New agent starting — reset accumulated and update label
               accumulatedToken = ""
               setStreamingToken("")
+              if (typeof evt.phase === "string") setMeetingPhase(evt.phase)
               const modelLabel = evt.model_label || evt.model
               setStreamingAgent(
                 modelLabel
@@ -808,67 +918,207 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                     Seated participants
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {seatedParticipants.map((seat) => (
-                      <div
-                        key={`${seat.seatIndex}-${seat.stationId}`}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 10,
-                          border: `1px solid ${seat.accentHex}22`,
-                          borderRadius: 10,
-                          padding: "9px 10px",
-                          backgroundColor: `${seat.accentHex}10`,
-                        }}
-                      >
-                        <span
+                    {seatedParticipants.map((seat) => {
+                      const matchedModelSeat = seat.modelSeatId
+                        ? controlsConfig?.model_seats?.find((item) => item.id === seat.modelSeatId)
+                        : seat.modelId
+                          ? controlsConfig?.model_seats?.find((item) => item.model_id === seat.modelId)
+                          : undefined
+                      const setupStatus = seat.modelSeatSetupStatus ?? matchedModelSeat?.setup_status
+                      const setupMessage = seat.modelSeatSetupMessage ?? matchedModelSeat?.setup_message
+                      const configured = seat.modelSeatConfigured ?? matchedModelSeat?.configured
+                      const modelLabel = matchedModelSeat?.label
+                        ?? (seat.modelId ? controlsConfig?.model_labels?.[seat.modelId] ?? seat.modelId : "Default model")
+                      const hasModelSeatStatus = Boolean(seat.modelSeatId || matchedModelSeat || setupStatus)
+                      const statusColor = seatSetupStatusColor(setupStatus, configured)
+                      return (
+                        <div
+                          key={`${seat.seatIndex}-${seat.stationId}`}
                           style={{
-                            width: 10,
-                            height: 10,
-                            borderRadius: "50%",
-                            backgroundColor: seat.accentHex,
-                            boxShadow: `0 0 10px ${seat.accentHex}55`,
-                            flexShrink: 0,
+                            display: "flex",
+                            alignItems: "flex-start",
+                            gap: 10,
+                            border: `1px solid ${seat.accentHex}22`,
+                            borderRadius: 10,
+                            padding: "9px 10px",
+                            backgroundColor: `${seat.accentHex}10`,
                           }}
-                        />
-                        <div style={{ minWidth: 0, flex: 1 }}>
-                          <div
+                        >
+                          <span
                             style={{
-                              fontSize: 11,
-                              color: "#e2e8f0",
-                              fontWeight: 700,
-                              letterSpacing: "0.04em",
-                              textTransform: "uppercase",
+                              width: 10,
+                              height: 10,
+                              borderRadius: "50%",
+                              backgroundColor: seat.accentHex,
+                              boxShadow: `0 0 10px ${seat.accentHex}55`,
+                              flexShrink: 0,
+                              marginTop: 3,
                             }}
-                          >
-                            Chair {seat.seatIndex + 1}: {seat.label}
+                          />
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                gap: 8,
+                              }}
+                            >
+                              <div
+                                style={{
+                                  fontSize: 11,
+                                  color: "#e2e8f0",
+                                  fontWeight: 700,
+                                  letterSpacing: "0.04em",
+                                  textTransform: "uppercase",
+                                }}
+                              >
+                                Chair {seat.seatIndex + 1}: {seat.label}
+                              </div>
+                              {seat.seatIndex === 0 && (
+                                <span style={{ fontSize: 8, color: "#fbbf24", border: "1px solid rgba(251,191,36,0.28)", borderRadius: 999, padding: "1px 6px", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                                  Manager
+                                </span>
+                              )}
+                            </div>
+                            <select
+                              value={seat.agentHandle ?? ""}
+                              onChange={(event) => handleSeatAgentChange(seat.seatIndex, event.target.value)}
+                              style={{
+                                marginTop: 6,
+                                width: "100%",
+                                border: "1px solid rgba(125,211,252,0.18)",
+                                borderRadius: 6,
+                                backgroundColor: "rgba(7,13,28,0.72)",
+                                color: "#cbd5e1",
+                                fontSize: 10,
+                                padding: "5px 7px",
+                              }}
+                            >
+                              <option value="">Select agent</option>
+                              <option value="sparkbot">Sparkbot</option>
+                              {meetingAgentOptions.map((agent) => (
+                                <option key={agent.name} value={agent.name}>
+                                  @{agent.name}
+                                </option>
+                              ))}
+                            </select>
+                            <select
+                              value={seat.modelId ?? ""}
+                              onChange={(event) => handleSeatModelChange(seat.seatIndex, event.target.value)}
+                              disabled={modelGroups.length === 0}
+                              style={{
+                                marginTop: 6,
+                                width: "100%",
+                                border: "1px solid rgba(125,211,252,0.18)",
+                                borderRadius: 6,
+                                backgroundColor: "rgba(7,13,28,0.72)",
+                                color: "#cbd5e1",
+                                fontSize: 10,
+                                padding: "5px 7px",
+                              }}
+                            >
+                              <option value="">Inherit default model</option>
+                              {modelGroups.map((group) => (
+                                <optgroup key={group.id} label={group.label}>
+                                  {group.models.map((model) => (
+                                    <option key={`${group.id}:${model.modelSeatId ?? model.id}`} value={model.id}>{model.label}</option>
+                                  ))}
+                                </optgroup>
+                              ))}
+                            </select>
+                            {(seat.modelId || matchedModelSeat) && (
+                              <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                {hasModelSeatStatus && (
+                                  <span style={{ fontSize: 9, color: statusColor, border: `1px solid ${statusColor}44`, borderRadius: 999, padding: "1px 7px", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                                    {seatSetupStatusLabel(setupStatus, configured)}
+                                  </span>
+                                )}
+                                <span style={{ fontSize: 9, color: "#64748b" }}>
+                                  {modelLabel}
+                                </span>
+                              </div>
+                            )}
+                            {setupMessage && (
+                              <p style={{ margin: "5px 0 0", color: "#94a3b8", fontSize: 10, lineHeight: 1.45 }}>
+                                {setupMessage}
+                              </p>
+                            )}
                           </div>
-                          <select
-                            value={seat.agentHandle ?? ""}
-                            onChange={(event) => handleSeatAgentChange(seat.seatIndex, event.target.value)}
-                            style={{
-                              marginTop: 6,
-                              width: "100%",
-                              border: "1px solid rgba(125,211,252,0.18)",
-                              borderRadius: 6,
-                              backgroundColor: "rgba(7,13,28,0.72)",
-                              color: "#cbd5e1",
-                              fontSize: 10,
-                              padding: "5px 7px",
-                            }}
-                          >
-                            <option value="">Select agent</option>
-                            <option value="sparkbot">Sparkbot</option>
-                            {meetingAgentOptions.map((agent) => (
-                              <option key={agent.name} value={agent.name}>
-                                @{agent.name}
-                              </option>
-                            ))}
-                          </select>
                         </div>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
+                </div>
+
+                <div
+                  style={{
+                    border: "1px solid rgba(125,211,252,0.14)",
+                    borderRadius: 12,
+                    padding: "12px 14px",
+                    backgroundColor: "rgba(10,17,32,0.72)",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 8,
+                      marginBottom: 10,
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 10,
+                        color: "#cbd5f5",
+                        letterSpacing: "0.1em",
+                        textTransform: "uppercase",
+                        fontWeight: 700,
+                      }}
+                    >
+                      Assignments
+                    </div>
+                    <span
+                      style={{
+                        fontSize: 9,
+                        color: "#38bdf8",
+                        border: "1px solid rgba(56,189,248,0.24)",
+                        borderRadius: 999,
+                        padding: "2px 7px",
+                        letterSpacing: "0.06em",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      {currentPhaseLabel}
+                    </span>
+                  </div>
+                  {latestAssignments.length === 0 ? (
+                    <p style={{ margin: 0, color: "#94a3b8", fontSize: 11, lineHeight: 1.6 }}>
+                      Seat 1 assignments appear here after the manager assigns work.
+                    </p>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                      {latestAssignments.map((item) => (
+                        <div
+                          key={`${item.handle}-${item.assignment}`}
+                          style={{
+                            border: "1px solid rgba(99,102,241,0.14)",
+                            borderRadius: 9,
+                            backgroundColor: "rgba(7,13,28,0.58)",
+                            padding: "8px 9px",
+                          }}
+                        >
+                          <div style={{ color: "#bae6fd", fontSize: 10, fontWeight: 700 }}>
+                            @{item.handle || "participant"}
+                          </div>
+                          <p style={{ margin: "3px 0 0", color: "#cbd5e1", fontSize: 11, lineHeight: 1.5 }}>
+                            {item.assignment || "Assignment not captured."}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </>
             ) : sidebarTab === "tasks" ? (
@@ -1227,7 +1477,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                   {room?.name ?? "Round Table"}
                 </div>
                 <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
-                  Autonomous meeting mode is active. The room keeps working until it reaches a stopping point.
+                  Autonomous meeting mode is active. Current phase: {currentPhaseLabel}.
                 </div>
               </div>
               <button

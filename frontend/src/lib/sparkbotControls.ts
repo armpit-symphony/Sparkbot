@@ -78,6 +78,8 @@ export interface SparkbotControlsConfig {
     notes?: string
     configured?: boolean
     credential_configured?: boolean
+    setup_status?: "ready" | "setup_needed" | "unreachable" | "disabled" | string
+    setup_message?: string
   }>
   available_agents: Array<{
     name: string
@@ -117,6 +119,10 @@ export interface SparkbotControlsConfig {
 export interface ControlsModelOption {
   id: string
   label: string
+  modelSeatId?: string
+  setupStatus?: string
+  setupMessage?: string
+  configured?: boolean
 }
 
 export interface ControlsModelGroup {
@@ -230,7 +236,24 @@ export function buildControlsModelGroups(
     { id: "other", label: "Other configured models" },
   ]
 
-  return providerGroups
+  const modelSeatGroup: ControlsModelGroup | null = config.model_seats?.some((seat) => seat.enabled && seat.model_id)
+    ? {
+      id: "model_seats",
+      label: "Model seats",
+      models: (config.model_seats ?? [])
+        .filter((seat) => seat.enabled && seat.model_id)
+        .map((seat) => ({
+          id: seat.model_id || "",
+          label: `${seat.label}${seat.model_id ? ` (${labelForModel(seat.model_id)})` : ""}`,
+          modelSeatId: seat.id,
+          setupStatus: seat.setup_status,
+          setupMessage: seat.setup_message,
+          configured: seat.configured,
+        })),
+    }
+    : null
+
+  const providerModelGroups = providerGroups
     .map((group) => ({
       id: group.id,
       label: group.label,
@@ -239,6 +262,8 @@ export function buildControlsModelGroups(
         .map((modelId) => ({ id: modelId, label: labelForModel(modelId) })),
     }))
     .filter((group) => group.models.length > 0)
+
+  return modelSeatGroup ? [modelSeatGroup, ...providerModelGroups] : providerModelGroups
 }
 
 export async function fetchControlsConfig(): Promise<SparkbotControlsConfig | null> {

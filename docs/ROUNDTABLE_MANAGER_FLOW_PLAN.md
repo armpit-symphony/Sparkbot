@@ -70,8 +70,8 @@ Evidence after patch:
 
 | Gap | Impact | Priority | Recommended fix |
 |---|---|---|---|
-| Assignments are structured/persisted but not displayed. | Backend can store parsed assignment objects, but UI cannot show durable assignment cards yet. | `P1` | Render latest `meeting_assignments` artifact metadata in Meeting Room. |
-| Meeting UI does not show phase strongly enough. | Users cannot see why agents are speaking in sequence. | `P1` | Surface current phase, manager, queue, and status in Meeting Room. |
+| Assignments are structured/persisted but not displayed. | Backend can store parsed assignment objects and Meeting Room now renders latest assignment cards. | `DONE_FIRST_PASS` | Browser QA and refine card density/status labels. |
+| Meeting UI does not show phase strongly enough. | Meeting Room now shows phase in the header and assignment panel. | `DONE_FIRST_PASS` | Add participant queue/status result polish after browser QA. |
 | Meeting Room UI backend manifest load is partial. | It loads persisted manifest first, but still has no explicit error/status when backend manifest is absent. | `P1` | Keep backend manifest primary and show cache/fallback state. |
 | Heartbeat launch previously blocked meeting launch. | Task Guardian issue no longer blocks core public hook. | `DONE_THIS_PHASE` | Add optional warning toast when heartbeat scheduling fails. |
 | Manager final notes are saved as `notes`, same as manual notes. | Artifact list can mix launch/checkpoint/manual outputs. | `P1` | Add artifact meta `source=manager_wrapup` and UI label "Manager wrap-up". |
@@ -138,8 +138,8 @@ Current assignment persistence status:
 
 Remaining before public beta:
 
-- Show persisted assignments in the Meeting Room UI as cards or a compact table.
-- Add phase/status display so users can see first pass, manager assessment, assignments, second pass, and wrap-up.
+- Browser QA persisted assignments in the Meeting Room UI as cards.
+- Refine participant queue/status result display after live meeting testing.
 - Consider storing assignments as first-class room tasks only after the artifact metadata path proves stable.
 
 ## Surface UX Update - 2026-05-17
@@ -164,6 +164,20 @@ Implemented UI behavior:
 
 Remaining public polish:
 
-- Render latest persisted `meeting_assignments` artifacts as visible assignment cards/status rows.
-- Add a compact phase indicator for first ideas, manager assessment, assignments, second pass, and manager wrap-up.
-- Add a visible "manager / Seat 1" label in the sticky room header or control rail.
+- Render latest persisted `meeting_assignments` artifacts as visible assignment cards/status rows. `DONE_FIRST_PASS_2026-05-18`
+- Add a compact phase indicator for first ideas, manager assessment, assignments, second pass, and manager wrap-up. `DONE_FIRST_PASS_2026-05-18`
+- Add a visible "manager / Seat 1" label in the sticky room header or control rail. `DONE_FIRST_PASS_2026-05-18`
+
+## Round Table Model-Seat UI Update - 2026-05-18
+
+Branch: `public-release-roundtable-modelseat-ui-polish`
+
+Implemented:
+
+- Workstation defaults seat 1 to the `meetings_manager` Specialty Wing office where available.
+- Stack autofill and task meeting launch use the Meeting Manager as chair instead of the generic main desk when available.
+- Meeting Room control rail now labels Chair 1 as Manager.
+- Meeting Room seated participant controls include per-seat agent and model selectors.
+- Meeting Room displays current phase and latest structured assignments from `meeting_assignments` artifacts.
+- Meeting manifests preserve model seat setup status, model-seat id, route, auth mode, and agent provisioning on backend/local reload.
+- Per-turn generated notes remain disabled; this pass did not change manager wrap-up/checkpoint/manual notes behavior.

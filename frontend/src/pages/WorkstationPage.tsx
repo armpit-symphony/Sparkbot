@@ -121,6 +121,8 @@ interface InviteConfig {
   showInSpecialtyWing?: boolean
   configured?: boolean
   credentialConfigured?: boolean
+  setupStatus?: string
+  setupMessage?: string
   credential?: string
 }
 
@@ -176,10 +178,12 @@ function resolveInviteStation(
     status: config.enabled !== false && config.configured ? "idle" as StationStatus : "empty" as StationStatus,
     invitePrompt: config.configured
       ? undefined
-      : "Finish provider setup in Invite Wing. Credentials are saved by the backend, not browser storage.",
+      : config.setupMessage || "Finish provider setup in Invite Wing. Credentials are saved by the backend, not browser storage.",
     ...(config.modelId ? { modelId: config.modelId } : {}),
     modelSeatId: station.id,
     modelSeatConfigured: Boolean(config.configured),
+    modelSeatSetupStatus: config.setupStatus,
+    modelSeatSetupMessage: config.setupMessage,
     ...(config.authMode ? { inviteAuthMode: config.authMode } : {}),
     routeMode: config.providerId === "ollama" ? "local" : config.providerId === "local_ai" ? "local_ai" : station.routeMode,
     showInRoundTable: config.showInRoundTable !== false,
@@ -205,9 +209,25 @@ function buildConfiguredInvites(config: SparkbotControlsConfig | null): Map<stri
       showInSpecialtyWing: seat.show_in_specialty_wing,
       configured: Boolean(seat.configured),
       credentialConfigured: Boolean(seat.credential_configured),
+      setupStatus: seat.setup_status,
+      setupMessage: seat.setup_message,
     })
   }
   return next
+}
+
+function modelSeatStatusLabel(station: Station): string {
+  if (station.modelSeatSetupStatus === "ready" || station.modelSeatConfigured) return "Ready"
+  if (station.modelSeatSetupStatus === "unreachable") return "Unreachable"
+  if (station.modelSeatSetupStatus === "disabled") return "Disabled"
+  return "Setup needed"
+}
+
+function modelSeatStatusColor(station: Station): string {
+  if (station.modelSeatSetupStatus === "ready" || station.modelSeatConfigured) return "#4ade80"
+  if (station.modelSeatSetupStatus === "unreachable") return "#fbbf24"
+  if (station.modelSeatSetupStatus === "disabled") return "#64748b"
+  return "#93c5fd"
 }
 
 function slugifyMeetingHandleLabel(value: string, fallback: string): string {
@@ -283,6 +303,8 @@ function buildMeetingSeatMeta(
       : {}),
     ...(station.modelSeatId ? { modelSeatId: station.modelSeatId } : {}),
     ...(typeof station.modelSeatConfigured === "boolean" ? { modelSeatConfigured: station.modelSeatConfigured } : {}),
+    ...(station.modelSeatSetupStatus ? { modelSeatSetupStatus: station.modelSeatSetupStatus } : {}),
+    ...(station.modelSeatSetupMessage ? { modelSeatSetupMessage: station.modelSeatSetupMessage } : {}),
     ...(station.inviteAuthMode ? { inviteAuthMode: station.inviteAuthMode } : {}),
   }
 }
@@ -768,6 +790,21 @@ function DeskCard({
               {cap}
             </span>
           ))}
+          {station.isInviteSlot && (
+            <span
+              style={{
+                fontSize: 9,
+                color: modelSeatStatusColor(station),
+                border: `1px solid ${modelSeatStatusColor(station)}44`,
+                borderRadius: 3,
+                padding: "2px 6px",
+                letterSpacing: "0.05em",
+                backgroundColor: `${modelSeatStatusColor(station)}10`,
+              }}
+            >
+              {modelSeatStatusLabel(station)}
+            </span>
+          )}
         </div>
       )}
       {showAgentSelector && (
@@ -1551,6 +1588,24 @@ function StationDetailPanel({
           </p>
         </div>
       )}
+      {station.isInviteSlot && (
+        <div
+          style={{
+            margin: "0 16px 12px",
+            border: `1px solid ${modelSeatStatusColor(station)}33`,
+            borderRadius: 6,
+            padding: "9px 12px",
+            backgroundColor: `${modelSeatStatusColor(station)}0d`,
+          }}
+        >
+          <div style={{ fontSize: 10, color: modelSeatStatusColor(station), fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+            {modelSeatStatusLabel(station)}
+          </div>
+          <p style={{ fontSize: 10, color: "#9ca3af", lineHeight: 1.6, margin: "5px 0 0" }}>
+            {station.modelSeatSetupMessage || "This seat can join Round Table and Specialty Wing once its provider is configured."}
+          </p>
+        </div>
+      )}
 
       {/* Capability chips */}
       <div style={{ padding: "0 16px 16px" }}>
@@ -1691,7 +1746,7 @@ function StationDetailPanel({
                 {modelGroups.map((group) => (
                   <optgroup key={group.id} label={group.label}>
                     {group.models.map((model) => (
-                      <option key={model.id} value={model.id}>
+                      <option key={`${group.id}:${model.modelSeatId ?? model.id}`} value={model.id}>
                         {model.label}
                       </option>
                     ))}
@@ -2737,8 +2792,12 @@ interface SeatPickerModalProps {
   seatIndex: number
   assignedStation: Station | null
   availableStations: Station[]
+  controlsConfig: SparkbotControlsConfig | null
+  savingAgentModel: string | null
   onAssign: (stationId: string) => void
   onClear: () => void
+  onAgentModelChange: (agentName: string, modelId: string) => Promise<void>
+  onConfigureInvite: (station: Station) => void
   onClose: () => void
 }
 
@@ -2746,10 +2805,24 @@ function SeatPickerModal({
   seatIndex,
   assignedStation,
   availableStations,
+  controlsConfig,
+  savingAgentModel,
   onAssign,
   onClear,
+  onAgentModelChange,
+  onConfigureInvite,
   onClose,
 }: SeatPickerModalProps) {
+  const modelGroups = buildControlsModelGroups(controlsConfig)
+  const selectedModelId = assignedStation?.agentHandle
+    ? controlsConfig?.agent_overrides?.[assignedStation.agentHandle]?.model ?? assignedStation.modelId ?? ""
+    : assignedStation?.modelId ?? ""
+  const defaultModelLabel =
+    controlsConfig?.default_selection?.label
+    || controlsConfig?.model_labels?.[controlsConfig?.default_selection?.model ?? ""]
+    || controlsConfig?.default_selection?.model
+    || controlsConfig?.active_model
+    || "default model"
   return (
     <>
       <div
@@ -2826,6 +2899,97 @@ function SeatPickerModal({
         </div>
 
         <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+          {assignedStation?.agentHandle && (
+            <div
+              style={{
+                border: "1px solid rgba(125,211,252,0.16)",
+                borderRadius: 10,
+                backgroundColor: "rgba(7,13,28,0.72)",
+                padding: "10px 12px",
+              }}
+            >
+              <label
+                htmlFor={`chair-${seatIndex}-model`}
+                style={{
+                  display: "block",
+                  fontSize: 10,
+                  color: "#94a3b8",
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                  marginBottom: 6,
+                  fontWeight: 700,
+                }}
+              >
+                Seat model
+              </label>
+              <select
+                id={`chair-${seatIndex}-model`}
+                value={selectedModelId}
+                disabled={savingAgentModel === assignedStation.agentHandle || modelGroups.length === 0}
+                onChange={(event) => {
+                  if (assignedStation.agentHandle) void onAgentModelChange(assignedStation.agentHandle, event.target.value)
+                }}
+                style={{
+                  width: "100%",
+                  border: "1px solid rgba(125,211,252,0.2)",
+                  borderRadius: 7,
+                  backgroundColor: "#030508",
+                  color: "#dbeafe",
+                  padding: "8px 9px",
+                  fontSize: 11,
+                  fontFamily: "monospace",
+                  outline: "none",
+                }}
+              >
+                <option value="">Inherit default: {defaultModelLabel}</option>
+                {modelGroups.map((group) => (
+                  <optgroup key={group.id} label={group.label}>
+                    {group.models.map((model) => (
+                      <option key={`${group.id}:${model.modelSeatId ?? model.id}`} value={model.id}>
+                        {model.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {assignedStation?.isInviteSlot && (
+            <div
+              style={{
+                border: `1px solid ${modelSeatStatusColor(assignedStation)}33`,
+                borderRadius: 10,
+                backgroundColor: `${modelSeatStatusColor(assignedStation)}0d`,
+                padding: "10px 12px",
+              }}
+            >
+              <div style={{ fontSize: 10, color: modelSeatStatusColor(assignedStation), fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                {modelSeatStatusLabel(assignedStation)}
+              </div>
+              <p style={{ fontSize: 10, color: "#94a3b8", lineHeight: 1.55, margin: "6px 0 8px" }}>
+                {assignedStation.modelSeatSetupMessage || assignedStation.modelId || "Configure this model seat before launch."}
+              </p>
+              <button
+                type="button"
+                onClick={() => onConfigureInvite(assignedStation)}
+                style={{
+                  border: `1px solid ${modelSeatStatusColor(assignedStation)}44`,
+                  borderRadius: 6,
+                  backgroundColor: "rgba(3,5,8,0.72)",
+                  color: modelSeatStatusColor(assignedStation),
+                  padding: "6px 9px",
+                  fontSize: 10,
+                  letterSpacing: "0.06em",
+                  textTransform: "uppercase",
+                  cursor: "pointer",
+                }}
+              >
+                Edit model seat
+              </button>
+            </div>
+          )}
+
           {assignedStation && (
             <button
               type="button"
@@ -4614,6 +4778,10 @@ export default function WorkstationPage() {
     () => buildSpecialtyOfficeStations(controlsConfig, specialtyOfficeAssignments),
     [controlsConfig, specialtyOfficeAssignments],
   )
+  const defaultMeetingOffice = useMemo(
+    () => findDefaultMeetingOffice(specialtyStations),
+    [specialtyStations],
+  )
   const resolvedInviteStations = INVITE_DESKS.map((station) =>
     resolveInviteStation(station, configuredInvites),
   )
@@ -4650,9 +4818,7 @@ export default function WorkstationPage() {
 
   useEffect(() => {
     if (meetingDefaultAppliedRef.current) return
-    if (!specialtyStations.length) return
-    const defaultOffice = findDefaultMeetingOffice(specialtyStations)
-    if (!defaultOffice) return
+    if (!specialtyStations.length || !defaultMeetingOffice) return
 
     setProjectRoom((prev) => {
       const seats = normalizeMeetingSeats(prev.seats)
@@ -4661,10 +4827,10 @@ export default function WorkstationPage() {
         return prev
       }
       meetingDefaultAppliedRef.current = true
-      seats[0] = defaultOffice.id
+      seats[0] = defaultMeetingOffice.id
       return { ...prev, seats }
     })
-  }, [specialtyStations])
+  }, [defaultMeetingOffice, specialtyStations])
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
@@ -4672,7 +4838,7 @@ export default function WorkstationPage() {
   const buildStackSeatMeta = useCallback(
     (companionStations: Station[]): WorkstationMeetingSeatMeta[] => {
       const meta: WorkstationMeetingSeatMeta[] = [
-        buildMeetingSeatMeta(MAIN_DESK, 0),
+        buildMeetingSeatMeta(defaultMeetingOffice ?? MAIN_DESK, 0),
       ]
       companionStations.forEach((station, i) => {
         if (station.status !== "empty") {
@@ -4681,7 +4847,7 @@ export default function WorkstationPage() {
       })
       return meta
     },
-    [stackModelByStationId],
+    [defaultMeetingOffice, stackModelByStationId],
   )
 
   const handleNavigate = useCallback(
@@ -4753,8 +4919,9 @@ export default function WorkstationPage() {
 
   // Auto-fill the 4 stack bots into seats 1-4
   const handleAutoFillStack = useCallback(() => {
+    const managerId = defaultMeetingOffice?.id ?? MAIN_DESK.id
     const stackIds = [
-      MAIN_DESK.id,
+      managerId,
       "stack-backup_1",
       "stack-backup_2",
       "stack-heavy_hitter",
@@ -4763,7 +4930,7 @@ export default function WorkstationPage() {
     let seatIdx = 0
     for (const id of stackIds) {
       if (seatIdx >= ROUND_TABLE_SEAT_COUNT) break
-      if (id === MAIN_DESK.id) {
+      if (id === managerId || id === MAIN_DESK.id) {
         newSeats[seatIdx++] = id
       } else {
         const companion = companionModelStations.find((s) => s.id === id && s.status !== "empty")
@@ -4771,7 +4938,7 @@ export default function WorkstationPage() {
       }
     }
     setProjectRoom((prev) => ({ ...prev, seats: newSeats }))
-  }, [companionModelStations])
+  }, [companionModelStations, defaultMeetingOffice])
 
   // Enter (or create) the meeting room for a guardian task
   const handleEnterTaskMeeting = useCallback(
@@ -5004,7 +5171,6 @@ export default function WorkstationPage() {
         seats: assignedSeatMeta,
       })
       const nextSeats = normalizeMeetingSeats([])
-      const defaultMeetingOffice = findDefaultMeetingOffice(specialtyStations)
       if (defaultMeetingOffice) nextSeats[0] = defaultMeetingOffice.id
       setProjectRoom((prev) => ({
         ...prev,
@@ -5019,7 +5185,7 @@ export default function WorkstationPage() {
     } finally {
       setLaunchingMeeting(false)
     }
-  }, [launchingMeeting, navigate, projectRoom, roomEligibleStations, specialtyStations])
+  }, [configuredInvites, defaultMeetingOffice, launchingMeeting, navigate, projectRoom, roomEligibleStations, stackModelByStationId])
 
   const panelOpen = panel !== null
   const availableSeatCount = projectRoom.seats.filter((seatId) => !seatId).length
@@ -5815,8 +5981,15 @@ export default function WorkstationPage() {
             seatIndex={seatPicker.seatIndex}
             assignedStation={seatPickerAssignedStation}
             availableStations={seatPickerAvailableStations}
+            controlsConfig={controlsConfig}
+            savingAgentModel={savingAgentModel}
             onAssign={(stationId) => handleAssignSeat(seatPicker.seatIndex, stationId)}
             onClear={() => handleClearSeat(seatPicker.seatIndex)}
+            onAgentModelChange={handleAgentModelChange}
+            onConfigureInvite={(station) => {
+              setSeatPicker(null)
+              setInviteModalTarget(station)
+            }}
             onClose={() => setSeatPicker(null)}
           />
         )}

@@ -510,18 +510,83 @@ def _clean_model_seat_record(item: "ModelSeatInput", existing: dict[str, Any] | 
     }
 
 
-def _model_seat_configured(seat: dict[str, Any], providers: list[dict[str, Any]]) -> bool:
+def _model_seat_setup_status(
+    seat: dict[str, Any],
+    providers: list[dict[str, Any]],
+    *,
+    credential_configured: bool | None = None,
+) -> tuple[str, str]:
     provider_id = str(seat.get("provider") or "").strip().lower()
     provider = next((item for item in providers if str(item.get("id")) == provider_id), None)
-    if _vault_secret_configured(_model_seat_secret_alias(str(seat.get("id") or ""))):
-        return True
+    seat_id = str(seat.get("id") or "").strip()
+    auth_mode = str(seat.get("auth_mode") or ("none" if provider_id == "local_ai" else "api_key")).strip().lower()
+    model_id = str(seat.get("model_id") or "").strip()
+    enabled = bool(seat.get("enabled", True))
+    has_secret = (
+        credential_configured
+        if credential_configured is not None
+        else _vault_secret_configured(_model_seat_secret_alias(seat_id))
+    )
+
+    if not enabled:
+        return "disabled", "Seat is disabled."
+    if not model_id:
+        return "setup_needed", "Choose a model id for this seat."
+
     if provider_id == "ollama":
-        return bool(provider and (provider.get("models_available") or provider.get("configured") or provider.get("reachable")))
+        provider_models = {
+            str(item).strip()
+            for item in [
+                *(provider or {}).get("available_models", []),
+                *(provider or {}).get("models", []),
+                *(provider or {}).get("model_ids", []),
+            ]
+            if str(item).strip()
+        } if provider else set()
+        provider_models.update({item.removeprefix("ollama/") for item in list(provider_models)})
+        if provider and (provider.get("models_available") or provider.get("configured") or provider.get("reachable")):
+            if provider_models and model_id.removeprefix("ollama/") not in provider_models and model_id not in provider_models:
+                return "setup_needed", "Ollama is reachable, but this model was not reported by the local endpoint."
+            return "ready", "Ollama route is available."
+        return "unreachable", "Ollama is not reachable or no local model is configured."
     if provider_id == "local_ai":
-        auth_mode = str(seat.get("auth_mode") or "none").strip().lower()
-        if auth_mode == "none" and str(seat.get("model_id") or "").strip().startswith("local/"):
-            return bool(seat.get("base_url") or (provider and (provider.get("configured") or provider.get("reachable"))))
-    return bool(provider and (provider.get("configured") or provider.get("models_available")))
+        if not model_id.startswith("local/"):
+            return "setup_needed", "Local AI seats must use a local/<model-id> model id."
+        if not str(seat.get("base_url") or "").strip():
+            return "setup_needed", "Add the local endpoint URL for this seat."
+        if auth_mode == "api_key" and not has_secret:
+            return "setup_needed", "Add the optional endpoint API key or switch the seat to no-key auth."
+        if provider and provider.get("reachable"):
+            provider_models = {
+                str(item).strip()
+                for item in [
+                    *(provider or {}).get("available_models", []),
+                    *(provider or {}).get("models", []),
+                    *(provider or {}).get("model_ids", []),
+                ]
+                if str(item).strip()
+            }
+            provider_models.update({item.removeprefix("local/") for item in list(provider_models)})
+            if provider_models and model_id.removeprefix("local/") not in provider_models and model_id not in provider_models:
+                return "setup_needed", "Local endpoint is reachable, but this model was not reported by the endpoint."
+            return "ready", "Local endpoint is reachable."
+        return "unreachable", "Local endpoint is configured but not reachable."
+    if auth_mode in {"api_key", "oauth"}:
+        if has_secret:
+            return "ready", "Seat credential is stored in Guardian Vault."
+        return "setup_needed", "Add this seat's credential in Command Center or Invite Wing."
+    if auth_mode == "codex_sub":
+        if provider and (provider.get("configured") or provider.get("models_available")):
+            return "ready", "Local subscription sign-in is available."
+        return "setup_needed", "Complete the local subscription sign-in for this seat."
+    if provider and (provider.get("configured") or provider.get("models_available")):
+        return "ready", "Provider is configured."
+    return "setup_needed", "Configure this provider before using the seat."
+
+
+def _model_seat_configured(seat: dict[str, Any], providers: list[dict[str, Any]]) -> bool:
+    status, _ = _model_seat_setup_status(seat, providers)
+    return status == "ready"
 
 
 def _model_seat_payload(providers: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -533,7 +598,12 @@ def _model_seat_payload(providers: list[dict[str, Any]]) -> list[dict[str, Any]]
         model_id = str(seat.get("model_id") or "").strip()
         provider = _normalize_model_seat_provider(str(seat.get("provider") or ""), model_id)
         credential_configured = _vault_secret_configured(_model_seat_secret_alias(seat_id))
-        provider_configured = _model_seat_configured({**seat, "provider": provider}, providers)
+        setup_status, setup_message = _model_seat_setup_status(
+            {**seat, "provider": provider},
+            providers,
+            credential_configured=credential_configured,
+        )
+        provider_configured = setup_status == "ready"
         payload.append(
             {
                 "id": seat_id,
@@ -550,6 +620,8 @@ def _model_seat_payload(providers: list[dict[str, Any]]) -> list[dict[str, Any]]
                 "notes": str(seat.get("notes") or ""),
                 "credential_configured": credential_configured,
                 "configured": provider_configured,
+                "setup_status": setup_status,
+                "setup_message": setup_message,
             }
         )
     return payload

@@ -25,6 +25,8 @@ export interface Station {
   isInviteSlot?: boolean
   modelSeatId?: string
   modelSeatConfigured?: boolean
+  modelSeatSetupStatus?: string
+  modelSeatSetupMessage?: string
   inviteAuthMode?: "none" | "api_key" | "oauth" | "codex_sub"
   showInRoundTable?: boolean
   showInSpecialtyWing?: boolean

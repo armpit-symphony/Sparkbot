@@ -19,6 +19,7 @@ import type {
   PolicyEntry,
   Agent,
   AgentUpdateDraft,
+  ModelSeatSaveInput,
 } from "@/hooks/useControlsState"
 import { AGENT_TEMPLATES } from "@/hooks/useControlsState"
 
@@ -60,6 +61,7 @@ export interface SetupPanelProps {
   savingProviderTokens: boolean
   savingDefaultSelection: boolean
   savingAgentOverrides: boolean
+  savingModelSeats: boolean
   savingComms: boolean
   loadingOpenRouterModels: boolean
   openRouterLoadError: string
@@ -102,6 +104,7 @@ export interface SetupPanelProps {
   onSaveProviderTokens: () => void
   onSaveDefaultSelection: () => void
   onSaveAgentOverrides: () => void
+  onSaveModelSeats: (modelSeats: ModelSeatSaveInput[]) => Promise<void>
   onLoadOpenRouterModels: () => void
   onSaveComms: () => void
   onTokenGuardianModeChange: (value: string) => void
@@ -250,6 +253,344 @@ function CollapsibleSection({ title, subtitle, defaultOpen = false, children }: 
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+type ModelSeatRecord = NonNullable<ModelsControlsConfig["model_seats"]>[number]
+
+type ModelSeatDraft = ModelSeatSaveInput & {
+  credential: string
+}
+
+const MODEL_SEAT_PROVIDER_OPTIONS = [
+  { value: "openai_codex", label: "Codex / OpenAI", company: "OpenAI" },
+  { value: "anthropic", label: "Claude / Anthropic", company: "Anthropic" },
+  { value: "xai", label: "Grok / xAI", company: "xAI" },
+  { value: "openai", label: "OpenAI API", company: "OpenAI" },
+  { value: "google", label: "Google / Gemini", company: "Google" },
+  { value: "groq", label: "Groq", company: "Groq" },
+  { value: "minimax", label: "MiniMax", company: "MiniMax" },
+  { value: "openrouter", label: "OpenRouter", company: "OpenRouter" },
+  { value: "ollama", label: "Ollama", company: "Ollama" },
+  { value: "local_ai", label: "Local AI endpoint", company: "Local" },
+]
+
+function defaultSeatModel(provider: string): string {
+  if (provider === "openai_codex") return "openai-codex/gpt-5.3-codex"
+  if (provider === "anthropic") return "claude-sonnet-4-6"
+  if (provider === "xai") return "xai/grok-4.20-multi-agent-0309"
+  if (provider === "ollama") return "ollama/llama3.2:3b"
+  if (provider === "local_ai") return "local/local-model"
+  return ""
+}
+
+function defaultSeatAuthMode(provider: string): ModelSeatDraft["auth_mode"] {
+  if (provider === "openai_codex") return "codex_sub"
+  if (provider === "local_ai" || provider === "ollama") return "none"
+  return "api_key"
+}
+
+function defaultSeatBaseUrl(provider: string, runtime = "openai_compatible"): string {
+  if (provider === "ollama") return "http://localhost:11434"
+  if (provider !== "local_ai") return ""
+  if (runtime === "llamacpp") return "http://localhost:8080/v1"
+  return "http://localhost:1234/v1"
+}
+
+function seatDraftFromRecord(seat?: ModelSeatRecord): ModelSeatDraft {
+  if (!seat) {
+    const provider = "local_ai"
+    return {
+      id: "invite-local-custom",
+      label: "Local AI",
+      company: "Local",
+      provider,
+      auth_mode: "none",
+      model_id: defaultSeatModel(provider),
+      local_runtime: "openai_compatible",
+      base_url: defaultSeatBaseUrl(provider),
+      enabled: true,
+      show_in_round_table: true,
+      show_in_specialty_wing: true,
+      notes: "User-owned local endpoint model seat.",
+      credential: "",
+    }
+  }
+  return {
+    id: seat.id,
+    label: seat.label,
+    company: seat.company ?? seat.provider,
+    provider: seat.provider,
+    auth_mode: seat.auth_mode ?? defaultSeatAuthMode(seat.provider),
+    model_id: seat.model_id ?? defaultSeatModel(seat.provider),
+    local_runtime: seat.local_runtime || (seat.provider === "local_ai" ? "openai_compatible" : ""),
+    base_url: seat.base_url || defaultSeatBaseUrl(seat.provider, seat.local_runtime),
+    enabled: seat.enabled,
+    show_in_round_table: seat.show_in_round_table,
+    show_in_specialty_wing: seat.show_in_specialty_wing,
+    notes: seat.notes ?? "",
+    credential: "",
+  }
+}
+
+function cleanSeatDraft(draft: ModelSeatDraft): ModelSeatSaveInput {
+  const provider = String(draft.provider || "").trim() || "local_ai"
+  const localRuntime = provider === "local_ai" ? String(draft.local_runtime || "openai_compatible").trim() : ""
+  return {
+    id: String(draft.id || "").trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, ""),
+    label: String(draft.label || "").trim(),
+    company: String(draft.company || MODEL_SEAT_PROVIDER_OPTIONS.find((item) => item.value === provider)?.company || provider).trim(),
+    provider,
+    auth_mode: draft.auth_mode ?? defaultSeatAuthMode(provider),
+    model_id: String(draft.model_id || "").trim(),
+    local_runtime: localRuntime,
+    base_url: provider === "local_ai" ? String(draft.base_url || defaultSeatBaseUrl(provider, localRuntime)).trim() : "",
+    enabled: draft.enabled !== false,
+    show_in_round_table: draft.show_in_round_table !== false,
+    show_in_specialty_wing: draft.show_in_specialty_wing !== false,
+    notes: String(draft.notes || "").trim(),
+    ...(draft.credential.trim() ? { credential: draft.credential.trim() } : {}),
+  }
+}
+
+function seatStatusLabel(seat: ModelSeatRecord): string {
+  if (seat.setup_status === "ready" || seat.configured) return "Ready"
+  if (seat.setup_status === "unreachable") return "Unreachable"
+  if (seat.setup_status === "disabled" || seat.enabled === false) return "Disabled"
+  return "Setup needed"
+}
+
+function seatStatusClass(seat: ModelSeatRecord): string {
+  if (seat.setup_status === "ready" || seat.configured) return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+  if (seat.setup_status === "unreachable") return "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+  if (seat.setup_status === "disabled" || seat.enabled === false) return "border-muted bg-muted text-muted-foreground"
+  return "border-blue-500/20 bg-blue-500/10 text-blue-700 dark:text-blue-300"
+}
+
+function ModelSeatEditorSection({
+  modelsConfig,
+  saving,
+  onSaveModelSeats,
+}: {
+  modelsConfig: ModelsControlsConfig | null
+  saving: boolean
+  onSaveModelSeats: (modelSeats: ModelSeatSaveInput[]) => Promise<void>
+}) {
+  const modelSeats = modelsConfig?.model_seats ?? []
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [draft, setDraft] = useState<ModelSeatDraft>(() => seatDraftFromRecord())
+  const [error, setError] = useState("")
+  const selectedProvider = String(draft.provider || "local_ai")
+  const credentialWritable = draft.auth_mode === "api_key" || draft.auth_mode === "oauth"
+
+  const startEdit = (seat: ModelSeatRecord) => {
+    setEditingId(seat.id)
+    setDraft(seatDraftFromRecord(seat))
+    setError("")
+  }
+  const startCreate = () => {
+    setEditingId("__new__")
+    setDraft(seatDraftFromRecord())
+    setError("")
+  }
+  const updateDraft = (field: keyof ModelSeatDraft, value: string | boolean) => {
+    setDraft((prev) => {
+      const next = { ...prev, [field]: value }
+      if (field === "provider" && typeof value === "string") {
+        next.company = MODEL_SEAT_PROVIDER_OPTIONS.find((item) => item.value === value)?.company ?? value
+        next.auth_mode = defaultSeatAuthMode(value)
+        next.model_id = defaultSeatModel(value)
+        next.local_runtime = value === "local_ai" ? "openai_compatible" : ""
+        next.base_url = defaultSeatBaseUrl(value)
+        next.credential = ""
+      }
+      if (field === "local_runtime" && typeof value === "string" && selectedProvider === "local_ai") {
+        next.base_url = defaultSeatBaseUrl("local_ai", value)
+      }
+      return next
+    })
+  }
+  const saveDraft = async () => {
+    const cleaned = cleanSeatDraft(draft)
+    if (!cleaned.id) {
+      setError("Seat id is required.")
+      return
+    }
+    if (!cleaned.label) {
+      setError("Seat label is required.")
+      return
+    }
+    if (!cleaned.model_id) {
+      setError("Model id is required.")
+      return
+    }
+    if (cleaned.provider === "local_ai" && !cleaned.model_id.startsWith("local/")) {
+      setError("Local AI seats must use a local/<model-id> model id.")
+      return
+    }
+    const nextSeats = [
+      ...modelSeats
+        .filter((seat) => seat.id !== cleaned.id)
+        .map((seat) => ({
+          id: seat.id,
+          label: seat.label,
+          company: seat.company,
+          provider: seat.provider,
+          auth_mode: seat.auth_mode,
+          model_id: seat.model_id,
+          local_runtime: seat.local_runtime,
+          base_url: seat.base_url,
+          enabled: seat.enabled,
+          show_in_round_table: seat.show_in_round_table,
+          show_in_specialty_wing: seat.show_in_specialty_wing,
+          notes: seat.notes,
+        })),
+      cleaned,
+    ]
+    setError("")
+    await onSaveModelSeats(nextSeats)
+    setEditingId(null)
+    setDraft(seatDraftFromRecord())
+  }
+
+  return (
+    <div className="rounded-lg border bg-muted/20 p-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold">Model seats</h3>
+          <p className="text-xs text-muted-foreground">Create and edit seats for Invite Wing, Round Table, and Specialty Wing. Credentials are write-only and backend-owned.</p>
+        </div>
+        <button type="button" onClick={startCreate} className="rounded-md border px-3 py-1.5 text-xs hover:bg-muted">
+          Add seat
+        </button>
+      </div>
+
+      <div className="grid gap-2 md:grid-cols-2">
+        {modelSeats.map((seat) => (
+          <button key={seat.id} type="button" onClick={() => startEdit(seat)}
+            className="rounded-lg border bg-background/80 p-3 text-left hover:bg-muted/50">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-medium">{seat.label}</div>
+                <div className="truncate font-mono text-[11px] text-muted-foreground">{seat.model_id || "No model id"}</div>
+              </div>
+              <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${seatStatusClass(seat)}`}>
+                {seatStatusLabel(seat)}
+              </span>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">{seat.provider}</span>
+              {seat.show_in_round_table && <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] text-blue-700 dark:text-blue-300">Round Table</span>}
+              {seat.show_in_specialty_wing && <span className="rounded-full bg-purple-500/10 px-2 py-0.5 text-[10px] text-purple-700 dark:text-purple-300">Specialty Wing</span>}
+            </div>
+            {seat.setup_message && <p className="mt-2 line-clamp-2 text-[11px] text-muted-foreground">{seat.setup_message}</p>}
+          </button>
+        ))}
+      </div>
+
+      {editingId && (
+        <div className="mt-4 rounded-lg border bg-background/80 p-4">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h4 className="text-sm font-semibold">{editingId === "__new__" ? "Create model seat" : "Edit model seat"}</h4>
+            <button type="button" onClick={() => setEditingId(null)} className="rounded-md border px-2.5 py-1 text-xs">Cancel</button>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground">Seat id</label>
+              <input value={draft.id} onChange={(e) => updateDraft("id", e.target.value)} disabled={editingId !== "__new__"}
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none disabled:opacity-70" />
+            </div>
+            <div>
+              <label className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground">Label</label>
+              <input value={draft.label ?? ""} onChange={(e) => updateDraft("label", e.target.value)}
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none" />
+            </div>
+            <div>
+              <label className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground">Provider</label>
+              <select value={selectedProvider} onChange={(e) => updateDraft("provider", e.target.value)}
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none">
+                {MODEL_SEAT_PROVIDER_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground">Company</label>
+              <input value={draft.company ?? ""} onChange={(e) => updateDraft("company", e.target.value)}
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none" />
+            </div>
+            {selectedProvider === "local_ai" && (
+              <>
+                <div>
+                  <label className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground">Local runtime</label>
+                  <select value={draft.local_runtime ?? "openai_compatible"} onChange={(e) => updateDraft("local_runtime", e.target.value)}
+                    className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none">
+                    <option value="ollama">Ollama-compatible local route</option>
+                    <option value="lmstudio">LM Studio</option>
+                    <option value="llamacpp">llama.cpp / llama-server</option>
+                    <option value="openai_compatible">OpenAI-compatible endpoint</option>
+                    <option value="custom">Custom endpoint</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground">Base URL</label>
+                  <input value={draft.base_url ?? ""} onChange={(e) => updateDraft("base_url", e.target.value)}
+                    placeholder="http://localhost:1234/v1"
+                    className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none" />
+                </div>
+              </>
+            )}
+            <div>
+              <label className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground">Model id</label>
+              <input value={draft.model_id ?? ""} onChange={(e) => updateDraft("model_id", e.target.value)}
+                placeholder={selectedProvider === "local_ai" ? "local/model-name" : "provider/model"}
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none" />
+            </div>
+            <div>
+              <label className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground">Auth mode</label>
+              <select value={draft.auth_mode ?? defaultSeatAuthMode(selectedProvider)}
+                onChange={(e) => updateDraft("auth_mode", e.target.value)}
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none">
+                <option value="none">No key</option>
+                <option value="api_key">API key / Vault</option>
+                <option value="oauth">OAuth token / Vault</option>
+                <option value="codex_sub">Local subscription sign-in</option>
+              </select>
+            </div>
+            {credentialWritable && (
+              <div className="md:col-span-2">
+                <label className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground">Credential</label>
+                <input type="password" value={draft.credential} onChange={(e) => updateDraft("credential", e.target.value)}
+                  placeholder="Write-only. Leave blank to keep the current Vault value."
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm outline-none" />
+              </div>
+            )}
+            <div className="md:col-span-2">
+              <label className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground">Notes</label>
+              <textarea value={draft.notes ?? ""} onChange={(e) => updateDraft("notes", e.target.value)} rows={2}
+                className="w-full resize-none rounded-md border bg-background px-3 py-2 text-sm outline-none" />
+            </div>
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              <input type="checkbox" checked={draft.enabled !== false} onChange={(e) => updateDraft("enabled", e.target.checked)} />
+              Enabled
+            </label>
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              <input type="checkbox" checked={draft.show_in_round_table !== false} onChange={(e) => updateDraft("show_in_round_table", e.target.checked)} />
+              Show in Round Table
+            </label>
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              <input type="checkbox" checked={draft.show_in_specialty_wing !== false} onChange={(e) => updateDraft("show_in_specialty_wing", e.target.checked)} />
+              Show in Specialty Wing
+            </label>
+          </div>
+          {error && <p className="mt-3 text-xs font-medium text-destructive">{error}</p>}
+          <div className="mt-4 flex justify-end">
+            <button type="button" onClick={() => void saveDraft()} disabled={saving}
+              className="rounded-md bg-blue-600 px-4 py-2 text-sm text-white disabled:opacity-50">
+              {saving ? "Saving..." : "Save model seat"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // AI SETUP PANEL
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -258,11 +599,11 @@ export function AISetupPanel(props: SetupPanelProps) {
     modelsConfig, defaultSelection, modelStack, providerDrafts,
     openRouterModels, loadingOpenRouterModels, openRouterLoadError,
     ollamaStatus, ollamaBaseUrl, ollamaLoading, error,
-    savingModelStack, savingProviderTokens, savingDefaultSelection,
+    savingModelStack, savingProviderTokens, savingDefaultSelection, savingModelSeats,
     onDefaultSelectionChange, onLocalDefaultModelChange, onProviderDraftChange,
     onModelStackChange, onSaveModelStack, onSaveProviderTokens,
     onSaveDefaultSelection, onLoadOpenRouterModels, onOllamaBaseUrlChange,
-    onCheckOllamaStatus,
+    onCheckOllamaStatus, onSaveModelSeats,
   } = props
 
   const {
@@ -626,6 +967,12 @@ export function AISetupPanel(props: SetupPanelProps) {
                 </div>
               )}
             </div>
+
+            <ModelSeatEditorSection
+              modelsConfig={modelsConfig}
+              saving={savingModelSeats}
+              onSaveModelSeats={onSaveModelSeats}
+            />
 
             {/* Four-model stack */}
             <div className="rounded-lg border bg-muted/20 p-4">
@@ -1154,11 +1501,11 @@ export function AgentsPanel(props: SetupPanelProps) {
             const modelValue = override.model ?? ""
             const routeProviderMap: Record<string, string> = {
               openrouter: "openrouter", local: "ollama", openai: "openai", openai_codex: "openai_codex",
-              anthropic: "anthropic", claude_sub: "claude_sub", google: "google", groq: "groq", minimax: "minimax", xai: "xai",
+              local_ai: "local_ai", anthropic: "anthropic", claude_sub: "claude_sub", google: "google", groq: "groq", minimax: "minimax", xai: "xai",
             }
             const routeLabels: Record<string, string> = {
               openrouter: "OpenRouter", local: "Local (Ollama)", openai: "OpenAI", openai_codex: "Codex Subscription",
-              anthropic: "Anthropic", claude_sub: "Claude Subscription", google: "Google", groq: "Groq", minimax: "MiniMax", xai: "xAI",
+              local_ai: "Local AI endpoint", anthropic: "Anthropic", claude_sub: "Claude Subscription", google: "Google", groq: "Groq", minimax: "MiniMax", xai: "xAI",
             }
             const providerForRoute = routeProviderMap[route] ?? ""
             const modelsForRoute = route === "openrouter"
@@ -1193,6 +1540,7 @@ export function AgentsPanel(props: SetupPanelProps) {
                     <option value="xai">xAI</option>
                     <option value="openrouter">OpenRouter</option>
                     <option value="local">Local (Ollama)</option>
+                    <option value="local_ai">Local AI endpoint</option>
                   </select>
                   {route !== "default" && modelsForRoute.length > 0 && (
                     <select value={modelValue} onChange={(e) => onAgentOverrideChange(agent.name, "model", e.target.value)}

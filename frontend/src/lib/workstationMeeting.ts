@@ -41,6 +41,8 @@ export interface WorkstationMeetingSeatMeta {
   route?: string
   modelSeatId?: string
   modelSeatConfigured?: boolean
+  modelSeatSetupStatus?: string
+  modelSeatSetupMessage?: string
   inviteAuthMode?: "none" | "api_key" | "oauth" | "codex_sub"
 }
 
@@ -90,6 +92,7 @@ function providerReadyForSeat(
   modelId: string,
   config: SparkbotControlsConfig | null,
 ): boolean {
+  if (seat.modelSeatSetupStatus === "unreachable" || seat.modelSeatSetupStatus === "setup_needed") return false
   if (seat.modelSeatId && seat.modelSeatConfigured !== false) return true
   const providerId = providerForModel(modelId)
   const provider = config?.providers.find((item) => item.id === providerId)
@@ -158,7 +161,12 @@ function buildMeetingManifestMeta(
       handle: slugifyMeetingHandle(seat.agentHandle || seat.label || seat.stationId, seat.stationId),
       modelId: seat.modelId || null,
       modelSeatId: seat.modelSeatId || null,
+      modelSeatConfigured: seat.modelSeatConfigured ?? null,
+      modelSeatSetupStatus: seat.modelSeatSetupStatus || null,
+      modelSeatSetupMessage: seat.modelSeatSetupMessage || null,
       route: seat.route || null,
+      agentProvisioning: seat.agentProvisioning || null,
+      inviteAuthMode: seat.inviteAuthMode || null,
     })),
   }
 }
@@ -391,9 +399,16 @@ function metaFromMeetingManifest(roomId: string, artifact: MeetingManifestArtifa
         label,
         accentHex: String(participant.accentHex || participant.accent_hex || "#60a5fa"),
         agentHandle: slugifyMeetingHandle(handle, `seat_${index + 1}`),
-        agentProvisioning: "builtin" as const,
+        agentProvisioning: participant.agentProvisioning === "custom" ? "custom" as const : "builtin" as const,
         modelId: typeof participant.modelId === "string" ? participant.modelId : undefined,
         route: typeof participant.route === "string" ? participant.route : undefined,
+        modelSeatId: typeof participant.modelSeatId === "string" ? participant.modelSeatId : undefined,
+        modelSeatConfigured: typeof participant.modelSeatConfigured === "boolean" ? participant.modelSeatConfigured : undefined,
+        modelSeatSetupStatus: typeof participant.modelSeatSetupStatus === "string" ? participant.modelSeatSetupStatus : undefined,
+        modelSeatSetupMessage: typeof participant.modelSeatSetupMessage === "string" ? participant.modelSeatSetupMessage : undefined,
+        inviteAuthMode: typeof participant.inviteAuthMode === "string"
+          ? participant.inviteAuthMode as WorkstationMeetingSeatMeta["inviteAuthMode"]
+          : undefined,
       }
     })
     .filter((seat): seat is WorkstationMeetingSeatMeta => seat !== null)

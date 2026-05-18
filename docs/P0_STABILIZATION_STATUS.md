@@ -129,14 +129,14 @@ Validation in this pass:
 ## Remaining P0 Blockers
 
 - Invite Wing credential storage moved to backend/Vault-backed storage for Round Table model seats.
-- Specialty Wing model-seat Vault binding is now implemented for agent overrides that carry `model_seat_id`; remaining work is clearer setup-needed UI and a full Command Center seat editor.
+- Specialty Wing model-seat Vault binding is now implemented for agent overrides that carry `model_seat_id`; setup-needed UI and the Command Center seat editor have a first public implementation.
 - Legacy DM Controls now preserves `model_seat_id` in the same way as Command Center and Workstation controls.
 - Explicit model-seat routing now reports setup-needed instead of falling back to a global provider key when the selected seat's Vault credential is missing.
 - Pending approval Spine payloads now recursively redact nested secret-like keys before public-safe approval events are emitted.
 - Public package exclusions/private path cleanup.
 - Built-in public agent prompt rewrite.
 - Balanced vs Locked policy behavior needs tuning so profiles are more than persisted names.
-- Final Round Table assignment cards/phase UI polish.
+- Final Round Table assignment cards/phase UI polish has a first public implementation; browser QA and small visual refinements remain.
 - Remaining "Controls" naming should converge into AI setup versus Command Center.
 
 ## Unified Context Spine Update - 2026-05-17
@@ -206,16 +206,40 @@ Remaining after this pass:
 - Browser-test local setup against live Ollama and a live OpenAI-compatible local server.
 - Keep embedded/local runtime runner work out of public MVP until the external endpoint path is stable.
 
+## Round Table Model-Seat UI Update - 2026-05-18
+
+Branch: `public-release-roundtable-modelseat-ui-polish`
+
+Completed in this pass:
+
+- Workstation now defaults Round Table seat 1 to the `meetings_manager` Specialty Wing office when available, including empty room drafts, stack autofill, task meetings, and post-launch resets.
+- Workstation chair picker now exposes a per-agent seat model selector and setup-needed guidance for Invite Wing/model-seat chairs.
+- Meeting Room seated participant controls now show manager/Seat 1, allow agent changes, allow per-seat model changes, and preserve non-secret model-seat metadata.
+- Meeting Room now displays current meeting phase and latest structured assignment cards from `meeting_assignments` artifacts.
+- Command Center AI Setup now includes a model-seat editor for create/edit, provider/company, local runtime/base URL, model id, auth mode, enabled state, Round Table/Specialty Wing visibility, notes, and write-only credential entry.
+- Backend model-seat payloads now include `setup_status` and `setup_message`; local seats report unreachable/setup-needed instead of silently failing, and Vault-backed seats no longer appear configured just because a global provider key exists.
+
+Validation in this pass:
+
+- `npm --prefix frontend run build`: passed.
+- `.\\.venv-ci\\Scripts\\uv.exe run pytest -q backend\\tests\\api\\routes\\test_chat_models_openrouter.py -k "model_seat or local_model_seat or invite_route"`: 9 passed.
+
+Remaining after this pass:
+
+- Browser QA for the Command Center model-seat editor, Workstation chair picker, Meeting Room model selector, live Ollama, and at least one OpenAI-compatible local endpoint.
+- Add uniqueness-safe selection if multiple model seats intentionally share the same model id.
+- Run the approved artifact/.venv/Robo/guardrail cleanup branch.
+- Tune deeper Balanced vs Locked policy behavior if not handled in that branch.
+- Refresh the Sparkbot_shell extraction map.
+
 ## Recommended Next Phase
 
 Run a focused public extraction-blocker phase:
 
-1. Tune Balanced vs Locked policy differences.
-2. Add Meeting Room assignment display and phase/status UI.
-3. Refresh the Sparkbot_shell extraction map after the cleanup pass.
-4. Replace Robo/LIMA backend bridge source with a true public stub for Sparkbot_shell.
-5. Remove tracked `.venv-ci` files from Git if approved.
-6. Finish AI setup versus Command Center naming cleanup.
+1. Run the artifact/.venv/Robo/guardrail cleanup branch that Phil approved.
+2. Browser QA Round Table model-seat selection and Local AI setup against live endpoints.
+3. Refresh the Sparkbot_shell extraction map after cleanup passes.
+4. Start the first shell import layer only after package exclusions, Robo stubbing, and extraction map refresh are complete.
 
 ## Questions For Phil
 

@@ -87,6 +87,8 @@ export interface ModelsControlsConfig {
     notes?: string
     configured?: boolean
     credential_configured?: boolean
+    setup_status?: "ready" | "setup_needed" | "unreachable" | "disabled" | string
+    setup_message?: string
   }>
   available_agents: Array<{
     name: string
@@ -198,6 +200,22 @@ export interface AgentRoutingOverride {
   route: string
   model: string
   model_seat_id?: string
+}
+
+export interface ModelSeatSaveInput {
+  id: string
+  label?: string
+  company?: string
+  provider?: string
+  auth_mode?: "none" | "api_key" | "oauth" | "codex_sub"
+  model_id?: string
+  local_runtime?: string
+  base_url?: string
+  enabled?: boolean
+  show_in_round_table?: boolean
+  show_in_specialty_wing?: boolean
+  notes?: string
+  credential?: string
 }
 
 export interface OpenRouterModelRecord {
@@ -464,6 +482,7 @@ export function useControlsState({ roomId, onStatusMessage }: UseControlsStateOp
   const [savingProviderTokens, setSavingProviderTokens] = useState(false)
   const [savingDefaultSelection, setSavingDefaultSelection] = useState(false)
   const [savingAgentOverrides, setSavingAgentOverrides] = useState(false)
+  const [savingModelSeats, setSavingModelSeats] = useState(false)
   const [savingComms, setSavingComms] = useState(false)
   const [policyEntries, setPolicyEntries] = useState<PolicyEntry[]>([])
   const [guardianTasks, setGuardianTasks] = useState<GuardianTaskRecord[]>([])
@@ -1238,6 +1257,33 @@ export function useControlsState({ roomId, onStatusMessage }: UseControlsStateOp
     }
   }, [agentOverrides, applyControlsConfig, modelsConfig?.available_agents, modelsConfig?.model_seats, refreshControls, notify])
 
+  const saveModelSeats = useCallback(async (modelSeats: ModelSeatSaveInput[]) => {
+    setSavingModelSeats(true)
+    setSettingsError("")
+    try {
+      const res = await apiFetch("/api/v1/chat/models/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ model_seats: modelSeats }),
+      })
+      const data = await res.json().catch(() => ({ detail: "Could not save model seats." }))
+      if (!res.ok) {
+        setSettingsError(data.detail ?? "Could not save model seats.")
+        throw new Error(String(data.detail ?? "Could not save model seats."))
+      }
+      applyControlsConfig(data)
+      await refreshControls()
+      notify("Model seats updated.")
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not save model seats."
+      setSettingsError(message)
+      throw error
+    } finally {
+      setSavingModelSeats(false)
+    }
+  }, [applyControlsConfig, refreshControls, notify])
+
   const saveComms = useCallback(async () => {
     setSavingComms(true)
     setSettingsError("")
@@ -1424,6 +1470,7 @@ export function useControlsState({ roomId, onStatusMessage }: UseControlsStateOp
     // Agent overrides
     agentOverrides, handleAgentOverrideChange,
     savingAgentOverrides, saveAgentOverrides,
+    savingModelSeats, saveModelSeats,
     // OpenRouter
     openRouterModels, loadingOpenRouterModels, openRouterLoadError,
     loadOpenRouterModels,

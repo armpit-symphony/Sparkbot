@@ -53,10 +53,29 @@ Localhost providers require no API key by default. If a user protects a local/LA
 ## Still Deferred
 
 1. Full dynamic model discovery for every local runtime in every UI surface.
-2. A complete Command Center model-seat editor for local seats.
-3. User-visible setup-needed badges everywhere a local Specialty Wing or Round Table seat is selected but unreachable.
+2. A complete Command Center model-seat editor for local seats. `DONE_FIRST_PASS_2026-05-18`
+3. User-visible setup-needed badges everywhere a local Specialty Wing or Round Table seat is selected but unreachable. `DONE_FIRST_PASS_2026-05-18`
 4. Browser QA for the Local AI setup panel against a live Ollama and a live OpenAI-compatible server.
 5. Embedded/local runtime runner work. This phase only supports external local servers.
+
+## Round Table Model-Seat UI Update - 2026-05-18
+
+Branch: `public-release-roundtable-modelseat-ui-polish`
+
+Implemented:
+
+- Backend model-seat config now returns setup status for local seats:
+  - `ready` when the endpoint is configured/reachable and the selected model is available.
+  - `unreachable` when the endpoint config exists but status is not reachable.
+  - `setup_needed` when required model/base URL/auth fields are missing.
+- Command Center model-seat editor supports Local AI runtime, base URL, model id, no-key auth, and optional API-key auth without exposing secrets.
+- Workstation chair picker and Meeting Room seat controls show setup-needed/unreachable state for Local AI seats.
+- Local AI model-seat labels appear in shared model groups used by Workstation and Meeting Room selectors.
+
+Remaining:
+
+1. Browser-test against live Ollama, LM Studio, and llama.cpp / llama-server endpoints.
+2. Add richer endpoint status refresh controls in the model-seat editor if browser QA shows users need manual recheck feedback.
 
 ## Validation
 

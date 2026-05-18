@@ -74,6 +74,25 @@ Implemented:
 
 Remaining:
 
-1. Add a full Command Center model-seat editor for all default seats, including Local AI.
-2. Add setup-needed badges when a local model seat is selected but the endpoint is not reachable.
+1. Add a full Command Center model-seat editor for all default seats, including Local AI. `DONE_FIRST_PASS_2026-05-18`
+2. Add setup-needed badges when a local model seat is selected but the endpoint is not reachable. `DONE_FIRST_PASS_2026-05-18`
 3. Browser-test Local AI setup against live Ollama, LM Studio, and llama.cpp endpoints.
+
+## Round Table Model-Seat UI Update - 2026-05-18
+
+Branch: `public-release-roundtable-modelseat-ui-polish`
+
+Implemented:
+
+- Command Center AI Setup now lists model seats and supports create/edit for cloud, subscription, and local seats.
+- Credential fields are write-only; raw values are not returned to frontend config.
+- Backend model-seat payloads include public-safe `setup_status` and `setup_message`.
+- Vault-backed seats require their own Vault credential and show setup-needed when missing.
+- Local AI seats show ready only when the configured endpoint/model status is reachable; otherwise they show setup-needed/unreachable.
+- Workstation chair picker, Meeting Room seats, and model groups surface model-seat labels and setup-needed state.
+- Round Table meeting metadata preserves non-secret `modelSeatId`, model id, route, auth mode, and setup status on manifest save/reload.
+
+Remaining:
+
+1. Browser QA model-seat creation/editing and Vault-backed setup with a real provider key.
+2. Harden selectors if multiple configured seats intentionally share the same model id.
