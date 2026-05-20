@@ -295,3 +295,44 @@ Recommended assessment sequence:
 4. Package QA public artifacts on Windows/Git Bash and Linux clean clones.
 5. Refresh the `Sparkbot_shell` extraction map.
 6. Start Layer 1 shell import only after the QA results are reviewed.
+
+## QA Assessment Update - 2026-05-20
+
+Branch `public-release-qa-assessment` completed assessment docs and validation, not feature work.
+
+New artifacts:
+
+- `docs/PUBLIC_RELEASE_BROWSER_QA_CHECKLIST.md`
+- `docs/PUBLIC_RELEASE_LIVE_QA_PLAN.md`
+- `docs/PUBLIC_RELEASE_READINESS_SCORECARD.md`
+- `docs/PUBLIC_RELEASE_NEXT_DECISION_MATRIX.md`
+
+Validation summary:
+
+- Frontend build passed.
+- Python compile over relevant backend modules passed.
+- Focused backend suite passed: 130 passed, 144 warnings.
+- Package dry-run passed after fixing relative package output paths.
+- Package inspection verified the public Robo Preview stub and key exclusions for virtualenvs, dotenv files, logs, local DBs, key/cert files, proposal script sample, readiness docs, audit docs, and private LIMA integration doc.
+
+New or confirmed P0 blockers before `Sparkbot_shell` extraction:
+
+1. Public source/install path still needs cleanup.
+   - Public-facing clone/source instructions should point at the sanitized release bundle or future `Sparkbot_shell`, not the full R&D repo, unless the full repo is sanitized for public source consumption.
+2. Public package source boundary still needs a focused decision for tests and workflows.
+   - Generated public bundles currently include tests and `.github` workflows. The QA auditor flagged private/stale references in tests and deploy workflows. Exclude or sanitize them before source-public release.
+3. Root Docker context hygiene is still needed.
+   - Compose files use repo-root build contexts. Add a root `.dockerignore` before promoting source installs so local dotenv files, DBs, logs, caches, and private scratch files are not sent into Docker build contexts.
+4. Browser/live QA remains required.
+   - Use the new checklist and live plan for Round Table, Local AI, Command Center Security profiles, Task Guardian health checks, connector delivery, terminal setup gating, and Robo Preview.
+
+Tiny safe fix made:
+
+- `scripts/package-public-download.sh` now normalizes relative `--output-dir` and `--publish-dir` paths to repo-root paths before archive creation. This fixes the relative-path zip failure observed during QA while preserving absolute path behavior.
+
+Recommended queue order:
+
+1. Package/source-boundary cleanup.
+2. Browser/live QA fixes only where the checklist finds actual defects.
+3. `Sparkbot_shell` extraction map refresh.
+4. Layer 1 shell import only after P0 packaging/source and browser/live blockers are closed.

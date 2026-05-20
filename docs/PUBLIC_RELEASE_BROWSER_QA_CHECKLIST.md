@@ -1,0 +1,41 @@
+# Sparkbot Public Release Browser QA Checklist
+
+Date: 2026-05-20
+Branch: `public-release-qa-assessment`
+Purpose: manual browser QA checklist before `Sparkbot_shell` extraction. This is a validation artifact only; it does not approve code copying or feature expansion.
+
+Use this checklist against a fresh local install and, where noted, a server-style install. Record the result in the Pass/Fail and Notes columns. Do not use real customer data or private production channels.
+
+| # | QA item | Priority | Live connector/local provider required? | Expected result | Pass/Fail | Notes |
+|---|---|---|---|---|---|---|
+| 1 | Login / first-run | P0 | No | Desktop/local path reaches Sparkbot without exposing template/admin routes; server path requires passphrase; missing model setup leads to AI Setup/Command Center guidance. |  |  |
+| 2 | DM / Chat | P0 | One configured model or local provider | `/dm` opens the main chat, sends a message, streams a response, preserves room context, and `/chat` redirects to the public DM flow. |  |  |
+| 3 | Workstation | P0 | No | Workstation loads with stable top navigation, visible Sparkbot/Invite/Specialty/Round Table surfaces, no broken template/admin UI, and mobile/desktop scrolling remains usable. |  |  |
+| 4 | Invite Wing model seats | P0 | Optional for metadata; required for live turn | Default Codex/OpenAI, Claude/Anthropic, Grok/xAI, and Local AI seats are visible/editable; credentials are write-only and not returned to the browser. |  |  |
+| 5 | Local AI setup | P0 | Yes | Ollama/LM Studio/llama.cpp/OpenAI-compatible settings save through backend config; unreachable endpoints show setup-needed/unreachable instead of silent fallback. |  |  |
+| 6 | Command Center AI Setup | P0 | Optional | AI Setup shows provider defaults, local model config, model seats, and setup status without stale Controls-only wording. |  |  |
+| 7 | Command Center model-seat editor | P0 | Optional; live provider for ready state | Create/edit a seat, toggle Round Table/Specialty Wing visibility, save write-only credential, and reload without exposing the credential value. |  |  |
+| 8 | Specialty Wing/custom agents | P1 | Optional; live model for response | Built-in agents stay locked; custom agents can be created/edited; model-seat binding persists as non-secret `model_seat_id`. |  |  |
+| 9 | Round Table launch | P0 | At least one configured model path | Workstation launches a meeting room with 2+ participants; Seat 1 defaults to Meeting Manager when available; heartbeat scheduling failure does not block launch. |  |  |
+| 10 | Meeting Room | P0 | At least one configured model path | Meeting room loads backend manifest before local cache, keeps chat and controls scrollable, and supports returning from Workstation. |  |  |
+| 11 | Meeting Manager seat 1 | P0 | At least one configured model path | Seat 1 is labeled as manager/chair and drives first ideas, assessment, assignments, assigned work, and summary. |  |  |
+| 12 | Per-seat model selection | P0 | Optional; live provider for response | Workstation and Meeting Room selectors preserve `seat:<modelSeatId>` choices and distinguish duplicate model IDs. |  |  |
+| 13 | Structured assignments | P0 | At least one configured model path | Manager assignments persist as `meeting_assignments` artifacts and render assignment cards without manual notes generation. |  |  |
+| 14 | Manager wrap-up/checkpoint memory save | P1 | At least one configured model path | Manager checkpoint/wrap-up creates bounded shared memory/context; per-turn meeting notes are not auto-generated. |  |  |
+| 15 | Task Guardian health checks | P0 | No for app-only | PC and Server Health Check templates appear, can be added/edited safely, and recent report output is visible in Command Center. |  |  |
+| 16 | PC Health Check | P0 | No | App-only PC health run completes with read-only status, severity sections, and no raw secrets/log dumps. |  |  |
+| 17 | Server Health Check | P0 | No | App-only server health run completes with read-only status and warns without mutating services/files. |  |  |
+| 18 | Telegram/Discord/Slack delivery options | P1 | Yes, test channels only | Delivery choices are app-only by default; configured test Telegram/Discord/Slack channels can receive health report delivery without failing the task on delivery error. |  |  |
+| 19a | Security profile: Personal | P0 | Optional | Personal allows configured routine work while confirming risky writes, sends, deletes, terminal writes, service control, and credential access. |  |  |
+| 19b | Security profile: Balanced | P0 | Optional | Balanced confirms high-risk configured actions and explains the action before execution. |  |  |
+| 19c | Security profile: Locked | P0 | Optional | Locked requires elevated approval/break-glass for high-risk write/execute paths and offers a safe next step. |  |  |
+| 19d | Security profile: Custom | P1 | Optional | Custom honestly enforces blocker text only; UI does not claim typed allow/confirm/block rules exist yet. |  |  |
+| 20 | Terminal setup-gated behavior | P0 | No | Live terminal desk/CTA stays disabled unless backend reports `WORKSTATION_LIVE_TERMINAL_ENABLED`; terminal commands require confirmation/elevation by profile. |  |  |
+| 21 | Robo Preview | P0 | No | Public/default UI shows teaser-only Robo Preview; no live robotics tools, emergency stop, private bridge docs, or hardware controls are exposed. |  |  |
+| 22 | Public package/download behavior | P0 | No | Download/source path uses sanitized package or future shell repo, not blind R&D source; package artifacts include checksums/release notes and exclude private artifacts. |  |  |
+
+## QA Notes
+
+- Run browser checks with devtools console open and record uncaught errors.
+- Capture screenshots for failures in Workstation, Meeting Room, Command Center AI Setup, Security, Task Guardian, and Robo Preview.
+- Do not run destructive live checks. Use safe read-only commands and test connector channels only.

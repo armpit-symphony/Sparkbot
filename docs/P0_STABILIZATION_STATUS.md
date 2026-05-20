@@ -313,3 +313,42 @@ Remaining after this pass:
 - Live QA Ollama/local OpenAI-compatible endpoints and connector health delivery.
 - Package QA on Windows/Git Bash and Linux clean clones.
 - Refresh the `Sparkbot_shell` extraction map after QA, then decide whether Layer 1 import can start.
+
+## QA Assessment Update - 2026-05-20
+
+Branch: `public-release-qa-assessment`
+Base commit: `0f8d059fc5927e3466d269ca5479df4c56b3c06f`
+
+Completed in this pass:
+
+- Created browser QA checklist: `docs/PUBLIC_RELEASE_BROWSER_QA_CHECKLIST.md`.
+- Created live QA plan: `docs/PUBLIC_RELEASE_LIVE_QA_PLAN.md`.
+- Created readiness scorecard: `docs/PUBLIC_RELEASE_READINESS_SCORECARD.md`.
+- Created next decision matrix: `docs/PUBLIC_RELEASE_NEXT_DECISION_MATRIX.md`.
+- Verified `.venv-ci` and `backend/.venv-ci` are no longer tracked.
+- Verified public package generation replaces the private Robo bridge source with the Robo Preview stub.
+- Fixed `scripts/package-public-download.sh` so relative `--output-dir` and `--publish-dir` paths resolve from the repo root before the script changes into its temporary stage directory.
+
+Automated validation:
+
+| Check | Result |
+|---|---|
+| `git diff --check` | Passed before docs/script edits; rerun before commit. |
+| `git diff --cached --check` | Passed before docs/script edits; rerun before commit. |
+| `bash -n scripts/package-public-download.sh` | Passed. |
+| Frontend build | Passed. |
+| Python compile for relevant backend modules | Passed. |
+| Focused backend tests | Passed: 130 passed, 144 warnings. |
+| Package dry-run | Passed after relative-path fix. |
+| Package inspection | Robo Preview stub and key exclusions verified; tests/workflows still need package-boundary decision. |
+
+Remaining P0 before extraction:
+
+- Public install/download docs must not direct users to clone the full R&D repo as the public source path unless the repo itself is fully sanitized.
+- Public bundles still include backend/frontend tests and `.github` workflows; these should be excluded or sanitized before source-public packaging is treated as release-ready.
+- Add root Docker context hygiene before promoting repo-root Compose source installs.
+- Run browser/live QA for Round Table, Local AI, Command Center Security profiles, Task Guardian health checks, connector delivery, terminal gating, and Robo Preview.
+
+Recommended next phase:
+
+Run a focused package/source-boundary cleanup pass, then browser/live QA, then `Sparkbot_shell` extraction map refresh.

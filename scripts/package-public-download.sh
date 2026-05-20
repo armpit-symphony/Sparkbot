@@ -79,6 +79,22 @@ if [[ -n "$notes_file" && ! -f "$notes_file" ]]; then
   exit 1
 fi
 
+normalize_repo_path() {
+  local value="$1"
+  if [[ -z "$value" ]]; then
+    printf '\n'
+  elif [[ "$value" = /* ]]; then
+    printf '%s\n' "$value"
+  else
+    printf '%s\n' "$repo_root/$value"
+  fi
+}
+
+output_dir="$(normalize_repo_path "$output_dir")"
+if [[ -n "$publish_dir" ]]; then
+  publish_dir="$(normalize_repo_path "$publish_dir")"
+fi
+
 if ! command -v git >/dev/null 2>&1; then
   echo "git is required" >&2
   exit 1

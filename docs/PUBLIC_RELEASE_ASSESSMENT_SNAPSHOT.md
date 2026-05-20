@@ -124,3 +124,42 @@ Stop after this branch lands and assess:
 1. Run the browser/package/security QA list above.
 2. Refresh the `Sparkbot_shell` extraction map from the validated branch.
 3. Start Layer 1 shell import only if QA finds no new public-blocking defects.
+
+## QA Assessment Update - 2026-05-20
+
+Branch: `public-release-qa-assessment`
+Base commit: `0f8d059fc5927e3466d269ca5479df4c56b3c06f`
+
+Validation completed in this pass:
+
+| Check | Result | Notes |
+|---|---|---|
+| `git status --short --branch` | Passed | Branch was created from `public-release-final-cleanup-assessment`; worktree started clean. |
+| `.venv-ci` tracked-file check | Passed | `git ls-files .venv-ci backend/.venv-ci` returned no tracked files. |
+| Package script Python zip fallback | Passed | `scripts/package-public-download.sh` uses Python stdlib `zipfile` when `zip` is unavailable. |
+| Robo public package stub | Passed | Generated tarball contains a non-executing `lima_robotics_bridge.py` Robo Preview stub. |
+| `Sparkbot_shell` untouched | Passed | No local `Sparkbot_shell` checkout was present; no shell extraction or code copy occurred. |
+| `git diff --check` / `git diff --cached --check` | Passed before edits | Re-run required before commit. |
+| `bash -n scripts/package-public-download.sh` | Passed | Script syntax valid after relative output path fix. |
+| Frontend production build | Passed | `npm --prefix frontend run build`; Vite emitted existing large chunk warnings only. |
+| Backend compile | Passed | `uv run python -m py_compile` over model seats, local AI, memory/context, meeting assignments, health checks, Robo, MCP, policy, model, rooms, robotics, and security modules. |
+| Focused backend tests | Passed | 130 passed, 144 warnings. Covered model seats, Local AI, memory/context, meeting assignments, Task Guardian health checks, Robo Preview/private gate, MCP registry, and security profiles. |
+| Package dry-run | Passed after tiny fix | Absolute output path passed first. Relative output path initially failed during zip creation, then passed after normalizing relative `--output-dir`/`--publish-dir` to repo-root paths. |
+| Package inspection | Passed with caveats | Verified exclusions for `.venv-ci`, `backend/.venv-ci`, dotenv files, logs, DBs, key/cert examples, proposal script sample, private readiness docs, audit docs, and LIMA integration doc. Verified Robo Preview stub. |
+
+New QA docs created:
+
+- `docs/PUBLIC_RELEASE_BROWSER_QA_CHECKLIST.md`
+- `docs/PUBLIC_RELEASE_LIVE_QA_PLAN.md`
+- `docs/PUBLIC_RELEASE_READINESS_SCORECARD.md`
+- `docs/PUBLIC_RELEASE_NEXT_DECISION_MATRIX.md`
+
+Key assessment change:
+
+- Sparkbot is not ready for `Sparkbot_shell` extraction yet. The product surfaces are mostly implementation-ready, but public packaging/source-boundary issues remain P0: public docs still point source installs at the full R&D repo, public bundles still include tests and GitHub workflows with private/stale context, and repo-root Docker contexts need a root `.dockerignore` before public source installs are promoted.
+
+Recommended next phase:
+
+1. Focused public package/source-boundary sanitation: public install source copy, tests/workflow package exclusions or sanitization, and root Docker context hygiene.
+2. Browser/live QA using the new checklist and plan.
+3. Refresh `Sparkbot_shell` extraction map from the validated public artifact.
