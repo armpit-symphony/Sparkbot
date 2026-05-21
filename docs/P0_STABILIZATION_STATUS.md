@@ -407,3 +407,26 @@ Remaining after this pass:
 - Browser QA notes save/edit and role permissions.
 - Live QA meeting recall through Main Chat and linked Telegram/Discord/WhatsApp/Slack identities.
 - Treat SMS/text as future until a real connector and identity model exist.
+
+## Connector Identity Live QA Update - 2026-05-21
+
+Branch: `public-release-connector-identity-live-qa`
+Previous meeting-memory commit verified: `7f327b2e45011facef7bb751166adac6e5c223cc`
+
+Completed in this pass:
+
+- Added `docs/CONNECTOR_IDENTITY_LINKING_STATUS.md`.
+- Hardened Slack inbound memory recall to fail closed without request signing, allowed channel, allowed Slack sender, and explicit existing Sparkbot owner link.
+- Added focused Slack identity tests for missing signing secret, channel allowlist, sender allowlist, and linked owner lookup.
+- Confirmed this process environment has no configured test Telegram/Discord/WhatsApp/Slack identities, but `.env.local` contains Telegram/Discord connector keys; no live connector messages were sent.
+
+Current status:
+
+- Main Chat meeting-note recall remains GREEN by automated memory tests.
+- Slack private meeting-note recall is YELLOW/UNKNOWN: fail-closed channel + sender checks are implemented, live test pending.
+- Telegram/Discord/WhatsApp are YELLOW: they use linked bridge identity and unified context, but web-operator cross-surface recall needs explicit mapping/QA.
+- SMS/text remains future/unsupported.
+
+Recommended next phase:
+
+Run browser QA for notes save/edit/Main Chat recall and live connector QA with configured test identities. After that, refresh the `Sparkbot_shell` extraction map if no P0 connector leaks remain.

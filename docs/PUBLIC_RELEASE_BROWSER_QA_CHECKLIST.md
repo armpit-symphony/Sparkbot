@@ -1,7 +1,7 @@
 # Sparkbot Public Release Browser QA Checklist
 
 Date: 2026-05-20
-Branch: `public-release-meeting-memory-operator-spine`
+Branch: `public-release-connector-identity-live-qa`
 Purpose: manual browser QA checklist before `Sparkbot_shell` extraction. This is a validation artifact only; it does not approve code copying or feature expansion.
 
 Use this checklist against a fresh local install and, where noted, a server-style install. Record the result in the Pass/Fail and Notes columns. Do not use real customer data or private production channels.
@@ -66,8 +66,20 @@ Use this checklist against a fresh local install and, where noted, a server-styl
 | Telegram retrieves meeting notes | P1 | Yes, linked test chat only | Linked/authorized Telegram identity can ask about recent Round Table notes through unified context. |  |  |
 | Discord retrieves meeting notes | P1 | Yes, linked test channel/user only | Linked/authorized Discord identity can ask about meeting decisions without broad guild exposure. |  |  |
 | WhatsApp retrieves meeting notes | P1 | Yes, linked test number only | Linked/authorized WhatsApp number can ask about recent notes; unknown numbers cannot. |  |  |
-| Slack retrieves meeting notes | P1 | Yes, test workspace/channel only | Slack behavior is documented as identity-limited unless explicit linking is configured; no private notes leak to unsigned/unlinked requests. |  |  |
+| Slack retrieves meeting notes | P1 | Yes, test workspace/channel only | Slack behavior is identity-limited; no private notes leak unless request signature, channel allowlist, sender allowlist, and linked owner are all configured. |  |  |
 | Draft notes do not leak | P0 | No | Draft/scaffold/failed-generation notes are not returned as final shared memory. |  |  |
 | Per-turn notes remain disabled | P0 | At least one configured model path | Normal participant turns do not create notes artifacts or memory rollups. |  |  |
 | Edited notes dedupe/update memory | P0 | No | Old edited decisions are absent from active context after saving updated notes. |  |  |
 | Unauthorized connector user cannot retrieve notes | P0 | Yes, test connector only | Unknown/unlinked connector user receives setup/authorization handling and no meeting-note content. |  |  |
+
+
+## Connector identity QA addendum
+
+| QA item | Priority | Live connector/local provider required? | Expected result | Pass/Fail | Notes |
+|---|---|---|---|---|---|
+| Slack unsigned request fails closed | P0 | Slack signing test or unit test | Missing/invalid `SLACK_SIGNING_SECRET` prevents event processing and meeting-memory recall. | Automated PASS | Covered by focused backend test; live not configured. |
+| Slack unallowed channel/user fails closed | P0 | Slack test workspace/channel/user | Channel not in `SLACK_ALLOWED_CHANNEL_IDS` or sender not in `SLACK_ALLOWED_USER_IDS` receives setup/linking message and no meeting notes. | Automated PASS for helper; live not run | Requires test Slack app/channel/user. |
+| Slack linked owner recall | P1 | Slack test app/channel | Signed allowed Slack event with `SLACK_ALLOWED_CHANNEL_IDS`, `SLACK_ALLOWED_USER_IDS`, and `SPARKBOT_SLACK_OWNER_USERNAME` can use linked owner context. | Not run | Requires test Slack app/channel. |
+| Telegram unlinked identity isolation | P0 | Telegram test bot/chat | Unknown chat cannot retrieve web-operator meeting notes; allowlisted/operator-mapped chat can be tested separately. | Not run | Connector not configured in this shell. |
+| Discord unlinked identity isolation | P0 | Discord test bot/channel | Unknown channel/user cannot retrieve web-operator meeting notes. | Not run | Connector not configured in this shell. |
+| WhatsApp unlinked identity isolation | P0 | WhatsApp test number | Unknown number cannot retrieve web-operator meeting notes. | Not run | Connector not configured in this shell. |

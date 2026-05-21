@@ -21,7 +21,7 @@ Sparkbot owns this first. Workstation is the operating floor, Main Chat is the o
 | Telegram retrieval | IMPLEMENTED_WITH_IDENTITY_LIMIT | Telegram bridge calls `build_unified_context` for linked room/user identity. | Cross-surface recall requires explicit link to the intended Sparkbot user; do not expose notes to unknown chats. |
 | Discord retrieval | IMPLEMENTED_WITH_IDENTITY_LIMIT | Discord bridge calls `build_unified_context` for linked channel/user identity. | Guild/channel allowlists and identity mapping need live QA. |
 | WhatsApp retrieval | IMPLEMENTED_WITH_IDENTITY_LIMIT | WhatsApp bridge calls `build_unified_context` for linked phone/user identity. | Only linked/authorized numbers should retrieve private notes. |
-| Slack retrieval | PARTIAL_IDENTITY_LIMIT | Slack route calls `build_unified_context` but currently uses a synthetic Sparkbot user/room pattern. | Needs explicit account/room linking before promising full cross-surface meeting memory. |
+| Slack retrieval | FAIL_CLOSED_TESTED | Slack route calls `build_unified_context` only after signed request, allowed channel, allowed sender, and existing linked Sparkbot owner are present. | Live Slack test app still required before marking recall GREEN. |
 | SMS/text | FUTURE_UNSUPPORTED | No SMS/text inbound connector exists in this phase. | Keep documented as future until real provider and identity mapping exist. |
 | Task/reminder/file memory | IMPLEMENTED | Existing task, reminder, upload, and connector memory routes use source-labeled memory events. | Same identity boundary applies. |
 
@@ -61,10 +61,33 @@ No raw connector secrets are stored in note metadata. Failed auto-generated note
 |---|---|---|
 | P0 | Connector identity linking and fail-closed public setup need live review before promising cross-channel private meeting recall. | Run live QA with test Telegram/Discord/WhatsApp/Slack accounts and document exact linking requirements. |
 | P1 | Browser QA the Meeting Room notes editor and role permissions. | Verify owner/mod edit, member/viewer denial, and edited memory recall in Main Chat. |
-| P1 | Slack inbound identity remains synthetic. | Add explicit Slack account/room linking before marking Slack meeting recall GREEN. |
+| P1 | Slack inbound identity is env-linked and fail-closed, but not live-tested. | Run signed Slack test app with channel + sender allowlists before marking Slack meeting recall GREEN. |
 | P1 | Rich structured notes editor is textarea-based for now. | Add field-level editing only if browser QA shows real operator friction. |
 | P2 | SMS/text is not implemented. | Keep disabled/future until provider and auth model are chosen. |
 
 ## LIMA Runtime Alignment
 
 Later LIMA AI OS can generalize the pattern as meeting artifact -> structured note metadata -> memory rollup -> connector-safe retrieval. This branch keeps the implementation in Sparkbot Public and does not wire LIMA runtime.
+
+## Connector Identity Live QA Update - 2026-05-21
+
+Branch: `public-release-connector-identity-live-qa`
+Previous meeting-memory commit verified: `7f327b2e45011facef7bb751166adac6e5c223cc`
+
+Completed in this pass:
+
+- Added `docs/CONNECTOR_IDENTITY_LINKING_STATUS.md`.
+- Hardened Slack inbound memory recall to fail closed without request signing, allowed channel, allowed Slack sender, and explicit existing Sparkbot owner link.
+- Added focused Slack identity tests for missing signing secret, channel allowlist, sender allowlist, and linked owner lookup.
+- Confirmed this process environment has no configured test Telegram/Discord/WhatsApp/Slack identities, but `.env.local` contains Telegram/Discord connector keys; no live connector messages were sent.
+
+Current status:
+
+- Main Chat meeting-note recall remains GREEN by automated memory tests.
+- Slack private meeting-note recall is YELLOW/UNKNOWN: fail-closed channel + sender checks are implemented, live test pending.
+- Telegram/Discord/WhatsApp are YELLOW: they use linked bridge identity and unified context, but web-operator cross-surface recall needs explicit mapping/QA.
+- SMS/text remains future/unsupported.
+
+Recommended next phase:
+
+Run browser QA for notes save/edit/Main Chat recall and live connector QA with configured test identities. After that, refresh the `Sparkbot_shell` extraction map if no P0 connector leaks remain.

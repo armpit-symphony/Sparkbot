@@ -1,7 +1,7 @@
 # Sparkbot Public Release Live QA Plan
 
 Date: 2026-05-20
-Branch: `public-release-meeting-memory-operator-spine`
+Branch: `public-release-connector-identity-live-qa`
 Scope: live/manual validation plan only. Do not run destructive checks, do not send surprise external messages, and do not connect private production systems.
 
 ## Local AI
@@ -39,8 +39,19 @@ Scope: live/manual validation plan only. Do not run destructive checks, do not s
 | Telegram meeting recall | Use a linked test Telegram chat and ask what happened in the last Round Table. | Response uses meeting notes only for the linked/authorized room/user identity. |
 | Discord meeting recall | Use a linked test Discord channel/DM and ask for meeting action items. | Response uses saved notes without broad guild exposure. |
 | WhatsApp meeting recall | Use a linked test WhatsApp number and ask what the meeting decided. | Response uses saved notes only for that linked identity. |
-| Slack meeting recall | Use test Slack route with signing/linking configured if available. | If identity is not linked, Sparkbot reports setup limitation rather than exposing notes. |
+| Slack meeting recall | Use test Slack route with signing, channel allowlist, sender allowlist, and linked owner configured if available. | If identity is not linked, Sparkbot reports setup limitation rather than exposing notes. |
 | Unauthorized connector request | Ask from an unlinked test account/number/channel. | No private meeting notes are returned. |
+
+## Connector Identity Live QA
+
+| Scenario | Safe test | Expected result |
+|---|---|---|
+| Slack missing signature | Send a signed/unsigned test request in a local Slack test setup only. | Unsigned or invalid requests return 403 and no memory context is built. |
+| Slack unallowed channel/user | Use a test channel not in `SLACK_ALLOWED_CHANNEL_IDS` and a test sender not in `SLACK_ALLOWED_USER_IDS`. | Sparkbot posts setup/linking guidance and no meeting-note content. |
+| Slack allowed linked owner | Configure `SLACK_SIGNING_SECRET`, `SLACK_ALLOWED_CHANNEL_IDS`, `SLACK_ALLOWED_USER_IDS`, and existing `SPARKBOT_SLACK_OWNER_USERNAME`; ask about a saved meeting. | Sparkbot can use the linked owner's meeting notes. |
+| Telegram linked operator | Configure test bot plus `TELEGRAM_ALLOWED_CHAT_IDS` and, for operator recall, `SPARKBOT_OPERATOR_TELEGRAM_CHAT_IDS`. | Only the linked/operator test chat can retrieve meeting notes. |
+| Discord linked identity | Configure test bot plus test guild/channel restrictions. | Linked Discord identity can retrieve only its authorized context. |
+| WhatsApp linked identity | Configure test sandbox number plus `WHATSAPP_ALLOWED_PHONES`. | Linked test number can retrieve only its authorized context. |
 
 ## Risky-Action Guardrails
 

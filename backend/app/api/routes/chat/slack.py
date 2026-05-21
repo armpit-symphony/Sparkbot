@@ -42,9 +42,9 @@ _SLACK_MEMORY_ROOM_NAME = "Slack Bridge"
 
 
 def _verify_slack_signature(body: bytes, timestamp: str, signature: str) -> bool:
-    """Verify Slack HMAC-SHA256 request signature."""
+    """Verify Slack HMAC-SHA256 request signature. Public webhooks fail closed."""
     if not _SLACK_SIGNING_SECRET:
-        return True  # dev: skip verification when secret is not set
+        return False
     try:
         if abs(time.time() - int(timestamp)) > 300:
             return False
@@ -75,22 +75,50 @@ async def _slack_reply(channel: str, text: str, thread_ts: Optional[str]) -> Non
         pass  # best-effort
 
 
-def _get_or_create_slack_memory_context(session: Session) -> tuple[str, str]:
-    from app.models import ChatRoom, ChatRoomMember, ChatUser, RoomRole, UserType
+def _allowed_slack_channel_ids() -> set[str]:
+    return {part.strip() for part in os.getenv("SLACK_ALLOWED_CHANNEL_IDS", "").split(",") if part.strip()}
 
-    owner_username = os.getenv("SPARKBOT_SLACK_OWNER_USERNAME", "sparkbot-user").strip() or "sparkbot-user"
-    owner = session.exec(select(ChatUser).where(ChatUser.username == owner_username)).scalar_one_or_none()
+
+def _allowed_slack_user_ids() -> set[str]:
+    return {part.strip() for part in os.getenv("SLACK_ALLOWED_USER_IDS", "").split(",") if part.strip()}
+
+
+def _slack_identity_setup_message() -> str:
+    return (
+        "Sparkbot Slack memory recall is not linked for this channel yet. "
+        "Use Main Chat or configure SLACK_SIGNING_SECRET, SLACK_ALLOWED_CHANNEL_IDS, "
+        "SLACK_ALLOWED_USER_IDS, and SPARKBOT_SLACK_OWNER_USERNAME for a real Sparkbot operator account."
+    )
+
+
+def _slack_identity_authorized(channel: str, slack_user_id: str) -> bool:
+    allowed_channels = _allowed_slack_channel_ids()
+    allowed_users = _allowed_slack_user_ids()
+    return bool(
+        channel
+        and slack_user_id
+        and allowed_channels
+        and allowed_users
+        and channel in allowed_channels
+        and slack_user_id in allowed_users
+    )
+
+
+def _get_slack_memory_context(session: Session) -> tuple[str, str] | None:
+    from app.models import ChatRoom, ChatRoomMember, ChatUser, RoomRole
+
+    owner_username = os.getenv("SPARKBOT_SLACK_OWNER_USERNAME", "").strip()
+    if not owner_username:
+        return None
+    owner = session.exec(select(ChatUser).where(ChatUser.username == owner_username)).first()
     if not owner:
-        owner = ChatUser(username=owner_username, type=UserType.HUMAN, is_active=True)
-        session.add(owner)
-        session.commit()
-        session.refresh(owner)
+        return None
 
     room = session.exec(select(ChatRoom).where(ChatRoom.name == _SLACK_MEMORY_ROOM_NAME)).first()
     if not room:
         room = ChatRoom(
             name=_SLACK_MEMORY_ROOM_NAME,
-            description="Public baseline Slack connector memory room.",
+            description="Slack connector memory room for an explicitly linked Sparkbot operator.",
             created_by=owner.id,
         )
         session.add(room)
@@ -99,7 +127,7 @@ def _get_or_create_slack_memory_context(session: Session) -> tuple[str, str]:
 
     membership = session.exec(
         select(ChatRoomMember).where(ChatRoomMember.room_id == room.id).where(ChatRoomMember.user_id == owner.id)
-    ).scalar_one_or_none()
+    ).first()
     if not membership:
         session.add(ChatRoomMember(room_id=room.id, user_id=owner.id, role=RoomRole.OWNER))
         session.commit()
@@ -107,15 +135,24 @@ def _get_or_create_slack_memory_context(session: Session) -> tuple[str, str]:
     return str(owner.id), str(room.id)
 
 
-async def _handle_slack_event(text: str, channel: str, thread_ts: Optional[str]) -> None:
+async def _handle_slack_event(text: str, channel: str, thread_ts: Optional[str], slack_user_id: str) -> None:
     """Process a Slack message through the Sparkbot LLM and reply to Slack."""
     from app.api.routes.chat.llm import SYSTEM_PROMPT, stream_chat_with_tools
     from app.api.deps import get_db
     from app.services.guardian import memory as guardian_memory
 
+    if not _slack_identity_authorized(channel, slack_user_id):
+        await _slack_reply(channel, _slack_identity_setup_message(), thread_ts)
+        return
+
     db_gen = get_db()
     db = next(db_gen)
-    user_id, room_id = _get_or_create_slack_memory_context(db)
+    context = _get_slack_memory_context(db)
+    if context is None:
+        db_gen.close()
+        await _slack_reply(channel, _slack_identity_setup_message(), thread_ts)
+        return
+    user_id, room_id = context
     try:
         guardian_memory.remember_context_event(
             user_id=user_id,
@@ -124,7 +161,7 @@ async def _handle_slack_event(text: str, channel: str, thread_ts: Optional[str])
             actor_label="user",
             role="user",
             content_summary=text,
-            metadata={"slack_channel": channel, "slack_thread_ts": thread_ts or ""},
+            metadata={"slack_channel": channel, "slack_thread_ts": thread_ts or "", "slack_user_id": slack_user_id},
         )
     except Exception:
         pass
@@ -171,7 +208,7 @@ async def _handle_slack_event(text: str, channel: str, thread_ts: Optional[str])
                 actor_label="sparkbot",
                 role="assistant",
                 content_summary=response,
-                metadata={"slack_channel": channel, "slack_thread_ts": thread_ts or ""},
+                metadata={"slack_channel": channel, "slack_thread_ts": thread_ts or "", "slack_user_id": slack_user_id},
             )
     except Exception:
         pass
@@ -232,20 +269,21 @@ async def slack_events(request: Request, background_tasks: BackgroundTasks):
             return {"ok": True}
 
         channel = event.get("channel", "")
+        slack_user_id = event.get("user", "")
         raw_text = event.get("text", "")
         # Strip all <@MENTIONS> from the message
         text = re.sub(r"<@[A-Z0-9]+>", "", raw_text).strip()
 
-        if not text or not channel:
+        if not text or not channel or not slack_user_id:
             return {"ok": True}
 
         # Thread reply keeps Slack channels tidy
         thread_ts = event.get("thread_ts") or event.get("ts")
 
         if etype == "app_mention":
-            background_tasks.add_task(_handle_slack_event, text, channel, thread_ts)
+            background_tasks.add_task(_handle_slack_event, text, channel, thread_ts, slack_user_id)
         elif etype == "message" and event.get("channel_type") == "im":
             # DMs: no threading needed
-            background_tasks.add_task(_handle_slack_event, text, channel, None)
+            background_tasks.add_task(_handle_slack_event, text, channel, None, slack_user_id)
 
     return {"ok": True}
