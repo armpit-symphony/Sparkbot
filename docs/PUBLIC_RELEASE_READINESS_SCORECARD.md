@@ -1,12 +1,12 @@
 # Sparkbot Public Release Readiness Scorecard
 
-Date: 2026-05-20
-Branch: `public-release-qa-assessment`
+Date: 2026-05-21
+Branch: `public-release-source-boundary-cleanup`
 Legend: GREEN = ready enough, YELLOW = needs QA/polish, RED = blocker, UNKNOWN = needs live/manual test.
 
 | Area | Rating | Evidence | Blocker if any | Recommended next action |
 |---|---|---|---|---|
-| Product identity clarity | YELLOW | README/status docs now describe Sparkbot Public and Round Table, but public clone/download copy still points at the R&D repo in places. | Public source path can bypass package sanitation. | Point public source installs at sanitized package or `Sparkbot_shell`; keep R&D clone docs private. |
+| Product identity clarity | YELLOW | README and public download docs now distinguish the R&D/source-reference repo, sanitized public release bundle, and future `Sparkbot_shell` repo. | Browser/download-page copy still needs a final release-site review. | Keep public install CTA on sanitized bundles; refresh `Sparkbot_shell` map after QA. |
 | Workstation UX | YELLOW | Sticky nav, public surfaces, terminal gating, and Robo Preview are implemented. | Browser QA still required across desktop/mobile. | Run manual Workstation QA checklist. |
 | Chat/DM | YELLOW | `/chat` redirects to `/dm`; backend tests pass. | Browser streaming/login QA still required. | Run DM smoke with configured cloud/local model. |
 | Round Table | YELLOW | Manager default, per-seat models, structured assignments, and no per-turn notes are implemented. | Main hero flow not browser-verified this pass. | Browser QA Round Table launch and Meeting Room flow. |
@@ -19,18 +19,18 @@ Legend: GREEN = ready enough, YELLOW = needs QA/polish, RED = blocker, UNKNOWN =
 | Unified memory/context | GREEN | Focused memory/context tests pass; source-labeled adapter exists; secrets are redacted. | Richer UI memory inspection is later polish. | Keep as extraction candidate after browser QA. |
 | Task Guardian health checks | YELLOW | Unit tests pass; PC/server templates and app delivery exist. | Live connector delivery not tested; scheduler leadership remains later. | Test app-only and configured test connector delivery. |
 | Robo Preview boundary | GREEN | Backend tests pass; package tar contains non-executing preview stub. | Full R&D bridge remains tracked and must not be blindly extracted. | Extract only package stub/public boundary. |
-| Packaging/downloads | RED | Package dry-run passes after relative-path fix; key exclusions and stub verified. Auditor found tests and `.github` workflows still included. | Public source bundle still includes tests/workflows with private/internal references and stale deploy workflows. | Sanitize/exclude tests/workflows and fix public source docs before public source release. |
-| Documentation | YELLOW | New QA/status docs exist and public status is clearer. | Some public docs still point at R&D repo and use stale Controls/template naming. | Update install/download copy and naming in a focused docs pass. |
-| Security/privacy posture | YELLOW | Focused tests pass; secrets not stored in frontend model seats; package excludes dotenv/log/DB/key examples checked. | Root `.dockerignore` missing for repo-root Compose contexts; browser guardrail QA pending. | Add root `.dockerignore`; run guardrail profile QA. |
-| Public/private separation | RED | Package replaces Robo bridge and excludes many private docs. | R&D repo source still contains private bridge and public package includes tests/workflows; blind extraction unsafe. | Refresh extraction map from sanitized package, not raw repo. |
+| Packaging/downloads | YELLOW | Package script now excludes `.github`, `.agents`, backend/frontend tests, Playwright config, test scripts, virtualenvs, dotenv/example/log/DB/key artifacts, private docs, and replaces the Robo bridge with the preview stub. | Needs final package inspection on the generated artifacts plus Windows/Git Bash and clean-clone smoke. | Run package dry-run/inspection on release candidate and publish only sanitized bundles. |
+| Documentation | YELLOW | Public install/download copy now points source installs at sanitized release bundles and documents raw repo as R&D/source reference. | Final release-site/download copy and browser QA notes still need review. | Keep docs aligned with release artifact names, checksums, and future `Sparkbot_shell` handoff. |
+| Security/privacy posture | YELLOW | Root `.dockerignore` now excludes local env/example files, keys/certs, DBs, logs, caches, tests, CI metadata, package outputs, and private docs from repo-root Docker contexts. | Browser guardrail QA and live connector/local-provider checks remain. | Run Personal/Balanced/Locked/Custom guardrail matrix with safe actions. |
+| Public/private separation | YELLOW | Sanitized package boundary now excludes tests/workflows/internal agent instructions and keeps the public Robo Preview stub while the R&D repo remains intact. | Raw R&D repo still is not the public install target; blind `Sparkbot_shell` import remains unsafe. | Refresh extraction map from the sanitized artifact after package and browser/live QA. |
 | Sparkbot_shell readiness | YELLOW | Product shell is much closer and Layer 1 candidates are clear. | Extraction should wait until packaging/docs blockers and browser/live QA complete. | Run packaging sanitation pass, browser QA, then extraction map refresh. |
 
 ## Summary
 
 GREEN: unified memory/context, Robo Preview runtime/package stub boundary.
 
-YELLOW: most product surfaces are implementation-ready but require browser/live QA and polish.
+YELLOW: most product surfaces, packaging/downloads, and public/private separation are implementation-ready but require browser/live QA, clean artifact inspection, and release-site review.
 
-RED: public packaging/download boundary and public/private separation are not ready for source-public release or blind `Sparkbot_shell` import.
+RED: no current scorecard area remains RED after the source-boundary cleanup, assuming package inspection stays clean. Blind `Sparkbot_shell` import is still not approved.
 
 UNKNOWN: live Local AI and connector delivery until tested against real test endpoints/channels.

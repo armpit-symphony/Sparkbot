@@ -342,13 +342,33 @@ Automated validation:
 | Package dry-run | Passed after relative-path fix. |
 | Package inspection | Robo Preview stub and key exclusions verified; tests/workflows still need package-boundary decision. |
 
-Remaining P0 before extraction:
+Remaining P0 before extraction after source-boundary cleanup:
 
-- Public install/download docs must not direct users to clone the full R&D repo as the public source path unless the repo itself is fully sanitized.
-- Public bundles still include backend/frontend tests and `.github` workflows; these should be excluded or sanitized before source-public packaging is treated as release-ready.
-- Add root Docker context hygiene before promoting repo-root Compose source installs.
+- Run package artifact inspection on the generated release candidate tar/zip and keep Windows/Git Bash plus clean-clone package smoke in the release checklist.
 - Run browser/live QA for Round Table, Local AI, Command Center Security profiles, Task Guardian health checks, connector delivery, terminal gating, and Robo Preview.
+- Refresh the `Sparkbot_shell` extraction map from the validated sanitized artifact before any shell import.
 
 Recommended next phase:
 
 Run a focused package/source-boundary cleanup pass, then browser/live QA, then `Sparkbot_shell` extraction map refresh.
+
+## Source Boundary Cleanup Update - 2026-05-21
+
+Branch: `public-release-source-boundary-cleanup`
+Base: `public-release-qa-assessment` at `45b12b5c07a4b4069fc7ed01ab4cf8e2ff53f2fa`
+
+This pass addresses the QA-assessment RED blocker without deleting tests/workflows from the R&D repo and without modifying `Sparkbot_shell`.
+
+Completed in this pass:
+
+- Public Docker/source install docs now recommend sanitized release bundles from the download page or GitHub Releases, not a raw clone of the active R&D repo.
+- `scripts/package-public-download.sh` removes `.github`, `.agents`, backend/frontend tests, Playwright config, and test runner scripts from staged public bundles.
+- Root `.dockerignore` was added for repo-root Compose contexts so local env/example files, DBs, logs, keys/certs, caches, package outputs, tests, CI metadata, and private docs are not sent into Docker build contexts.
+- `docs/public-downloads.md` now includes explicit artifact inspection commands for package exclusions, Robo Preview stub verification, and checksums.
+
+Assessment movement:
+
+- Packaging/downloads: RED -> YELLOW pending final artifact inspection on release candidates and Windows/Git Bash / clean-clone packaging smoke.
+- Public/private separation: RED -> YELLOW because sanitized bundles now exclude tests/workflows/internal agent instructions, but raw R&D source still is not the approved public install or extraction target.
+
+Recommended next phase remains browser/live QA, then `Sparkbot_shell` extraction map refresh from the validated sanitized artifact.

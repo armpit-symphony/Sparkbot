@@ -156,10 +156,31 @@ New QA docs created:
 
 Key assessment change:
 
-- Sparkbot is not ready for `Sparkbot_shell` extraction yet. The product surfaces are mostly implementation-ready, but public packaging/source-boundary issues remain P0: public docs still point source installs at the full R&D repo, public bundles still include tests and GitHub workflows with private/stale context, and repo-root Docker contexts need a root `.dockerignore` before public source installs are promoted.
+- Sparkbot is not ready for `Sparkbot_shell` extraction yet. The product surfaces are mostly implementation-ready. At QA-assessment time, the P0 package/source-boundary issues were raw R&D repo install copy, tests/workflows in public bundles, and missing repo-root `.dockerignore`; these are addressed by the 2026-05-21 Source Boundary Cleanup update below, pending final artifact inspection.
 
 Recommended next phase:
 
 1. Focused public package/source-boundary sanitation: public install source copy, tests/workflow package exclusions or sanitization, and root Docker context hygiene.
 2. Browser/live QA using the new checklist and plan.
 3. Refresh `Sparkbot_shell` extraction map from the validated public artifact.
+
+## Source Boundary Cleanup Update - 2026-05-21
+
+Branch: `public-release-source-boundary-cleanup`
+Base: `public-release-qa-assessment` at `45b12b5c07a4b4069fc7ed01ab4cf8e2ff53f2fa`
+
+This pass addresses the QA-assessment RED blocker without deleting tests/workflows from the R&D repo and without modifying `Sparkbot_shell`.
+
+Completed in this pass:
+
+- Public Docker/source install docs now recommend sanitized release bundles from the download page or GitHub Releases, not a raw clone of the active R&D repo.
+- `scripts/package-public-download.sh` removes `.github`, `.agents`, backend/frontend tests, Playwright config, and test runner scripts from staged public bundles.
+- Root `.dockerignore` was added for repo-root Compose contexts so local env/example files, DBs, logs, keys/certs, caches, package outputs, tests, CI metadata, and private docs are not sent into Docker build contexts.
+- `docs/public-downloads.md` now includes explicit artifact inspection commands for package exclusions, Robo Preview stub verification, and checksums.
+
+Assessment movement:
+
+- Packaging/downloads: RED -> YELLOW pending final artifact inspection on release candidates and Windows/Git Bash / clean-clone packaging smoke.
+- Public/private separation: RED -> YELLOW because sanitized bundles now exclude tests/workflows/internal agent instructions, but raw R&D source still is not the approved public install or extraction target.
+
+Recommended next phase remains browser/live QA, then `Sparkbot_shell` extraction map refresh from the validated sanitized artifact.

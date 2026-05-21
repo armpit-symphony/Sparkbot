@@ -1,0 +1,97 @@
+# Git and CI metadata
+.git
+.github
+.agents
+
+# Local environment and secrets
+.env
+.env.*
+.envrc
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.csr
+
+# Dependency and build output
+node_modules
+frontend/node_modules
+.venv
+.venv-ci
+backend/.venv-ci
+venv
+backend/venv
+dist
+build
+frontend/dist
+frontend/build
+backend/dist
+backend/build
+src-tauri/target
+src-tauri/binaries
+
+# Caches, coverage, and test artifacts
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.cache
+coverage
+htmlcov
+.coverage
+playwright-report
+test-results
+blob-report
+frontend/playwright-report
+frontend/test-results
+
+# Internal tests and CI-only helpers are not needed by Docker runtime builds.
+backend/tests
+frontend/tests
+tests
+e2e
+playwright
+frontend/playwright.config.ts
+frontend/Dockerfile.playwright
+
+# Logs and local databases
+logs
+*.log
+*.jsonl
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+backend/data
+backend/uploads
+data
+
+# Public package outputs and release artifacts
+*.zip
+*.tar.gz
+*.tgz
+SHA256SUMS
+RELEASE-NOTES.txt
+
+# Private/internal planning docs and proposal scripts
+docs/audits
+docs/release-notes
+docs/lima-robo-os-integration.md
+docs/PUBLIC_RELEASE_*.md
+docs/*_AUDIT.md
+docs/*_STATUS.md
+docs/*LIMA*.md
+docs/lima-*.md
+file_v*_proposals.py
+*_proposals.py
+
+# Editor and OS junk
+.DS_Store
+Thumbs.db
+.idea
+.vscode
+*.swp
+*.tmp

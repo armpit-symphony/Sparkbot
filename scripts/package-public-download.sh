@@ -148,6 +148,29 @@ mkdir -p "$stage_dir"
 
 git -C "$repo_root" archive --format=tar --prefix="sparkbot-v2/" "$commit" | tar -xf - -C "$stage_dir"
 
+# Remove CI, tests, and R&D agent instructions from public source bundles. The
+# full repo keeps these for development, but public downloads are the sanitized
+# install path until Sparkbot_shell exists.
+rm -rf \
+  "$stage_repo/.agents" \
+  "$stage_repo/.github" \
+  "$stage_repo/backend/tests" \
+  "$stage_repo/frontend/tests" \
+  "$stage_repo/tests" \
+  "$stage_repo/e2e" \
+  "$stage_repo/playwright" \
+  "$stage_repo/playwright-report" \
+  "$stage_repo/test-results" \
+  "$stage_repo/blob-report"
+rm -f \
+  "$stage_repo/.pre-commit-config.yaml" \
+  "$stage_repo/backend/scripts/test.sh" \
+  "$stage_repo/backend/scripts/tests-start.sh" \
+  "$stage_repo/frontend/Dockerfile.playwright" \
+  "$stage_repo/frontend/playwright.config.ts" \
+  "$stage_repo/scripts/test.sh" \
+  "$stage_repo/scripts/test-local.sh"
+
 # Remove internal-only docs and any tracked backup/junk files from the staged public bundle.
 rm -f \
   "$stage_repo/FRESH_INSTALL_CHECKLIST.md" \
@@ -329,7 +352,7 @@ find "$stage_repo" \
 
 find "$stage_repo" \
   -type f \
-  \( -name "*.pyc" -o -name "*.pyo" -o -name "*.bak" -o -name "*.bak_*" -o -name "*.log" -o -name "*.jsonl" -o -name "*.sqlite" -o -name "*.db" -o -name "*.pem" -o -name "*.key" -o -name "*.p12" -o -name "*.pfx" -o -name ".env" -o -name ".env.local" -o -name ".env.production" -o -name ".env.development" -o -name "file_v*_proposals.py" -o -name "*_proposals.py" \) \
+  \( -name "*.pyc" -o -name "*.pyo" -o -name "*.bak" -o -name "*.bak_*" -o -name "*.log" -o -name "*.jsonl" -o -name "*.sqlite" -o -name "*.db" -o -name "*.pem" -o -name "*.key" -o -name "*.p12" -o -name "*.pfx" -o -name ".env" -o -name ".env.*" -o -name "file_v*_proposals.py" -o -name "*_proposals.py" \) \
   -delete
 
 mkdir -p "$output_dir"
@@ -402,6 +425,8 @@ chmod 755 "$output_dir/$cli_name"
   echo "- docs/release-notes/ historical release notes"
   echo "- private LIMA/Robo runtime research docs"
   echo "- private Robo bridge implementation (replaced by public Robo Preview stub)"
+  echo "- .github workflows/templates and .agents R&D instructions"
+  echo "- backend/frontend/internal tests, Playwright config, and test runner scripts"
   echo "- sparkbot-backend.spec (PyInstaller desktop build artifact)"
   echo "- copier.yml + .copier/ (project scaffolding config)"
   echo "- src-tauri/ (Tauri desktop shell source)"

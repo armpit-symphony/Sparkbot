@@ -184,19 +184,27 @@ Click **Sparkbot** on the office floor to open the main chat. Everything else ca
 
 ### Docker Local
 
+Public Docker/source installs should use the sanitized release bundle from the [download page](https://armpit-symphony.github.io/Sparkbot/) or GitHub Releases. The full `armpit-symphony/Sparkbot` repository remains the active R&D/source reference; it is useful for contributors, but it is not the recommended casual public install path until the future `Sparkbot_shell` public repo exists.
+
 Local machine:
 
 ```bash
-git clone https://github.com/armpit-symphony/Sparkbot.git
-cd Sparkbot
+curl -L -O https://github.com/armpit-symphony/Sparkbot/releases/latest/download/sparkbot-latest.tar.gz
+curl -L -O https://github.com/armpit-symphony/Sparkbot/releases/latest/download/SHA256SUMS
+sha256sum -c SHA256SUMS --ignore-missing
+tar -xzf sparkbot-latest.tar.gz
+cd sparkbot-v2
 bash scripts/sparkbot-start.sh --local
 ```
 
 Cloud server / VPS / DigitalOcean:
 
 ```bash
-git clone https://github.com/armpit-symphony/Sparkbot.git
-cd Sparkbot
+curl -L -O https://github.com/armpit-symphony/Sparkbot/releases/latest/download/sparkbot-latest.tar.gz
+curl -L -O https://github.com/armpit-symphony/Sparkbot/releases/latest/download/SHA256SUMS
+sha256sum -c SHA256SUMS --ignore-missing
+tar -xzf sparkbot-latest.tar.gz
+cd sparkbot-v2
 bash scripts/sparkbot-start.sh --server
 ```
 
