@@ -153,6 +153,34 @@ async def _handle_slack_event(text: str, channel: str, thread_ts: Optional[str],
         await _slack_reply(channel, _slack_identity_setup_message(), thread_ts)
         return
     user_id, room_id = context
+
+    from app.services import connector_verification
+
+    if connector_verification.is_logout_command(text):
+        connector_verification.close_connector_session(connector="slack", external_identity=slack_user_id, channel_id=channel)
+        db_gen.close()
+        await _slack_reply(channel, connector_verification.verification_closed_message(), thread_ts)
+        return
+
+    connector_pin = connector_verification.parse_pin_command(text)
+    if connector_pin:
+        verified = connector_verification.verify_connector_pin(
+            connector="slack",
+            external_identity=slack_user_id,
+            channel_id=channel,
+            submitted_pin=connector_pin,
+            linked_sparkbot_user_id=user_id,
+        )
+        db_gen.close()
+        await _slack_reply(
+            channel,
+            connector_verification.verification_success_message(verified)
+            if verified
+            else "Operator verification failed. Private meeting memory remains locked.",
+            thread_ts,
+        )
+        return
+
     try:
         guardian_memory.remember_context_event(
             user_id=user_id,
@@ -166,8 +194,23 @@ async def _handle_slack_event(text: str, channel: str, thread_ts: Optional[str],
     except Exception:
         pass
     try:
+        context_user_id = user_id
+        if connector_verification.private_recall_requested(text):
+            allowed, verified_user_id, _reason = connector_verification.private_recall_gate(
+                db,
+                connector="slack",
+                external_identity=slack_user_id,
+                channel_id=channel,
+                current_user_id=user_id,
+                linked_operator_identity=True,
+            )
+            if not allowed:
+                db_gen.close()
+                await _slack_reply(channel, connector_verification.verification_required_message("Slack"), thread_ts)
+                return
+            context_user_id = verified_user_id or user_id
         memory_context = guardian_memory.build_unified_context(
-            user_id=user_id,
+            user_id=context_user_id,
             room_id=room_id,
             query=text,
         )

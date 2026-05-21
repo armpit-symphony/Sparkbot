@@ -1,7 +1,7 @@
 # Sparkbot Public Release Browser QA Checklist
 
 Date: 2026-05-20
-Branch: `public-release-connector-identity-live-qa`
+Branch: `public-release-connector-pin-verification`
 Purpose: manual browser QA checklist before `Sparkbot_shell` extraction. This is a validation artifact only; it does not approve code copying or feature expansion.
 
 Use this checklist against a fresh local install and, where noted, a server-style install. Record the result in the Pass/Fail and Notes columns. Do not use real customer data or private production channels.
@@ -83,3 +83,15 @@ Use this checklist against a fresh local install and, where noted, a server-styl
 | Telegram unlinked identity isolation | P0 | Telegram test bot/chat | Unknown chat cannot retrieve web-operator meeting notes; allowlisted/operator-mapped chat can be tested separately. | Not run | Connector not configured in this shell. |
 | Discord unlinked identity isolation | P0 | Discord test bot/channel | Unknown channel/user cannot retrieve web-operator meeting notes. | Not run | Connector not configured in this shell. |
 | WhatsApp unlinked identity isolation | P0 | WhatsApp test number | Unknown number cannot retrieve web-operator meeting notes. | Not run | Connector not configured in this shell. |
+
+## Connector PIN Verification QA Addendum
+
+| QA item | Priority | Live connector/local provider required? | Expected result | Pass/Fail | Notes |
+|---|---|---|---|---|---|
+| Valid connector PIN session | P0 | No for unit test; yes for live connector | `/pin <PIN>` creates a short connector-scoped session without storing the PIN plaintext. | Automated PASS | Unit tests cover session creation and no raw PIN in session dump. |
+| Invalid connector PIN | P0 | No | Invalid PIN does not create a session and private meeting recall remains locked. | Automated PASS | Unit test covered. |
+| Expired connector session | P0 | No | Expired connector session fails closed and asks for verification again. | Automated PASS | Unit test covered. |
+| Telegram private recall gate | P0 | Telegram test bot/chat | Unallowlisted chat is denied; allowlisted chat requires operator mapping or `/pin <PIN>`. | Not run | Requires test bot; do not use production token. |
+| Discord shared channel recall block | P0 | Discord test bot/channel | Guild/shared channel request for meeting notes is told to use DM/Main Chat; no notes are returned. | Not run | Live test required. |
+| Slack signed allowed user recall | P0 | Slack test app/channel/user | Signature, channel allowlist, sender allowlist, and linked owner are required before recall. | Not run | Existing Slack helper tests still pass. |
+| WhatsApp public setup fail closed | P0 | No for unit test; yes for live sandbox | Missing verify token or empty allowed-phone list disables inbound bridge; unlisted phone is denied. | Automated PASS for defaults | Live sandbox required. |

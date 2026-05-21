@@ -540,7 +540,7 @@ def _ensure_linked_room(session: Session, chat_id: str, tg_user: dict[str, Any])
     )
 
 
-async def _run_room_prompt(session: Session, room_id: str, user_id: str, content: str, *, chat_id: str) -> dict[str, Any]:
+async def _run_room_prompt(session: Session, room_id: str, user_id: str, content: str, *, chat_id: str, private_context_user_id: str | None = None) -> dict[str, Any]:
     from app.api.routes.chat.agents import get_agent, resolve_agent_from_message
     from app.api.routes.chat.llm import SYSTEM_PROMPT, stream_chat_with_tools
     guardian_suite = get_guardian_suite()
@@ -599,7 +599,8 @@ async def _run_room_prompt(session: Session, room_id: str, user_id: str, content
         system_prompt = base_prompt
 
     try:
-        memory_context = guardian_suite.memory.build_unified_context(user_id=user_id, room_id=room_id, query=agent_content)
+        context_user_id = private_context_user_id or user_id
+        memory_context = guardian_suite.memory.build_unified_context(user_id=context_user_id, room_id=room_id, query=agent_content)
     except Exception:
         memory_context = ""
     if memory_context:
@@ -1013,6 +1014,7 @@ async def _handle_private_message(message: dict[str, Any], get_db_session: Calla
             return
 
         lower = text.lower().strip()
+        from app.services import connector_verification
 
         if chat_id in _prune_awaiting_pin(chat_id=chat_id):
             await _send_text(chat_id, "PIN prompt expired. Send /breakglass to start again, or reply PIN when a privileged action is waiting.")
@@ -1058,11 +1060,40 @@ async def _handle_private_message(message: dict[str, Any], get_db_session: Calla
 
         # /breakglass — enter privileged mode via PIN
         if lower == "/breakglass":
+            if chat_id not in _operator_telegram_chat_ids():
+                await _send_text(chat_id, "Break-glass over Telegram requires explicit SPARKBOT_OPERATOR_TELEGRAM_CHAT_IDS mapping.")
+                return
             if not get_guardian_suite().auth.is_operator_user_id(db, link.user_id):
                 await _send_text(chat_id, "Break-glass is restricted to configured Sparkbot operators.")
                 return
             _set_awaiting_pin(chat_id, confirm_id=None, requires_confirm=False)
             await _send_text(chat_id, "Enter your operator PIN to open break-glass mode.\nReply NO to cancel.")
+            return
+
+        connector_pin = connector_verification.parse_pin_command(text)
+        if connector_pin:
+            if not _allowed_chat_ids() or chat_id not in _allowed_chat_ids():
+                await _send_text(chat_id, "Telegram PIN verification requires TELEGRAM_ALLOWED_CHAT_IDS for this chat before private recall can be enabled.")
+                return
+            operator_user_id = connector_verification.resolve_operator_user_id(db)
+            if not operator_user_id:
+                await _send_text(chat_id, "Operator PIN is configured, but no Sparkbot operator user could be linked. Use Main Chat to finish setup.")
+                return
+            verified = connector_verification.verify_connector_pin(
+                connector="telegram",
+                external_identity=chat_id,
+                submitted_pin=connector_pin,
+                linked_sparkbot_user_id=operator_user_id,
+            )
+            if not verified:
+                await _send_text(chat_id, "Operator verification failed. Private meeting memory remains locked.")
+                return
+            await _send_text(chat_id, connector_verification.verification_success_message(verified))
+            return
+
+        if connector_verification.is_logout_command(text):
+            connector_verification.close_connector_session(connector="telegram", external_identity=chat_id)
+            await _send_text(chat_id, connector_verification.verification_closed_message())
             return
 
         if lower in {"/deny", "/cancel", "no"}:
@@ -1099,7 +1130,32 @@ async def _handle_private_message(message: dict[str, Any], get_db_session: Calla
             await _send_text(chat_id, "Enter your operator PIN:")
             return
 
-        result = await _run_room_prompt(db, link.room_id, link.user_id, text, chat_id=chat_id)
+        private_context_user_id = None
+        if connector_verification.private_recall_requested(text):
+            if not _allowed_chat_ids() or chat_id not in _allowed_chat_ids():
+                await _send_text(chat_id, "Private meeting memory over Telegram requires this chat in TELEGRAM_ALLOWED_CHAT_IDS plus operator verification.")
+                return
+            linked_operator = chat_id in _operator_telegram_chat_ids()
+            allowed, context_user_id, _reason = connector_verification.private_recall_gate(
+                db,
+                connector="telegram",
+                external_identity=chat_id,
+                current_user_id=link.user_id,
+                linked_operator_identity=linked_operator,
+            )
+            if not allowed:
+                await _send_text(chat_id, connector_verification.verification_required_message("Telegram"))
+                return
+            private_context_user_id = context_user_id
+
+        result = await _run_room_prompt(
+            db,
+            link.room_id,
+            link.user_id,
+            text,
+            chat_id=chat_id,
+            private_context_user_id=private_context_user_id,
+        )
         await _send_text(chat_id, str(result.get("text", "")))
     except Exception as exc:
         logger.exception("[telegram] Failed to process chat %s", chat_id)

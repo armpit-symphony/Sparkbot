@@ -94,7 +94,7 @@ def _wa_token() -> str:
     return _env_or_vault_secret("WHATSAPP_TOKEN", "whatsapp_token")
 
 def _wa_verify_token() -> str:
-    return _env_or_vault_secret("WHATSAPP_VERIFY_TOKEN", "whatsapp_verify_token", "sparkbot-wa-verify")
+    return _env_or_vault_secret("WHATSAPP_VERIFY_TOKEN", "whatsapp_verify_token", "")
 
 def _wa_app_id() -> str:
     return os.getenv("WHATSAPP_APP_ID", "").strip()
@@ -320,6 +320,7 @@ async def _run_room_prompt(
     content: str,
     *,
     wa_phone: str,
+    private_context_user_id: str | None = None,
 ) -> dict[str, Any]:
     from app.api.routes.chat.agents import get_agent, resolve_agent_from_message
     from app.api.routes.chat.llm import SYSTEM_PROMPT, stream_chat_with_tools
@@ -391,7 +392,8 @@ async def _run_room_prompt(
         system_prompt = base_prompt
 
     try:
-        memory_context = guardian_suite.memory.build_unified_context(user_id=user_id, room_id=room_id, query=agent_content)
+        context_user_id = private_context_user_id or user_id
+        memory_context = guardian_suite.memory.build_unified_context(user_id=context_user_id, room_id=room_id, query=agent_content)
     except Exception:
         memory_context = ""
     if memory_context:
@@ -529,8 +531,8 @@ async def _execute_pending_confirmation(
         room_id=uuid.UUID(room_id),
         model=None,
     )
-    if decision.action == "deny":
-        result = f"POLICY DENIED: {decision.reason}"
+    if decision.action not in {"allow", "confirm"}:
+        result = f"POLICY BLOCKED: {decision.reason}"
     else:
         result = await guardian_suite.executive.exec_with_guard(
             tool_name=tool_name,
@@ -646,8 +648,11 @@ def register_whatsapp_bridge(app: Any, get_db: Callable[[], Any]) -> None:
     Must be called AFTER app = FastAPI(...) and BEFORE uvicorn starts.
     Idempotent — safe to call even if WHATSAPP_ENABLED is false or creds are missing.
     """
-    if not (_wa_enabled() and _wa_phone_id() and _wa_token()):
-        logger.info("[whatsapp] Bridge disabled or not configured")
+    if not (_wa_enabled() and _wa_phone_id() and _wa_token() and _wa_verify_token()):
+        logger.info("[whatsapp] Bridge disabled or missing phone/token/verify token")
+        return
+    if not _wa_allowed_phones():
+        logger.warning("[whatsapp] Bridge disabled: WHATSAPP_ALLOWED_PHONES is required for public-safe inbound use")
         return
 
     try:
@@ -681,8 +686,9 @@ def register_whatsapp_bridge(app: Any, get_db: Callable[[], Any]) -> None:
         wa_phone = str(msg.from_user.wa_id)
         text = (msg.text or "").strip()
 
-        # Allowlist check
-        if _wa_allowed_phones() and wa_phone not in _wa_allowed_phones():
+        # Allowlist check: public-safe WhatsApp inbound requires explicit allowed phones.
+        allowed_phones = _wa_allowed_phones()
+        if not allowed_phones or wa_phone not in allowed_phones:
             await client.send_message(
                 to=wa_phone,
                 text="This WhatsApp number is not authorised to use Sparkbot.",
@@ -702,6 +708,35 @@ def register_whatsapp_bridge(app: Any, get_db: Callable[[], Any]) -> None:
 
             if lower in {"hi", "hello", "/start", "/help", "help"}:
                 await client.send_message(to=wa_phone, text=_help_text())
+                return
+
+            from app.services import connector_verification
+
+            connector_pin = connector_verification.parse_pin_command(text)
+            if connector_pin:
+                operator_user_id = connector_verification.resolve_operator_user_id(db)
+                if not operator_user_id:
+                    await client.send_message(to=wa_phone, text="Operator PIN is configured, but no Sparkbot operator user could be linked. Use Main Chat to finish setup.")
+                    return
+                verified = connector_verification.verify_connector_pin(
+                    connector="whatsapp",
+                    external_identity=wa_phone,
+                    submitted_pin=connector_pin,
+                    linked_sparkbot_user_id=operator_user_id,
+                )
+                await client.send_message(
+                    to=wa_phone,
+                    text=(
+                        connector_verification.verification_success_message(verified)
+                        if verified
+                        else "Operator verification failed. Private meeting memory remains locked."
+                    ),
+                )
+                return
+
+            if connector_verification.is_logout_command(text):
+                connector_verification.close_connector_session(connector="whatsapp", external_identity=wa_phone)
+                await client.send_message(to=wa_phone, text=connector_verification.verification_closed_message())
                 return
 
             if lower in {"deny", "cancel", "/deny", "/cancel"}:
@@ -728,7 +763,28 @@ def register_whatsapp_bridge(app: Any, get_db: Callable[[], Any]) -> None:
                 return
 
             # Normal message
-            result = await _run_room_prompt(db, link.room_id, link.user_id, text, wa_phone=wa_phone)
+            private_context_user_id = None
+            if connector_verification.private_recall_requested(text):
+                allowed, context_user_id, _reason = connector_verification.private_recall_gate(
+                    db,
+                    connector="whatsapp",
+                    external_identity=wa_phone,
+                    current_user_id=link.user_id,
+                    linked_operator_identity=False,
+                )
+                if not allowed:
+                    await client.send_message(to=wa_phone, text=connector_verification.verification_required_message("WhatsApp"))
+                    return
+                private_context_user_id = context_user_id
+
+            result = await _run_room_prompt(
+                db,
+                link.room_id,
+                link.user_id,
+                text,
+                wa_phone=wa_phone,
+                private_context_user_id=private_context_user_id,
+            )
             for chunk in _chunk_text(str(result.get("text", ""))):
                 await client.send_message(to=wa_phone, text=chunk)
 

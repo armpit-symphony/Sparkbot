@@ -225,3 +225,15 @@ Capability model updates:
 - Balanced and Locked are now behaviorally different in backend policy for high-risk configured actions.
 - Task Guardian health checks expose app, Telegram, Discord, and Slack delivery choices, but app/in-room delivery remains default and external sends remain owner opt-in.
 - Public Docker/server defaults keep `BACKEND_WORKERS=1` until recurring schedulers have a leader lock or dedicated singleton worker.
+
+## Connector PIN Verification Update - 2026-05-21
+
+- Added connector-scoped, time-limited PIN verification sessions for private meeting recall.
+- Reused existing Guardian operator PIN hashing, verification, failed-attempt tracking, and lockout behavior; no raw PIN is stored in connector sessions.
+- Private meeting recall now fails closed unless the external connector has a linked/authorized operator identity or a valid connector PIN session.
+- Telegram private recall requires `TELEGRAM_ALLOWED_CHAT_IDS`; Telegram `/breakglass` now requires explicit `SPARKBOT_OPERATOR_TELEGRAM_CHAT_IDS` mapping.
+- Discord shared guild channels are blocked from private meeting recall; use DM plus `/pin <PIN>` for test/private recall.
+- Slack still requires signed request, allowed channel, allowed sender, and linked owner before private context is considered.
+- WhatsApp inbound now requires explicit `WHATSAPP_VERIFY_TOKEN` and `WHATSAPP_ALLOWED_PHONES`; the predictable runtime verify-token default was removed.
+- SMS/text remains future/unsupported.
+- Live connector QA remains required with test-only identities/channels.

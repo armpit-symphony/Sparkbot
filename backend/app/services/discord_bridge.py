@@ -330,6 +330,7 @@ async def _run_room_prompt(
     content: str,
     *,
     channel_id: str,
+    private_context_user_id: str | None = None,
 ) -> dict[str, Any]:
     from app.api.routes.chat.agents import get_agent, resolve_agent_from_message
     from app.api.routes.chat.llm import SYSTEM_PROMPT, stream_chat_with_tools
@@ -406,7 +407,8 @@ async def _run_room_prompt(
         system_prompt = base_prompt
 
     try:
-        memory_context = guardian_suite.memory.build_unified_context(user_id=user_id, room_id=room_id, query=agent_content)
+        context_user_id = private_context_user_id or user_id
+        memory_context = guardian_suite.memory.build_unified_context(user_id=context_user_id, room_id=room_id, query=agent_content)
     except Exception:
         memory_context = ""
     if memory_context:
@@ -691,6 +693,36 @@ async def on_message(message: discord.Message) -> None:
             await message.reply(_help_text())
             return
 
+        from app.services import connector_verification
+
+        connector_pin = connector_verification.parse_pin_command(text)
+        if connector_pin:
+            if not is_dm:
+                await message.reply("Private meeting recall PIN verification is only available in Discord DMs. Use Main Chat or DM the Sparkbot test bot.")
+                return
+            operator_user_id = connector_verification.resolve_operator_user_id(db)
+            if not operator_user_id:
+                await message.reply("Operator PIN is configured, but no Sparkbot operator user could be linked. Use Main Chat to finish setup.")
+                return
+            verified = connector_verification.verify_connector_pin(
+                connector="discord",
+                external_identity=str(message.author.id),
+                channel_id=channel_id,
+                submitted_pin=connector_pin,
+                linked_sparkbot_user_id=operator_user_id,
+            )
+            await message.reply(
+                connector_verification.verification_success_message(verified)
+                if verified
+                else "Operator verification failed. Private meeting memory remains locked."
+            )
+            return
+
+        if connector_verification.is_logout_command(text):
+            connector_verification.close_connector_session(connector="discord", external_identity=str(message.author.id), channel_id=channel_id)
+            await message.reply(connector_verification.verification_closed_message())
+            return
+
         if lower in {"/deny", "/cancel"}:
             if not link.pending_confirm_id:
                 await message.reply("There is no pending approval to cancel.")
@@ -715,7 +747,32 @@ async def on_message(message: discord.Message) -> None:
             return
 
         # Normal message
-        result = await _run_room_prompt(db, link.room_id, link.user_id, text, channel_id=channel_id)
+        private_context_user_id = None
+        if connector_verification.private_recall_requested(text):
+            if not is_dm:
+                await message.reply("Private meeting memory requires a Discord DM plus operator verification. Reply with /pin <PIN> in DM, or use Main Chat.")
+                return
+            allowed, context_user_id, _reason = connector_verification.private_recall_gate(
+                db,
+                connector="discord",
+                external_identity=str(message.author.id),
+                channel_id=channel_id,
+                current_user_id=link.user_id,
+                linked_operator_identity=False,
+            )
+            if not allowed:
+                await message.reply(connector_verification.verification_required_message("Discord"))
+                return
+            private_context_user_id = context_user_id
+
+        result = await _run_room_prompt(
+            db,
+            link.room_id,
+            link.user_id,
+            text,
+            channel_id=channel_id,
+            private_context_user_id=private_context_user_id,
+        )
         reply_text = str(result.get("text", ""))
         for chunk in _chunk_text(reply_text):
             await message.reply(chunk)

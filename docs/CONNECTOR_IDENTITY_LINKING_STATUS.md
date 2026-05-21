@@ -1,7 +1,7 @@
 # Connector Identity Linking Status
 
 Date: 2026-05-21
-Branch: `public-release-connector-identity-live-qa`
+Branch: `public-release-connector-pin-verification`
 Previous meeting-memory commit: `7f327b2e45011facef7bb751166adac6e5c223cc`
 
 ## Rule
@@ -40,3 +40,15 @@ No live connector messages were sent. Live connector QA remains UNKNOWN until te
 ## Recommended Next Step
 
 Before marking connector memory continuity GREEN, configure test identities only and run live QA for Telegram, Discord, WhatsApp, and Slack. Then decide whether Telegram/Discord/WhatsApp should also require fail-closed allowlists for public server deployments or keep isolated auto-linking as acceptable public behavior.
+
+## Connector PIN Verification Update - 2026-05-21
+
+- Added connector-scoped, time-limited PIN verification sessions for private meeting recall.
+- Reused existing Guardian operator PIN hashing, verification, failed-attempt tracking, and lockout behavior; no raw PIN is stored in connector sessions.
+- Private meeting recall now fails closed unless the external connector has a linked/authorized operator identity or a valid connector PIN session.
+- Telegram private recall requires `TELEGRAM_ALLOWED_CHAT_IDS`; Telegram `/breakglass` now requires explicit `SPARKBOT_OPERATOR_TELEGRAM_CHAT_IDS` mapping.
+- Discord shared guild channels are blocked from private meeting recall; use DM plus `/pin <PIN>` for test/private recall.
+- Slack still requires signed request, allowed channel, allowed sender, and linked owner before private context is considered.
+- WhatsApp inbound now requires explicit `WHATSAPP_VERIFY_TOKEN` and `WHATSAPP_ALLOWED_PHONES`; the predictable runtime verify-token default was removed.
+- SMS/text remains future/unsupported.
+- Live connector QA remains required with test-only identities/channels.

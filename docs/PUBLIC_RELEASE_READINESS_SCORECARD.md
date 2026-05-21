@@ -1,7 +1,7 @@
 # Sparkbot Public Release Readiness Scorecard
 
 Date: 2026-05-21
-Branch: `public-release-connector-identity-live-qa`
+Branch: `public-release-connector-pin-verification`
 Legend: GREEN = ready enough, YELLOW = needs QA/polish, RED = blocker, UNKNOWN = needs live/manual test.
 
 | Area | Rating | Evidence | Blocker if any | Recommended next action |
@@ -16,7 +16,7 @@ Legend: GREEN = ready enough, YELLOW = needs QA/polish, RED = blocker, UNKNOWN =
 | Specialty Wing/custom agents | YELLOW | Built-ins locked, custom edit and model-seat binding implemented. | Browser flow and live response QA remain. | Test custom agent with model seat. |
 | Command Center AI Setup | YELLOW | Model-seat editor and local config exist. | Browser QA required. | Test save/reload/error states. |
 | Command Center Security | YELLOW | Personal/Balanced/Locked/Custom are persisted; backend policy tests pass. | Browser pending/elevated confirmation UX not verified. | Run profile matrix QA with safe actions. |
-| Unified memory/context | GREEN | Meeting notes roll into shared work memory, edits supersede stale rollups, drafts/scaffolds are skipped, and Main Chat uses the same context adapter. Slack now fails closed unless signed, channel-allowed, sender-allowed, and linked to an existing owner. | Live connector identity QA remains required for Telegram/Discord/WhatsApp/Slack before cross-channel recall is GREEN. | Run live connector identity QA with test accounts only. |
+| Unified memory/context | GREEN | Meeting notes roll into shared work memory, edits supersede stale rollups, drafts/scaffolds are skipped, and Main Chat uses the same context adapter. Slack now fails closed unless signed, channel-allowed, sender-allowed, and linked to an existing owner; connector PIN sessions add time-limited step-up verification for private recall. | Live connector PIN and identity QA remains required for Telegram/Discord/WhatsApp/Slack before cross-channel recall is GREEN. | Run live connector PIN and identity QA with test accounts only. |
 | Task Guardian health checks | YELLOW | PC/server templates now store public-safe delivery preferences, preserve app history, record delivery warnings, write source-labeled memory, and expose app/Telegram/Discord/Slack/WhatsApp/SMS status in Command Center. | Live connector delivery and mobile-first NL setup still need QA; SMS is explicitly future/unsupported. | Run app-only, configured connector, missing-setup, and SMS unsupported QA. |
 | Robo Preview boundary | GREEN | Backend tests pass; package tar contains non-executing preview stub. | Full R&D bridge remains tracked and must not be blindly extracted. | Extract only package stub/public boundary. |
 | Packaging/downloads | YELLOW | Package script now excludes `.github`, `.agents`, backend/frontend tests, Playwright config, test scripts, virtualenvs, dotenv/example/log/DB/key artifacts, private docs, and replaces the Robo bridge with the preview stub. | Needs final package inspection on the generated artifacts plus Windows/Git Bash and clean-clone smoke. | Run package dry-run/inspection on release candidate and publish only sanitized bundles. |
@@ -33,4 +33,4 @@ YELLOW: most product surfaces, packaging/downloads, and public/private separatio
 
 RED: no current scorecard area remains RED after the source-boundary cleanup, assuming package inspection stays clean. Blind `Sparkbot_shell` import is still not approved.
 
-UNKNOWN: live Local AI plus Telegram/Discord/WhatsApp connector recall/delivery until tested against real test endpoints/channels. Slack identity hardening is automated but live Slack recall is UNKNOWN until a signed/channel-allowed/sender-allowed/linked test app is configured. SMS/text remains future/unsupported.
+UNKNOWN: live Local AI plus Telegram/Discord/WhatsApp connector recall/delivery until tested against real test endpoints/channels. Connector PIN hardening is automated, but live Telegram/Discord/WhatsApp/Slack recall remains UNKNOWN until test-only identities are configured. SMS/text remains future/unsupported.

@@ -1,7 +1,7 @@
 # Sparkbot Public Release Live QA Plan
 
 Date: 2026-05-20
-Branch: `public-release-connector-identity-live-qa`
+Branch: `public-release-connector-pin-verification`
 Scope: live/manual validation plan only. Do not run destructive checks, do not send surprise external messages, and do not connect private production systems.
 
 ## Local AI
@@ -79,3 +79,15 @@ Scope: live/manual validation plan only. Do not run destructive checks, do not s
 - No LIMA AI OS, Arc Bot, LIMA Office, or LIMA IT wiring.
 - No production connector channels.
 - No destructive file, server, shell, or browser actions.
+
+## Connector PIN Verification QA Addendum
+
+| QA item | Priority | Live connector/local provider required? | Expected result | Pass/Fail | Notes |
+|---|---|---|---|---|---|
+| Valid connector PIN session | P0 | No for unit test; yes for live connector | `/pin <PIN>` creates a short connector-scoped session without storing the PIN plaintext. | Automated PASS | Unit tests cover session creation and no raw PIN in session dump. |
+| Invalid connector PIN | P0 | No | Invalid PIN does not create a session and private meeting recall remains locked. | Automated PASS | Unit test covered. |
+| Expired connector session | P0 | No | Expired connector session fails closed and asks for verification again. | Automated PASS | Unit test covered. |
+| Telegram private recall gate | P0 | Telegram test bot/chat | Unallowlisted chat is denied; allowlisted chat requires operator mapping or `/pin <PIN>`. | Not run | Requires test bot; do not use production token. |
+| Discord shared channel recall block | P0 | Discord test bot/channel | Guild/shared channel request for meeting notes is told to use DM/Main Chat; no notes are returned. | Not run | Live test required. |
+| Slack signed allowed user recall | P0 | Slack test app/channel/user | Signature, channel allowlist, sender allowlist, and linked owner are required before recall. | Not run | Existing Slack helper tests still pass. |
+| WhatsApp public setup fail closed | P0 | No for unit test; yes for live sandbox | Missing verify token or empty allowed-phone list disables inbound bridge; unlisted phone is denied. | Automated PASS for defaults | Live sandbox required. |
