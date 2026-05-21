@@ -1,7 +1,7 @@
 # Connector PIN Verification Status
 
 Date: 2026-05-21
-Branch: `public-release-connector-pin-verification`
+Branch: `public-release-live-connector-qa`
 Base commit: `da8af1fe9570d89d0c60907b2b2f3b37f1252355`
 
 ## Security Model
@@ -49,3 +49,13 @@ Connector identity and operator PIN verification are separate controls.
 | P0_BLOCKER | Live connector verification has not been run. | Configure test-only Telegram/Discord/Slack/WhatsApp identities and run live QA without production channels. |
 | P1_POLISH | Discord pending approvals are still channel-scoped for non-private flows. | Prefer `DISCORD_DM_ONLY=true` for public QA or later key approvals by channel plus author id. |
 | P1_POLISH | PIN sessions are process-local. | Accept for public MVP; document that restart clears connector verification. |
+
+## Live Connector QA Update - 2026-05-21
+
+- Created `docs/PUBLIC_RELEASE_LIVE_CONNECTOR_QA_RESULTS.md` for non-secret live QA evidence.
+- Current process environment does not expose usable Telegram, Discord, Slack, WhatsApp, SMS/text, Task Guardian external-delivery, or operator PIN test configuration.
+- Local env-file inspection did not confirm any safe test-only target; `DISCORD_ENABLED` is present but disabled.
+- No live connector messages were sent and no secrets/PINs/tokens/IDs were printed.
+- Telegram, Discord, Slack, WhatsApp, and Task Guardian external delivery remain UNKNOWN for live QA.
+- SMS/text remains FUTURE_UNSUPPORTED.
+- Sparkbot_shell extraction map refresh is reasonable for classification/planning, but public external recall should stay YELLOW/UNKNOWN until live connector QA passes.

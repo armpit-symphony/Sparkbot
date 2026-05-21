@@ -1,7 +1,7 @@
 # Sparkbot Public Release Live QA Plan
 
 Date: 2026-05-20
-Branch: `public-release-connector-pin-verification`
+Branch: `public-release-live-connector-qa`
 Scope: live/manual validation plan only. Do not run destructive checks, do not send surprise external messages, and do not connect private production systems.
 
 ## Local AI
@@ -91,3 +91,7 @@ Scope: live/manual validation plan only. Do not run destructive checks, do not s
 | Discord shared channel recall block | P0 | Discord test bot/channel | Guild/shared channel request for meeting notes is told to use DM/Main Chat; no notes are returned. | Not run | Live test required. |
 | Slack signed allowed user recall | P0 | Slack test app/channel/user | Signature, channel allowlist, sender allowlist, and linked owner are required before recall. | Not run | Existing Slack helper tests still pass. |
 | WhatsApp public setup fail closed | P0 | No for unit test; yes for live sandbox | Missing verify token or empty allowed-phone list disables inbound bridge; unlisted phone is denied. | Automated PASS for defaults | Live sandbox required. |
+
+## Live Connector QA Result Pointer
+
+Live connector QA was not run on 2026-05-21 because no safe test-only connector identities/channels were configured in the current process environment. See `docs/PUBLIC_RELEASE_LIVE_CONNECTOR_QA_RESULTS.md` for exact non-secret missing configuration names and readiness ratings.

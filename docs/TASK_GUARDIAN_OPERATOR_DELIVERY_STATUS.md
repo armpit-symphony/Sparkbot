@@ -76,3 +76,13 @@ Remaining after this pass:
 - Browser QA notes save/edit and role permissions.
 - Live QA meeting recall through Main Chat and linked Telegram/Discord/WhatsApp/Slack identities.
 - Treat SMS/text as future until a real connector and identity model exist.
+
+## Live Connector QA Update - 2026-05-21
+
+- Created `docs/PUBLIC_RELEASE_LIVE_CONNECTOR_QA_RESULTS.md` for non-secret live QA evidence.
+- Current process environment does not expose usable Telegram, Discord, Slack, WhatsApp, SMS/text, Task Guardian external-delivery, or operator PIN test configuration.
+- Local env-file inspection did not confirm any safe test-only target; `DISCORD_ENABLED` is present but disabled.
+- No live connector messages were sent and no secrets/PINs/tokens/IDs were printed.
+- Telegram, Discord, Slack, WhatsApp, and Task Guardian external delivery remain UNKNOWN for live QA.
+- SMS/text remains FUTURE_UNSUPPORTED.
+- Sparkbot_shell extraction map refresh is reasonable for classification/planning, but public external recall should stay YELLOW/UNKNOWN until live connector QA passes.

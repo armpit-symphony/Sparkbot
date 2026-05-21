@@ -1,7 +1,7 @@
 # Sparkbot Public Release Browser QA Checklist
 
 Date: 2026-05-20
-Branch: `public-release-connector-pin-verification`
+Branch: `public-release-live-connector-qa`
 Purpose: manual browser QA checklist before `Sparkbot_shell` extraction. This is a validation artifact only; it does not approve code copying or feature expansion.
 
 Use this checklist against a fresh local install and, where noted, a server-style install. Record the result in the Pass/Fail and Notes columns. Do not use real customer data or private production channels.
@@ -95,3 +95,7 @@ Use this checklist against a fresh local install and, where noted, a server-styl
 | Discord shared channel recall block | P0 | Discord test bot/channel | Guild/shared channel request for meeting notes is told to use DM/Main Chat; no notes are returned. | Not run | Live test required. |
 | Slack signed allowed user recall | P0 | Slack test app/channel/user | Signature, channel allowlist, sender allowlist, and linked owner are required before recall. | Not run | Existing Slack helper tests still pass. |
 | WhatsApp public setup fail closed | P0 | No for unit test; yes for live sandbox | Missing verify token or empty allowed-phone list disables inbound bridge; unlisted phone is denied. | Automated PASS for defaults | Live sandbox required. |
+
+## Live Connector QA Result Pointer
+
+Live connector QA was not run on 2026-05-21 because no safe test-only connector identities/channels were configured in the current process environment. See `docs/PUBLIC_RELEASE_LIVE_CONNECTOR_QA_RESULTS.md` for exact non-secret missing configuration names and readiness ratings.
