@@ -6,7 +6,7 @@ from pathlib import Path
 
 from sqlmodel import Session, SQLModel, create_engine
 
-from app.crud import assign_task, complete_task, create_chat_meeting_artifact, create_chat_message, create_chat_room, create_task, delete_task, get_task
+from app.crud import assign_task, complete_task, create_chat_meeting_artifact, create_chat_message, create_chat_room, create_task, delete_task, get_task, update_chat_meeting_artifact
 from app.models import ChatRoom, ChatUser, MeetingArtifactType, UserType
 
 
@@ -123,6 +123,45 @@ def test_guardian_spine_captures_meeting_artifact(monkeypatch, tmp_path) -> None
         assert tasks[0].type in {"meeting_followup", "bug"}
         meeting_file = tmp_path / "guardian" / "spine" / "meetings" / f"room-{room.id}-artifact-{artifact.id}.md"
         assert meeting_file.exists()
+
+
+def test_meeting_note_create_and_update_are_source_labeled(monkeypatch, tmp_path) -> None:
+    _reload_spine(monkeypatch, tmp_path)
+    with _session() as session:
+        user, room = _seed_room(session)
+
+        artifact = create_chat_meeting_artifact(
+            session=session,
+            room_id=room.id,
+            created_by_user_id=user.id,
+            type=MeetingArtifactType.NOTES.value,
+            content_markdown=(
+                "# Round Table\n\n"
+                "## Discussion Summary\nThe meeting reviewed memory continuity.\n\n"
+                "## Key Decisions\n- Keep notes in shared company memory.\n"
+            ),
+            meta_json={"source": "meeting_manager"},
+        )
+
+        assert artifact.meta_json is not None
+        assert artifact.meta_json["meeting_id"] == str(room.id)
+        assert artifact.meta_json["artifact_id"] == str(artifact.id)
+        assert artifact.meta_json["source"] == "meeting_manager"
+        assert artifact.meta_json["memory_rollup"] is True
+        assert "Keep notes in shared company memory" in artifact.meta_json["decisions"]
+
+        updated = update_chat_meeting_artifact(
+            session=session,
+            artifact=artifact,
+            updated_by_user_id=user.id,
+            content_markdown="## Discussion Summary\nEdited summary.\n\n## Next Steps\n- Test main Chat recall.\n",
+            meta_json={"draft": False, "memory_rollup": True},
+        )
+
+        assert updated.meta_json is not None
+        assert updated.meta_json["source"] == "manual_edit"
+        assert updated.meta_json["updated_by"] == str(user.id)
+        assert "Test main Chat recall" in updated.meta_json["next_steps"]
 
 
 def test_draft_meeting_artifact_does_not_roll_up_to_memory(monkeypatch, tmp_path) -> None:

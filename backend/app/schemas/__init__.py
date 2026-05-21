@@ -26,6 +26,7 @@ from app.schemas.chat import (
     RoomInviteUse,
     MeetingArtifactBase,
     MeetingArtifactCreate,
+    MeetingArtifactUpdate,
     MeetingArtifactResponse,
 )
 
@@ -54,5 +55,6 @@ __all__ = [
     "RoomInviteUse",
     "MeetingArtifactBase",
     "MeetingArtifactCreate",
+    "MeetingArtifactUpdate",
     "MeetingArtifactResponse",
 ]

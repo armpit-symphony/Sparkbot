@@ -467,6 +467,95 @@ def delete_expired_chat_invites(session: Session) -> int:
 
 # ============== Chat Meeting Artifact CRUD ==============
 
+def _normalize_meeting_artifact_meta(
+    *,
+    session: Session,
+    room_id: uuid.UUID,
+    created_by_user_id: uuid.UUID,
+    artifact_type: str,
+    content_markdown: str,
+    meta_json: Optional[dict],
+    artifact_id: uuid.UUID | None = None,
+    updated_by_user_id: uuid.UUID | None = None,
+    source: str | None = None,
+) -> dict | None:
+    meta = dict(meta_json or {})
+    if artifact_type != MeetingArtifactType.NOTES.value:
+        return meta_json
+    try:
+        from app.services.guardian.meeting_notes import normalize_meeting_note_meta
+
+        room = get_chat_room_by_id(session, room_id)
+        return normalize_meeting_note_meta(
+            room_id=room_id,
+            artifact_id=artifact_id,
+            room_name=room.name if room else str(room_id),
+            created_by=created_by_user_id,
+            updated_by=updated_by_user_id or created_by_user_id,
+            source=source or meta.get("source") or "meeting_manager",
+            content_markdown=content_markdown,
+            existing=meta,
+            draft=bool(meta.get("draft", False)),
+            memory_rollup=meta.get("memory_rollup"),
+        )
+    except Exception:
+        meta.setdefault("meeting_id", str(room_id))
+        meta.setdefault("source", source or "meeting_manager")
+        meta.setdefault("memory_rollup", not bool(meta.get("draft", False)))
+        return meta
+
+
+def _roll_up_meeting_artifact(
+    *,
+    session: Session,
+    artifact: ChatMeetingArtifact,
+    artifact_type: str,
+    actor_user_id: uuid.UUID,
+    emit_spine_output: bool = True,
+) -> None:
+    try:
+        from app.services.guardian.spine import capture_meeting_artifact
+        from app.services.guardian.spine import emit_meeting_output_event
+
+        room = get_chat_room_by_id(session, artifact.room_id)
+        creator = get_chat_user_by_id(session, actor_user_id)
+        if emit_spine_output:
+            capture_meeting_artifact(
+                session=session,
+                artifact=artifact,
+                room_name=room.name if room else str(artifact.room_id),
+                created_by_username=creator.username if creator else None,
+            )
+            emit_meeting_output_event(
+                room_id=str(artifact.room_id),
+                actor_id=str(actor_user_id),
+                artifact_type=artifact_type,
+                artifact_id=str(artifact.id),
+                content_markdown=artifact.content_markdown,
+                session=session,
+            )
+        from app.services.guardian import memory as guardian_memory
+
+        artifact_meta = artifact.meta_json if isinstance(artifact.meta_json, dict) else {}
+        should_roll_up_to_memory = (
+            not artifact_meta.get("parent_notes_id")
+            and not artifact_meta.get("draft")
+            and artifact_meta.get("memory_rollup", True) is not False
+        )
+        if should_roll_up_to_memory:
+            guardian_memory.remember_meeting_artifact(
+                user_id=str(actor_user_id),
+                room_id=str(artifact.room_id),
+                artifact_id=str(artifact.id),
+                artifact_type=artifact_type,
+                content_markdown=artifact.content_markdown,
+                room_name=room.name if room else str(artifact.room_id),
+                project_id=artifact_meta.get("project_id"),
+            )
+    except Exception:
+        pass
+
+
 def create_chat_meeting_artifact(
     session: Session,
     room_id: uuid.UUID,
@@ -477,6 +566,14 @@ def create_chat_meeting_artifact(
     window_end_ts: Optional[datetime] = None,
     meta_json: Optional[dict] = None,
 ) -> ChatMeetingArtifact:
+    normalized_meta = _normalize_meeting_artifact_meta(
+        session=session,
+        room_id=room_id,
+        created_by_user_id=created_by_user_id,
+        artifact_type=type,
+        content_markdown=content_markdown,
+        meta_json=meta_json,
+    )
     artifact = ChatMeetingArtifact(
         room_id=room_id,
         created_by_user_id=created_by_user_id,
@@ -484,51 +581,73 @@ def create_chat_meeting_artifact(
         content_markdown=content_markdown,
         window_start_ts=window_start_ts,
         window_end_ts=window_end_ts,
-        meta_json=meta_json,
+        meta_json=normalized_meta,
     )
     session.add(artifact)
     session.commit()
     session.refresh(artifact)
-    try:
-        from app.services.guardian.spine import capture_meeting_artifact
-        from app.services.guardian.spine import emit_meeting_output_event
+    artifact.meta_json = _normalize_meeting_artifact_meta(
+        session=session,
+        room_id=room_id,
+        created_by_user_id=created_by_user_id,
+        artifact_type=type,
+        content_markdown=content_markdown,
+        meta_json=artifact.meta_json,
+        artifact_id=artifact.id,
+    )
+    session.add(artifact)
+    session.commit()
+    session.refresh(artifact)
+    _roll_up_meeting_artifact(
+        session=session,
+        artifact=artifact,
+        artifact_type=type,
+        actor_user_id=created_by_user_id,
+    )
+    return artifact
 
-        room = get_chat_room_by_id(session, room_id)
-        creator = get_chat_user_by_id(session, created_by_user_id)
-        capture_meeting_artifact(
-            session=session,
-            artifact=artifact,
-            room_name=room.name if room else str(room_id),
-            created_by_username=creator.username if creator else None,
-        )
-        emit_meeting_output_event(
-            room_id=str(room_id),
-            actor_id=str(created_by_user_id),
-            artifact_type=type,
-            artifact_id=str(artifact.id),
-            content_markdown=content_markdown,
-            session=session,
-        )
-        from app.services.guardian import memory as guardian_memory
 
-        artifact_meta = meta_json if isinstance(meta_json, dict) else {}
-        should_roll_up_to_memory = (
-            not artifact_meta.get("parent_notes_id")
-            and not artifact_meta.get("draft")
-            and artifact_meta.get("memory_rollup", True) is not False
-        )
-        if should_roll_up_to_memory:
-            guardian_memory.remember_meeting_artifact(
-                user_id=str(created_by_user_id),
-                room_id=str(room_id),
-                artifact_id=str(artifact.id),
-                artifact_type=type,
-                content_markdown=content_markdown,
-                room_name=room.name if room else str(room_id),
-                project_id=artifact_meta.get("project_id"),
-            )
-    except Exception:
-        pass
+def get_chat_meeting_artifact_by_id(
+    session: Session,
+    artifact_id: uuid.UUID,
+) -> Optional[ChatMeetingArtifact]:
+    return session.get(ChatMeetingArtifact, artifact_id)
+
+
+def update_chat_meeting_artifact(
+    session: Session,
+    artifact: ChatMeetingArtifact,
+    updated_by_user_id: uuid.UUID,
+    content_markdown: Optional[str] = None,
+    meta_json: Optional[dict] = None,
+) -> ChatMeetingArtifact:
+    if content_markdown is not None:
+        artifact.content_markdown = content_markdown
+    merged_meta = dict(artifact.meta_json or {})
+    if meta_json:
+        merged_meta.update(meta_json)
+    merged_meta["source"] = "manual_edit" if artifact.type == MeetingArtifactType.NOTES else merged_meta.get("source", "manual_edit")
+    artifact.meta_json = _normalize_meeting_artifact_meta(
+        session=session,
+        room_id=artifact.room_id,
+        created_by_user_id=artifact.created_by_user_id,
+        artifact_type=artifact.type.value,
+        content_markdown=artifact.content_markdown,
+        meta_json=merged_meta,
+        artifact_id=artifact.id,
+        updated_by_user_id=updated_by_user_id,
+        source=str(merged_meta.get("source") or "manual_edit"),
+    )
+    session.add(artifact)
+    session.commit()
+    session.refresh(artifact)
+    _roll_up_meeting_artifact(
+        session=session,
+        artifact=artifact,
+        artifact_type=artifact.type.value,
+        actor_user_id=updated_by_user_id,
+        emit_spine_output=False,
+    )
     return artifact
 
 

@@ -405,7 +405,10 @@ async def run_meeting_heartbeat(
         bot_user = _get_or_create_agent_bot_user(session, participant_handle)
         meta_json: dict[str, Any] = {
             "agent": participant_handle,
-            "source": MEETING_HEARTBEAT_SOURCE,
+            "source": "meeting_manager",
+                        "origin": MEETING_HEARTBEAT_SOURCE,
+                        "memory_rollup": True,
+                        "draft": False,
             "meeting_phase": meeting_phase,
         }
         if agent_routing_payload:

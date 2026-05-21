@@ -1,7 +1,7 @@
 # Sparkbot Public Release Browser QA Checklist
 
 Date: 2026-05-20
-Branch: `public-release-task-delivery-operator-channels`
+Branch: `public-release-meeting-memory-operator-spine`
 Purpose: manual browser QA checklist before `Sparkbot_shell` extraction. This is a validation artifact only; it does not approve code copying or feature expansion.
 
 Use this checklist against a fresh local install and, where noted, a server-style install. Record the result in the Pass/Fail and Notes columns. Do not use real customer data or private production channels.
@@ -21,7 +21,7 @@ Use this checklist against a fresh local install and, where noted, a server-styl
 | 11 | Meeting Manager seat 1 | P0 | At least one configured model path | Seat 1 is labeled as manager/chair and drives first ideas, assessment, assignments, assigned work, and summary. |  |  |
 | 12 | Per-seat model selection | P0 | Optional; live provider for response | Workstation and Meeting Room selectors preserve `seat:<modelSeatId>` choices and distinguish duplicate model IDs. |  |  |
 | 13 | Structured assignments | P0 | At least one configured model path | Manager assignments persist as `meeting_assignments` artifacts and render assignment cards without manual notes generation. |  |  |
-| 14 | Manager wrap-up/checkpoint memory save | P1 | At least one configured model path | Manager checkpoint/wrap-up creates bounded shared memory/context; per-turn meeting notes are not auto-generated. |  |  |
+| 14 | Manager wrap-up/checkpoint memory save | P1 | At least one configured model path | Manager checkpoint/wrap-up creates bounded shared memory/context; saved notes are source-labeled; per-turn meeting notes are not auto-generated. |  |  |
 | 15 | Task Guardian health checks | P0 | No for app-only | PC and Server Health Check templates appear, can be added/edited safely, and recent report output is visible in Command Center. |  |  |
 | 16 | PC Health Check | P0 | No | App-only PC health run completes with read-only status, severity sections, and no raw secrets/log dumps. |  |  |
 | 17 | Server Health Check | P0 | No | App-only server health run completes with read-only status and warns without mutating services/files. |  |  |
@@ -54,3 +54,20 @@ Use this checklist against a fresh local install and, where noted, a server-styl
 | SMS/text unsupported behavior | P1 | No | Selecting/requesting SMS records setup-needed/future status and does not send anything. |  |  |
 | Delivery memory continuity | P1 | No for app-only | Latest health report and delivery status are retrievable through shared memory/context without duplicate report spam. |  |  |
 | Unauthorized connector access | P0 | Yes, test connector only | Unknown or unlinked connector users cannot retrieve or receive private Task Guardian health reports. |  |  |
+
+
+## Meeting memory continuity addendum
+
+| QA item | Priority | Live connector/local provider required? | Expected result | Pass/Fail | Notes |
+|---|---|---|---|---|---|
+| Manager saves meeting notes | P0 | At least one configured model path | Generate Meeting Notes creates a `notes` artifact with source-labeled metadata and shared memory rollup. |  |  |
+| Manager edits meeting notes | P0 | No | OWNER/MOD can edit the latest notes and save; updated notes replace stale active memory context. |  |  |
+| Main Chat retrieves meeting notes | P0 | One configured model path | Asking Main Chat about recent Round Table decisions/action items uses the saved meeting rollup. |  |  |
+| Telegram retrieves meeting notes | P1 | Yes, linked test chat only | Linked/authorized Telegram identity can ask about recent Round Table notes through unified context. |  |  |
+| Discord retrieves meeting notes | P1 | Yes, linked test channel/user only | Linked/authorized Discord identity can ask about meeting decisions without broad guild exposure. |  |  |
+| WhatsApp retrieves meeting notes | P1 | Yes, linked test number only | Linked/authorized WhatsApp number can ask about recent notes; unknown numbers cannot. |  |  |
+| Slack retrieves meeting notes | P1 | Yes, test workspace/channel only | Slack behavior is documented as identity-limited unless explicit linking is configured; no private notes leak to unsigned/unlinked requests. |  |  |
+| Draft notes do not leak | P0 | No | Draft/scaffold/failed-generation notes are not returned as final shared memory. |  |  |
+| Per-turn notes remain disabled | P0 | At least one configured model path | Normal participant turns do not create notes artifacts or memory rollups. |  |  |
+| Edited notes dedupe/update memory | P0 | No | Old edited decisions are absent from active context after saving updated notes. |  |  |
+| Unauthorized connector user cannot retrieve notes | P0 | Yes, test connector only | Unknown/unlinked connector user receives setup/authorization handling and no meeting-note content. |  |  |

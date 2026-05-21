@@ -181,3 +181,21 @@ Implemented:
 - Meeting Room displays current phase and latest structured assignments from `meeting_assignments` artifacts.
 - Meeting manifests preserve model seat setup status, model-seat id, route, auth mode, and agent provisioning on backend/local reload.
 - Per-turn generated notes remain disabled; this pass did not change manager wrap-up/checkpoint/manual notes behavior.
+
+## Meeting Memory Operator Spine Update - 2026-05-21
+
+Branch: `public-release-meeting-memory-operator-spine`
+
+Completed in this pass:
+
+- Added source-labeled meeting-note metadata for saved/generated Meeting Manager notes.
+- Added OWNER/MOD meeting artifact editing and a Meeting Room notes editor.
+- Updated meeting-note memory rollups so edits supersede stale active rollups for the same artifact.
+- Kept per-turn notes disabled and blocked draft/failed-generation notes from shared memory rollup.
+- Documented Main Chat and connector continuity through the shared context path with explicit identity-linking limits.
+
+Remaining after this pass:
+
+- Browser QA notes save/edit and role permissions.
+- Live QA meeting recall through Main Chat and linked Telegram/Discord/WhatsApp/Slack identities.
+- Treat SMS/text as future until a real connector and identity model exist.

@@ -204,7 +204,14 @@ async def generate_meeting_notes(
         type="notes",
         content_markdown=notes_md,
         window_end_ts=window_end,
-        meta_json={"model": model, "llm_ok": llm_ok, "senders": senders},
+        meta_json={
+            "model": model,
+            "llm_ok": llm_ok,
+            "senders": senders,
+            "source": "meeting_manager",
+            "memory_rollup": bool(llm_ok),
+            "draft": not bool(llm_ok),
+        },
     )
 
     # ── 5. seed Spine tasks from action items and decisions ───────────────────

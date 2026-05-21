@@ -1,7 +1,7 @@
 # Sparkbot Public Release Live QA Plan
 
 Date: 2026-05-20
-Branch: `public-release-task-delivery-operator-channels`
+Branch: `public-release-meeting-memory-operator-spine`
 Scope: live/manual validation plan only. Do not run destructive checks, do not send surprise external messages, and do not connect private production systems.
 
 ## Local AI
@@ -30,6 +30,17 @@ Scope: live/manual validation plan only. Do not run destructive checks, do not s
 | Natural-language Telegram setup | In Main Chat, ask: "Send me a server health report every day at 6 AM on Telegram." Use a test connector only. | Sparkbot schedules or offers a confirmable Task Guardian job with Telegram selected; no external send occurs until the job runs or is manually run. |
 | Natural-language SMS setup | Ask: "Text me a PC health report every morning." | Sparkbot records SMS/text as unsupported/setup-needed or asks for setup; it does not claim SMS delivery is live. |
 | Inspect scheduled destination | Ask where daily health reports are being delivered. | Sparkbot can summarize app/default plus selected channels and last delivery warning/status. |
+
+## Meeting Memory Continuity
+
+| Scenario | Safe test | Expected result |
+|---|---|---|
+| Main Chat meeting recall | Generate or edit notes in a Round Table, then ask Main Chat what was decided. | Response cites relevant saved notes/action items through shared memory. |
+| Telegram meeting recall | Use a linked test Telegram chat and ask what happened in the last Round Table. | Response uses meeting notes only for the linked/authorized room/user identity. |
+| Discord meeting recall | Use a linked test Discord channel/DM and ask for meeting action items. | Response uses saved notes without broad guild exposure. |
+| WhatsApp meeting recall | Use a linked test WhatsApp number and ask what the meeting decided. | Response uses saved notes only for that linked identity. |
+| Slack meeting recall | Use test Slack route with signing/linking configured if available. | If identity is not linked, Sparkbot reports setup limitation rather than exposing notes. |
+| Unauthorized connector request | Ask from an unlinked test account/number/channel. | No private meeting notes are returned. |
 
 ## Risky-Action Guardrails
 

@@ -133,6 +133,36 @@ def test_meeting_artifact_rollup_deduplicates_repeated_content(monkeypatch, tmp_
     assert events[0].metadata["rollup_fingerprint"]
 
 
+def test_meeting_artifact_edit_supersedes_prior_rollup(monkeypatch, tmp_path: Path) -> None:
+    _reset_memory_guardian(monkeypatch, tmp_path)
+
+    assert memory.remember_meeting_artifact(
+        user_id="user-1",
+        room_id="meeting-room",
+        artifact_id="artifact-1",
+        artifact_type="notes",
+        room_name="Release Roundtable",
+        content_markdown="## Key Decisions\n- Ship the old installer path.\n",
+    )
+    assert memory.remember_meeting_artifact(
+        user_id="user-1",
+        room_id="meeting-room",
+        artifact_id="artifact-1",
+        artifact_type="notes",
+        room_name="Release Roundtable",
+        content_markdown="## Key Decisions\n- Ship only the sanitized release bundle.\n",
+    )
+
+    context = memory.build_memory_context(
+        user_id="user-1",
+        room_id="main-chat-room",
+        query="What installer path did the release roundtable decide?",
+    )
+
+    assert "Ship only the sanitized release bundle" in context
+    assert "Ship the old installer path" not in context
+
+
 def test_meeting_artifact_rollup_skips_placeholder_scaffolds(monkeypatch, tmp_path: Path) -> None:
     _reset_memory_guardian(monkeypatch, tmp_path)
     markdown = (

@@ -127,10 +127,14 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
   const [infoOpen, setInfoOpen] = useState(false)
   const [meetingMeta, setMeetingMeta] = useState<WorkstationMeetingRoomMeta | null>(null)
   const [generatingNotes, setGeneratingNotes] = useState(false)
+  const [savingNotes, setSavingNotes] = useState(false)
+  const [editingNotes, setEditingNotes] = useState(false)
+  const [notesDraft, setNotesDraft] = useState("")
   const [latestArtifact, setLatestArtifact] = useState<{
     id: string
     content_markdown: string
     created_at: string
+    meta_json?: { source?: string; draft?: boolean; memory_rollup?: boolean; updated_at?: string } | null
   } | null>(null)
   const [streamingToken, setStreamingToken] = useState("")
   const [streamingAgent, setStreamingAgent] = useState<string | null>(null)
@@ -188,6 +192,12 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
       .catch(() => setAgentOptions([]))
     fetchControlsConfig().then(setControlsConfig).catch(() => setControlsConfig(null))
   }, [])
+
+  useEffect(() => {
+    if (!editingNotes) {
+      setNotesDraft(latestArtifact?.content_markdown ?? "")
+    }
+  }, [editingNotes, latestArtifact])
 
   useEffect(() => {
     if (!roomId) return
@@ -632,12 +642,48 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
       }
       const artifact = await res.json()
       setLatestArtifact(artifact)
+      setEditingNotes(false)
       await reloadMessages()
     } catch (err) {
       console.error("Generate notes error:", err)
       setStreamError((err as Error).message || "Could not generate meeting notes.")
     } finally {
       setGeneratingNotes(false)
+    }
+  }
+
+  async function handleSaveNotes() {
+    if (!latestArtifact || savingNotes) return
+    const content = notesDraft.trim()
+    if (!content) {
+      setStreamError("Meeting notes cannot be empty.")
+      return
+    }
+    setSavingNotes(true)
+    setStreamError("")
+    try {
+      const res = await apiFetch(`/api/v1/chat/rooms/${roomId}/artifacts/${latestArtifact.id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content_markdown: content,
+          meta_json: { source: "manual_edit", draft: false, memory_rollup: true },
+        }),
+      })
+      if (!res.ok) {
+        const detail = await res.json().catch(() => ({ detail: "Could not save notes" }))
+        throw new Error(String(detail.detail ?? "Could not save notes"))
+      }
+      const artifact = await res.json()
+      setLatestArtifact(artifact)
+      setEditingNotes(false)
+      await reloadMessages()
+    } catch (err) {
+      console.error("Save notes error:", err)
+      setStreamError((err as Error).message || "Could not save meeting notes.")
+    } finally {
+      setSavingNotes(false)
     }
   }
 
@@ -1417,32 +1463,99 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                       padding: 10,
                     }}
                   >
-                    <p
+                    <div
                       style={{
-                        marginBottom: 6,
-                        fontSize: 9,
-                        fontWeight: 700,
-                        letterSpacing: "0.1em",
-                        textTransform: "uppercase",
-                        color: "#64748b",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 8,
+                        marginBottom: 8,
                       }}
                     >
-                      Meeting Notes · {new Date(latestArtifact.created_at).toLocaleTimeString()}
-                    </p>
-                    <pre
-                      style={{
-                        maxHeight: 256,
-                        overflowY: "auto",
-                        whiteSpace: "pre-wrap",
-                        fontSize: 11,
-                        color: "#cbd5e1",
-                        lineHeight: 1.6,
-                        margin: 0,
-                        fontFamily: "inherit",
-                      }}
-                    >
-                      {latestArtifact.content_markdown}
-                    </pre>
+                      <p
+                        style={{
+                          margin: 0,
+                          fontSize: 9,
+                          fontWeight: 700,
+                          letterSpacing: "0.1em",
+                          textTransform: "uppercase",
+                          color: "#64748b",
+                        }}
+                      >
+                        Meeting Notes · {new Date(latestArtifact.created_at).toLocaleTimeString()}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setEditingNotes((value) => !value)}
+                        disabled={savingNotes}
+                        style={{
+                          border: "1px solid rgba(125,211,252,0.22)",
+                          borderRadius: 8,
+                          backgroundColor: "rgba(14,165,233,0.08)",
+                          color: "#bae6fd",
+                          padding: "5px 8px",
+                          fontSize: 10,
+                          cursor: savingNotes ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        {editingNotes ? "Close" : "Edit"}
+                      </button>
+                    </div>
+                    {editingNotes ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        <textarea
+                          value={notesDraft}
+                          onChange={(event) => setNotesDraft(event.currentTarget.value)}
+                          rows={12}
+                          style={{
+                            width: "100%",
+                            resize: "vertical",
+                            borderRadius: 8,
+                            border: "1px solid rgba(99,102,241,0.24)",
+                            backgroundColor: "rgba(2,6,23,0.72)",
+                            color: "#dbeafe",
+                            padding: 9,
+                            fontSize: 11,
+                            lineHeight: 1.55,
+                            fontFamily: "inherit",
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={handleSaveNotes}
+                          disabled={savingNotes || notesDraft.trim().length === 0}
+                          style={{
+                            border: "1px solid rgba(34,197,94,0.32)",
+                            borderRadius: 8,
+                            backgroundColor: "rgba(22,163,74,0.14)",
+                            color: "#bbf7d0",
+                            padding: "7px 10px",
+                            fontSize: 10,
+                            fontWeight: 700,
+                            letterSpacing: "0.06em",
+                            cursor: savingNotes ? "not-allowed" : "pointer",
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          {savingNotes ? "Saving…" : "Update meeting notes"}
+                        </button>
+                      </div>
+                    ) : (
+                      <pre
+                        style={{
+                          maxHeight: 256,
+                          overflowY: "auto",
+                          whiteSpace: "pre-wrap",
+                          fontSize: 11,
+                          color: "#cbd5e1",
+                          lineHeight: 1.6,
+                          margin: 0,
+                          fontFamily: "inherit",
+                        }}
+                      >
+                        {latestArtifact.content_markdown}
+                      </pre>
+                    )}
                   </div>
                 )}
               </div>

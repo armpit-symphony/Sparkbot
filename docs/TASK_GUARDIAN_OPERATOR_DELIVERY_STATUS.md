@@ -58,3 +58,21 @@ Main Chat/DM can inspect scheduled Task Guardian jobs through existing Guardian 
 ## LIMA Runtime Alignment Note
 
 This implementation belongs in Sparkbot Public first. A later LIMA AI OS runtime can generalize the pattern as: scheduled task -> execution result -> delivery route -> memory/context event -> audit/Guardian decision. No LIMA runtime wiring is included in this phase.
+
+## Meeting Memory Operator Spine Update - 2026-05-21
+
+Branch: `public-release-meeting-memory-operator-spine`
+
+Completed in this pass:
+
+- Added source-labeled meeting-note metadata for saved/generated Meeting Manager notes.
+- Added OWNER/MOD meeting artifact editing and a Meeting Room notes editor.
+- Updated meeting-note memory rollups so edits supersede stale active rollups for the same artifact.
+- Kept per-turn notes disabled and blocked draft/failed-generation notes from shared memory rollup.
+- Documented Main Chat and connector continuity through the shared context path with explicit identity-linking limits.
+
+Remaining after this pass:
+
+- Browser QA notes save/edit and role permissions.
+- Live QA meeting recall through Main Chat and linked Telegram/Discord/WhatsApp/Slack identities.
+- Treat SMS/text as future until a real connector and identity model exist.

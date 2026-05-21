@@ -33,9 +33,11 @@ from app.crud import (
     get_chat_room_member,
     get_chat_room_members,
     get_chat_messages,
+    get_chat_meeting_artifact_by_id,
     get_chat_meeting_artifacts,
     get_user_chat_rooms,
     remove_chat_room_member,
+    update_chat_meeting_artifact,
     use_chat_invite,
     validate_chat_invite_token,
 )
@@ -44,6 +46,7 @@ from app.services.guardian.meeting_assignments import persist_meeting_assignment
 from app.schemas.chat import (
     MeetingArtifactCreate,
     MeetingArtifactResponse,
+    MeetingArtifactUpdate,
     MessageCreate,
     MessageListResponse,
     MessageResponse,
@@ -2001,7 +2004,10 @@ async def stream_room_message(
                             type="notes",
                             content_markdown=_meeting_artifact_markdown(objective, meeting_status, public_text),
                             meta_json={
-                                "source": "autonomous_meeting",
+                                "source": "meeting_manager",
+                                "origin": "autonomous_meeting",
+                                "memory_rollup": True,
+                                "draft": False,
                                 "agent": participant_handle,
                                 "meeting_phase": meeting_phase,
                                 "meeting_status": meeting_status,
@@ -2448,6 +2454,33 @@ def create_meeting_artifact_endpoint(
         meta_json=artifact_in.meta_json,
     )
     return artifact
+
+
+@router.patch("/{room_id}/artifacts/{artifact_id}", response_model=MeetingArtifactResponse)
+def update_meeting_artifact_endpoint(
+    room_id: UUID,
+    artifact_id: UUID,
+    artifact_in: MeetingArtifactUpdate,
+    session: SessionDep,
+    current_user: CurrentChatUser,
+) -> Any:
+    """Edit meeting notes/artifacts. OWNER/MOD only."""
+    membership = _require_room_access(session, room_id, current_user)
+    if membership.role.value not in ("OWNER", "MOD"):
+        raise HTTPException(status_code=403, detail="Only OWNERs and MODs can edit artifacts")
+    artifact = get_chat_meeting_artifact_by_id(session=session, artifact_id=artifact_id)
+    if not artifact or artifact.room_id != room_id:
+        raise HTTPException(status_code=404, detail="Meeting artifact not found")
+    content = artifact_in.content_markdown
+    if content is not None and not content.strip():
+        raise HTTPException(status_code=400, detail="Artifact content cannot be empty")
+    return update_chat_meeting_artifact(
+        session=session,
+        artifact=artifact,
+        updated_by_user_id=current_user.id,
+        content_markdown=content,
+        meta_json=artifact_in.meta_json,
+    )
 
 
 @router.post("/{room_id}/artifacts/generate")

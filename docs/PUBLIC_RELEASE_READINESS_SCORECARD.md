@@ -1,7 +1,7 @@
 # Sparkbot Public Release Readiness Scorecard
 
 Date: 2026-05-21
-Branch: `public-release-task-delivery-operator-channels`
+Branch: `public-release-meeting-memory-operator-spine`
 Legend: GREEN = ready enough, YELLOW = needs QA/polish, RED = blocker, UNKNOWN = needs live/manual test.
 
 | Area | Rating | Evidence | Blocker if any | Recommended next action |
@@ -10,13 +10,13 @@ Legend: GREEN = ready enough, YELLOW = needs QA/polish, RED = blocker, UNKNOWN =
 | Workstation UX | YELLOW | Sticky nav, public surfaces, terminal gating, and Robo Preview are implemented. | Browser QA still required across desktop/mobile. | Run manual Workstation QA checklist. |
 | Chat/DM | YELLOW | `/chat` redirects to `/dm`; backend tests pass. | Browser streaming/login QA still required. | Run DM smoke with configured cloud/local model. |
 | Round Table | YELLOW | Manager default, per-seat models, structured assignments, and no per-turn notes are implemented. | Main hero flow not browser-verified this pass. | Browser QA Round Table launch and Meeting Room flow. |
-| Meeting Manager flow | YELLOW | Seat 1 manager and assignment artifacts exist; heartbeat continuation may need polish. | Live meeting behavior unknown. | Test 3+ participant meeting and heartbeat. |
+| Meeting Manager flow | YELLOW | Seat 1 manager, assignment artifacts, source-labeled notes, and owner/mod note editing now exist. | Live meeting and browser edit-permission behavior unknown. | Test 3+ participant meeting, notes save/edit, and heartbeat. |
 | Model seats / Invite Wing | YELLOW | Backend/Vault storage, write-only credentials, setup status, and stable seat selectors are implemented. | Live provider and duplicate-seat browser QA remain. | Test create/edit/use cloud and local seats. |
 | Local AI | UNKNOWN | Unit/focused tests pass and local provider layer exists. | Live Ollama/LM Studio/llama.cpp not tested. | Execute live local endpoint QA. |
 | Specialty Wing/custom agents | YELLOW | Built-ins locked, custom edit and model-seat binding implemented. | Browser flow and live response QA remain. | Test custom agent with model seat. |
 | Command Center AI Setup | YELLOW | Model-seat editor and local config exist. | Browser QA required. | Test save/reload/error states. |
 | Command Center Security | YELLOW | Personal/Balanced/Locked/Custom are persisted; backend policy tests pass. | Browser pending/elevated confirmation UX not verified. | Run profile matrix QA with safe actions. |
-| Unified memory/context | GREEN | Focused memory/context tests pass; source-labeled adapter exists; secrets are redacted. | Richer UI memory inspection is later polish. | Keep as extraction candidate after browser QA. |
+| Unified memory/context | GREEN | Meeting notes roll into shared work memory, edits supersede stale rollups, drafts/scaffolds are skipped, and main chat/connectors use the same context adapter. | Connector identity linking remains live QA/security work, especially Slack. | Test meeting-note recall across Main Chat and linked connector identities. |
 | Task Guardian health checks | YELLOW | PC/server templates now store public-safe delivery preferences, preserve app history, record delivery warnings, write source-labeled memory, and expose app/Telegram/Discord/Slack/WhatsApp/SMS status in Command Center. | Live connector delivery and mobile-first NL setup still need QA; SMS is explicitly future/unsupported. | Run app-only, configured connector, missing-setup, and SMS unsupported QA. |
 | Robo Preview boundary | GREEN | Backend tests pass; package tar contains non-executing preview stub. | Full R&D bridge remains tracked and must not be blindly extracted. | Extract only package stub/public boundary. |
 | Packaging/downloads | YELLOW | Package script now excludes `.github`, `.agents`, backend/frontend tests, Playwright config, test scripts, virtualenvs, dotenv/example/log/DB/key artifacts, private docs, and replaces the Robo bridge with the preview stub. | Needs final package inspection on the generated artifacts plus Windows/Git Bash and clean-clone smoke. | Run package dry-run/inspection on release candidate and publish only sanitized bundles. |

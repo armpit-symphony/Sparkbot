@@ -1224,23 +1224,60 @@ def remember_meeting_artifact(
     fingerprint = hashlib.sha256(
         "\n".join([user_id, room_id, normalized_type, *lines]).encode("utf-8")
     ).hexdigest()
+    shared_session = _shared_work_session(user_id)
+    stale_event_ids: list[str] = []
     try:
-        for event in _guardian().ledger.iter_events(session_id=_shared_work_session(user_id)):
+        inactive_refs = _ledger_inactive_refs()
+        for event in _guardian().ledger.iter_events(session_id=shared_session):
             meta = dict(event.metadata or {})
-            if meta.get("rollup_fingerprint") == fingerprint and _is_event_active_for_prompt(event):
+            if not _is_event_active_for_prompt(event, inactive_refs=inactive_refs):
+                continue
+            if meta.get("rollup_fingerprint") == fingerprint:
                 return False
+            if (
+                str(meta.get("artifact_id") or "") == str(artifact_id)
+                and str(meta.get("artifact_type") or "") == normalized_type
+                and str(meta.get("room_id") or "") == str(room_id)
+            ):
+                stale_event_ids.append(event.id)
     except Exception:
-        pass
+        stale_event_ids = []
+    if stale_event_ids:
+        try:
+            _append_event(
+                event_type=EventType.SYSTEM,
+                role="system",
+                content=f"MEMORY_LIFECYCLE: superseded meeting artifact rollup {artifact_id}",
+                session_id=shared_session,
+                metadata={
+                    "user_id": user_id,
+                    "room_id": room_id,
+                    "artifact_id": artifact_id,
+                    "target_event_ids": stale_event_ids,
+                    "lifecycle_action": "soft_delete",
+                    "lifecycle_state": "soft_deleted",
+                    "soft_delete_reason": "meeting artifact edited",
+                    "deleted": True,
+                },
+                source="meeting.rollup.lifecycle",
+                confidence=1.0,
+                verification_state="verified",
+            )
+            _delete_events_from_indexes(stale_event_ids)
+        except Exception:
+            pass
     return _append_event(
         event_type=EventType.SYSTEM,
         role="system",
         content=content,
-        session_id=_shared_work_session(user_id),
+        session_id=shared_session,
         metadata={
             "user_id": user_id,
             "room_id": room_id,
             "artifact_id": artifact_id,
             "artifact_type": normalized_type,
+            "meeting_id": room_id,
+            "source_type": "meeting_notes",
             "scope_type": "shared_work",
             "project_id": project_id or "",
             "rollup_fingerprint": fingerprint,

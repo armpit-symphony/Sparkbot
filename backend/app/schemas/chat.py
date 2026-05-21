@@ -186,6 +186,11 @@ class MeetingArtifactCreate(MeetingArtifactBase):
     meta_json: Optional[dict] = None
 
 
+class MeetingArtifactUpdate(BaseModel):
+    content_markdown: Optional[str] = None
+    meta_json: Optional[dict] = None
+
+
 class MeetingArtifactResponse(MeetingArtifactBase):
     id: UUID
     room_id: UUID
