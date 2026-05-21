@@ -442,7 +442,10 @@ async def _send_text(chat_id: str, text: str) -> None:
 async def send_room_notification(room_id: str, text: str) -> None:
     if not _configured():
         return
+    allowed_chat_ids = _allowed_chat_ids()
     for chat_id in _linked_chat_ids_for_room(room_id):
+        if allowed_chat_ids and str(chat_id) not in allowed_chat_ids:
+            continue
         await _send_text(chat_id, text)
 
 

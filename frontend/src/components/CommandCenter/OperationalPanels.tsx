@@ -34,6 +34,12 @@ interface GuardianTaskRecord {
   next_run_at?: string | null
   last_status?: string | null
   last_message?: string | null
+  delivery?: {
+    channels?: Array<{ channel: string; enabled?: boolean; configured?: boolean; status?: string; setup_message?: string; target_label?: string }>
+    fallback_to_app?: boolean
+    last_delivery_status?: string
+    last_delivery_error?: string
+  } | null
 }
 
 interface GuardianRunRecord {
@@ -172,11 +178,13 @@ const TASK_TOOL_OPTIONS = [
   "list_reminders",
 ]
 
-const HEALTH_DELIVERY_OPTIONS = [
+const HEALTH_DELIVERY_OPTIONS: Array<{ id: string; label: string; description: string; disabled?: boolean }> = [
   { id: "app", label: "App / room", description: "Always saved in task history." },
   { id: "telegram", label: "Telegram", description: "Send only when Telegram is configured." },
   { id: "discord", label: "Discord", description: "Send only when Discord is configured." },
-  { id: "slack", label: "Slack", description: "Send only when Slack is configured." },
+  { id: "slack", label: "Slack", description: "Send only when Slack is configured. Slack health delivery is env/channel based." },
+  { id: "whatsapp", label: "WhatsApp", description: "Send only when WhatsApp is configured and linked." },
+  { id: "sms", label: "SMS / text", description: "Future channel; choosing it records setup-needed instead of sending.", disabled: true },
 ]
 
 function parseJsonRecord(value: string): Record<string, unknown> | null {
@@ -1296,7 +1304,7 @@ function TaskGuardianCard({
                   <Badge variant="secondary">{template.default_schedule_label ?? template.schedule}</Badge>
                 </div>
                 <div className="mt-2 text-xs text-muted-foreground">
-                  Read-only and app-only by default. Edit the template to choose optional Telegram, Discord, or Slack delivery after those connectors are configured.
+                  Read-only and app-only by default. Edit the template to choose optional Telegram, Discord, Slack, or WhatsApp delivery after those connectors are configured. SMS/text is documented as future only.
                 </div>
                 <div className="mt-3 flex flex-wrap justify-end gap-2">
                   <Button size="sm" variant="outline" onClick={() => fillTemplate(template)} disabled={!room}>
@@ -1346,7 +1354,7 @@ function TaskGuardianCard({
                       <input
                         type="checkbox"
                         checked={deliveryChannels.includes(option.id)}
-                        disabled={!room || appChannel}
+                        disabled={!room || appChannel || Boolean(option.disabled)}
                         onChange={(event) => setDeliveryChannel(option.id, event.currentTarget.checked)}
                         className="mt-0.5 h-3.5 w-3.5"
                       />
@@ -1359,7 +1367,7 @@ function TaskGuardianCard({
                 })}
               </div>
               <div className="mt-2 text-xs text-muted-foreground">
-                External sends are opt-in and use existing connector configuration; failed sends are reported without failing the health check.
+                External delivery is opt-in. Reports are always saved in app/task history; failed or unsupported channel sends are recorded as delivery warnings without failing the health check.
               </div>
             </div>
           ) : null}
@@ -1410,6 +1418,16 @@ function TaskGuardianCard({
                   {task.last_status ? ` - Last: ${task.last_status}` : ""}
                   {task.last_message ? ` - ${task.last_message}` : ""}
                 </div>
+                {task.delivery?.channels?.length ? (
+                  <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] text-muted-foreground">
+                    {task.delivery.channels.map((item) => (
+                      <Badge key={`${task.id}-${item.channel}`} variant={item.configured ? "secondary" : "outline"}>
+                        {item.channel}: {item.configured ? "configured" : "setup needed"}
+                      </Badge>
+                    ))}
+                    {task.delivery.last_delivery_status ? <Badge variant="outline">last delivery: {task.delivery.last_delivery_status}</Badge> : null}
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>

@@ -626,7 +626,10 @@ async def send_room_notification(room_id: str, text: str) -> None:
     """Send a text notification to all WhatsApp numbers linked to a Sparkbot room."""
     if not _wa_client:
         return
+    allowed_phones = {p.strip() for p in os.getenv("WHATSAPP_ALLOWED_PHONES", "").split(",") if p.strip()}
     for wa_phone in _linked_phones_for_room(room_id):
+        if allowed_phones and str(wa_phone) not in allowed_phones:
+            continue
         for chunk in _chunk_text(text):
             try:
                 await _wa_client.send_message(to=wa_phone, text=chunk)

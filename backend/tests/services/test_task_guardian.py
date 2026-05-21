@@ -1,4 +1,5 @@
 import importlib
+import json
 import asyncio
 import uuid
 from datetime import datetime, timezone
@@ -185,6 +186,57 @@ def test_task_guardian_records_verified_run(monkeypatch, tmp_path) -> None:
     assert refreshed is not None
     assert refreshed.last_status == "verified"
     assert refreshed.last_verification_status == "verified"
+
+
+def test_task_guardian_health_delivery_warning_is_persisted(monkeypatch, tmp_path) -> None:
+    task_guardian = _reload_task_guardian(monkeypatch, tmp_path)
+
+    room_id = str(uuid.uuid4())
+    user_id = str(uuid.uuid4())
+    scheduled = task_guardian.schedule_task(
+        name="PC Health Check",
+        tool_name="sparkbot_health_check",
+        tool_args={"mode": "pc", "delivery_channels": ["app", "sms"]},
+        schedule="daily-local:06:00",
+        room_id=room_id,
+        user_id=user_id,
+    )
+    task = task_guardian.get_task(scheduled["id"])
+    assert task is not None
+    run_id = task_guardian._record_run(
+        task_id=task.id,
+        room_id=room_id,
+        user_id=user_id,
+        status="verified",
+        verification=task_guardian.VerificationResult(
+            status="verified",
+            confidence=0.98,
+            summary="Health report completed.",
+            evidence=[{"type": "health", "detail": "nominal"}],
+            recommended_next_action=None,
+        ),
+        message="Health report completed.",
+        output_excerpt="Sparkbot Health Report",
+    )
+
+    state = task_guardian._record_delivery_state(
+        task=task,
+        run_id=run_id,
+        channels=["app", "sms"],
+        delivery_errors=["SMS: SMS/text delivery is not implemented in Sparkbot yet"],
+    )
+
+    refreshed = task_guardian.get_task(task.id)
+    runs = task_guardian.list_runs(room_id=room_id)
+    assert state["status"] == "warning"
+    assert refreshed is not None
+    args = json.loads(refreshed.tool_args_json)
+    assert args["last_delivery_status"] == "warning"
+    assert args["last_delivery_error"].startswith("SMS:")
+    assert any(item["channel"] == "sms" and item["status"] == "setup_needed" for item in args["delivery"]["channels"])
+    assert "Delivery warning" in runs[0].message
+    evidence = json.loads(runs[0].evidence_json)
+    assert any(item.get("type") == "delivery" and "status=warning" in item.get("detail", "") for item in evidence)
 
 
 def test_task_guardian_health_run_writes_source_labeled_memory(monkeypatch, tmp_path) -> None:

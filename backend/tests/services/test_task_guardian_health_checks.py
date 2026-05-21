@@ -108,3 +108,43 @@ def test_health_report_delivery_channels_are_sanitized() -> None:
     )
 
     assert channels == ["app", "telegram", "slack"]
+
+
+def test_health_report_delivery_channels_read_structured_preferences() -> None:
+    channels = health_checks.delivery_channels_from_args(
+        {
+            "delivery": {
+                "channels": [
+                    {"channel": "app", "enabled": True},
+                    {"channel": "telegram", "enabled": True},
+                    {"channel": "discord", "enabled": False},
+                    {"channel": "whatsapp", "enabled": True},
+                    {"channel": "sms", "enabled": True},
+                ]
+            }
+        }
+    )
+
+    assert channels == ["app", "telegram", "whatsapp", "sms"]
+
+
+def test_health_delivery_preferences_mark_sms_future_without_secrets(monkeypatch) -> None:
+    monkeypatch.delenv("SLACK_BOT_TOKEN", raising=False)
+
+    preferences = health_checks.delivery_preferences_from_args(
+        {
+            "delivery_channels": ["app", "sms", "slack"],
+            "slack_channel": "C-test",
+            "slack_token": "should-not-appear",
+        }
+    )
+
+    by_channel = {item["channel"]: item for item in preferences["channels"]}
+    assert by_channel["app"]["configured"] is True
+    assert by_channel["sms"]["configured"] is False
+    assert by_channel["sms"]["status"] == "setup_needed"
+    assert "not implemented" in by_channel["sms"]["setup_message"]
+    assert by_channel["slack"]["configured"] is False
+    assert by_channel["slack"]["target_label"] == "C-test"
+    assert by_channel["sms"]["target_label"] == ""
+    assert "should-not-appear" not in str(preferences)

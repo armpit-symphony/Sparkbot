@@ -36,6 +36,7 @@ def health_task_templates() -> list[dict[str, Any]]:
         "enabled": False,
         "read_only": True,
         "delivery_channels": ["app"],
+        "delivery": {"channels": [{"channel": "app", "enabled": True, "configured": True, "status": "configured"}], "fallback_to_app": True},
         "default_schedule_label": "Daily at 6:00 AM local time",
         "editable": True,
     }
@@ -49,6 +50,7 @@ def health_task_templates() -> list[dict[str, Any]]:
             "tool_args": {
                 "mode": "pc",
                 "delivery_channels": ["app"],
+                "fallback_to_app": True,
                 "thresholds": DEFAULT_THRESHOLDS,
             },
         },
@@ -61,6 +63,7 @@ def health_task_templates() -> list[dict[str, Any]]:
             "tool_args": {
                 "mode": "server",
                 "delivery_channels": ["app"],
+                "fallback_to_app": True,
                 "thresholds": DEFAULT_THRESHOLDS,
             },
         },
@@ -72,25 +75,116 @@ def health_source_label(mode: str | None) -> str:
     return f"task_guardian.health.{normalized}"
 
 
+SUPPORTED_DELIVERY_CHANNELS = {"app", "telegram", "discord", "slack", "whatsapp", "sms"}
+
+
 def delivery_channels_from_args(args: dict[str, Any] | None) -> list[str]:
     args = args if isinstance(args, dict) else {}
     raw = args.get("delivery_channels")
     if raw is None and isinstance(args.get("delivery"), dict):
         raw = args["delivery"].get("channels")
+    if raw is None and isinstance(args.get("delivery"), list):
+        raw = args["delivery"]
     if raw is None:
         return ["app"]
     if isinstance(raw, str):
         channels = [item.strip().lower() for item in raw.replace(",", " ").split()]
     elif isinstance(raw, list):
-        channels = [str(item).strip().lower() for item in raw]
+        channels = []
+        for item in raw:
+            if isinstance(item, dict):
+                if not item.get("enabled", True):
+                    continue
+                item = item.get("channel")
+            channels.append(str(item).strip().lower())
     else:
         channels = []
-    allowed = {"app", "telegram", "discord", "slack", "whatsapp"}
-    cleaned: list[str] = []
+    cleaned: list[str] = ["app"]
     for channel in channels:
-        if channel in allowed and channel not in cleaned:
+        if channel in SUPPORTED_DELIVERY_CHANNELS and channel not in cleaned:
             cleaned.append(channel)
     return cleaned or ["app"]
+
+
+def _channel_configured(channel: str, args: dict[str, Any]) -> tuple[bool, str]:
+    if channel == "app":
+        return True, "always saved in app/task history"
+    if channel == "telegram":
+        try:
+            from app.services import telegram_bridge
+            status = telegram_bridge.get_status()
+            if not status.get("configured"):
+                return False, "Telegram bot token is not configured"
+            if int(status.get("linked_chats") or 0) <= 0:
+                return False, "Telegram has no linked chats for delivery"
+            return True, "configured"
+        except Exception as exc:
+            return False, f"Telegram status unavailable: {exc}"
+    if channel == "discord":
+        try:
+            from app.services import discord_bridge
+            status = discord_bridge.get_status()
+            if not status.get("configured") or not status.get("enabled"):
+                return False, "Discord connector is not enabled/configured"
+            if int(status.get("linked_channels") or 0) <= 0:
+                return False, "Discord has no linked channels for delivery"
+            return True, "configured"
+        except Exception as exc:
+            return False, f"Discord status unavailable: {exc}"
+    if channel == "slack":
+        if not os.getenv("SLACK_BOT_TOKEN", "").strip():
+            return False, "Slack bot token is not configured"
+        if not str(args.get("slack_channel") or args.get("delivery_slack_channel") or os.getenv("SPARKBOT_HEALTH_SLACK_CHANNEL", "")).strip():
+            return False, "Slack delivery needs a channel"
+        return True, "configured"
+    if channel == "whatsapp":
+        try:
+            from app.services import whatsapp_bridge
+            status = whatsapp_bridge.get_status()
+            if not status.get("configured") or not status.get("enabled"):
+                return False, "WhatsApp connector is not enabled/configured"
+            if int(status.get("linked_numbers") or 0) <= 0:
+                return False, "WhatsApp has no linked numbers for delivery"
+            return True, "configured"
+        except Exception as exc:
+            return False, f"WhatsApp status unavailable: {exc}"
+    if channel == "sms":
+        return False, "SMS/text delivery is not implemented in Sparkbot yet"
+    return False, "unsupported delivery channel"
+
+
+def delivery_preferences_from_args(args: dict[str, Any] | None) -> dict[str, Any]:
+    args = args if isinstance(args, dict) else {}
+    fallback = bool(args.get("fallback_to_app", True))
+    preferences = []
+    for channel in delivery_channels_from_args(args):
+        configured, status = _channel_configured(channel, args)
+        target_label = args.get(f"{channel}_target_label") or args.get(f"{channel}_channel") or ""
+        if channel == "slack":
+            target_label = target_label or args.get("slack_channel") or args.get("delivery_slack_channel") or ""
+        preferences.append({
+            "channel": channel,
+            "enabled": True,
+            "configured": configured,
+            "status": "configured" if configured else "setup_needed",
+            "target_label": str(target_label)[:120],
+            "setup_message": status,
+        })
+    return {
+        "channels": preferences,
+        "fallback_to_app": fallback,
+        "last_delivery_status": str(args.get("last_delivery_status") or ""),
+        "last_delivery_error": str(args.get("last_delivery_error") or "")[:240],
+    }
+
+
+def with_delivery_preferences(args: dict[str, Any] | None) -> dict[str, Any]:
+    args = dict(args or {})
+    channels = delivery_channels_from_args(args)
+    args["delivery_channels"] = channels
+    args["fallback_to_app"] = bool(args.get("fallback_to_app", True))
+    args["delivery"] = delivery_preferences_from_args(args)
+    return args
 
 
 async def run_health_check(
@@ -106,6 +200,7 @@ async def run_health_check(
     collected = await collect_health(mode=mode, thresholds=thresholds, session=session)
     collected["source_label"] = health_source_label(mode)
     collected["delivery_channels"] = delivery_channels_from_args(args)
+    collected["delivery"] = delivery_preferences_from_args(args)
     collected["room_id"] = room_id
     collected["user_id"] = user_id
     report = render_health_report(collected)

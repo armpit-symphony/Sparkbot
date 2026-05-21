@@ -1,7 +1,7 @@
 # Sparkbot Public Release Browser QA Checklist
 
 Date: 2026-05-20
-Branch: `public-release-qa-assessment`
+Branch: `public-release-task-delivery-operator-channels`
 Purpose: manual browser QA checklist before `Sparkbot_shell` extraction. This is a validation artifact only; it does not approve code copying or feature expansion.
 
 Use this checklist against a fresh local install and, where noted, a server-style install. Record the result in the Pass/Fail and Notes columns. Do not use real customer data or private production channels.
@@ -25,7 +25,7 @@ Use this checklist against a fresh local install and, where noted, a server-styl
 | 15 | Task Guardian health checks | P0 | No for app-only | PC and Server Health Check templates appear, can be added/edited safely, and recent report output is visible in Command Center. |  |  |
 | 16 | PC Health Check | P0 | No | App-only PC health run completes with read-only status, severity sections, and no raw secrets/log dumps. |  |  |
 | 17 | Server Health Check | P0 | No | App-only server health run completes with read-only status and warns without mutating services/files. |  |  |
-| 18 | Telegram/Discord/Slack delivery options | P1 | Yes, test channels only | Delivery choices are app-only by default; configured test Telegram/Discord/Slack channels can receive health report delivery without failing the task on delivery error. |  |  |
+| 18 | Operator-channel health report delivery | P1 | Yes, test channels only | Delivery choices are app-only by default; configured test Telegram/Discord/Slack/WhatsApp channels can receive health reports; SMS/text shows setup-needed/future and does not fake delivery. Delivery warnings do not fail the task. |  |  |
 | 19a | Security profile: Personal | P0 | Optional | Personal allows configured routine work while confirming risky writes, sends, deletes, terminal writes, service control, and credential access. |  |  |
 | 19b | Security profile: Balanced | P0 | Optional | Balanced confirms high-risk configured actions and explains the action before execution. |  |  |
 | 19c | Security profile: Locked | P0 | Optional | Locked requires elevated approval/break-glass for high-risk write/execute paths and offers a safe next step. |  |  |
@@ -39,3 +39,18 @@ Use this checklist against a fresh local install and, where noted, a server-styl
 - Run browser checks with devtools console open and record uncaught errors.
 - Capture screenshots for failures in Workstation, Meeting Room, Command Center AI Setup, Security, Task Guardian, and Robo Preview.
 - Do not run destructive live checks. Use safe read-only commands and test connector channels only.
+
+
+## Task Guardian operator-channel addendum
+
+| QA item | Priority | Live connector/local provider required? | Expected result | Pass/Fail | Notes |
+|---|---|---|---|---|---|
+| PC health delivery preference save/edit | P0 | No for app-only | App remains default; selected external channels persist as public-safe delivery preferences without connector secrets. |  |  |
+| Server health delivery preference save/edit | P0 | No for app-only | Server Health Check preserves schedule, fallback-to-app, selected channels, and last delivery status. |  |  |
+| Telegram delivery warning/success | P1 | Yes, test chat only | Configured test chat receives the report; missing setup records a nonfatal warning. |  |  |
+| Discord delivery warning/success | P1 | Yes, test channel only | Configured test channel receives the report; missing setup records a nonfatal warning. |  |  |
+| Slack delivery warning/success | P1 | Yes, test workspace/channel only | Configured test channel receives the report; missing token/channel or allowlist mismatch records a nonfatal warning. |  |  |
+| WhatsApp delivery warning/success | P1 | Yes, test number only | Configured linked test number receives the report; missing setup records a nonfatal warning. |  |  |
+| SMS/text unsupported behavior | P1 | No | Selecting/requesting SMS records setup-needed/future status and does not send anything. |  |  |
+| Delivery memory continuity | P1 | No for app-only | Latest health report and delivery status are retrievable through shared memory/context without duplicate report spam. |  |  |
+| Unauthorized connector access | P0 | Yes, test connector only | Unknown or unlinked connector users cannot retrieve or receive private Task Guardian health reports. |  |  |

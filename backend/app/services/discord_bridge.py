@@ -733,7 +733,10 @@ async def send_room_notification(room_id: str, text: str) -> None:
     """Send a text notification to all Discord channels linked to a Sparkbot room."""
     if not (bot.is_ready() and _discord_token()):
         return
+    allowed_channel_ids = {part.strip() for part in os.getenv("DISCORD_ALLOWED_CHANNEL_IDS", "").split(",") if part.strip()}
     for channel_id in _linked_channel_ids_for_room(room_id):
+        if allowed_channel_ids and str(channel_id) not in allowed_channel_ids:
+            continue
         try:
             channel = bot.get_channel(int(channel_id))
             if channel and hasattr(channel, "send"):

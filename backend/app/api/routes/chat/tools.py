@@ -1605,12 +1605,16 @@ TOOL_DEFINITIONS = [
                     },
                     "delivery_channels": {
                         "type": "array",
-                        "items": {"type": "string", "enum": ["app", "telegram", "discord", "slack"]},
-                        "description": "Optional report delivery targets. App-only is safest and is the default.",
+                        "items": {"type": "string", "enum": ["app", "telegram", "discord", "slack", "whatsapp", "sms"]},
+                        "description": "Optional report delivery targets. App-only is safest and is the default. WhatsApp requires a configured linked number; sms/text is recognized as future/unsupported and records a setup warning instead of sending.",
                     },
                     "slack_channel": {
                         "type": "string",
                         "description": "Slack channel ID or name for opt-in Slack delivery.",
+                    },
+                    "fallback_to_app": {
+                        "type": "boolean",
+                        "description": "Keep the in-app/task-history report even if selected external delivery is missing or fails. Defaults true.",
                     },
                     "thresholds": {
                         "type": "object",

@@ -179,3 +179,20 @@ Still deferred:
 
 - Add a user-visible memory inspector view for recent health reports.
 - Add richer connector delivery audit summaries without duplicating Task Guardian run memory.
+
+## Task Guardian Operator Delivery Update - 2026-05-21
+
+Branch: `public-release-task-delivery-operator-channels`
+
+Completed in this pass:
+
+- PC and Server Health Check jobs now normalize delivery preferences for app, Telegram, Discord, Slack, WhatsApp, and SMS/text while keeping app/in-room history as the default.
+- Delivery status and warnings are persisted into Task Guardian run evidence and tool args, then written to unified memory/context as source-labeled delivery events.
+- Telegram, Discord, Slack, and WhatsApp delivery paths check configuration before sending; SMS/text is marked setup-needed/future and does not fake a send.
+- Command Center Task Guardian cards show external delivery as opt-in, expose WhatsApp, keep SMS disabled/future, and display last delivery status.
+
+Remaining after this pass:
+
+- Live QA with test Telegram, Discord, Slack, and WhatsApp targets.
+- Confirm Main Chat natural-language schedule setup through the actual model/tool confirmation flow.
+- Keep SMS/text as future until a real provider is selected.

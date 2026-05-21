@@ -1,7 +1,7 @@
 # Sparkbot Public Release Readiness Scorecard
 
 Date: 2026-05-21
-Branch: `public-release-source-boundary-cleanup`
+Branch: `public-release-task-delivery-operator-channels`
 Legend: GREEN = ready enough, YELLOW = needs QA/polish, RED = blocker, UNKNOWN = needs live/manual test.
 
 | Area | Rating | Evidence | Blocker if any | Recommended next action |
@@ -17,7 +17,7 @@ Legend: GREEN = ready enough, YELLOW = needs QA/polish, RED = blocker, UNKNOWN =
 | Command Center AI Setup | YELLOW | Model-seat editor and local config exist. | Browser QA required. | Test save/reload/error states. |
 | Command Center Security | YELLOW | Personal/Balanced/Locked/Custom are persisted; backend policy tests pass. | Browser pending/elevated confirmation UX not verified. | Run profile matrix QA with safe actions. |
 | Unified memory/context | GREEN | Focused memory/context tests pass; source-labeled adapter exists; secrets are redacted. | Richer UI memory inspection is later polish. | Keep as extraction candidate after browser QA. |
-| Task Guardian health checks | YELLOW | Unit tests pass; PC/server templates and app delivery exist. | Live connector delivery not tested; scheduler leadership remains later. | Test app-only and configured test connector delivery. |
+| Task Guardian health checks | YELLOW | PC/server templates now store public-safe delivery preferences, preserve app history, record delivery warnings, write source-labeled memory, and expose app/Telegram/Discord/Slack/WhatsApp/SMS status in Command Center. | Live connector delivery and mobile-first NL setup still need QA; SMS is explicitly future/unsupported. | Run app-only, configured connector, missing-setup, and SMS unsupported QA. |
 | Robo Preview boundary | GREEN | Backend tests pass; package tar contains non-executing preview stub. | Full R&D bridge remains tracked and must not be blindly extracted. | Extract only package stub/public boundary. |
 | Packaging/downloads | YELLOW | Package script now excludes `.github`, `.agents`, backend/frontend tests, Playwright config, test scripts, virtualenvs, dotenv/example/log/DB/key artifacts, private docs, and replaces the Robo bridge with the preview stub. | Needs final package inspection on the generated artifacts plus Windows/Git Bash and clean-clone smoke. | Run package dry-run/inspection on release candidate and publish only sanitized bundles. |
 | Documentation | YELLOW | Public install/download copy now points source installs at sanitized release bundles and documents raw repo as R&D/source reference. | Final release-site/download copy and browser QA notes still need review. | Keep docs aligned with release artifact names, checksums, and future `Sparkbot_shell` handoff. |
@@ -33,4 +33,4 @@ YELLOW: most product surfaces, packaging/downloads, and public/private separatio
 
 RED: no current scorecard area remains RED after the source-boundary cleanup, assuming package inspection stays clean. Blind `Sparkbot_shell` import is still not approved.
 
-UNKNOWN: live Local AI and connector delivery until tested against real test endpoints/channels.
+UNKNOWN: live Local AI plus Telegram/Discord/Slack/WhatsApp connector delivery until tested against real test endpoints/channels. SMS/text remains future/unsupported, not UNKNOWN-live.

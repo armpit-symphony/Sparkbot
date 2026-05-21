@@ -19,9 +19,11 @@ from app.services.guardian.executive import exec_with_guard
 from app.services.guardian.health_checks import (
     HEALTH_CHECK_TOOL_NAME,
     delivery_channels_from_args,
+    delivery_preferences_from_args,
     health_source_label,
     health_task_templates,
     run_health_check,
+    with_delivery_preferences,
 )
 from app.services.guardian.memory import remember_tool_event
 from app.services.guardian.policy import decide_tool_use
@@ -356,6 +358,8 @@ def schedule_task(
             f"Task Guardian does not allow '{tool_name}'. "
             f"Allowed tools: {', '.join(all_allowed)}"
         )
+    if tool_name == HEALTH_CHECK_TOOL_NAME:
+        tool_args = with_delivery_preferences(tool_args)
     if tool_name in WRITE_TASK_TOOLS:
         if not TASK_GUARDIAN_WRITE_ENABLED:
             raise ValueError(
@@ -527,6 +531,53 @@ def _record_run(
     return run_id
 
 
+def _record_delivery_state(
+    *,
+    task: GuardianTask,
+    run_id: str,
+    channels: list[str],
+    delivery_errors: list[str],
+) -> dict[str, str]:
+    status = "app_only" if channels == ["app"] else "sent"
+    if delivery_errors:
+        status = "warning"
+    error_summary = "; ".join(delivery_errors)[:500]
+    args = _task_args(task)
+    args["delivery_channels"] = channels
+    args["last_delivery_status"] = status
+    args["last_delivery_error"] = error_summary
+    args["delivery"] = delivery_preferences_from_args(args)
+    evidence_item = {
+        "type": "delivery",
+        "detail": f"channels={','.join(channels)} status={status}" + (f" warnings={error_summary}" if error_summary else ""),
+    }
+    _init_store()
+    with _conn() as conn:
+        row = conn.execute("SELECT evidence_json, message FROM guardian_task_runs WHERE run_id = ?", (run_id,)).fetchone()
+        evidence: list[Any]
+        if row and row["evidence_json"]:
+            try:
+                parsed = json.loads(row["evidence_json"])
+                evidence = parsed if isinstance(parsed, list) else []
+            except Exception:
+                evidence = []
+        else:
+            evidence = []
+        evidence.append(evidence_item)
+        message = str(row["message"] if row else "")
+        if delivery_errors and "Delivery warning:" not in message:
+            message = (message + f" Delivery warning: {error_summary}").strip()[:400]
+        conn.execute(
+            "UPDATE guardian_task_runs SET evidence_json = ?, message = ? WHERE run_id = ?",
+            (json.dumps(evidence, ensure_ascii=False), message[:400], run_id),
+        )
+        conn.execute(
+            "UPDATE guardian_tasks SET tool_args_json = ?, last_evidence_json = ?, last_message = ?, updated_at = ? WHERE id = ?",
+            (json.dumps(args, ensure_ascii=False), json.dumps(evidence, ensure_ascii=False), message[:400], _now_iso(), task.id),
+        )
+    return {"status": status, "error": error_summary}
+
+
 def _task_failure_count(task: GuardianTask) -> int:
     return max(0, int(task.consecutive_failures or 0))
 
@@ -663,6 +714,9 @@ async def _send_slack_health_notification(task_args: dict[str, Any], content: st
         raise RuntimeError("Slack health delivery needs slack_channel or SPARKBOT_HEALTH_SLACK_CHANNEL.")
     if not token:
         raise RuntimeError("Slack health delivery setup needed.")
+    allowed_channels = {part.strip() for part in os.getenv("SPARKBOT_HEALTH_SLACK_ALLOWED_CHANNELS", "").split(",") if part.strip()}
+    if allowed_channels and channel not in allowed_channels:
+        raise RuntimeError("Slack health delivery channel is not in SPARKBOT_HEALTH_SLACK_ALLOWED_CHANNELS.")
     import httpx
 
     async with httpx.AsyncClient(timeout=10.0) as client:
@@ -681,13 +735,21 @@ async def _deliver_task_notifications(task: GuardianTask, content: str) -> list[
     if task.tool_name == HEALTH_CHECK_TOOL_NAME:
         args = _task_args(task)
         channels = delivery_channels_from_args(args)
+        prefs = delivery_preferences_from_args(args)
+        pref_by_channel = {str(item.get("channel")): item for item in prefs.get("channels", []) if isinstance(item, dict)}
         bridge_modules: list[tuple[str, str]] = []
-        if "telegram" in channels:
-            bridge_modules.append(("app.services.telegram_bridge", "Telegram"))
-        if "discord" in channels:
-            bridge_modules.append(("app.services.discord_bridge", "Discord"))
-        if "whatsapp" in channels:
-            bridge_modules.append(("app.services.whatsapp_bridge", "WhatsApp"))
+        for channel, label, module in (
+            ("telegram", "Telegram", "app.services.telegram_bridge"),
+            ("discord", "Discord", "app.services.discord_bridge"),
+            ("whatsapp", "WhatsApp", "app.services.whatsapp_bridge"),
+        ):
+            if channel not in channels:
+                continue
+            pref = pref_by_channel.get(channel, {})
+            if pref and not pref.get("configured"):
+                errors.append(f"{label}: {pref.get('setup_message') or 'not configured'}")
+                continue
+            bridge_modules.append((module, label))
         for bridge_module, label in bridge_modules:
             try:
                 import importlib as _il
@@ -696,22 +758,20 @@ async def _deliver_task_notifications(task: GuardianTask, content: str) -> list[
             except Exception as exc:
                 errors.append(f"{label}: {exc}")
         if "slack" in channels:
-            try:
-                await _send_slack_health_notification(args, content)
-            except Exception as exc:
-                errors.append(f"Slack: {exc}")
+            pref = pref_by_channel.get("slack", {})
+            if pref and not pref.get("configured"):
+                errors.append(f"Slack: {pref.get('setup_message') or 'not configured'}")
+            else:
+                try:
+                    await _send_slack_health_notification(args, content)
+                except Exception as exc:
+                    errors.append(f"Slack: {exc}")
+        if "sms" in channels:
+            errors.append("SMS: SMS/text delivery is not implemented in Sparkbot yet")
         return errors
 
-    for _bridge_module in (
-        "app.services.telegram_bridge",
-        "app.services.discord_bridge",
-        "app.services.whatsapp_bridge",
-    ):
-        try:
-            import importlib as _il
-            await _il.import_module(_bridge_module).send_room_notification(task.room_id, content)
-        except Exception as exc:
-            errors.append(f"{_bridge_module}: {exc}")
+    # Non-health jobs stay app/in-room only unless a future explicit delivery
+    # preference model is added for that tool. Avoid surprise external sends.
     return errors
 
 
@@ -967,7 +1027,27 @@ async def run_task_once(task: GuardianTask, session: Session) -> dict[str, Any]:
         sender_type="BOT",
     )
     await _broadcast_task_message(task.room_id, str(msg.id), content)
-    delivery_errors = await _deliver_task_notifications(task, content)
+    delivery_channels = delivery_channels_from_args(_task_args(task)) if task.tool_name == HEALTH_CHECK_TOOL_NAME else ["app"]
+    delivery_errors: list[str] = []
+    delivery_state = {"status": "app_only", "error": ""}
+    if task.tool_name == HEALTH_CHECK_TOOL_NAME:
+        delivery_errors = await _deliver_task_notifications(task, content)
+        delivery_state = _record_delivery_state(
+            task=task,
+            run_id=run_id,
+            channels=delivery_channels,
+            delivery_errors=delivery_errors,
+        )
+        try:
+            remember_tool_event(
+                user_id=task.user_id,
+                room_id=task.room_id,
+                tool_name=f"{_memory_tool_name(task)}.delivery",
+                args={"task_id": task.id, "delivery_channels": delivery_channels},
+                result=f"delivery_status={delivery_state['status']} warnings={delivery_state['error']}",
+            )
+        except Exception:
+            pass
 
     return {
         "run_id": run_id,
@@ -983,6 +1063,8 @@ async def run_task_once(task: GuardianTask, session: Session) -> dict[str, Any]:
         "consecutive_failures": followup["consecutive_failures"],
         "retry_budget": followup["retry_budget"],
         "escalated": followup["escalated"],
+        "delivery_channels": delivery_channels,
+        "delivery_status": delivery_state["status"],
         "delivery_errors": delivery_errors,
     }
 

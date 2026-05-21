@@ -16,6 +16,7 @@ from app.api.deps import CurrentChatUser, SessionDep
 from app.crud import get_chat_room_by_id, get_chat_room_member
 from app.models import RoomRole
 from app.services.guardian import get_guardian_suite
+from app.services.guardian.health_checks import delivery_preferences_from_args
 from app.services.guardian.task_guardian import set_write_enabled
 
 router = APIRouter(tags=["chat-guardian"])
@@ -355,6 +356,8 @@ def list_room_guardian_tasks(
                 "retry_budget": task.retry_budget,
                 "last_blocked_reason": task.last_blocked_reason,
                 "escalated_at": task.escalated_at,
+                "tool_args": json.loads(task.tool_args_json or "{}"),
+                "delivery": delivery_preferences_from_args(json.loads(task.tool_args_json or "{}")),
             }
             for task in tasks
         ],
