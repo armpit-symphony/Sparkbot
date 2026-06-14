@@ -122,3 +122,11 @@ It is **not yet** a live LIMA runtime consumer.
 Recommended next step:
 
 Create and gate the LIMA intake adapter on top of these surfaces, then rerun parity tests above before declaring API freeze readiness.
+
+## 10) Post-intake status (V1-G12 LIMA AI OS)
+
+- LIMA AI OS side accepted this packet as static reference for intake planning.
+- LIMA acceptance branch and commit: `v1-g12-sparkbot-lima-consumer-proof-intake` /
+  `0ec8d230d5bd9ff56432e206adc7a5c147397cf8`.
+- Runtime API freeze remains not approved.
+- API status remains `CANDIDATE_ONLY` for this boundary.

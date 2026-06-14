@@ -118,6 +118,10 @@
   "proof_files": [
     "docs/proof_packets/SPARKBOT_SHELL_LIMA_CONSUMER_PROOF_PACKET.md",
     "docs/audits/SPARKBOT_SHELL_LIMA_CONSUMER_PACKET_AUDIT.md",
+    "docs/V1_G12_SPARKBOT_LIMA_CONSUMER_PROOF_INTAKE.md",
+    "docs/V1_G12_SPARKBOT_LIMA_CONSUMER_PROOF_AUDIT.md",
+    "docs/V1_G12_SPARKBOT_LIMA_CONSUMER_PROOF_CLOSEOUT.md",
+    "docs/CURRENT_PROJECT_STATE.md",
     "frontend/src/routes/dm.tsx",
     "frontend/src/routes/workstation.tsx",
     "frontend/src/routes/meeting.$roomId.tsx",
@@ -131,6 +135,14 @@
     "backend/app/services/guardian/pending_approvals.py",
     "backend/app/services/guardian/spine.py"
   ],
+  "lima_side_acceptance": {
+    "lima_repo": "armpit-symphony/LIMA-AI-OS",
+    "lima_branch": "v1-g12-sparkbot-lima-consumer-proof-intake",
+    "lima_commit": "0ec8d230d5bd9ff56432e206adc7a5c147397cf8",
+    "pr_url": "https://github.com/armpit-symphony/LIMA-AI-OS/pull/new/v1-g12-sparkbot-lima-consumer-proof-intake",
+    "status": "accepted_static_consumer_reference_only",
+    "api_freeze": "not_approved"
+  },
   "validation_commands": [
     "python3 --version || python --version",
     "git diff --check"

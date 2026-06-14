@@ -334,3 +334,9 @@ Each proposal includes an `embodiment_profile`.
 
 Sparkbot is strong behavior-reference evidence for LIMA consumption, but it is **not yet a direct LIMA runtime contract consumer**.
 LIMA-AI-OS can treat this as non-binding evidence packet while planning first-party runtime intake adapters and approval schema.
+
+## 15) LIMA side V1-G12 acceptance note
+
+On 2026-06-14, LIMA AI OS side team accepted this packet as static consumer evidence
+under `v1-g12-sparkbot-lima-consumer-proof-intake` (`0ec8d230d5bd9ff56432e206adc7a5c147397cf8`).
+The acceptance explicitly remains `static reference only` with no live runtime parity.
