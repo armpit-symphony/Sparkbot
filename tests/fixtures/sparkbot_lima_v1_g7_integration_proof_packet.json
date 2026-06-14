@@ -1,0 +1,187 @@
+{
+  "proof_gap_id": "V1-G7",
+  "shell_repo": "Sparkbot",
+  "proof_branch": "v1-g7-sparkbot-integration-proof-packet",
+  "proof_commit": "reported-by-git-after-commit",
+  "source_evidence_branch": "public-release-final-cleanup-assessment",
+  "source_evidence_commit": "0f8d059fc5927e3466d269ca5479df4c56b3c06f",
+  "lima_request_branch": "v1-g7-first-shell-integration-proof-request-gate",
+  "lima_request_commit": "fa3ad4af48c7c2b6286c9d3b789f5a7a2e85fda2",
+  "proof_packet_files": [
+    "docs/proof_packets/SPARKBOT_LIMA_V1_G7_INTEGRATION_PROOF_PACKET.md",
+    "docs/audits/SPARKBOT_LIMA_V1_G7_INTEGRATION_PROOF_AUDIT.md",
+    "tests/fixtures/sparkbot_lima_v1_g7_integration_proof_packet.json",
+    "tests/test_sparkbot_lima_v1_g7_integration_proof_packet.py"
+  ],
+  "reviewed_files": [
+    "AGENTS.md",
+    "docs/capabilities.md",
+    "docs/PUBLIC_RELEASE_CAPABILITY_MODEL.md",
+    "docs/guardian-spine.md",
+    "docs/LIMA_RUNTIME_ALIGNMENT_NOTES.md",
+    "backend/app/services/guardian/policy.py",
+    "backend/app/services/guardian/pending_approvals.py",
+    "backend/app/services/guardian/spine.py",
+    "backend/app/services/model_seats.py",
+    "backend/app/api/routes/chat/rooms.py",
+    "backend/app/api/routes/chat/llm.py",
+    "backend/app/api/routes/chat/dashboard.py",
+    "backend/app/api/routes/chat/tools.py",
+    "backend/app/api/routes/chat/mcp.py",
+    "backend/app/services/mcp_registry.py",
+    "backend/app/services/mcp_runs.py",
+    "frontend/src/pages/SparkbotDmPage.tsx",
+    "frontend/src/components/chat/MessageBubble.tsx",
+    "frontend/src/components/chat/ChatWindow.tsx",
+    "frontend/src/lib/sparkbotControls.ts",
+    "frontend/src/lib/mcpRegistry.ts",
+    "frontend/src/lib/spine.ts"
+  ],
+  "validation_commands": [
+    "cmd /c \"python3 --version || python --version\"",
+    "cmd /c \"python3 -m pytest -q tests/test_sparkbot_lima_v1_g7_integration_proof_packet.py || python -m pytest -q tests/test_sparkbot_lima_v1_g7_integration_proof_packet.py\"",
+    "cmd /c \"python3 -m json.tool tests/fixtures/sparkbot_lima_v1_g7_integration_proof_packet.json || python -m json.tool tests/fixtures/sparkbot_lima_v1_g7_integration_proof_packet.json\"",
+    "git diff --check"
+  ],
+  "validation_results": [
+    {
+      "command": "cmd /c \"python3 --version || python --version\"",
+      "result": "passed: Python 3.12.10, with known trailing Windows environment message"
+    },
+    {
+      "command": "cmd /c \"python3 -m pytest -q tests/test_sparkbot_lima_v1_g7_integration_proof_packet.py || python -m pytest -q tests/test_sparkbot_lima_v1_g7_integration_proof_packet.py\"",
+      "result": "passed: 9 passed in 0.05s, with known trailing Windows environment message"
+    },
+    {
+      "command": "cmd /c \"python3 -m json.tool tests/fixtures/sparkbot_lima_v1_g7_integration_proof_packet.json || python -m json.tool tests/fixtures/sparkbot_lima_v1_g7_integration_proof_packet.json\"",
+      "result": "passed: JSON parsed and printed, with known trailing Windows environment message"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed: clean"
+    }
+  ],
+  "can_consume_lima_contract_outputs_as_static_evidence": true,
+  "can_consume_lima_runtime_outputs_live": false,
+  "lima_runtime_wiring_added": false,
+  "lima_runtime_behavior_added": false,
+  "runtime_exports_required_from_lima": [],
+  "runtime_exports_changed_in_lima": false,
+  "shell_response_states_evaluated": [
+    "received",
+    "thinking",
+    "preview_ready",
+    "blocked",
+    "needs_approval",
+    "completed",
+    "failed_safe",
+    "deferred"
+  ],
+  "source_backed_shell_response_states": [
+    "received",
+    "thinking",
+    "preview_ready",
+    "blocked",
+    "needs_approval",
+    "completed",
+    "failed_safe"
+  ],
+  "docs_fixture_only_shell_response_states": [
+    "deferred"
+  ],
+  "missing_shell_response_states": [],
+  "kernel_status_mappings": {
+    "proposed": "preview_only",
+    "needs_review": "explain_plan",
+    "blocked": "blocked",
+    "completed": "completed",
+    "deferred": "deferred"
+  },
+  "packet_statuses": [
+    "preview_only",
+    "explain_plan",
+    "blocked",
+    "completed",
+    "deferred"
+  ],
+  "haptic_intent_metadata_supported": false,
+  "haptic_intent_metadata_status": "not_present_in_sparkbot_source_no_device_behavior_added",
+  "shell_owns_haptics": true,
+  "lima_owns_haptic_device_behavior": false,
+  "haptic_device_behavior_added": false,
+  "device_haptic_command_added": false,
+  "destructive_edit_delete_requires_operator_approval": true,
+  "destructive_edit_delete_runtime_present": true,
+  "approval_enforcement_status": "source_backed_sparkbot_runtime_confirm_privileged_breakglass_paths_not_lima_enforcement",
+  "guardian_decision_status": "source_backed_sparkbot_policy_decision_not_lima_guardian_decision",
+  "provider_model_routing_status": "source_backed_sparkbot_runtime_provider_model_routing_with_route_context_model_seats_and_audit_posture",
+  "audit_evidence_status": "source_backed_sparkbot_audit_timeline_pending_approvals_and_guardian_spine_not_lima_persistence",
+  "tool_pack_scope_status": "source_backed_sparkbot_tool_policy_registry_and_tool_catalog_guardian_scoping",
+  "connector_file_browser_network_device_robotics_status": "runtime_enabled_where_configured_guardian_gated_public_robo_preview_private_bridge_gated_no_lima_behavior_added",
+  "raw_natural_language_to_tool_execution_allowed": false,
+  "sparkbot_code_copied_to_lima": false,
+  "sparkbot_imported_by_lima": false,
+  "lima_imported_by_shell_runtime": false,
+  "production_readiness_claimed": false,
+  "v1_product_readiness_claimed": false,
+  "accepted_as_static_shell_evidence": true,
+  "accepted_as_live_runtime_parity": false,
+  "evidence_summary": {
+    "streaming_and_typing": [
+      "backend/app/api/routes/chat/rooms.py emits human_message, token, done, and error SSE events",
+      "frontend/src/pages/SparkbotDmPage.tsx uses isStreaming and ConfirmModal",
+      "frontend/src/components/chat/MessageBubble.tsx and ChatWindow.tsx render typing indicators"
+    ],
+    "approval_and_policy": [
+      "backend/app/services/guardian/policy.py defines allow/confirm/deny/privileged/privileged_reveal actions",
+      "backend/app/services/guardian/pending_approvals.py stores and consumes pending approvals",
+      "backend/app/api/routes/chat/dashboard.py approves and denies dashboard approval requests"
+    ],
+    "provider_model_routing": [
+      "backend/app/api/routes/chat/llm.py defines VALID_AGENT_ROUTES and get_agent_route_context",
+      "backend/app/services/model_seats.py normalizes model-seat providers",
+      "frontend/src/lib/sparkbotControls.ts maps model selections to provider routes"
+    ],
+    "audit_and_spine": [
+      "backend/app/api/routes/chat/dashboard.py exposes timeline/audit hashes",
+      "backend/app/services/guardian/spine.py defines Guardian Spine task/event/approval tables",
+      "frontend/src/lib/spine.ts reads operator queues, events, approvals, and lineage"
+    ]
+  },
+  "accepted_evidence": [
+    "Sparkbot source-backed response-state reference evidence",
+    "Sparkbot source-backed approval and policy decision reference evidence",
+    "Sparkbot source-backed provider/model routing reference evidence",
+    "Sparkbot source-backed audit/spine reference evidence",
+    "Sparkbot destructive edit/delete approval posture",
+    "Sparkbot public Robo preview/private gate classification",
+    "no LIMA runtime behavior added by this proof branch",
+    "no LIMA runtime exports required by this proof branch"
+  ],
+  "rejected_claims": [
+    "live_lima_runtime_parity",
+    "lima_runtime_wiring",
+    "lima_guardian_decision_authority",
+    "lima_approval_enforcement",
+    "lima_provider_model_routing",
+    "lima_audit_persistence",
+    "lima_haptic_device_behavior",
+    "runtime_export_cleanup_approval",
+    "final_api_freeze_approval",
+    "v1_product_readiness",
+    "production_readiness"
+  ],
+  "blockers": [
+    "lima_runtime_wiring_not_present",
+    "lima_guardian_decision_runtime_not_present",
+    "lima_live_approval_enforcement_not_present",
+    "lima_provider_model_runtime_routing_not_present",
+    "lima_audit_persistence_not_present",
+    "lima_haptic_device_behavior_not_owned_or_present",
+    "arc_bot_shell_v1_g7_packet_not_accepted_by_lima",
+    "consolidated_v1_g7_closeout_not_complete",
+    "runtime_export_cleanup_not_approved",
+    "final_api_freeze_not_approved"
+  ],
+  "recommended_next_step": "LIMA should intake this Sparkbot packet as static behavior-reference evidence only, then request or normalize the Arc-Bot-shell V1-G7 packet before consolidated V1-G7 closeout."
+}
