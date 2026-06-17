@@ -1,0 +1,65 @@
+{
+  "packet_id": "sparkbot_lima_v1_g31_fake_runtime_consumer_call_preview",
+  "proof_gap_id": "V1-G32",
+  "api_status": "CANDIDATE_ONLY",
+  "consumer_repo": "Sparkbot",
+  "consumer_repository": "sparkpit-labs/Sparkbot",
+  "proof_branch": "v1-g32-consumer-repository-test-edit",
+  "proof_commit": "reported_by_git_after_commit",
+  "lima_approval_request": "docs/V1_G32_CONSUMER_REPOSITORY_TEST_EDIT_APPROVAL_REQUEST.md",
+  "lima_operator_decision": "Approve-V1-G32",
+  "approved_file_scope": [
+    "tests/fixtures/sparkbot_lima_v1_g31_fake_runtime_consumer_call_preview.json",
+    "tests/test_sparkbot_lima_v1_g31_fake_runtime_consumer_call_preview.py"
+  ],
+  "approved_import_symbols": [
+    "lima.adapters.validate_v1_consumer_integration_compatibility_freeze",
+    "lima.adapters.validate_v1_consumer_integration_proof_to_import_dry_run"
+  ],
+  "linked_lima_evidence_refs": {
+    "v1_g27_import_smoke_record_id": "frozen-api-import-smoke:v1-g27:sparkbot:001",
+    "v1_g28_runtime_export_cleanup_ref": "runtime-export-cleanup:v1-g28",
+    "v1_g29_planning_record_id": "live-consumer-import-call-plan:v1-g29:sparkbot:001",
+    "v1_g30_fake_runtime_evidence_record_id": "fake-runtime-consumer-call-evidence:v1-g30:sparkbot:001",
+    "v1_g31_preview_record_id": "fake-runtime-consumer-repo-test-preview:v1-g31:sparkbot:001"
+  },
+  "test_only_imports_added": true,
+  "fake_runtime_preview_test_added": true,
+  "docs_tests_fixtures_only": true,
+  "runtime_source_files_changed": false,
+  "imported_symbols_called": false,
+  "fake_call_envelope_executed": false,
+  "fake_runtime_metadata_only": true,
+  "lima_runtime_behavior_invoked": false,
+  "consumer_runtime_calls_added": false,
+  "live_consumer_import_calls_added": false,
+  "consumer_integration_added": false,
+  "shell_runtime_wiring_added": false,
+  "provider_model_calls_added": false,
+  "network_required": false,
+  "secrets_required": false,
+  "external_services_required": false,
+  "secret_lookup_added": false,
+  "credential_access_added": false,
+  "tool_execution_added": false,
+  "connector_browser_network_file_device_robotics_physical_world_behavior_added": false,
+  "raw_diff_or_patch_persisted": false,
+  "raw_file_content_persisted": false,
+  "product_ready": false,
+  "proof_not_authority": true,
+  "required_confirmations": {
+    "no_live_import_call_confirmation": true,
+    "no_runtime_wiring_confirmation": true,
+    "no_runtime_source_change_confirmation": true,
+    "no_adapter_symbol_call_confirmation": true,
+    "no_provider_model_secret_credential_connector_browser_network_physical_world_confirmation": true,
+    "no_raw_content_secret_credential_customer_data_diff_patch_confirmation": true,
+    "proof_not_authority_confirmation": true
+  },
+  "validation_commands": [
+    "python -B -m pytest -q tests/test_sparkbot_lima_v1_g31_fake_runtime_consumer_call_preview.py -p no:cacheprovider",
+    "python -B -m pytest -q tests/test_sparkbot_lima_v1_g27_frozen_api_import_smoke.py -p no:cacheprovider",
+    "git diff --check"
+  ],
+  "recommended_next_step": "LIMA may intake this as Sparkbot V1-G32 consumer repository test edit evidence only."
+}
