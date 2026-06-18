@@ -1,0 +1,260 @@
+{
+  "packet_id": "sparkbot_lima_v1_g34_live_consumer_import_call",
+  "api_status": "CANDIDATE_ONLY",
+  "consumer_repo": "Sparkbot",
+  "consumer_repository": "sparkpit-labs/Sparkbot",
+  "proof_branch": "v1-g34-live-consumer-import-call",
+  "source_consumer_test_commit_sha": "ebef6ae816f9ae4e43cc1ac57c13ce04a20a04f1",
+  "live_consumer_import_call_test_added": true,
+  "test_only_imports_added": true,
+  "test_only_calls_added": true,
+  "docs_tests_fixtures_only": true,
+  "runtime_source_files_changed": false,
+  "consumer_runtime_modules_imported": false,
+  "shell_runtime_wiring_added": false,
+  "provider_model_calls_added": false,
+  "model_request_dispatch_added": false,
+  "secret_lookup_added": false,
+  "credential_access_added": false,
+  "connector_browser_network_file_device_robotics_physical_world_behavior_added": false,
+  "raw_sensitive_content_persisted": false,
+  "product_ready": false,
+  "approved_import_symbols": [
+    "lima.adapters.validate_v1_consumer_integration_compatibility_freeze",
+    "lima.adapters.validate_v1_consumer_integration_proof_to_import_dry_run"
+  ],
+  "approved_call_symbols": [
+    "lima.adapters.validate_v1_consumer_integration_compatibility_freeze",
+    "lima.adapters.validate_v1_consumer_integration_proof_to_import_dry_run"
+  ],
+  "compatibility_metadata": {
+    "compatibility_packet_id": "compat:v1-g34:sparkbot:001",
+    "consumer_packet_family": "sparkbot",
+    "consumer_name": "Sparkbot",
+    "consumer_repository": "sparkpit-labs/Sparkbot",
+    "consumer_branch_ref": "v1-g34-live-consumer-import-call",
+    "consumer_commit_sha": "ebef6ae816f9ae4e43cc1ac57c13ce04a20a04f1",
+    "candidate_export_surface_refs": [
+      "lima.adapters.validate_v1_consumer_integration_compatibility_freeze",
+      "lima.adapters.validate_v1_consumer_integration_proof_to_import_dry_run"
+    ],
+    "runtime_symbol_refs": [
+      "validate_v1_consumer_integration_compatibility_freeze",
+      "validate_v1_consumer_integration_proof_to_import_dry_run"
+    ],
+    "import_surface_expectations": {
+      "expected_import_refs": [
+        "from lima.adapters import validate_v1_consumer_integration_compatibility_freeze",
+        "from lima.adapters import validate_v1_consumer_integration_proof_to_import_dry_run"
+      ],
+      "expected_call_shape_refs": [
+        "validate_v1_consumer_integration_compatibility_freeze(metadata)",
+        "validate_v1_consumer_integration_proof_to_import_dry_run(metadata)"
+      ],
+      "metadata_only": true,
+      "live_import_performed": false,
+      "live_call_performed": false,
+      "consumer_code_imported": false,
+      "grants_runtime_authority": false
+    },
+    "fixture_compatibility_matrix": {
+      "matrix_ref": "fixture-matrix:v1-g34:sparkbot",
+      "fixture_refs": [
+        "tests/fixtures/sparkbot_lima_v1_g34_live_consumer_import_call.json"
+      ],
+      "compatibility_status": "candidate_compatible",
+      "raw_fixture_content_included": false,
+      "consumer_runtime_invoked": false
+    },
+    "version_compatibility_metadata": {
+      "compatibility_version_ref": "compat-version:v1-g34",
+      "lima_candidate_version_ref": "lima:v1-candidate",
+      "consumer_version_ref": "sparkbot:v1-g34-test",
+      "compatibility_status": "candidate_compatible",
+      "final_api_freeze_claimed": false
+    },
+    "guardian_boundary_compatibility": {
+      "boundary_ref": "guardian-boundary:v1-g34",
+      "compatible": true,
+      "proof_not_authority": true,
+      "grants_execution_authority": false,
+      "future_integration_requires_approval": true
+    },
+    "approval_boundary_compatibility": {
+      "boundary_ref": "approval-boundary:v1-g34",
+      "compatible": true,
+      "proof_not_authority": true,
+      "grants_execution_authority": false,
+      "future_integration_requires_approval": true
+    },
+    "provider_model_route_boundary_compatibility": {
+      "boundary_ref": "provider-model-boundary:v1-g34",
+      "compatible": true,
+      "proof_not_authority": true,
+      "grants_execution_authority": false,
+      "future_integration_requires_approval": true
+    },
+    "consumer_runtime_call_prohibition": {
+      "prohibition_ref": "runtime-prohibition:v1-g34:sparkbot",
+      "non_execution_confirmed": true,
+      "consumer_runtime_calls_added": false,
+      "live_import_performed": false,
+      "live_call_performed": false
+    },
+    "no_consumer_repo_mutation_confirmation": true,
+    "no_live_import_call_confirmation": true,
+    "final_public_api_freeze_not_claimed_confirmation": true,
+    "audit_evidence_linkage": {
+      "audit_record_ref": "audit:v1-g34:sparkbot",
+      "evidence_refs": [
+        "consumer-fake-runtime-import-call-smoke:v1-g33:sparkbot:001",
+        "consumer-repository-test-edit:v1-g32:sparkbot:001",
+        "frozen-api-import-smoke:v1-g27:sparkbot:001"
+      ],
+      "required": true,
+      "proof_not_authority": true
+    },
+    "proof_not_authority_confirmation": true,
+    "no_raw_content_secret_credential_customer_data_confirmation": true,
+    "no_execution_authority_confirmation": true
+  },
+  "import_plan_metadata": {
+    "import_plan_id": "import-plan:v1-g34:sparkbot:001",
+    "consumer_packet_family": "sparkbot",
+    "consumer_name": "Sparkbot",
+    "consumer_repository": "sparkpit-labs/Sparkbot",
+    "consumer_branch_ref": "v1-g34-live-consumer-import-call",
+    "consumer_commit_sha": "ebef6ae816f9ae4e43cc1ac57c13ce04a20a04f1",
+    "proof_packet_ref": "consumer-fake-runtime-import-call-smoke:v1-g33:sparkbot:001",
+    "compatibility_packet_ref": "compat:v1-g34:sparkbot:001",
+    "frozen_api_packet_ref": "api-freeze:v1-g22",
+    "proposed_import_metadata": {
+      "import_refs": [
+        "from lima.adapters import validate_v1_consumer_integration_compatibility_freeze",
+        "from lima.adapters import validate_v1_consumer_integration_proof_to_import_dry_run"
+      ],
+      "import_target_refs": [
+        "lima.adapters.validate_v1_consumer_integration_compatibility_freeze",
+        "lima.adapters.validate_v1_consumer_integration_proof_to_import_dry_run"
+      ],
+      "metadata_only": true,
+      "consumer_code_imported": false,
+      "live_import_performed": false,
+      "consumer_repo_mutation_added": false,
+      "grants_runtime_authority": false
+    },
+    "proposed_call_site_metadata": {
+      "call_site_refs": [
+        "tests.test_sparkbot_lima_v1_g34_live_consumer_import_call"
+      ],
+      "call_shape_refs": [
+        "validate_v1_consumer_integration_compatibility_freeze(metadata)",
+        "validate_v1_consumer_integration_proof_to_import_dry_run(metadata)"
+      ],
+      "metadata_only": true,
+      "live_call_performed": false,
+      "consumer_runtime_calls_added": false,
+      "consumer_runtime_invoked": false,
+      "grants_runtime_authority": false
+    },
+    "adapter_boundary_mapping": {
+      "boundary_ref": "adapter-boundary:v1-g34",
+      "mapped_refs": [
+        "lima.adapters"
+      ],
+      "compatible": true,
+      "metadata_only": true,
+      "proof_not_authority": true,
+      "grants_execution_authority": false,
+      "future_integration_requires_approval": true
+    },
+    "guardian_boundary_mapping": {
+      "boundary_ref": "guardian-boundary:v1-g34",
+      "mapped_refs": [
+        "guardian.syscall-gate"
+      ],
+      "compatible": true,
+      "metadata_only": true,
+      "proof_not_authority": true,
+      "grants_execution_authority": false,
+      "future_integration_requires_approval": true
+    },
+    "approval_boundary_mapping": {
+      "boundary_ref": "approval-boundary:v1-g34",
+      "mapped_refs": [
+        "approval.evidence"
+      ],
+      "compatible": true,
+      "metadata_only": true,
+      "proof_not_authority": true,
+      "grants_execution_authority": false,
+      "future_integration_requires_approval": true
+    },
+    "provider_model_route_boundary_mapping": {
+      "boundary_ref": "provider-model-boundary:v1-g34",
+      "mapped_refs": [
+        "model.route.metadata"
+      ],
+      "compatible": true,
+      "metadata_only": true,
+      "proof_not_authority": true,
+      "grants_execution_authority": false,
+      "future_integration_requires_approval": true
+    },
+    "expected_test_command_metadata": {
+      "command_refs": [
+        "python -B -m pytest -q tests/test_sparkbot_lima_v1_g34_live_consumer_import_call.py -p no:cacheprovider"
+      ],
+      "expected_result_refs": [
+        "focused V1-G34 consumer import/call test passes"
+      ],
+      "metadata_only": true,
+      "dry_run_only": true,
+      "consumer_runtime_invoked": false,
+      "external_services_required": false
+    },
+    "rollback_metadata": {
+      "rollback_ref": "rollback:v1-g34:sparkbot-live-consumer-import-call",
+      "rollback_step_refs": [
+        "remove tests/fixtures/sparkbot_lima_v1_g34_live_consumer_import_call.json",
+        "remove tests/test_sparkbot_lima_v1_g34_live_consumer_import_call.py"
+      ],
+      "consumer_repo_changes_required": false,
+      "runtime_export_cleanup_required": false,
+      "external_service_changes_required": false
+    },
+    "no_consumer_repo_mutation_confirmation": true,
+    "no_live_import_call_confirmation": true,
+    "no_runtime_export_cleanup_confirmation": true,
+    "no_raw_content_secret_credential_customer_data_confirmation": true,
+    "proof_not_authority_confirmation": true,
+    "audit_evidence_linkage": {
+      "audit_record_ref": "audit:v1-g34:sparkbot",
+      "evidence_refs": [
+        "consumer-fake-runtime-import-call-smoke:v1-g33:sparkbot:001",
+        "consumer-repository-test-edit:v1-g32:sparkbot:001",
+        "frozen-api-import-smoke:v1-g27:sparkbot:001"
+      ],
+      "required": true,
+      "proof_not_authority": true
+    }
+  },
+  "linked_lima_evidence_refs": {
+    "v1_g27_import_smoke_record_id": "frozen-api-import-smoke:v1-g27:sparkbot:001",
+    "v1_g28_runtime_export_cleanup_ref": "runtime-export-cleanup:v1-g28",
+    "v1_g29_planning_record_id": "live-consumer-import-call-plan:v1-g29:sparkbot:001",
+    "v1_g30_fake_runtime_evidence_record_id": "fake-runtime-consumer-call-evidence:v1-g30:sparkbot:001",
+    "v1_g31_preview_record_id": "fake-runtime-consumer-repo-test-preview:v1-g31:sparkbot:001",
+    "v1_g32_test_edit_record_id": "consumer-repository-test-edit:v1-g32:sparkbot:001",
+    "v1_g33_smoke_record_id": "consumer-fake-runtime-import-call-smoke:v1-g33:sparkbot:001"
+  },
+  "required_confirmations": {
+    "no_runtime_source_change_confirmation": true,
+    "no_consumer_runtime_module_import_confirmation": true,
+    "no_runtime_wiring_confirmation": true,
+    "only_approved_adapter_validator_calls_confirmation": true,
+    "no_provider_model_secret_credential_connector_browser_network_physical_world_confirmation": true,
+    "no_raw_sensitive_content_confirmation": true,
+    "proof_not_product_readiness_confirmation": true
+  }
+}
