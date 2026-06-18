@@ -20,7 +20,7 @@ The preview is intentionally read-only and does not implement approvals, policy 
 - The preview includes no execute actions.
 - The preview includes no save actions.
 - The preview includes no policy enforcement behavior.
-- Existing backend `GET /health` check remains unchanged as the only frontend network call.
+- Existing backend `GET /health` and `GET /capabilities` checks remain unchanged as the only frontend network calls.
 
 ## Excluded from this baseline
 

@@ -74,7 +74,7 @@ Start the frontend development server:
 bash scripts/start-frontend-dev.sh
 ```
 
-The frontend development server binds to `127.0.0.1` through Vite. The frontend currently presents static shell previews for Workstation, Chat Shell, Round Table, Provider Setup, and Guardian Controls.
+The frontend development server binds to `127.0.0.1` through Vite. The frontend currently presents static shell previews for Workstation, Chat Shell, Work Page, Round Table, Provider Setup, Local AI Settings, and Guardian Controls.
 
 ## Current limitations
 

@@ -18,7 +18,7 @@ The preview is intentionally read-only and does not implement credential storage
 - The preview includes no API key input fields.
 - The preview includes no save actions.
 - The preview includes no test connection actions.
-- Existing backend `GET /health` check remains unchanged as the only frontend network call.
+- Existing backend `GET /health` and `GET /capabilities` checks remain unchanged as the only frontend network calls.
 
 ## Excluded from this baseline
 

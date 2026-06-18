@@ -80,7 +80,7 @@ Open:
 http://127.0.0.1:15173
 ```
 
-The page should show the Sparkbot shell with Workstation navigation, preview-only Chat, Round Table, Provider Setup, Guardian Controls, backend capability statuses when available, and the read-only backend health panel.
+The page should show the Sparkbot shell with Workstation navigation, preview-only Chat, Work Page, Round Table, Provider Setup, Local AI Settings, Guardian Controls, backend capability statuses when available, and the read-only backend health panel.
 
 ## Cleanup
 

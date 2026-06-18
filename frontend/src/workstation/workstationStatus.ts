@@ -36,6 +36,12 @@ export const workstationStatusItems: WorkstationStatusItem[] = [
     summary: "No model calls or message persistence."
   },
   {
+    id: "work-page",
+    name: "Work Page shell",
+    status: "preview",
+    summary: "No file reads, file writes, connector calls, or worker execution."
+  },
+  {
     id: "round-table",
     name: "Round Table",
     status: "preview",
@@ -46,6 +52,12 @@ export const workstationStatusItems: WorkstationStatusItem[] = [
     name: "Provider Setup shell",
     status: "preview",
     summary: "No credential storage or provider calls."
+  },
+  {
+    id: "local-ai-settings",
+    name: "Local AI Settings shell",
+    status: "preview",
+    summary: "No credentials, endpoint checks, provider calls, or model routing."
   },
   {
     id: "guardian-controls",
@@ -97,6 +109,7 @@ export function capabilityToStatusItem(capability: PublicCapability): Workstatio
 export const workstationRoadmapItems: string[] = [
   "Define workstation view structure with stable public contracts.",
   "Document chat interaction contracts before enabling message handling or model behavior.",
+  "Keep Work Page and Local AI Settings previews inert until public-safe local action contracts exist.",
   "Expand Round Table preview surfaces only after public interaction contracts are documented.",
   "Document provider setup contracts before enabling credential or network behavior.",
   "Document Guardian control contracts before enabling approval or enforcement behavior.",

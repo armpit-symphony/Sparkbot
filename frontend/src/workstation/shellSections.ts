@@ -29,6 +29,12 @@ export const shellSections: ShellSection[] = [
     summary: "Static chat preview with message actions inactive."
   },
   {
+    id: "work-page",
+    label: "Work Page",
+    status: "preview",
+    summary: "Static work-program and workspace planning surface with actions inactive."
+  },
+  {
     id: "round-table",
     label: "Round Table",
     status: "preview",
@@ -39,6 +45,12 @@ export const shellSections: ShellSection[] = [
     label: "Provider Setup",
     status: "preview",
     summary: "Read-only provider planning cards with credentials inactive."
+  },
+  {
+    id: "local-ai-settings",
+    label: "Local AI Settings",
+    status: "preview",
+    summary: "Read-only local model setup route with endpoint checks inactive."
   },
   {
     id: "guardian-controls",

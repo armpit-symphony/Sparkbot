@@ -32,6 +32,12 @@ const capabilitiesPayload = {
       notes: "No model calls or message persistence."
     },
     {
+      id: "work-page",
+      label: "Work Page shell",
+      status: "preview",
+      notes: "No file reads, file writes, connector calls, or worker execution."
+    },
+    {
       id: "round-table",
       label: "Round Table",
       status: "preview",
@@ -42,6 +48,12 @@ const capabilitiesPayload = {
       label: "Provider Setup shell",
       status: "preview",
       notes: "No credential storage or provider calls."
+    },
+    {
+      id: "local-ai-settings",
+      label: "Local AI Settings shell",
+      status: "preview",
+      notes: "No credentials, endpoint checks, provider calls, or model routing."
     },
     {
       id: "guardian-controls",
@@ -107,8 +119,10 @@ describe("App", () => {
     expect(screen.getByText("Using local fallback status list.")).toBeDefined();
     expect(screen.getByRole("button", { name: /Workstation.*Preview/i })).toBeDefined();
     expect(screen.getByRole("button", { name: /Chat.*Preview/i })).toBeDefined();
+    expect(screen.getByRole("button", { name: /Work Page.*Preview/i })).toBeDefined();
     expect(screen.getByRole("button", { name: /Round Table.*Preview/i })).toBeDefined();
     expect(screen.getByRole("button", { name: /Provider Setup.*Preview/i })).toBeDefined();
+    expect(screen.getByRole("button", { name: /Local AI Settings.*Preview/i })).toBeDefined();
     expect(screen.getByRole("button", { name: /Guardian Controls.*Preview/i })).toBeDefined();
     expect(screen.getAllByText("Available").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByRole("heading", { name: "Backend health endpoint" })).toBeDefined();
@@ -130,6 +144,12 @@ describe("App", () => {
     const plannedComposer = screen.getByLabelText("Chat message composer planned") as HTMLTextAreaElement;
     expect(plannedComposer.disabled).toBe(true);
     expect(plannedComposer.readOnly).toBe(true);
+    expect(screen.getByRole("heading", { name: "Work Page shell" })).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Work Page Preview" })).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Program queue" })).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Workspace files" })).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Remote index" })).toBeDefined();
+    expect(screen.getByText(/no upload controls, no document editor/i)).toBeDefined();
     expect(screen.getByRole("heading", { name: "Round Table" })).toBeDefined();
     expect(screen.getByRole("heading", { name: "Round Table Preview" })).toBeDefined();
     expect(screen.getByRole("heading", { name: "Operator" })).toBeDefined();
@@ -139,7 +159,7 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: "Reviewer seat" })).toBeDefined();
     expect(screen.getByText(/multi-agent collaboration is planned/i)).toBeDefined();
     expect(screen.getByText(/does not start meetings, call models, run a turn engine/i)).toBeDefined();
-    expect(screen.getAllByText("Preview").length).toBeGreaterThanOrEqual(5);
+    expect(screen.getAllByText("Preview").length).toBeGreaterThanOrEqual(7);
     expect(screen.getByRole("heading", { name: "Provider Setup Preview" })).toBeDefined();
     expect(screen.getByRole("heading", { name: "Local model provider" })).toBeDefined();
     expect(screen.getByRole("heading", { name: "OpenAI-compatible provider" })).toBeDefined();
@@ -149,6 +169,12 @@ describe("App", () => {
     expect(screen.getByText(/provider configuration is planned for later slices/i)).toBeDefined();
     expect(screen.getByText(/no API key fields, no save actions, and no test-connection actions/i)).toBeDefined();
     expect(screen.getByRole("heading", { name: "Provider Setup shell" })).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Local AI Settings shell" })).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Local AI Settings Preview" })).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Local runtime setup" })).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Model seats" })).toBeDefined();
+    expect(screen.getByRole("heading", { name: "Readiness checks" })).toBeDefined();
+    expect(screen.getByText(/no credential fields, no save actions/i)).toBeDefined();
     expect(screen.getByRole("heading", { name: "Guardian Controls shell" })).toBeDefined();
     expect(screen.getByRole("heading", { name: "Guardian Controls Preview" })).toBeDefined();
     expect(screen.getByRole("heading", { name: "Local actions" })).toBeDefined();
@@ -179,7 +205,9 @@ describe("App", () => {
     expect(await screen.findByText("Using backend capabilities status.")).toBeDefined();
     expect(screen.getByRole("heading", { name: "Backend health endpoint" })).toBeDefined();
     expect(screen.getByText("Read-only local health check.")).toBeDefined();
+    expect(screen.getByText("No file reads, file writes, connector calls, or worker execution.")).toBeDefined();
     expect(screen.getByText("No connector calls or external sends.")).toBeDefined();
+    expect(screen.getByText("No credentials, endpoint checks, provider calls, or model routing.")).toBeDefined();
     expect(screen.getByText("No provider runtime or model routing.")).toBeDefined();
     expect(screen.getByText("No credential entry or storage path.")).toBeDefined();
     expect(screen.getByText("No terminal, tool, or automation execution.")).toBeDefined();
@@ -192,7 +220,7 @@ describe("App", () => {
     render(<App />);
 
     expect(screen.getAllByText("Available").length).toBeGreaterThanOrEqual(2);
-    expect(screen.getAllByText("Preview").length).toBeGreaterThanOrEqual(5);
+    expect(screen.getAllByText("Preview").length).toBeGreaterThanOrEqual(7);
     expect(screen.getAllByText("Planned").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Disabled by default").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Guarded future").length).toBeGreaterThanOrEqual(4);

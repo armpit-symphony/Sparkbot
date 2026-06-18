@@ -34,8 +34,10 @@ A capability may move to a more active status only when all of the following are
 | Frontend shell | `available` | Buildable React/Vite shell with local status display. |
 | Workstation shell | `preview` | Product shell preview only. |
 | Chat shell | `preview` | No send action, model call, or message persistence. |
+| Work Page shell | `preview` | No file reads, file writes, connector calls, or worker execution. |
 | Round Table shell | `preview` | No meeting engine or agent orchestration. |
 | Provider Setup shell | `preview` | No credential entry, storage, test call, or provider call. |
+| Local AI Settings shell | `preview` | No credentials, endpoint checks, provider calls, or model routing. |
 | Guardian Controls shell | `preview` | No runtime approval or enforcement path. |
 | Desktop packaging | `planned` | No installer, desktop binary, signing, or auto-update path. |
 | Connectors | `guarded-future` | Must satisfy `CONNECTOR_SAFETY_CONTRACT.md` before any runtime behavior. |

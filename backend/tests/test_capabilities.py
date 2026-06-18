@@ -43,6 +43,12 @@ def test_capabilities_are_static_and_public_safe() -> None:
             "notes": "No model calls or message persistence.",
         },
         {
+            "id": "work-page",
+            "label": "Work Page shell",
+            "status": "preview",
+            "notes": "No file reads, file writes, connector calls, or worker execution.",
+        },
+        {
             "id": "round-table",
             "label": "Round Table",
             "status": "preview",
@@ -53,6 +59,12 @@ def test_capabilities_are_static_and_public_safe() -> None:
             "label": "Provider Setup shell",
             "status": "preview",
             "notes": "No credential storage or provider calls.",
+        },
+        {
+            "id": "local-ai-settings",
+            "label": "Local AI Settings shell",
+            "status": "preview",
+            "notes": "No credentials, endpoint checks, provider calls, or model routing.",
         },
         {
             "id": "guardian-controls",
@@ -118,8 +130,11 @@ def test_guarded_future_capabilities_are_present_and_inactive() -> None:
         assert capabilities[capability_id]["status"] == "guarded-future"
 
     inactive_notes = " ".join(item["notes"].lower() for item in payload["capabilities"])
+    assert "no file reads" in inactive_notes
+    assert "file writes" in inactive_notes
     assert "no connector calls" in inactive_notes
     assert "external sends" in inactive_notes
+    assert "endpoint checks" in inactive_notes
     assert "no provider runtime" in inactive_notes
     assert "no credential entry" in inactive_notes
     assert "no terminal" in inactive_notes
@@ -138,8 +153,10 @@ def test_preview_shell_capabilities_do_not_claim_runtime_operation() -> None:
 
     preview_expectations = {
         "chat": ["no model calls", "message persistence"],
+        "work-page": ["no file reads", "file writes", "connector calls"],
         "round-table": ["no meeting engine", "agent orchestration"],
         "provider-setup": ["no credential storage", "provider calls"],
+        "local-ai-settings": ["no credentials", "endpoint checks", "provider calls", "model routing"],
         "guardian-controls": ["no policy enforcement runtime"],
     }
 

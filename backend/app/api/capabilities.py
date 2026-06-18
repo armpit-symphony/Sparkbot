@@ -53,6 +53,12 @@ CAPABILITIES: list[Capability] = [
         "notes": "No model calls or message persistence.",
     },
     {
+        "id": "work-page",
+        "label": "Work Page shell",
+        "status": "preview",
+        "notes": "No file reads, file writes, connector calls, or worker execution.",
+    },
+    {
         "id": "round-table",
         "label": "Round Table",
         "status": "preview",
@@ -63,6 +69,12 @@ CAPABILITIES: list[Capability] = [
         "label": "Provider Setup shell",
         "status": "preview",
         "notes": "No credential storage or provider calls.",
+    },
+    {
+        "id": "local-ai-settings",
+        "label": "Local AI Settings shell",
+        "status": "preview",
+        "notes": "No credentials, endpoint checks, provider calls, or model routing.",
     },
     {
         "id": "guardian-controls",

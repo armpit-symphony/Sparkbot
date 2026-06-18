@@ -20,8 +20,10 @@ The current repository is a validated shell baseline. It is useful for review, l
 | Frontend shell | Available | React/Vite shell builds and tests successfully. |
 | Workstation shell | Preview | Read-only product layout. |
 | Chat shell | Preview | Disabled planned composer; no send action. |
+| Work Page | Preview | Read-only program/workspace planning; no file reads, writes, connector calls, or worker execution. |
 | Round Table | Preview | Inert planned seats for future collaboration. |
 | Provider Setup | Preview | No API key fields, save action, or provider calls. |
+| Local AI Settings | Preview | Read-only local setup route; no credentials, endpoint checks, provider calls, or model routing. |
 | Guardian Controls | Preview | No approvals, enforcement, or sensitive actions. |
 | Desktop packaging | Planned | No installer or desktop binary exists yet. |
 | Connectors | Guarded future | No connector calls or external sends. |
@@ -129,7 +131,9 @@ Open `http://127.0.0.1:15173` for the browser check. See `docs/LOCAL_SMOKE_TEST.
 - No real chat runtime.
 - No model calls or model routing.
 - No provider credential setup.
+- No local model endpoint checks.
 - No credential storage.
+- No file ingestion or file mutation workflows.
 - No Round Table meeting engine.
 - No Guardian policy enforcement runtime.
 - No terminal, tool execution, connector calls, external sends, or file mutation controls.

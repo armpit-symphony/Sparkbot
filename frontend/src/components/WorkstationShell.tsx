@@ -2,11 +2,13 @@ import { useState } from "react";
 
 import ChatShellPreview from "./ChatShellPreview";
 import GuardianControlsPreview from "./GuardianControlsPreview";
+import LocalAiSettingsPreview from "./LocalAiSettingsPreview";
 import ProviderSetupPreview from "./ProviderSetupPreview";
 import RoadmapCard from "./RoadmapCard";
 import RoundTablePreview from "./RoundTablePreview";
 import ShellNavigation from "./ShellNavigation";
 import StatusCard from "./StatusCard";
+import WorkPagePreview from "./WorkPagePreview";
 import { workstationRoadmapItems, workstationStatusItems, type WorkstationStatusItem } from "../workstation/workstationStatus";
 
 type WorkstationShellProps = {
@@ -51,6 +53,8 @@ export default function WorkstationShell({
 
           <ChatShellPreview />
           <RoundTablePreview />
+          <WorkPagePreview />
+          <LocalAiSettingsPreview />
           <ProviderSetupPreview />
           <GuardianControlsPreview />
 

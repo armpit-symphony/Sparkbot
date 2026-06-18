@@ -34,6 +34,10 @@ Add a read-only Provider Setup preview with planned provider profiles and no cre
 
 Add a read-only Guardian Controls preview with planned control categories and no approval, enforcement, execution, connector, or mutation behavior.
 
+## Phase 6a: Work Page and Local AI Settings previews
+
+Add read-only Work Page and Local AI Settings previews with no file reads, file writes, endpoint checks, provider calls, model routing, or connector actions.
+
 ## Phase 7: Desktop packaging and release testing
 
 Define the Windows/local desktop path, smoke tests, release artifacts, and fresh clone validation. Desktop packaging is planned only; no installer or desktop binary exists in the current baseline.

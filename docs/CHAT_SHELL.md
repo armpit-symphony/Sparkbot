@@ -10,7 +10,7 @@ The preview is intentionally read-only. It does not implement chat runtime behav
 - Placeholder conversation cards show the intended future operator and Sparkbot surfaces.
 - The planned composer is disabled and read-only.
 - There is no send button.
-- Existing backend `GET /health` remains the only frontend network call.
+- Existing backend `GET /health` and `GET /capabilities` checks remain unchanged as the only frontend network calls.
 
 ## Excluded from this baseline
 
