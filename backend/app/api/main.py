@@ -1,12 +1,13 @@
 from fastapi import APIRouter
 
-from app.api.routes import items, login, private, users, utils
+from app.api.routes import items, lima, login, private, users, utils
 from app.api.routes.chat import messages_router, rooms_router, users_router, ws_router, bot_integration_router, uploads_router, model_router, memory_router, tasks_router, reminders_router, slack_router, github_router, audit_router, guardian_router, dashboard_router, spine_router, voice_router, skills_router, projects_router, workstation_router, mcp_router, robotics_router, security_router
 from app.core.config import settings
 
 api_router = APIRouter()
 api_router.include_router(login.router)
 api_router.include_router(users.router)
+api_router.include_router(lima.router)
 api_router.include_router(users_router, prefix="/chat")
 api_router.include_router(rooms_router, prefix="/chat")
 api_router.include_router(messages_router, prefix="/chat")

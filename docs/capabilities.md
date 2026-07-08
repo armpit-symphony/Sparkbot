@@ -1441,6 +1441,23 @@ PUBLIC_URL=
 | `POST` | `/api/v1/chat/security/features` | Update allowlisted risky feature env toggles; requires operator identity, active break-glass, and audit log |
 | `POST` | `/api/v1/chat/security/fix-permissions` | Chmod managed `.env` files to `600` when writable from the backend runtime |
 
+
+### LIMA Decision Preview
+
+LIMA decision preview is non-executing and does not represent active Guardian enforcement.
+
+Capability status:
+
+| Capability | Status |
+|------------|--------|
+| `lima_decision_preview` | `preview` |
+| `guardian_enforcement` | `not-implemented` |
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/lima/status` | Public-safe LIMA decision preview availability and capability status; no Guardian enforcement claim |
+| `POST` | `/api/v1/lima/decision-preview` | Submit a normalized public-safe request to optional local LIMA and return a non-executing governed decision preview |
+
 ### Chat
 
 | Method | Path | Description |
