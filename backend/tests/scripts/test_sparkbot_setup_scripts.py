@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import re
+import shutil
 import stat
 import subprocess
 from pathlib import Path
@@ -10,10 +12,67 @@ ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = ROOT / "scripts" / "sparkbot-setup.sh"
 START_SCRIPT = ROOT / "scripts" / "sparkbot-start.sh"
 LOCAL_COMPOSE = ROOT / "compose.local.yml"
+def _find_bash() -> str:
+    if os.name == "nt":
+        for candidate in (
+            Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Git" / "bin" / "bash.exe",
+            Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Git" / "usr" / "bin" / "bash.exe",
+        ):
+            if candidate.exists():
+                return str(candidate)
+    return shutil.which("bash") or shutil.which("bash.exe") or "bash"
+
+
+BASH = _find_bash()
+
+
+def _bash_path(path: str | Path) -> str:
+    text = str(path)
+    if os.name != "nt" or text.startswith("/"):
+        return text
+    resolved = str(Path(text).resolve())
+    if len(resolved) >= 3 and resolved[1:3] in {":\\", ":/"}:
+        drive = resolved[0].lower()
+        rest = resolved[2:].replace("\\", "/")
+        return f"/{drive}{rest}"
+    return resolved.replace("\\", "/")
+
+
+def _bash_path_list(*entries: str | Path) -> str:
+    parts: list[str] = []
+    for entry in entries:
+        text = str(entry)
+        raw_parts = [item for item in text.split(";") if item] if os.name == "nt" and ";" in text else [text]
+        for raw in raw_parts:
+            parts.append(raw if raw.startswith("/") else _bash_path(raw))
+    if os.name == "nt":
+        for fallback in ("/usr/bin", "/bin"):
+            if fallback not in parts:
+                parts.append(fallback)
+    return ":".join(parts)
+
+
+def _normalize_bash_env(env: dict[str, str]) -> dict[str, str]:
+    normalized = dict(env)
+    if os.name != "nt":
+        return normalized
+    if "PATH" in normalized:
+        normalized["PATH"] = _bash_path_list(normalized["PATH"])
+    for key in ("SPARKBOT_ENV_FILE", "SPARKBOT_ENV_TEMPLATE", "SPARKBOT_COMPOSE_ENV_FILE"):
+        if key in normalized:
+            normalized[key] = _bash_path(normalized[key])
+    return normalized
+
+
+def _shell_path_content(content: str) -> str:
+    if os.name != "nt":
+        return content
+    return re.sub(r"[A-Za-z]:[\\/][^\"'\s]+", lambda match: _bash_path(match.group(0)), content)
+
 
 
 def _write_executable(path: Path, content: str) -> None:
-    path.write_text(content)
+    path.write_text(_shell_path_content(content))
     path.chmod(path.stat().st_mode | stat.S_IXUSR)
 
 
@@ -24,9 +83,9 @@ def _run_setup(
     input_text: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     merged_env = os.environ.copy()
-    merged_env.update(env)
+    merged_env.update(_normalize_bash_env(env))
     return subprocess.run(
-        ["bash", str(SCRIPT), *args],
+        [BASH, _bash_path(SCRIPT), *args],
         cwd=ROOT,
         env=merged_env,
         input=input_text,
@@ -52,11 +111,11 @@ def _run_start(
     ):
         if key not in env:
             merged_env.pop(key, None)
-    merged_env.update(env)
+    merged_env.update(_normalize_bash_env(env))
     if "SPARKBOT_COMPOSE_ENV_FILE" not in merged_env and "SPARKBOT_ENV_FILE" in merged_env:
-        merged_env["SPARKBOT_COMPOSE_ENV_FILE"] = str(Path(merged_env["SPARKBOT_ENV_FILE"]).with_name(".env"))
+        merged_env["SPARKBOT_COMPOSE_ENV_FILE"] = _bash_path(Path(env["SPARKBOT_ENV_FILE"]).with_name(".env"))
     return subprocess.run(
-        ["bash", str(START_SCRIPT), *args],
+        [BASH, _bash_path(START_SCRIPT), *args],
         cwd=ROOT,
         env=merged_env,
         input=input_text,
@@ -98,7 +157,7 @@ def test_compose_detection_prefers_docker_compose_v2(tmp_path: Path) -> None:
 
     result = _run_setup(
         ["--print-compose-command"],
-        env={"PATH": f"{fake_bin}:{os.environ['PATH']}"},
+        env={"PATH": _bash_path_list(fake_bin, os.environ["PATH"])},
     )
 
     assert result.returncode == 0
@@ -113,7 +172,7 @@ def test_compose_detection_falls_back_to_legacy_binary(tmp_path: Path) -> None:
 
     result = _run_setup(
         ["--print-compose-command"],
-        env={"PATH": f"{fake_bin}:/usr/bin:/bin"},
+        env={"PATH": _bash_path_list(fake_bin, "/usr/bin:/bin")},
     )
 
     assert result.returncode == 0
@@ -127,12 +186,12 @@ def test_compose_detection_missing_docker_prints_clear_error(tmp_path: Path) -> 
 
     result = subprocess.run(
         [
-            "/bin/bash",
+            BASH,
             "-c",
             'source "$1"; PATH="$2"; sparkbot_detect_compose',
             "bash",
-            str(SCRIPT),
-            str(fake_bin),
+            _bash_path(SCRIPT),
+            _bash_path(fake_bin),
         ],
         cwd=ROOT,
         text=True,
@@ -183,7 +242,7 @@ def test_noninteractive_setup_creates_env_and_does_not_echo_secret(tmp_path: Pat
     result = _run_setup(
         ["--non-interactive"],
         env={
-            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "PATH": _bash_path_list(fake_bin, os.environ["PATH"]),
             "SPARKBOT_ENV_FILE": str(env_file),
             "SPARKBOT_ENV_TEMPLATE": str(template),
             "OPENAI_API_KEY": "sk-test-secret",
@@ -228,7 +287,7 @@ def test_noninteractive_setup_preserves_existing_provider_value(tmp_path: Path) 
     result = _run_setup(
         ["--non-interactive"],
         env={
-            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "PATH": _bash_path_list(fake_bin, os.environ["PATH"]),
             "SPARKBOT_ENV_FILE": str(env_file),
             "SPARKBOT_ENV_TEMPLATE": str(template),
             "OPENAI_API_KEY": "sk-new",
@@ -270,14 +329,14 @@ def test_show_input_path_accepts_typed_provider_key(tmp_path: Path) -> None:
     _template(template)
 
     result = subprocess.run(
-        ["bash", str(SCRIPT), "--show-input"],
+        [BASH, _bash_path(SCRIPT), "--show-input"],
         cwd=ROOT,
-        env={
+        env=_normalize_bash_env({
             **os.environ,
             "SPARKBOT_SETUP_SKIP_COMPOSE_CHECK": "1",
             "SPARKBOT_ENV_FILE": str(env_file),
             "SPARKBOT_ENV_TEMPLATE": str(template),
-        },
+        }),
         input="sk-visible-input\n\n\n\n\n\n\n\n\n",
         text=True,
         capture_output=True,
@@ -351,7 +410,7 @@ def test_from_env_imports_exported_provider_key_without_echoing_secret(tmp_path:
     result = _run_setup(
         ["--from-env"],
         env={
-            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "PATH": _bash_path_list(fake_bin, os.environ["PATH"]),
             "SPARKBOT_ENV_FILE": str(env_file),
             "SPARKBOT_ENV_TEMPLATE": str(template),
             "OPENAI_API_KEY": "sk-from-env",
@@ -379,7 +438,7 @@ def test_direct_provider_key_argument_writes_key_without_echoing_secret(tmp_path
     result = _run_setup(
         ["--openrouter-key", "sk-or-direct"],
         env={
-            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "PATH": _bash_path_list(fake_bin, os.environ["PATH"]),
             "SPARKBOT_ENV_FILE": str(env_file),
             "SPARKBOT_ENV_TEMPLATE": str(template),
         },
@@ -407,7 +466,7 @@ def test_minimax_provider_key_argument_writes_key_and_model(tmp_path: Path) -> N
     result = _run_setup(
         ["--minimax-key", "minimax-direct"],
         env={
-            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "PATH": _bash_path_list(fake_bin, os.environ["PATH"]),
             "SPARKBOT_ENV_FILE": str(env_file),
             "SPARKBOT_ENV_TEMPLATE": str(template),
         },
@@ -441,7 +500,7 @@ exit 1
     result = _run_start(
         ["--openai-key", "sk-start-direct"],
         env={
-            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "PATH": _bash_path_list(fake_bin, os.environ["PATH"]),
             "SPARKBOT_ENV_FILE": str(env_file),
             "SPARKBOT_ENV_TEMPLATE": str(template),
         },
@@ -483,7 +542,7 @@ exit 0
     result = _run_start(
         ["--openai-key", "sk-port-busy"],
         env={
-            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "PATH": _bash_path_list(fake_bin, os.environ["PATH"]),
             "SPARKBOT_ENV_FILE": str(env_file),
             "SPARKBOT_ENV_TEMPLATE": str(template),
         },
@@ -525,7 +584,7 @@ exit 0
     result = _run_start(
         ["--openai-key", "sk-custom-port"],
         env={
-            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "PATH": _bash_path_list(fake_bin, os.environ["PATH"]),
             "SPARKBOT_ENV_FILE": str(env_file),
             "SPARKBOT_ENV_TEMPLATE": str(template),
             "SPARKBOT_FRONTEND_PORT": "3100",
@@ -568,7 +627,7 @@ exit 0
     result = _run_start(
         ["--local", "--openai-key", "sk-local-mode"],
         env={
-            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "PATH": _bash_path_list(fake_bin, os.environ["PATH"]),
             "SPARKBOT_ENV_FILE": str(env_file),
             "SPARKBOT_ENV_TEMPLATE": str(template),
             "SPARKBOT_COMPOSE_ENV_FILE": str(compose_env),
@@ -615,7 +674,7 @@ exit 0
     result = _run_start(
         ["--server", "--openai-key", "sk-server-default-passphrase"],
         env={
-            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "PATH": _bash_path_list(fake_bin, os.environ["PATH"]),
             "SPARKBOT_ENV_FILE": str(env_file),
             "SPARKBOT_ENV_TEMPLATE": str(template),
         },
@@ -656,7 +715,7 @@ exit 0
     result = _run_start(
         ["--server", "--openai-key", "sk-server-missing-passphrase"],
         env={
-            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "PATH": _bash_path_list(fake_bin, os.environ["PATH"]),
             "SPARKBOT_ENV_FILE": str(env_file),
             "SPARKBOT_ENV_TEMPLATE": str(template),
         },
@@ -695,7 +754,7 @@ exit 0
     result = _run_start(
         ["--server", "--show-input", "--openai-key", "sk-server-prompt"],
         env={
-            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "PATH": _bash_path_list(fake_bin, os.environ["PATH"]),
             "SPARKBOT_ENV_FILE": str(env_file),
             "SPARKBOT_ENV_TEMPLATE": str(template),
             "SPARKBOT_PUBLIC_HOST": "203.0.113.30",
@@ -886,7 +945,7 @@ exit 0
     result = _run_start(
         ["--server", "--show-input", "--openai-key", "sk-server-retry"],
         env={
-            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "PATH": _bash_path_list(fake_bin, os.environ["PATH"]),
             "SPARKBOT_ENV_FILE": str(env_file),
             "SPARKBOT_ENV_TEMPLATE": str(template),
             "SPARKBOT_PUBLIC_HOST": "203.0.113.31",
@@ -1049,7 +1108,7 @@ exit 0
     result = _run_start(
         ["--server", "--openai-key", "sk-server-auth-disabled"],
         env={
-            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "PATH": _bash_path_list(fake_bin, os.environ["PATH"]),
             "SPARKBOT_ENV_FILE": str(env_file),
             "SPARKBOT_ENV_TEMPLATE": str(template),
             "SPARKBOT_PASSPHRASE": "valid-server-passphrase",
@@ -1092,7 +1151,7 @@ exit 0
     result = _run_start(
         ["--server", "--openai-key", "sk-server-mode"],
         env={
-            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "PATH": _bash_path_list(fake_bin, os.environ["PATH"]),
             "SPARKBOT_ENV_FILE": str(env_file),
             "SPARKBOT_ENV_TEMPLATE": str(template),
             "SPARKBOT_COMPOSE_ENV_FILE": str(compose_env),
@@ -1152,7 +1211,7 @@ exit 0
     result = _run_start(
         [],
         env={
-            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "PATH": _bash_path_list(fake_bin, os.environ["PATH"]),
             "SPARKBOT_ENV_FILE": str(env_file),
             "SPARKBOT_ENV_TEMPLATE": str(template),
             "SPARKBOT_PUBLIC_HOST": "203.0.113.20",
@@ -1199,7 +1258,7 @@ exit 0
     result = _run_start(
         ["--server"],
         env={
-            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "PATH": _bash_path_list(fake_bin, os.environ["PATH"]),
             "SPARKBOT_ENV_FILE": str(env_file),
             "SPARKBOT_ENV_TEMPLATE": str(template),
             "SPARKBOT_COMPOSE_ENV_FILE": str(compose_env),
@@ -1286,7 +1345,7 @@ exit 1
     result = _run_start(
         ["--openai-key", "sk-v2-start"],
         env={
-            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "PATH": _bash_path_list(fake_bin, os.environ["PATH"]),
             "SPARKBOT_ENV_FILE": str(env_file),
             "SPARKBOT_ENV_TEMPLATE": str(template),
         },
@@ -1319,7 +1378,7 @@ exit 0
     result = _run_start(
         ["--openai-key", "sk-v1-start"],
         env={
-            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "PATH": _bash_path_list(fake_bin, os.environ["PATH"]),
             "SPARKBOT_ENV_FILE": str(env_file),
             "SPARKBOT_ENV_TEMPLATE": str(template),
         },
@@ -1352,7 +1411,7 @@ exit 0
     result = _run_start(
         ["--openai-key", "sk-no-buildx"],
         env={
-            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "PATH": _bash_path_list(fake_bin, os.environ["PATH"]),
             "SPARKBOT_ENV_FILE": str(env_file),
             "SPARKBOT_ENV_TEMPLATE": str(template),
         },
@@ -1405,7 +1464,7 @@ exit 0
     result = _run_start(
         ["--install-docker-plugins", "--openai-key", "sk-install-path"],
         env={
-            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "PATH": _bash_path_list(fake_bin, os.environ["PATH"]),
             "SPARKBOT_ENV_FILE": str(env_file),
             "SPARKBOT_ENV_TEMPLATE": str(template),
         },

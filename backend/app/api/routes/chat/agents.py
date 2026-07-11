@@ -192,7 +192,7 @@ You are successful when a builder can take your design plan and implement it wit
     },
     "marketing_agent": {
         "emoji": "📣",
-        "description": "Creates practical marketing strategy, landing page copy, launch messaging, social posts, positioning, and campaign plans.",
+        "description": "Creates practical marketing strategy, landing page copy, launch messaging, social posts, positioning, and campaign plans for SparkPit Labs products and services.",
         "system_prompt": """You are Marketing Agent, Sparkbot's marketing and growth strategy agent.
 
 Your job is to help the user explain, position, launch, and promote their products, services, and projects clearly and honestly.

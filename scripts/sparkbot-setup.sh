@@ -105,13 +105,20 @@ sparkbot_env_set() {
 }
 
 sparkbot_generate_secret_key() {
-  if command -v python3 >/dev/null 2>&1; then
-    python3 -c 'import secrets; print(secrets.token_hex(32))'
-  elif command -v openssl >/dev/null 2>&1; then
-    openssl rand -hex 32
-  else
-    printf 'sparkbot-local-%s\n' "$(date +%s)"
+  local generated=""
+  if command -v openssl >/dev/null 2>&1; then
+    generated="$(openssl rand -hex 32 2>/dev/null || true)"
   fi
+  if [ -z "${generated}" ] && command -v python3 >/dev/null 2>&1; then
+    generated="$(python3 -c 'import secrets; print(secrets.token_hex(32))' 2>/dev/null || true)"
+  fi
+  if [ -z "${generated}" ] && command -v python >/dev/null 2>&1; then
+    generated="$(python -c 'import secrets; print(secrets.token_hex(32))' 2>/dev/null || true)"
+  fi
+  if [ -z "${generated}" ]; then
+    generated="sparkbot-local-$(date +%s)-$$"
+  fi
+  printf '%s\n' "${generated}"
 }
 
 sparkbot_ensure_secret_key() {
@@ -214,6 +221,7 @@ sparkbot_yes_no() {
   while true; do
     printf '%s [%s]: ' "${prompt}" "${suffix}" >&2
     read -r raw
+    raw="${raw%$'\r'}"
     raw="$(printf '%s' "${raw}" | tr '[:upper:]' '[:lower:]')"
     if [ -z "${raw}" ]; then
       [ "${default}" = "yes" ]
@@ -232,6 +240,7 @@ sparkbot_prompt_line() {
   local value
   printf '%s' "${prompt}" >&2
   read -r value
+  value="${value%$'\r'}"
   printf '%s' "${value}"
 }
 
@@ -254,6 +263,7 @@ sparkbot_prompt_secret() {
     echo "Your key will be visible while typing in this terminal session." >&2
     printf '%s: ' "${prompt}" >&2
     read -r value
+    value="${value%$'\r'}"
   fi
   printf '%s' "${value}"
 }

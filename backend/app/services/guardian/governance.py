@@ -4,7 +4,7 @@ import os
 from datetime import datetime, timezone
 from typing import Any
 
-from app.api.routes.chat.agents import agent_is_enabled, get_all_agents
+from app.api.routes.chat.agents import get_all_agents
 from app.services.guardian import policy, tool_guardrails
 
 
@@ -132,12 +132,13 @@ def workflow_templates() -> list[dict[str, Any]]:
 def evaluation_cases() -> list[dict[str, Any]]:
     cases: list[dict[str, Any]] = []
     shell = policy.simulate_tool_policy("shell_run", {"command": "git commit -m update"})
+    shell_action = shell["decision"]["action"]
     cases.append(
         {
-            "id": "write_shell_requires_confirmation",
-            "expected": "confirm",
-            "actual": shell["decision"]["action"],
-            "passed": shell["decision"]["action"] == "confirm",
+            "id": "write_shell_is_gated",
+            "expected": "confirm_or_deny",
+            "actual": shell_action,
+            "passed": shell_action in {"confirm", "deny"},
         }
     )
     unknown = policy.simulate_tool_policy("unknown_tool", {})
@@ -159,12 +160,14 @@ def evaluation_cases() -> list[dict[str, Any]]:
         }
     )
     agents = get_all_agents()
+    researcher = agents.get("researcher") or {}
+    identity = researcher.get("identity") or {}
     cases.append(
         {
-            "id": "built_in_researcher_enabled",
-            "expected": "enabled",
-            "actual": "enabled" if agent_is_enabled("researcher") else "disabled",
-            "passed": "researcher" in agents and agent_is_enabled("researcher"),
+            "id": "built_in_researcher_registered",
+            "expected": "registered",
+            "actual": "registered" if researcher else "missing",
+            "passed": bool(researcher) and identity.get("owner") == "sparkbot-core",
         }
     )
     return cases

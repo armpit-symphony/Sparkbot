@@ -164,6 +164,20 @@ ssh_session() {
   [ -n "${SSH_CONNECTION:-}" ] || [ -n "${SSH_TTY:-}" ] || [ -n "${SSH_CLIENT:-}" ]
 }
 
+python_probe_command() {
+  local candidate path
+  for candidate in python3 python; do
+    path="$(command -v "${candidate}" 2>/dev/null || true)"
+    [ -n "${path}" ] || continue
+    case "${path}" in
+      *WindowsApps*) continue ;;
+    esac
+    printf '%s\n' "${candidate}"
+    return 0
+  done
+  return 1
+}
+
 prompt_line() {
   local prompt="$1"
   local value
@@ -179,7 +193,11 @@ port_available() {
   elif command -v lsof >/dev/null 2>&1; then
     ! lsof -nP -iTCP:"${port}" -sTCP:LISTEN >/dev/null 2>&1
   else
-    python3 - "${port}" <<'PY'
+    local python_cmd
+    if ! python_cmd="$(python_probe_command)"; then
+      return 0
+    fi
+    "${python_cmd}" - "${port}" <<'PY'
 import socket
 import sys
 
@@ -311,6 +329,7 @@ read_passphrase_visible() {
   if ! read -r value; then
     return 1
   fi
+  value="${value%$'\r'}"
   printf '%s' "${value}"
 }
 
@@ -323,6 +342,7 @@ read_passphrase_hidden() {
     printf '\n' >&2
     return 1
   fi
+  value="${value%$'\r'}"
   printf '\n' >&2
   printf '%s' "${value}"
 }
