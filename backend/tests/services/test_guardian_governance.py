@@ -70,5 +70,5 @@ def test_evaluation_summary_runs_baseline_cases(monkeypatch) -> None:
     monkeypatch.setenv("SPARKBOT_GUARDIAN_POLICY_ENABLED", "true")
     summary = evaluation_summary()
 
-    assert summary["failed"] == 0
+    assert summary["failed"] == 0, summary
     assert summary["passed"] >= 4
