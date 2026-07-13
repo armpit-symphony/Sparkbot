@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -45,7 +46,9 @@ def _request(**overrides: Any) -> dict[str, Any]:
     return payload
 
 
-def _patch_runner(monkeypatch: pytest.MonkeyPatch, decision: FakeDecision, calls: list[dict[str, Any]]) -> None:
+def _patch_runner(
+    monkeypatch: pytest.MonkeyPatch, decision: FakeDecision, calls: list[dict[str, Any]]
+) -> None:
     def fake_runner(request: dict[str, Any]) -> FakeDecision:
         calls.append(request)
         return decision
@@ -70,7 +73,9 @@ def test_lima_unavailable_path_fails_closed(monkeypatch: pytest.MonkeyPatch) -> 
     assert preview.PUBLIC_PREVIEW_NOTE in payload["notes"]
 
 
-def test_lima_available_path_returns_decision_preview(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_lima_available_path_returns_decision_preview(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     calls: list[dict[str, Any]] = []
     _patch_runner(
         monkeypatch,
@@ -98,9 +103,22 @@ def test_lima_available_path_returns_decision_preview(monkeypatch: pytest.Monkey
 @pytest.mark.parametrize(
     ("decision", "expected_status"),
     [
-        (FakeDecision(status="allowed_dry_run", allowed=True, requires_approval=False), "allowed_dry_run"),
-        (FakeDecision(status="confirm_required", allowed=False, requires_approval=True), "confirm_required"),
-        (FakeDecision(status="denied", allowed=False, requires_approval=False), "denied"),
+        (
+            FakeDecision(
+                status="allowed_dry_run", allowed=True, requires_approval=False
+            ),
+            "allowed_dry_run",
+        ),
+        (
+            FakeDecision(
+                status="confirm_required", allowed=False, requires_approval=True
+            ),
+            "confirm_required",
+        ),
+        (
+            FakeDecision(status="denied", allowed=False, requires_approval=False),
+            "denied",
+        ),
     ],
 )
 def test_decision_preview_never_exposes_execution_flags(
@@ -163,11 +181,19 @@ def test_client_authority_claims_are_ignored(monkeypatch: pytest.MonkeyPatch) ->
     assert calls[0]["consumer"] == "sparkbot"
     assert calls[0]["actor_id"] == "local_operator"
     assert calls[0]["trust_context"] == {"public_preview": True, "dry_run_only": True}
-    assert calls[0]["normalized_request"]["raw_prompt_authority"] == "ignored_public_preview_claim"
-    assert calls[0]["normalized_request"]["guardian_enforcement"] == "ignored_public_preview_claim"
+    assert (
+        calls[0]["normalized_request"]["raw_prompt_authority"]
+        == "ignored_public_preview_claim"
+    )
+    assert (
+        calls[0]["normalized_request"]["guardian_enforcement"]
+        == "ignored_public_preview_claim"
+    )
 
 
-def test_status_capabilities_do_not_claim_guardian_enforcement(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_status_capabilities_do_not_claim_guardian_enforcement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(preview, "_load_lima_runner", lambda: (lambda request: request))
 
     payload = preview.lima_decision_preview_status()
@@ -179,3 +205,99 @@ def test_status_capabilities_do_not_claim_guardian_enforcement(monkeypatch: pyte
     assert payload["runtime_authority_blocked"] is True
     assert payload["execution_allowed"] is False
     assert preview.PUBLIC_PREVIEW_NOTE in payload["notes"]
+
+
+def test_non_object_preview_request_is_rejected() -> None:
+    payload = preview.preview_lima_decision(["not", "an", "object"])  # type: ignore[arg-type]
+
+    assert payload["status"] == "invalid"
+    assert payload["decision_status"] == "invalid_request"
+    assert payload["runtime_authority_blocked"] is True
+    assert "Preview request must be a JSON object." in payload["notes"]
+
+
+def test_missing_normalized_request_is_rejected() -> None:
+    payload = preview.preview_lima_decision(_request(normalized_request=None))
+
+    assert payload["status"] == "invalid"
+    assert payload["decision_status"] == "invalid_request"
+    assert "normalized_request is required" in payload["notes"]
+
+
+def test_lima_runtime_error_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    def failing_runner(request: dict[str, Any]) -> None:
+        raise RuntimeError(f"failed request {request['request_id']}")
+
+    monkeypatch.setattr(preview, "_load_lima_runner", lambda: failing_runner)
+
+    payload = preview.preview_lima_decision(_request())
+
+    assert payload["status"] == "unavailable"
+    assert payload["lima_available"] is False
+    assert payload["execution_allowed"] is False
+    assert any(
+        "Runtime error: failed request sparkbot-preview-1" in note
+        for note in payload["notes"]
+    )
+
+
+def test_unavailable_status_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    def unavailable() -> object:
+        raise ModuleNotFoundError("No module named 'lima'")
+
+    monkeypatch.setattr(preview, "_load_lima_runner", unavailable)
+
+    payload = preview.lima_decision_preview_status()
+
+    assert payload["status"] == "unavailable"
+    assert payload["lima_available"] is False
+    assert payload["runtime_authority_blocked"] is True
+
+
+def test_preview_normalizes_optional_public_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict[str, Any]] = []
+    _patch_runner(
+        monkeypatch,
+        FakeDecision(status="allowed_dry_run", allowed=True, requires_approval=False),
+        calls,
+    )
+
+    payload = preview.preview_lima_decision(
+        _request(
+            action_category="write",
+            tool_name=42,
+            evidence_refs=" evidence://single ",
+            normalized_request={"items": [{"message": "status"}], "flags": ("public",)},
+        )
+    )
+
+    assert payload["status"] == "preview"
+    assert calls[0]["tool_name"] is None
+    assert calls[0]["evidence_refs"] == ("evidence://single",)
+    assert calls[0]["normalized_request"] == {
+        "items": [{"message": "status"}],
+        "flags": ("public",),
+    }
+
+
+@pytest.mark.parametrize(
+    ("decision", "expected_status"),
+    [
+        ({"status": "mapping"}, "mapping"),
+        (SimpleNamespace(status="object"), "object"),
+        (object(), "unknown"),
+    ],
+)
+def test_preview_accepts_supported_decision_shapes(
+    monkeypatch: pytest.MonkeyPatch,
+    decision: object,
+    expected_status: str,
+) -> None:
+    monkeypatch.setattr(preview, "_load_lima_runner", lambda: lambda request: decision)
+
+    payload = preview.preview_lima_decision(_request())
+
+    assert payload["decision_status"] == expected_status
+    assert payload["execution_allowed"] is False
