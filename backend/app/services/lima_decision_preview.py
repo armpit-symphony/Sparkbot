@@ -12,9 +12,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
-PUBLIC_PREVIEW_NOTE = (
-    "LIMA decision preview is non-executing and does not represent active Guardian enforcement."
-)
+PUBLIC_PREVIEW_NOTE = "LIMA decision preview is non-executing and does not represent active Guardian enforcement."
 SERVICE_NAME = "lima_decision_preview"
 MODE = "preview"
 
@@ -152,9 +150,13 @@ def _build_lima_request(request: Mapping[str, Any]) -> dict[str, Any]:
     normalized_request = request.get("normalized_request")
     if normalized_request is None:
         raise ValueError("normalized_request is required")
-    requested_action = _required_text(request.get("requested_action"), "requested_action")
+    requested_action = _required_text(
+        request.get("requested_action"), "requested_action"
+    )
     action_category = _required_text(request.get("action_category"), "action_category")
-    tool_name = _optional_text(request.get("tool_name")) or _default_tool_name(action_category)
+    tool_name = _optional_text(request.get("tool_name")) or _default_tool_name(
+        action_category
+    )
     evidence_refs = _evidence_refs(request.get("evidence_refs"))
 
     return {
@@ -219,7 +221,14 @@ def _decision_to_mapping(decision: Any) -> dict[str, Any]:
 
 def _default_tool_name(action_category: str) -> str | None:
     category = action_category.strip().lower()
-    if category in {"read", "status", "informational", "planning", "drafting", "preview"}:
+    if category in {
+        "read",
+        "status",
+        "informational",
+        "planning",
+        "drafting",
+        "preview",
+    }:
         return "sparkbot_decision_preview"
     return None
 
@@ -256,10 +265,15 @@ def _find_forbidden_claims(value: Any) -> tuple[str, ...]:
         if isinstance(node, Mapping):
             for key, child in node.items():
                 key_text = str(key).strip().lower()
-                if key_text in _FORBIDDEN_AUTHORITY_KEYS and key_text not in _ALLOWED_REQUEST_FIELDS:
+                if (
+                    key_text in _FORBIDDEN_AUTHORITY_KEYS
+                    and key_text not in _ALLOWED_REQUEST_FIELDS
+                ):
                     found.add(key_text)
                 walk(child)
-        elif isinstance(node, Sequence) and not isinstance(node, (str, bytes, bytearray)):
+        elif isinstance(node, Sequence) and not isinstance(
+            node, (str, bytes, bytearray)
+        ):
             for child in node:
                 walk(child)
 
@@ -286,5 +300,7 @@ def _sanitize_public_value(value: Any) -> Any:
 
 def _authority_note(forbidden_claims: Sequence[str]) -> str:
     if not forbidden_claims:
-        return "Client-supplied authority fields are not accepted by this preview surface."
+        return (
+            "Client-supplied authority fields are not accepted by this preview surface."
+        )
     return "Client-supplied authority claims ignored: " + ", ".join(forbidden_claims)

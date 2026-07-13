@@ -7,16 +7,24 @@ import stat
 import subprocess
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = ROOT / "scripts" / "sparkbot-setup.sh"
 START_SCRIPT = ROOT / "scripts" / "sparkbot-start.sh"
 LOCAL_COMPOSE = ROOT / "compose.local.yml"
+
+
 def _find_bash() -> str:
     if os.name == "nt":
         for candidate in (
-            Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Git" / "bin" / "bash.exe",
-            Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Git" / "usr" / "bin" / "bash.exe",
+            Path(os.environ.get("ProgramFiles", r"C:\Program Files"))
+            / "Git"
+            / "bin"
+            / "bash.exe",
+            Path(os.environ.get("ProgramFiles", r"C:\Program Files"))
+            / "Git"
+            / "usr"
+            / "bin"
+            / "bash.exe",
         ):
             if candidate.exists():
                 return str(candidate)
@@ -42,7 +50,11 @@ def _bash_path_list(*entries: str | Path) -> str:
     parts: list[str] = []
     for entry in entries:
         text = str(entry)
-        raw_parts = [item for item in text.split(";") if item] if os.name == "nt" and ";" in text else [text]
+        raw_parts = (
+            [item for item in text.split(";") if item]
+            if os.name == "nt" and ";" in text
+            else [text]
+        )
         for raw in raw_parts:
             parts.append(raw if raw.startswith("/") else _bash_path(raw))
     if os.name == "nt":
@@ -58,7 +70,11 @@ def _normalize_bash_env(env: dict[str, str]) -> dict[str, str]:
         return normalized
     if "PATH" in normalized:
         normalized["PATH"] = _bash_path_list(normalized["PATH"])
-    for key in ("SPARKBOT_ENV_FILE", "SPARKBOT_ENV_TEMPLATE", "SPARKBOT_COMPOSE_ENV_FILE"):
+    for key in (
+        "SPARKBOT_ENV_FILE",
+        "SPARKBOT_ENV_TEMPLATE",
+        "SPARKBOT_COMPOSE_ENV_FILE",
+    ):
         if key in normalized:
             normalized[key] = _bash_path(normalized[key])
     return normalized
@@ -67,8 +83,9 @@ def _normalize_bash_env(env: dict[str, str]) -> dict[str, str]:
 def _shell_path_content(content: str) -> str:
     if os.name != "nt":
         return content
-    return re.sub(r"[A-Za-z]:[\\/][^\"'\s]+", lambda match: _bash_path(match.group(0)), content)
-
+    return re.sub(
+        r"[A-Za-z]:[\\/][^\"'\s]+", lambda match: _bash_path(match.group(0)), content
+    )
 
 
 def _write_executable(path: Path, content: str) -> None:
@@ -112,8 +129,13 @@ def _run_start(
         if key not in env:
             merged_env.pop(key, None)
     merged_env.update(_normalize_bash_env(env))
-    if "SPARKBOT_COMPOSE_ENV_FILE" not in merged_env and "SPARKBOT_ENV_FILE" in merged_env:
-        merged_env["SPARKBOT_COMPOSE_ENV_FILE"] = _bash_path(Path(env["SPARKBOT_ENV_FILE"]).with_name(".env"))
+    if (
+        "SPARKBOT_COMPOSE_ENV_FILE" not in merged_env
+        and "SPARKBOT_ENV_FILE" in merged_env
+    ):
+        merged_env["SPARKBOT_COMPOSE_ENV_FILE"] = _bash_path(
+            Path(env["SPARKBOT_ENV_FILE"]).with_name(".env")
+        )
     return subprocess.run(
         [BASH, _bash_path(START_SCRIPT), *args],
         cwd=ROOT,
@@ -182,7 +204,7 @@ def test_compose_detection_falls_back_to_legacy_binary(tmp_path: Path) -> None:
 def test_compose_detection_missing_docker_prints_clear_error(tmp_path: Path) -> None:
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
-    _write_executable(fake_bin / "cat", "#!/bin/sh\n/bin/cat \"$@\"\n")
+    _write_executable(fake_bin / "cat", '#!/bin/sh\n/bin/cat "$@"\n')
 
     result = subprocess.run(
         [
@@ -218,7 +240,11 @@ def test_check_config_fails_without_provider_or_ollama(tmp_path: Path) -> None:
 def test_check_config_ignores_placeholder_provider_values(tmp_path: Path) -> None:
     env_file = tmp_path / ".env.local"
     _template(env_file)
-    env_file.write_text(env_file.read_text().replace("OPENAI_API_KEY=", "OPENAI_API_KEY=REPLACE_WITH_OPENAI_KEY"))
+    env_file.write_text(
+        env_file.read_text().replace(
+            "OPENAI_API_KEY=", "OPENAI_API_KEY=REPLACE_WITH_OPENAI_KEY"
+        )
+    )
 
     result = _run_setup(
         ["--check-config"],
@@ -228,7 +254,9 @@ def test_check_config_ignores_placeholder_provider_values(tmp_path: Path) -> Non
     assert result.returncode != 0
 
 
-def test_noninteractive_setup_creates_env_and_does_not_echo_secret(tmp_path: Path) -> None:
+def test_noninteractive_setup_creates_env_and_does_not_echo_secret(
+    tmp_path: Path,
+) -> None:
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     _write_executable(
@@ -282,7 +310,9 @@ def test_noninteractive_setup_preserves_existing_provider_value(tmp_path: Path) 
     template = tmp_path / ".env.local.example"
     env_file = tmp_path / ".env.local"
     _template(template)
-    env_file.write_text(template.read_text().replace("OPENAI_API_KEY=", "OPENAI_API_KEY=sk-existing"))
+    env_file.write_text(
+        template.read_text().replace("OPENAI_API_KEY=", "OPENAI_API_KEY=sk-existing")
+    )
 
     result = _run_setup(
         ["--non-interactive"],
@@ -300,7 +330,9 @@ def test_noninteractive_setup_preserves_existing_provider_value(tmp_path: Path) 
     assert "sk-new" not in content
 
 
-def test_provider_prompt_is_visible_by_default_and_keeps_secret_out_of_output(tmp_path: Path) -> None:
+def test_provider_prompt_is_visible_by_default_and_keeps_secret_out_of_output(
+    tmp_path: Path,
+) -> None:
     template = tmp_path / ".env.local.example"
     env_file = tmp_path / ".env.local"
     _template(template)
@@ -316,7 +348,10 @@ def test_provider_prompt_is_visible_by_default_and_keeps_secret_out_of_output(tm
     )
 
     assert result.returncode == 0
-    assert "Your key will be visible while typing in this terminal session." in result.stderr
+    assert (
+        "Your key will be visible while typing in this terminal session."
+        in result.stderr
+    )
     assert "Input will be hidden" not in result.stderr
     assert "OPENAI_API_KEY=sk-visible-default" in env_file.read_text()
     assert "sk-visible-default" not in result.stdout
@@ -331,12 +366,14 @@ def test_show_input_path_accepts_typed_provider_key(tmp_path: Path) -> None:
     result = subprocess.run(
         [BASH, _bash_path(SCRIPT), "--show-input"],
         cwd=ROOT,
-        env=_normalize_bash_env({
-            **os.environ,
-            "SPARKBOT_SETUP_SKIP_COMPOSE_CHECK": "1",
-            "SPARKBOT_ENV_FILE": str(env_file),
-            "SPARKBOT_ENV_TEMPLATE": str(template),
-        }),
+        env=_normalize_bash_env(
+            {
+                **os.environ,
+                "SPARKBOT_SETUP_SKIP_COMPOSE_CHECK": "1",
+                "SPARKBOT_ENV_FILE": str(env_file),
+                "SPARKBOT_ENV_TEMPLATE": str(template),
+            }
+        ),
         input="sk-visible-input\n\n\n\n\n\n\n\n\n",
         text=True,
         capture_output=True,
@@ -364,7 +401,9 @@ def test_hide_input_path_accepts_typed_provider_key(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 0
-    assert "Input will be hidden. Paste/type your key, then press Enter." in result.stderr
+    assert (
+        "Input will be hidden. Paste/type your key, then press Enter." in result.stderr
+    )
     assert "Your key will be visible" not in result.stderr
     assert "OPENAI_API_KEY=sk-hidden-provider" in env_file.read_text()
     assert "sk-hidden-provider" not in result.stdout
@@ -388,15 +427,23 @@ def test_ssh_environment_uses_visible_provider_prompt(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 0
-    assert "SSH session detected. Provider key input will be visible so paste works reliably." in result.stderr
-    assert "Your key will be visible while typing in this terminal session." in result.stderr
+    assert (
+        "SSH session detected. Provider key input will be visible so paste works reliably."
+        in result.stderr
+    )
+    assert (
+        "Your key will be visible while typing in this terminal session."
+        in result.stderr
+    )
     assert "Input will be hidden" not in result.stderr
     assert "OPENAI_API_KEY=sk-ssh-visible" in env_file.read_text()
     assert "sk-ssh-visible" not in result.stdout
     assert "sk-ssh-visible" not in result.stderr
 
 
-def test_from_env_imports_exported_provider_key_without_echoing_secret(tmp_path: Path) -> None:
+def test_from_env_imports_exported_provider_key_without_echoing_secret(
+    tmp_path: Path,
+) -> None:
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     _write_executable(
@@ -424,7 +471,9 @@ def test_from_env_imports_exported_provider_key_without_echoing_secret(tmp_path:
     assert "sk-from-env" not in result.stderr
 
 
-def test_direct_provider_key_argument_writes_key_without_echoing_secret(tmp_path: Path) -> None:
+def test_direct_provider_key_argument_writes_key_without_echoing_secret(
+    tmp_path: Path,
+) -> None:
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     _write_executable(
@@ -513,7 +562,9 @@ exit 1
     assert "sk-start-direct" not in result.stderr
 
 
-def test_start_script_selects_next_frontend_port_when_default_is_busy(tmp_path: Path) -> None:
+def test_start_script_selects_next_frontend_port_when_default_is_busy(
+    tmp_path: Path,
+) -> None:
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     compose_log = tmp_path / "compose.log"
@@ -598,7 +649,9 @@ exit 0
     assert "SPARKBOT_FRONTEND_BIND_HOST=127.0.0.1" in compose_log.read_text()
 
 
-def test_start_script_local_mode_binds_loopback_and_syncs_compose_env(tmp_path: Path) -> None:
+def test_start_script_local_mode_binds_loopback_and_syncs_compose_env(
+    tmp_path: Path,
+) -> None:
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     compose_log = tmp_path / "compose.log"
@@ -646,7 +699,9 @@ exit 0
     assert "up --build -d" in compose_log.read_text()
 
 
-def test_start_script_server_mode_with_default_passphrase_fails_before_startup(tmp_path: Path) -> None:
+def test_start_script_server_mode_with_default_passphrase_fails_before_startup(
+    tmp_path: Path,
+) -> None:
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     compose_log = tmp_path / "compose.log"
@@ -682,11 +737,16 @@ exit 0
 
     assert result.returncode != 0
     assert "Server mode requires authentication" in result.stderr
-    assert "SPARKBOT_PASSPHRASE is missing, blank, too short, a placeholder, or a default value." in result.stderr
+    assert (
+        "SPARKBOT_PASSPHRASE is missing, blank, too short, a placeholder, or a default value."
+        in result.stderr
+    )
     assert not compose_log.exists()
 
 
-def test_start_script_server_mode_with_missing_passphrase_fails_before_startup(tmp_path: Path) -> None:
+def test_start_script_server_mode_with_missing_passphrase_fails_before_startup(
+    tmp_path: Path,
+) -> None:
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     compose_log = tmp_path / "compose.log"
@@ -710,7 +770,11 @@ exit 0
     template = tmp_path / ".env.local.example"
     env_file = tmp_path / ".env.local"
     _template(template)
-    template.write_text(template.read_text().replace("SPARKBOT_PASSPHRASE=sparkbot-local", "SPARKBOT_PASSPHRASE="))
+    template.write_text(
+        template.read_text().replace(
+            "SPARKBOT_PASSPHRASE=sparkbot-local", "SPARKBOT_PASSPHRASE="
+        )
+    )
 
     result = _run_start(
         ["--server", "--openai-key", "sk-server-missing-passphrase"],
@@ -726,7 +790,9 @@ exit 0
     assert not compose_log.exists()
 
 
-def test_start_script_server_mode_show_input_prompts_for_passphrase(tmp_path: Path) -> None:
+def test_start_script_server_mode_show_input_prompts_for_passphrase(
+    tmp_path: Path,
+) -> None:
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     compose_log = tmp_path / "compose.log"
@@ -773,7 +839,9 @@ exit 0
     assert compose_log.exists()
 
 
-def test_start_script_server_mode_show_passphrase_input_prompts_visibly(tmp_path: Path) -> None:
+def test_start_script_server_mode_show_passphrase_input_prompts_visibly(
+    tmp_path: Path,
+) -> None:
     template = tmp_path / ".env.local.example"
     env_file = tmp_path / ".env.local"
     _template(template)
@@ -796,7 +864,10 @@ def test_start_script_server_mode_show_passphrase_input_prompts_visibly(tmp_path
 
     combined = result.stdout + result.stderr
     assert result.returncode == 0
-    assert "Your passphrase will be visible while typing in this terminal session." in result.stderr
+    assert (
+        "Your passphrase will be visible while typing in this terminal session."
+        in result.stderr
+    )
     assert "Hidden input did not work" not in combined
     assert "Dry-run setup complete. Docker was not started." in result.stdout
     assert "Server passphrase saved." in result.stderr
@@ -805,7 +876,9 @@ def test_start_script_server_mode_show_passphrase_input_prompts_visibly(tmp_path
     assert "visible-server-passphrase" not in result.stderr
 
 
-def test_start_script_server_mode_ssh_passphrase_uses_visible_fallback(tmp_path: Path) -> None:
+def test_start_script_server_mode_ssh_passphrase_uses_visible_fallback(
+    tmp_path: Path,
+) -> None:
     template = tmp_path / ".env.local.example"
     env_file = tmp_path / ".env.local"
     _template(template)
@@ -822,8 +895,14 @@ def test_start_script_server_mode_ssh_passphrase_uses_visible_fallback(tmp_path:
     )
 
     assert result.returncode == 0
-    assert "Hidden input did not work in this terminal. Switching to visible input." in result.stderr
-    assert "Your passphrase will be visible while typing in this terminal session." in result.stderr
+    assert (
+        "Hidden input did not work in this terminal. Switching to visible input."
+        in result.stderr
+    )
+    assert (
+        "Your passphrase will be visible while typing in this terminal session."
+        in result.stderr
+    )
     assert "Server passphrase saved." in result.stderr
     assert "SPARKBOT_PASSPHRASE=ssh-server-passphrase" in env_file.read_text()
     assert "ssh-server-passphrase" not in result.stdout
@@ -917,7 +996,9 @@ def test_start_script_server_mode_passphrase_mismatch_retries(tmp_path: Path) ->
     assert "matched-server-passphrase" not in result.stderr
 
 
-def test_start_script_server_mode_rejects_weak_prompted_passphrase_then_accepts_valid(tmp_path: Path) -> None:
+def test_start_script_server_mode_rejects_weak_prompted_passphrase_then_accepts_valid(
+    tmp_path: Path,
+) -> None:
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     compose_log = tmp_path / "compose.log"
@@ -965,7 +1046,9 @@ exit 0
     assert compose_log.exists()
 
 
-def test_start_script_rejects_weak_direct_passphrase_without_logging_value(tmp_path: Path) -> None:
+def test_start_script_rejects_weak_direct_passphrase_without_logging_value(
+    tmp_path: Path,
+) -> None:
     template = tmp_path / ".env.local.example"
     env_file = tmp_path / ".env.local"
     _template(template)
@@ -991,7 +1074,9 @@ def test_start_script_rejects_weak_direct_passphrase_without_logging_value(tmp_p
     assert "SPARKBOT_PASSPHRASE=sparkbot" not in env_file.read_text().splitlines()
 
 
-def test_start_script_server_mode_rejects_short_prompted_passphrase(tmp_path: Path) -> None:
+def test_start_script_server_mode_rejects_short_prompted_passphrase(
+    tmp_path: Path,
+) -> None:
     template = tmp_path / ".env.local.example"
     env_file = tmp_path / ".env.local"
     _template(template)
@@ -1010,10 +1095,7 @@ def test_start_script_server_mode_rejects_short_prompted_passphrase(tmp_path: Pa
             "SPARKBOT_PUBLIC_HOST": "203.0.113.38",
         },
         input_text=(
-            "short\n"
-            "short\n"
-            "valid-after-short-passphrase\n"
-            "valid-after-short-passphrase\n"
+            "short\nshort\nvalid-after-short-passphrase\nvalid-after-short-passphrase\n"
         ),
     )
 
@@ -1022,7 +1104,9 @@ def test_start_script_server_mode_rejects_short_prompted_passphrase(tmp_path: Pa
     assert "SPARKBOT_PASSPHRASE=valid-after-short-passphrase" in env_file.read_text()
 
 
-def test_start_script_server_mode_rejects_empty_prompted_passphrase(tmp_path: Path) -> None:
+def test_start_script_server_mode_rejects_empty_prompted_passphrase(
+    tmp_path: Path,
+) -> None:
     template = tmp_path / ".env.local.example"
     env_file = tmp_path / ".env.local"
     _template(template)
@@ -1040,12 +1124,7 @@ def test_start_script_server_mode_rejects_empty_prompted_passphrase(tmp_path: Pa
             "SPARKBOT_ENV_TEMPLATE": str(template),
             "SPARKBOT_PUBLIC_HOST": "203.0.113.39",
         },
-        input_text=(
-            "\n"
-            "\n"
-            "valid-after-empty-passphrase\n"
-            "valid-after-empty-passphrase\n"
-        ),
+        input_text=("\n\nvalid-after-empty-passphrase\nvalid-after-empty-passphrase\n"),
     )
 
     assert result.returncode == 0
@@ -1053,7 +1132,9 @@ def test_start_script_server_mode_rejects_empty_prompted_passphrase(tmp_path: Pa
     assert "SPARKBOT_PASSPHRASE=valid-after-empty-passphrase" in env_file.read_text()
 
 
-def test_start_script_server_mode_max_passphrase_retries_exits_cleanly(tmp_path: Path) -> None:
+def test_start_script_server_mode_max_passphrase_retries_exits_cleanly(
+    tmp_path: Path,
+) -> None:
     template = tmp_path / ".env.local.example"
     env_file = tmp_path / ".env.local"
     _template(template)
@@ -1075,8 +1156,13 @@ def test_start_script_server_mode_max_passphrase_retries_exits_cleanly(tmp_path:
     )
 
     assert result.returncode != 0
-    assert result.stderr.count("Passphrase is too short. Use at least 12 characters.") == 5
-    assert "Too many invalid passphrase attempts. Rerun setup to try again." in result.stderr
+    assert (
+        result.stderr.count("Passphrase is too short. Use at least 12 characters.") == 5
+    )
+    assert (
+        "Too many invalid passphrase attempts. Rerun setup to try again."
+        in result.stderr
+    )
     assert "SPARKBOT_PASSPHRASE=short" not in env_file.read_text().splitlines()
 
 
@@ -1121,7 +1207,9 @@ exit 0
     assert not compose_log.exists()
 
 
-def test_start_script_server_mode_binds_publicly_and_prints_detected_url(tmp_path: Path) -> None:
+def test_start_script_server_mode_binds_publicly_and_prints_detected_url(
+    tmp_path: Path,
+) -> None:
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     compose_log = tmp_path / "compose.log"
@@ -1204,7 +1292,10 @@ exit 0
     env_file.write_text(
         template.read_text()
         .replace("OPENAI_API_KEY=", "OPENAI_API_KEY=sk-existing")
-        .replace("SPARKBOT_PASSPHRASE=sparkbot-local", "SPARKBOT_PASSPHRASE=existing-server-passphrase")
+        .replace(
+            "SPARKBOT_PASSPHRASE=sparkbot-local",
+            "SPARKBOT_PASSPHRASE=existing-server-passphrase",
+        )
         + "\nSPARKBOT_FRONTEND_PORT=3105\nSPARKBOT_FRONTEND_BIND_HOST=0.0.0.0\n"
     )
 
@@ -1229,7 +1320,9 @@ exit 0
     assert "SPARKBOT_FRONTEND_BIND_HOST=0.0.0.0" in compose_log.read_text()
 
 
-def test_complete_server_first_run_reaches_docker_startup_without_manual_env_edits(tmp_path: Path) -> None:
+def test_complete_server_first_run_reaches_docker_startup_without_manual_env_edits(
+    tmp_path: Path,
+) -> None:
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     compose_log = tmp_path / "compose.log"
@@ -1281,7 +1374,10 @@ exit 0
 
     assert result.returncode == 0
     assert "Sparkbot setup" in result.stdout
-    assert "Hidden input did not work in this terminal. Switching to visible input." in result.stderr
+    assert (
+        "Hidden input did not work in this terminal. Switching to visible input."
+        in result.stderr
+    )
     assert "Starting Sparkbot in the background" in result.stdout
     assert "Open Sparkbot:\nhttp://203.0.113.40:3000" in result.stdout
     assert "compose.local.yml up --build -d" in compose_log.read_text()
@@ -1300,7 +1396,10 @@ def test_compose_local_uses_legacy_compatible_env_file_syntax() -> None:
     assert "required: false" not in content
     assert "path: .env.local" not in content
     assert "env_file:\n      - .env.local" in content
-    assert '"${SPARKBOT_FRONTEND_BIND_HOST:-127.0.0.1}:${SPARKBOT_FRONTEND_PORT:-3000}:80"' in content
+    assert (
+        '"${SPARKBOT_FRONTEND_BIND_HOST:-127.0.0.1}:${SPARKBOT_FRONTEND_PORT:-3000}:80"'
+        in content
+    )
     assert "VITE_V1_LOCAL_MODE=${VITE_V1_LOCAL_MODE:-false}" in content
     assert "OPENAI_API_KEY=${OPENAI_API_KEY:-}" not in content
     assert "SPARKBOT_PASSPHRASE=${SPARKBOT_PASSPHRASE:-sparkbot-local}" not in content
@@ -1310,7 +1409,10 @@ def test_start_script_has_no_hidden_only_passphrase_prompt() -> None:
     content = START_SCRIPT.read_text()
 
     assert "--show-passphrase-input" in content
-    assert "Hidden input did not work in this terminal. Switching to visible input." in content
+    assert (
+        "Hidden input did not work in this terminal. Switching to visible input."
+        in content
+    )
     assert "read -r -s value" in content
     assert "read_passphrase_visible" in content
 
@@ -1356,13 +1458,15 @@ exit 1
     assert "compose -f compose.local.yml up --build" in log_file.read_text()
 
 
-def test_start_script_prints_legacy_mode_and_uses_docker_compose(tmp_path: Path) -> None:
+def test_start_script_prints_legacy_mode_and_uses_docker_compose(
+    tmp_path: Path,
+) -> None:
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     log_file = tmp_path / "compose.log"
     _write_executable(
         fake_bin / "docker",
-        "#!/usr/bin/env sh\n[ \"$1\" = \"info\" ] && exit 0\n[ \"$1\" = \"buildx\" ] && [ \"$2\" = \"version\" ] && exit 0\nexit 1\n",
+        '#!/usr/bin/env sh\n[ "$1" = "info" ] && exit 0\n[ "$1" = "buildx" ] && [ "$2" = "version" ] && exit 0\nexit 1\n',
     )
     _write_executable(
         fake_bin / "docker-compose",
@@ -1389,13 +1493,15 @@ exit 0
     assert "-f compose.local.yml up --build" in log_file.read_text()
 
 
-def test_start_script_legacy_compose_without_buildx_fails_before_raw_buildkit_error(tmp_path: Path) -> None:
+def test_start_script_legacy_compose_without_buildx_fails_before_raw_buildkit_error(
+    tmp_path: Path,
+) -> None:
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     log_file = tmp_path / "compose.log"
     _write_executable(
         fake_bin / "docker",
-        "#!/usr/bin/env sh\n[ \"$1\" = \"info\" ] && exit 0\nexit 1\n",
+        '#!/usr/bin/env sh\n[ "$1" = "info" ] && exit 0\nexit 1\n',
     )
     _write_executable(
         fake_bin / "docker-compose",
@@ -1422,11 +1528,16 @@ exit 0
     assert "Using legacy docker-compose compatibility mode" in result.stdout
     assert "Docker buildx is missing or not working." in result.stderr
     assert "docker-buildx-plugin docker-compose-plugin" in result.stderr
-    assert "BuildKit is enabled but the buildx component is missing or broken" not in combined
+    assert (
+        "BuildKit is enabled but the buildx component is missing or broken"
+        not in combined
+    )
     assert not log_file.exists()
 
 
-def test_start_script_install_docker_plugins_then_prefers_modern_compose(tmp_path: Path) -> None:
+def test_start_script_install_docker_plugins_then_prefers_modern_compose(
+    tmp_path: Path,
+) -> None:
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     installed_marker = tmp_path / "plugins-installed"
@@ -1471,8 +1582,13 @@ exit 0
     )
 
     assert result.returncode == 0
-    assert "Installing Docker Compose v2 and buildx plugins with apt..." in result.stdout
+    assert (
+        "Installing Docker Compose v2 and buildx plugins with apt..." in result.stdout
+    )
     assert "apt update" in sudo_log.read_text()
-    assert "apt install docker-buildx-plugin docker-compose-plugin -y" in sudo_log.read_text()
+    assert (
+        "apt install docker-buildx-plugin docker-compose-plugin -y"
+        in sudo_log.read_text()
+    )
     assert "Using legacy docker-compose compatibility mode" not in result.stdout
     assert "compose -f compose.local.yml up --build" in compose_log.read_text()

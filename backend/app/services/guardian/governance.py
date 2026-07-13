@@ -13,7 +13,12 @@ def _configured(*names: str) -> bool:
 
 
 def _shell_enabled() -> bool:
-    return os.getenv("SPARKBOT_SHELL_DISABLE", "").strip().lower() not in {"1", "true", "yes", "on"}
+    return os.getenv("SPARKBOT_SHELL_DISABLE", "").strip().lower() not in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 def connector_health() -> list[dict[str, Any]]:
@@ -22,26 +27,50 @@ def connector_health() -> list[dict[str, Any]]:
         {
             "id": "gmail",
             "label": "Gmail",
-            "configured": _configured("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REFRESH_TOKEN"),
+            "configured": _configured(
+                "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REFRESH_TOKEN"
+            ),
             "read_scopes": ["gmail_fetch_inbox", "gmail_search", "gmail_get_message"],
             "write_scopes": ["gmail_send"],
-            "audit_metadata": ["tool_name", "room_id", "user_id", "policy_decision", "redacted_args"],
+            "audit_metadata": [
+                "tool_name",
+                "room_id",
+                "user_id",
+                "policy_decision",
+                "redacted_args",
+            ],
         },
         {
             "id": "google_calendar",
             "label": "Google Calendar",
-            "configured": _configured("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REFRESH_TOKEN"),
+            "configured": _configured(
+                "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REFRESH_TOKEN"
+            ),
             "read_scopes": ["calendar_list_events"],
             "write_scopes": ["calendar_create_event"],
-            "audit_metadata": ["tool_name", "room_id", "user_id", "policy_decision", "redacted_args"],
+            "audit_metadata": [
+                "tool_name",
+                "room_id",
+                "user_id",
+                "policy_decision",
+                "redacted_args",
+            ],
         },
         {
             "id": "google_drive",
             "label": "Google Drive",
-            "configured": _configured("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REFRESH_TOKEN"),
+            "configured": _configured(
+                "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REFRESH_TOKEN"
+            ),
             "read_scopes": ["drive_search", "drive_get_file"],
             "write_scopes": ["drive_create_folder"],
-            "audit_metadata": ["tool_name", "room_id", "user_id", "policy_decision", "redacted_args"],
+            "audit_metadata": [
+                "tool_name",
+                "room_id",
+                "user_id",
+                "policy_decision",
+                "redacted_args",
+            ],
         },
         {
             "id": "github",
@@ -49,7 +78,13 @@ def connector_health() -> list[dict[str, Any]]:
             "configured": _configured("GITHUB_TOKEN"),
             "read_scopes": ["github_list_prs", "github_get_pr", "github_get_ci_status"],
             "write_scopes": ["github_create_issue"],
-            "audit_metadata": ["tool_name", "repo", "room_id", "user_id", "policy_decision"],
+            "audit_metadata": [
+                "tool_name",
+                "repo",
+                "room_id",
+                "user_id",
+                "policy_decision",
+            ],
         },
         {
             "id": "slack",
@@ -57,7 +92,13 @@ def connector_health() -> list[dict[str, Any]]:
             "configured": _configured("SLACK_BOT_TOKEN"),
             "read_scopes": ["slack_list_channels", "slack_get_channel_history"],
             "write_scopes": ["slack_send_message"],
-            "audit_metadata": ["tool_name", "channel", "room_id", "user_id", "policy_decision"],
+            "audit_metadata": [
+                "tool_name",
+                "channel",
+                "room_id",
+                "user_id",
+                "policy_decision",
+            ],
         },
         {
             "id": "local_filesystem",
@@ -65,12 +106,20 @@ def connector_health() -> list[dict[str, Any]]:
             "configured": _shell_enabled(),
             "read_scopes": ["shell_run read-only commands"],
             "write_scopes": ["shell_run write-like commands"],
-            "audit_metadata": ["tool_name", "command_classification", "room_id", "user_id", "policy_decision"],
+            "audit_metadata": [
+                "tool_name",
+                "command_classification",
+                "room_id",
+                "user_id",
+                "policy_decision",
+            ],
         },
     ]
     for connector in connectors:
         connector["health"] = "configured" if connector["configured"] else "needs_setup"
-        connector["setup_test"] = "available" if connector["read_scopes"] else "not_applicable"
+        connector["setup_test"] = (
+            "available" if connector["read_scopes"] else "not_applicable"
+        )
     return connectors
 
 
@@ -101,7 +150,12 @@ def workflow_templates() -> list[dict[str, Any]]:
             "name": "Deploy Checklist",
             "trigger": "manual",
             "conditions": ["Computer Control on or break-glass active"],
-            "steps": ["policy simulation", "server diagnostics", "CI status", "approval gate"],
+            "steps": [
+                "policy simulation",
+                "server diagnostics",
+                "CI status",
+                "approval gate",
+            ],
             "approval_gate": "required for service control or write-like shell",
             "notification": "room summary",
             "audit_export": "Executive Guardian decision + audit log",
@@ -111,7 +165,10 @@ def workflow_templates() -> list[dict[str, Any]]:
             "name": "Inbox Triage",
             "trigger": "every:1800",
             "conditions": ["mail connector configured"],
-            "steps": ["gmail_fetch_inbox or email_fetch_inbox", "summarize urgent items"],
+            "steps": [
+                "gmail_fetch_inbox or email_fetch_inbox",
+                "summarize urgent items",
+            ],
             "approval_gate": "required before sending replies",
             "notification": "room + mobile bridge",
             "audit_export": "Task Guardian run + mail tool audit",
@@ -121,7 +178,13 @@ def workflow_templates() -> list[dict[str, Any]]:
             "name": "Incident Response",
             "trigger": "manual or alert webhook",
             "conditions": ["operator present", "Computer Control context explicit"],
-            "steps": ["Round Table", "server diagnostics", "policy simulation", "approval gate", "postmortem notes"],
+            "steps": [
+                "Round Table",
+                "server diagnostics",
+                "policy simulation",
+                "approval gate",
+                "postmortem notes",
+            ],
             "approval_gate": "required for remediation commands",
             "notification": "room + comms bridge",
             "audit_export": "meeting artifact + Executive Guardian journal",
@@ -131,7 +194,9 @@ def workflow_templates() -> list[dict[str, Any]]:
 
 def evaluation_cases() -> list[dict[str, Any]]:
     cases: list[dict[str, Any]] = []
-    shell = policy.simulate_tool_policy("shell_run", {"command": "git commit -m update"})
+    shell = policy.simulate_tool_policy(
+        "shell_run", {"command": "git commit -m update"}
+    )
     shell_action = shell["decision"]["action"]
     cases.append(
         {
@@ -150,7 +215,9 @@ def evaluation_cases() -> list[dict[str, Any]]:
             "passed": unknown["decision"]["action"] == "deny",
         }
     )
-    guardrail = tool_guardrails.validate_tool_input("gmail_send", {"to": "a@example.com", "body": ""})
+    guardrail = tool_guardrails.validate_tool_input(
+        "gmail_send", {"to": "a@example.com", "body": ""}
+    )
     cases.append(
         {
             "id": "empty_email_body_rejected",

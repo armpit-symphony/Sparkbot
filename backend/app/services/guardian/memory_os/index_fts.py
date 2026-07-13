@@ -51,8 +51,8 @@ class FTSIndex:
                 event.type.value,
                 event.role,
                 event.content,
-                event.session_id
-            )
+                event.session_id,
+            ),
         )
         conn.commit()
         conn.close()
@@ -68,14 +68,14 @@ class FTSIndex:
                 e.type.value,
                 e.role,
                 e.content,
-                e.session_id
+                e.session_id,
             )
             for e in events
         ]
         cursor.executemany(
             """INSERT INTO events_fts (id, timestamp, event_type, role, content, session_id)
                VALUES (?, ?, ?, ?, ?, ?)""",
-            data
+            data,
         )
         conn.commit()
         conn.close()
@@ -90,7 +90,9 @@ class FTSIndex:
         conn.close()
         return count
 
-    def search(self, query: str, limit: int = 10, session_id: str | None = None) -> list[dict]:
+    def search(
+        self, query: str, limit: int = 10, session_id: str | None = None
+    ) -> list[dict]:
         """Search the FTS index."""
         normalized = self._normalize_query(query)
         if not normalized:

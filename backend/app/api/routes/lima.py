@@ -2,6 +2,7 @@
 
 LIMA decision preview is non-executing and does not represent active Guardian enforcement.
 """
+
 from __future__ import annotations
 
 from typing import Any
