@@ -1,0 +1,11 @@
+{
+  "minimum_patch_coverage_percent": 90.0,
+  "total_coverage_baseline": {
+    "base_sha": "9ebedb23548d16fd085e5d959d5c82fa0148a9ae",
+    "covered_lines": 10537,
+    "total_statements": 20562
+  },
+  "total_regression_tolerance_percentage_points": 0.02,
+  "coverage_path_prefix": "backend",
+  "production_source_path": "backend/app"
+}
