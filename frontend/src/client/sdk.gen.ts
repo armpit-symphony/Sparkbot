@@ -3,7 +3,3726 @@
 import type { CancelablePromise } from './core/CancelablePromise';
 import { OpenAPI } from './core/OpenAPI';
 import { request as __request } from './core/request';
-import type { ItemsReadItemsData, ItemsReadItemsResponse, ItemsCreateItemData, ItemsCreateItemResponse, ItemsReadItemData, ItemsReadItemResponse, ItemsUpdateItemData, ItemsUpdateItemResponse, ItemsDeleteItemData, ItemsDeleteItemResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, PrivateCreateUserData, PrivateCreateUserResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse } from './types.gen';
+import type { AuditListAuditLogsData, AuditListAuditLogsResponse, AuditGetAuditEntryData, AuditGetAuditEntryResponse, ChatSendMessageWithBotData, ChatSendMessageWithBotResponse, ChatGetMessagesWithBotStatusData, ChatGetMessagesWithBotStatusResponse, ChatBotHealthCheckResponse, ChatDashboardGetDashboardSummaryResponse, ChatDashboardGetRunTimelineData, ChatDashboardGetRunTimelineResponse, ChatDashboardGetConnectorHealthResponse, ChatDashboardGetWorkflowTemplatesResponse, ChatDashboardGetAgentBehaviorEvalsResponse, ChatDashboardApproveDashboardActionData, ChatDashboardApproveDashboardActionResponse, ChatDashboardDenyDashboardActionData, ChatDashboardDenyDashboardActionResponse, ChatGuardianBreakglassStatusResponse, ChatGuardianSetOperatorPinEndpointData, ChatGuardianSetOperatorPinEndpointResponse, ChatGuardianBreakglassOpenData, ChatGuardianBreakglassOpenResponse, ChatGuardianBreakglassCloseResponse, ChatGuardianVaultListEndpointResponse, ChatGuardianVaultAddEndpointData, ChatGuardianVaultAddEndpointResponse, ChatGuardianVaultDeleteEndpointData, ChatGuardianVaultDeleteEndpointResponse, ChatGuardianListRoomGuardianTasksData, ChatGuardianListRoomGuardianTasksResponse, ChatGuardianCreateRoomGuardianTaskData, ChatGuardianCreateRoomGuardianTaskResponse, ChatGuardianListRoomGuardianRunsData, ChatGuardianListRoomGuardianRunsResponse, ChatGuardianUpdateRoomGuardianTaskData, ChatGuardianUpdateRoomGuardianTaskResponse, ChatGuardianRunRoomGuardianTaskData, ChatGuardianRunRoomGuardianTaskResponse, ChatGuardianGetTaskGuardianWriteModeResponse, ChatGuardianSetTaskGuardianWriteModeData, ChatGuardianSetTaskGuardianWriteModeResponse, ChatGuardianGuardianMetricsResponse, ChatGuardianGuardianStatusResponse, ChatMcpMcpRegistryResponse, ChatMcpMcpExplainPlanData, ChatMcpMcpExplainPlanResponse, ChatMcpMcpRunsData, ChatMcpMcpRunsResponse, ChatMcpMcpRunDetailData, ChatMcpMcpRunDetailResponse, ChatMcpMcpRunRequestApprovalData, ChatMcpMcpRunRequestApprovalResponse, ChatMcpMcpRunApproveData, ChatMcpMcpRunApproveResponse, ChatMcpMcpRunDenyData, ChatMcpMcpRunDenyResponse, ChatMemoryListMemoriesResponse, ChatMemoryClearMemoriesResponse, ChatMemoryInspectMemoriesData, ChatMemoryInspectMemoriesResponse, ChatMemoryForgetMemoryByQueryData, ChatMemoryForgetMemoryByQueryResponse, ChatMemoryDeleteProposalsData, ChatMemoryDeleteProposalsResponse, ChatMemoryRestoreMemoryData, ChatMemoryRestoreMemoryResponse, ChatMemoryCorrectMemoryData, ChatMemoryCorrectMemoryResponse, ChatMemoryRemoveMemoryData, ChatMemoryRemoveMemoryResponse, ChatMessagesReadChatMessagesData, ChatMessagesReadChatMessagesResponse, ChatMessagesCreateRoomMessageData, ChatMessagesCreateRoomMessageResponse, ChatMessagesSearchRoomMessagesData, ChatMessagesSearchRoomMessagesResponse, ChatMessagesReadChatMessageData, ChatMessagesReadChatMessageResponse, ChatMessagesUpdateChatMessageData, ChatMessagesUpdateChatMessageResponse, ChatMessagesDeleteChatMessageData, ChatMessagesDeleteChatMessageResponse, ChatModelListModelsResponse, ChatModelGetCurrentModelResponse, ChatModelSetCurrentModelData, ChatModelSetCurrentModelResponse, ChatModelListAgentsResponse, ChatModelCreateAgentData, ChatModelCreateAgentResponse, ChatModelDeleteAgentData, ChatModelDeleteAgentResponse, ChatModelSetAgentInviteRouteData, ChatModelSetAgentInviteRouteResponse, ChatModelGetModelsConfigResponse, ChatModelUpdateModelsConfigData, ChatModelUpdateModelsConfigResponse, ChatModelOllamaStatusResponse, ChatModelModelsLatencyResponse, ChatModelPerformanceSnapshotResponse, ChatModelPerformanceResetResponse, ChatModelSystemWatcherStatusResponse, ChatModelOpenrouterModelsResponse, ChatProjectsCreateRoomProjectData, ChatProjectsCreateRoomProjectResponse, ChatProjectsUpdateRoomProjectData, ChatProjectsUpdateRoomProjectResponse, ChatProjectsArchiveRoomProjectData, ChatProjectsArchiveRoomProjectResponse, ChatProjectsAttachTaskToProjectData, ChatProjectsAttachTaskToProjectResponse, ChatProjectsDetachTaskFromProjectData, ChatProjectsDetachTaskFromProjectResponse, ChatRemindersListRoomRemindersData, ChatRemindersListRoomRemindersResponse, ChatRemindersCreateRoomReminderData, ChatRemindersCreateRoomReminderResponse, ChatRemindersCancelRoomReminderData, ChatRemindersCancelRoomReminderResponse, ChatRoboticsRoboticsStatusResponse, ChatRoboticsRoboticsToolsResponse, ChatRoboticsRoboticsCommandData, ChatRoboticsRoboticsCommandResponse, ChatRoboticsRoboticsEmergencyStopData, ChatRoboticsRoboticsEmergencyStopResponse, ChatRoomsReadChatRoomsData, ChatRoomsReadChatRoomsResponse, ChatRoomsCreateChatRoomEndpointData, ChatRoomsCreateChatRoomEndpointResponse, ChatRoomsReadChatRoomByIdData, ChatRoomsReadChatRoomByIdResponse, ChatRoomsUpdateChatRoomData, ChatRoomsUpdateChatRoomResponse, ChatRoomsDeleteChatRoomData, ChatRoomsDeleteChatRoomResponse, ChatRoomsReadChatRoomMembersData, ChatRoomsReadChatRoomMembersResponse, ChatRoomsAddChatRoomMemberData, ChatRoomsAddChatRoomMemberResponse, ChatRoomsRemoveChatRoomMemberData, ChatRoomsRemoveChatRoomMemberResponse, ChatRoomsGetMyChatMembershipData, ChatRoomsGetMyChatMembershipResponse, ChatRoomsGetChatRoomInvitesData, ChatRoomsGetChatRoomInvitesResponse, ChatRoomsCreateChatRoomInviteData, ChatRoomsCreateChatRoomInviteResponse, ChatRoomsJoinChatRoomData, ChatRoomsJoinChatRoomResponse, ChatRoomsDeleteChatRoomInviteData, ChatRoomsDeleteChatRoomInviteResponse, ChatRoomsCleanupExpiredChatInvitesResponse, ChatRoomsGetRoomMessagesData, ChatRoomsGetRoomMessagesResponse, ChatRoomsSendRoomMessageData, ChatRoomsSendRoomMessageResponse, ChatRoomsStreamRoomMessageData, ChatRoomsStreamRoomMessageResponse, ChatRoomsListMeetingArtifactsData, ChatRoomsListMeetingArtifactsResponse, ChatRoomsCreateMeetingArtifactEndpointData, ChatRoomsCreateMeetingArtifactEndpointResponse, ChatRoomsGenerateMeetingNotesEndpointData, ChatRoomsGenerateMeetingNotesEndpointResponse, ChatSecuritySecurityStatusResponse, ChatSecurityRotatePassphraseData, ChatSecurityRotatePassphraseResponse, ChatSecuritySetOperatorUsersData, ChatSecuritySetOperatorUsersResponse, ChatSecuritySetOperatorPinData, ChatSecuritySetOperatorPinResponse, ChatSecuritySetSecurityFeaturesData, ChatSecuritySetSecurityFeaturesResponse, ChatSecurityFixEnvPermissionsResponse, ChatSkillsListSkillsResponse, ChatSpineReadRoomSpineTasksData, ChatSpineReadRoomSpineTasksResponse, ChatSpineReadRoomSpineEventsData, ChatSpineReadRoomSpineEventsResponse, ChatSpineReadRoomSpineHandoffsData, ChatSpineReadRoomSpineHandoffsResponse, ChatSpineReadRoomSpineOverviewData, ChatSpineReadRoomSpineOverviewResponse, ChatSpineReadRoomSpineProjectsData, ChatSpineReadRoomSpineProjectsResponse, ChatSpineReadRoomSpineProjectTasksData, ChatSpineReadRoomSpineProjectTasksResponse, ChatSpineReadRoomSpineOrphanTasksData, ChatSpineReadRoomSpineOrphanTasksResponse, ChatSpineReadRoomSpineTaskLineageData, ChatSpineReadRoomSpineTaskLineageResponse, ChatSpineReadRoomSpineTaskApprovalsData, ChatSpineReadRoomSpineTaskApprovalsResponse, ChatSpineReadRoomSpineProjectHandoffsData, ChatSpineReadRoomSpineProjectHandoffsResponse, ChatSpineReadRoomSpineProjectEventsData, ChatSpineReadRoomSpineProjectEventsResponse, ChatSpineReadRoomSpineTaskMasterOverviewData, ChatSpineReadRoomSpineTaskMasterOverviewResponse, ChatSpineReadOperatorSpineProducersResponse, ChatSpineReadOperatorSpineRecentEventsData, ChatSpineReadOperatorSpineRecentEventsResponse, ChatSpineReadOperatorSpineOpenQueueData, ChatSpineReadOperatorSpineOpenQueueResponse, ChatSpineReadOperatorSpineBlockedQueueData, ChatSpineReadOperatorSpineBlockedQueueResponse, ChatSpineReadOperatorSpineApprovalWaitingQueueData, ChatSpineReadOperatorSpineApprovalWaitingQueueResponse, ChatSpineReadOperatorSpineStaleQueueData, ChatSpineReadOperatorSpineStaleQueueResponse, ChatSpineReadOperatorSpineOrphanQueueData, ChatSpineReadOperatorSpineOrphanQueueResponse, ChatSpineReadOperatorSpineMissingSourceQueueData, ChatSpineReadOperatorSpineMissingSourceQueueResponse, ChatSpineReadOperatorSpineMissingProjectQueueData, ChatSpineReadOperatorSpineMissingProjectQueueResponse, ChatSpineReadOperatorSpineResurfacedQueueData, ChatSpineReadOperatorSpineResurfacedQueueResponse, ChatSpineReadOperatorSpineExecutiveDirectivesData, ChatSpineReadOperatorSpineExecutiveDirectivesResponse, ChatSpineReadOperatorSpineProjectsData, ChatSpineReadOperatorSpineProjectsResponse, ChatSpineCreateSpineProjectData, ChatSpineCreateSpineProjectResponse, ChatSpineReadOperatorSpineProjectWorkloadResponse, ChatSpineReadOperatorSpineTaskMasterOverviewData, ChatSpineReadOperatorSpineTaskMasterOverviewResponse, ChatSpineReadOperatorSpineTaskDetailData, ChatSpineReadOperatorSpineTaskDetailResponse, ChatSpineReadOperatorSpineHighPriorityBlockedData, ChatSpineReadOperatorSpineHighPriorityBlockedResponse, ChatSpineReadOperatorSpineHighPriorityApprovalData, ChatSpineReadOperatorSpineHighPriorityApprovalResponse, ChatSpineReadOperatorSpineStaleUnownedData, ChatSpineReadOperatorSpineStaleUnownedResponse, ChatSpineReadOperatorSpineUnassignedExecutiveData, ChatSpineReadOperatorSpineUnassignedExecutiveResponse, ChatSpineReadOperatorSpineResurfacedNoFollowupData, ChatSpineReadOperatorSpineResurfacedNoFollowupResponse, ChatSpineReadOperatorSpineMissingDurableLinkageData, ChatSpineReadOperatorSpineMissingDurableLinkageResponse, ChatSpineReadOperatorSpineFragmentationData, ChatSpineReadOperatorSpineFragmentationResponse, ChatSpineUpdateSpineProjectMetadataData, ChatSpineUpdateSpineProjectMetadataResponse, ChatSpineTransitionSpineProjectStatusData, ChatSpineTransitionSpineProjectStatusResponse, ChatSpineAssignSpineProjectOwnerData, ChatSpineAssignSpineProjectOwnerResponse, ChatSpineArchiveSpineProjectData, ChatSpineArchiveSpineProjectResponse, ChatSpineCancelSpineProjectData, ChatSpineCancelSpineProjectResponse, ChatSpineReopenSpineProjectData, ChatSpineReopenSpineProjectResponse, ChatSpineAttachTaskToSpineProjectData, ChatSpineAttachTaskToSpineProjectResponse, ChatSpineDetachTaskFromSpineProjectData, ChatSpineDetachTaskFromSpineProjectResponse, ChatSpineReadOperatorSpineProjectsWithoutOwnerData, ChatSpineReadOperatorSpineProjectsWithoutOwnerResponse, ChatSpineReadOperatorSpineProjectsStaleTasksData, ChatSpineReadOperatorSpineProjectsStaleTasksResponse, ChatSpineReadOperatorSpineProjectsCandidateTasksData, ChatSpineReadOperatorSpineProjectsCandidateTasksResponse, ChatSpineReadOperatorSpineProjectsBlockedApprovalData, ChatSpineReadOperatorSpineProjectsBlockedApprovalResponse, ChatSpineReadOperatorSpineProjectsUnassignedDirectivesData, ChatSpineReadOperatorSpineProjectsUnassignedDirectivesResponse, ChatSpineReadOperatorSpineProjectsUnclearStatusData, ChatSpineReadOperatorSpineProjectsUnclearStatusResponse, ChatSpineReadOperatorImprovementProposalsData, ChatSpineReadOperatorImprovementProposalsResponse, ChatSpineApproveOperatorImprovementProposalData, ChatSpineApproveOperatorImprovementProposalResponse, ChatSpineRejectOperatorImprovementProposalData, ChatSpineRejectOperatorImprovementProposalResponse, ChatSpineReadOperatorAutonomousPausesResponse, ChatSpineResumeOperatorAutonomousPauseData, ChatSpineResumeOperatorAutonomousPauseResponse, ChatTasksListRoomTasksData, ChatTasksListRoomTasksResponse, ChatTasksCreateRoomTaskData, ChatTasksCreateRoomTaskResponse, ChatTasksUpdateRoomTaskData, ChatTasksUpdateRoomTaskResponse, ChatTasksDeleteRoomTaskData, ChatTasksDeleteRoomTaskResponse, ChatUploadsServeUploadData, ChatUploadsServeUploadResponse, ChatUploadsUploadFileData, ChatUploadsUploadFileResponse, ChatUsersChatLoginData, ChatUsersChatLoginResponse, ChatUsersChatLogoutResponse, ChatUsersReadChatUsersData, ChatUsersReadChatUsersResponse, ChatUsersCreateChatUserData, ChatUsersCreateChatUserResponse, ChatUsersReadChatUserByIdData, ChatUsersReadChatUserByIdResponse, ChatUsersUpdateChatUserData, ChatUsersUpdateChatUserResponse, ChatUsersDeleteChatUserData, ChatUsersDeleteChatUserResponse, ChatUsersReadChatUserByUsernameData, ChatUsersReadChatUserByUsernameResponse, ChatUsersReadChatUserBySlugData, ChatUsersReadChatUserBySlugResponse, ChatUsersChatBootstrapResponse, ChatVoiceVoiceMessageData, ChatVoiceVoiceMessageResponse, ChatVoiceTranscribeOnlyData, ChatVoiceTranscribeOnlyResponse, ChatVoiceTtsData, ChatVoiceTtsResponse, GithubGithubEventsResponse, ItemsReadItemsData, ItemsReadItemsResponse, ItemsCreateItemData, ItemsCreateItemResponse, ItemsReadItemData, ItemsReadItemResponse, ItemsUpdateItemData, ItemsUpdateItemResponse, ItemsDeleteItemData, ItemsDeleteItemResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, PrivateCreateUserData, PrivateCreateUserResponse, SlackSlackEventsResponse, TerminalListTerminalSessionsResponse, TerminalCreateTerminalSessionData, TerminalCreateTerminalSessionResponse, TerminalCloseTerminalSessionData, TerminalCloseTerminalSessionResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse, WorkstationGetWorkstationOverviewResponse } from './types.gen';
+
+export class AuditService {
+    /**
+     * List Audit Logs
+     * Return recent bot audit log entries.
+     *
+     * Results are newest-first. Use `tool` to filter by tool name (e.g. `web_search`)
+     * or `room_id` to scope to a specific room.
+     * @param data The data for the request.
+     * @param data.limit
+     * @param data.offset
+     * @param data.tool Filter by tool name
+     * @param data.roomId Filter by room UUID
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static listAuditLogs(data: AuditListAuditLogsData = {}): CancelablePromise<AuditListAuditLogsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/audit',
+            query: {
+                limit: data.limit,
+                offset: data.offset,
+                tool: data.tool,
+                room_id: data.roomId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Get Audit Entry
+     * Return a single audit log entry with full tool input and result.
+     * @param data The data for the request.
+     * @param data.entryId
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static getAuditEntry(data: AuditGetAuditEntryData): CancelablePromise<AuditGetAuditEntryResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/audit/{entry_id}',
+            path: {
+                entry_id: data.entryId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+}
+
+export class ChatService {
+    /**
+     * Send Message With Bot
+     * Send a message to a room and get bot response.
+     *
+     * Flow:
+     * 1. Save user message to database
+     * 2. Call npm bot on :8080
+     * 3. Save bot response to database
+     * 4. Return both messages
+     *
+     * Requires authentication for non-public rooms.
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.requestBody
+     * @returns BotMessageResponse Successful Response
+     * @throws ApiError
+     */
+    public static sendMessageWithBot(data: ChatSendMessageWithBotData): CancelablePromise<ChatSendMessageWithBotResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/chat/rooms/{room_id}/messages',
+            path: {
+                room_id: data.roomId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Get Messages With Bot Status
+     * Get a specific message and its bot response.
+     *
+     * Useful for checking if a message triggered a bot response.
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.messageId
+     * @returns BotMessageResponse Successful Response
+     * @throws ApiError
+     */
+    public static getMessagesWithBotStatus(data: ChatGetMessagesWithBotStatusData): CancelablePromise<ChatGetMessagesWithBotStatusResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/chat/rooms/{room_id}/messages/with-bot',
+            path: {
+                room_id: data.roomId
+            },
+            query: {
+                message_id: data.messageId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Bot Health Check
+     * Check if npm bot on port 8080 is healthy.
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static botHealthCheck(): CancelablePromise<ChatBotHealthCheckResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/chat/bot/health'
+        });
+    }
+}
+
+export class ChatDashboardService {
+    /**
+     * Get Dashboard Summary
+     * @returns DashboardSummaryResponse Successful Response
+     * @throws ApiError
+     */
+    public static getDashboardSummary(): CancelablePromise<ChatDashboardGetDashboardSummaryResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/dashboard/summary'
+        });
+    }
+    
+    /**
+     * Get Run Timeline
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.limit
+     * @returns DashboardRunTimelineResponse Successful Response
+     * @throws ApiError
+     */
+    public static getRunTimeline(data: ChatDashboardGetRunTimelineData = {}): CancelablePromise<ChatDashboardGetRunTimelineResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/dashboard/runs/timeline',
+            query: {
+                room_id: data.roomId,
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Get Connector Health
+     * @returns DashboardConnectorHealthResponse Successful Response
+     * @throws ApiError
+     */
+    public static getConnectorHealth(): CancelablePromise<ChatDashboardGetConnectorHealthResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/dashboard/connectors/health'
+        });
+    }
+    
+    /**
+     * Get Workflow Templates
+     * @returns DashboardWorkflowTemplatesResponse Successful Response
+     * @throws ApiError
+     */
+    public static getWorkflowTemplates(): CancelablePromise<ChatDashboardGetWorkflowTemplatesResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/dashboard/workflows/templates'
+        });
+    }
+    
+    /**
+     * Get Agent Behavior Evals
+     * @returns DashboardEvaluationResponse Successful Response
+     * @throws ApiError
+     */
+    public static getAgentBehaviorEvals(): CancelablePromise<ChatDashboardGetAgentBehaviorEvalsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/dashboard/evals/agent-behavior'
+        });
+    }
+    
+    /**
+     * Approve Dashboard Action
+     * @param data The data for the request.
+     * @param data.confirmId
+     * @returns ApprovalActionResponse Successful Response
+     * @throws ApiError
+     */
+    public static approveDashboardAction(data: ChatDashboardApproveDashboardActionData): CancelablePromise<ChatDashboardApproveDashboardActionResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/dashboard/approvals/{confirm_id}/approve',
+            path: {
+                confirm_id: data.confirmId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Deny Dashboard Action
+     * @param data The data for the request.
+     * @param data.confirmId
+     * @returns ApprovalActionResponse Successful Response
+     * @throws ApiError
+     */
+    public static denyDashboardAction(data: ChatDashboardDenyDashboardActionData): CancelablePromise<ChatDashboardDenyDashboardActionResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/dashboard/approvals/{confirm_id}/deny',
+            path: {
+                confirm_id: data.confirmId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+}
+
+export class ChatGuardianService {
+    /**
+     * Breakglass Status
+     * Return current privileged session status for the calling user.
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static breakglassStatus(): CancelablePromise<ChatGuardianBreakglassStatusResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/guardian/breakglass/status'
+        });
+    }
+    
+    /**
+     * Set Operator Pin Endpoint
+     * Create or change the local 6-digit operator PIN used by Computer Control, Break-glass, and Vault.
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static setOperatorPinEndpoint(data: ChatGuardianSetOperatorPinEndpointData): CancelablePromise<ChatGuardianSetOperatorPinEndpointResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/guardian/pin',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Breakglass Open
+     * Open a privileged break-glass session using the operator PIN.
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static breakglassOpen(data: ChatGuardianBreakglassOpenData): CancelablePromise<ChatGuardianBreakglassOpenResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/guardian/breakglass',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Breakglass Close
+     * Explicitly close the privileged session.
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static breakglassClose(): CancelablePromise<ChatGuardianBreakglassCloseResponse> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/api/v1/chat/guardian/breakglass'
+        });
+    }
+    
+    /**
+     * Vault List Endpoint
+     * List all vault secret aliases and metadata (no plaintext values).
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static vaultListEndpoint(): CancelablePromise<ChatGuardianVaultListEndpointResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/guardian/vault'
+        });
+    }
+    
+    /**
+     * Vault Add Endpoint
+     * Add an encrypted secret to the vault. Requires break-glass privileged mode.
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static vaultAddEndpoint(data: ChatGuardianVaultAddEndpointData): CancelablePromise<ChatGuardianVaultAddEndpointResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/guardian/vault',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Vault Delete Endpoint
+     * Delete a vault secret. Requires break-glass privileged mode.
+     * @param data The data for the request.
+     * @param data.alias
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static vaultDeleteEndpoint(data: ChatGuardianVaultDeleteEndpointData): CancelablePromise<ChatGuardianVaultDeleteEndpointResponse> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/api/v1/chat/guardian/vault/{alias}',
+            path: {
+                alias: data.alias
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * List Room Guardian Tasks
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.limit
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static listRoomGuardianTasks(data: ChatGuardianListRoomGuardianTasksData): CancelablePromise<ChatGuardianListRoomGuardianTasksResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/rooms/{room_id}/guardian/tasks',
+            path: {
+                room_id: data.roomId
+            },
+            query: {
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Create Room Guardian Task
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.requestBody
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static createRoomGuardianTask(data: ChatGuardianCreateRoomGuardianTaskData): CancelablePromise<ChatGuardianCreateRoomGuardianTaskResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/rooms/{room_id}/guardian/tasks',
+            path: {
+                room_id: data.roomId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * List Room Guardian Runs
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.limit
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static listRoomGuardianRuns(data: ChatGuardianListRoomGuardianRunsData): CancelablePromise<ChatGuardianListRoomGuardianRunsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/rooms/{room_id}/guardian/runs',
+            path: {
+                room_id: data.roomId
+            },
+            query: {
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Update Room Guardian Task
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.taskId
+     * @param data.requestBody
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static updateRoomGuardianTask(data: ChatGuardianUpdateRoomGuardianTaskData): CancelablePromise<ChatGuardianUpdateRoomGuardianTaskResponse> {
+        return __request(OpenAPI, {
+            method: 'PATCH',
+            url: '/api/v1/chat/rooms/{room_id}/guardian/tasks/{task_id}',
+            path: {
+                room_id: data.roomId,
+                task_id: data.taskId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Run Room Guardian Task
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.taskId
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static runRoomGuardianTask(data: ChatGuardianRunRoomGuardianTaskData): CancelablePromise<ChatGuardianRunRoomGuardianTaskResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/rooms/{room_id}/guardian/tasks/{task_id}/run',
+            path: {
+                room_id: data.roomId,
+                task_id: data.taskId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Get Task Guardian Write Mode
+     * Return current Task Guardian write mode status.
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static getTaskGuardianWriteMode(): CancelablePromise<ChatGuardianGetTaskGuardianWriteModeResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/guardian/tasks/write-mode'
+        });
+    }
+    
+    /**
+     * Set Task Guardian Write Mode
+     * Toggle Task Guardian write mode (email, Slack, calendar sends) at runtime.
+     * Operator-only. No restart needed.
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static setTaskGuardianWriteMode(data: ChatGuardianSetTaskGuardianWriteModeData): CancelablePromise<ChatGuardianSetTaskGuardianWriteModeResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/guardian/tasks/write-mode',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Guardian Metrics
+     * Return authenticated Guardian memory metrics for daily digest/monitoring.
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static guardianMetrics(): CancelablePromise<ChatGuardianGuardianMetricsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/guardian/metrics'
+        });
+    }
+    
+    /**
+     * Guardian Status
+     * Return a summary of all guardian subsystem statuses.
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static guardianStatus(): CancelablePromise<ChatGuardianGuardianStatusResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/guardian/status'
+        });
+    }
+}
+
+export class ChatMcpService {
+    /**
+     * Mcp Registry
+     * Return the unified Sparkbot + LIMA MCP registry and live health metadata.
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static mcpRegistry(): CancelablePromise<ChatMcpMcpRegistryResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/mcp/registry'
+        });
+    }
+    
+    /**
+     * Mcp Explain Plan
+     * Return a no-execution policy and dry-run plan for an MCP registry tool.
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static mcpExplainPlan(data: ChatMcpMcpExplainPlanData): CancelablePromise<ChatMcpMcpExplainPlanResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/mcp/explain-plan',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Mcp Runs
+     * Return recent durable MCP explain-plan/run records for the current user.
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.limit
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static mcpRuns(data: ChatMcpMcpRunsData = {}): CancelablePromise<ChatMcpMcpRunsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/mcp/runs',
+            query: {
+                room_id: data.roomId,
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Mcp Run Detail
+     * Return one MCP run record and its persisted explain-plan payload.
+     * @param data The data for the request.
+     * @param data.runId
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static mcpRunDetail(data: ChatMcpMcpRunDetailData): CancelablePromise<ChatMcpMcpRunDetailResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/mcp/runs/{run_id}',
+            path: {
+                run_id: data.runId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Mcp Run Request Approval
+     * Mark an MCP run as awaiting approval without executing anything.
+     * @param data The data for the request.
+     * @param data.runId
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static mcpRunRequestApproval(data: ChatMcpMcpRunRequestApprovalData): CancelablePromise<ChatMcpMcpRunRequestApprovalResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/mcp/runs/{run_id}/request-approval',
+            path: {
+                run_id: data.runId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Mcp Run Approve
+     * Approve an MCP run for future execution handoff; no tool is executed here.
+     * @param data The data for the request.
+     * @param data.runId
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static mcpRunApprove(data: ChatMcpMcpRunApproveData): CancelablePromise<ChatMcpMcpRunApproveResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/mcp/runs/{run_id}/approve',
+            path: {
+                run_id: data.runId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Mcp Run Deny
+     * Deny an MCP run and keep it blocked; no tool is executed here.
+     * @param data The data for the request.
+     * @param data.runId
+     * @param data.requestBody
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static mcpRunDeny(data: ChatMcpMcpRunDenyData): CancelablePromise<ChatMcpMcpRunDenyResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/mcp/runs/{run_id}/deny',
+            path: {
+                run_id: data.runId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+}
+
+export class ChatMemoryService {
+    /**
+     * List Memories
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static listMemories(): CancelablePromise<ChatMemoryListMemoriesResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/memory/'
+        });
+    }
+    
+    /**
+     * Clear Memories
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static clearMemories(): CancelablePromise<ChatMemoryClearMemoriesResponse> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/api/v1/chat/memory/'
+        });
+    }
+    
+    /**
+     * Inspect Memories
+     * @param data The data for the request.
+     * @param data.state
+     * @param data.memoryType
+     * @param data.includeArchived
+     * @param data.includeDeleted
+     * @param data.limit
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static inspectMemories(data: ChatMemoryInspectMemoriesData = {}): CancelablePromise<ChatMemoryInspectMemoriesResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/memory/inspect',
+            query: {
+                state: data.state,
+                memory_type: data.memoryType,
+                include_archived: data.includeArchived,
+                include_deleted: data.includeDeleted,
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Forget Memory By Query
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static forgetMemoryByQuery(data: ChatMemoryForgetMemoryByQueryData): CancelablePromise<ChatMemoryForgetMemoryByQueryResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/memory/forget',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Delete Proposals
+     * @param data The data for the request.
+     * @param data.limit
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static deleteProposals(data: ChatMemoryDeleteProposalsData = {}): CancelablePromise<ChatMemoryDeleteProposalsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/memory/proposals/delete',
+            query: {
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Restore Memory
+     * @param data The data for the request.
+     * @param data.memoryId
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static restoreMemory(data: ChatMemoryRestoreMemoryData): CancelablePromise<ChatMemoryRestoreMemoryResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/memory/{memory_id}/restore',
+            path: {
+                memory_id: data.memoryId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Correct Memory
+     * @param data The data for the request.
+     * @param data.memoryId
+     * @param data.requestBody
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static correctMemory(data: ChatMemoryCorrectMemoryData): CancelablePromise<ChatMemoryCorrectMemoryResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/memory/{memory_id}/correct',
+            path: {
+                memory_id: data.memoryId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Remove Memory
+     * @param data The data for the request.
+     * @param data.memoryId
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static removeMemory(data: ChatMemoryRemoveMemoryData): CancelablePromise<ChatMemoryRemoveMemoryResponse> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/api/v1/chat/memory/{memory_id}',
+            path: {
+                memory_id: data.memoryId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+}
+
+export class ChatMessagesService {
+    /**
+     * Read Chat Messages
+     * Get message history for a room.
+     *
+     * Requires room membership for private rooms.
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.skip
+     * @param data.limit
+     * @param data.before
+     * @returns MessageListResponse Successful Response
+     * @throws ApiError
+     */
+    public static readChatMessages(data: ChatMessagesReadChatMessagesData): CancelablePromise<ChatMessagesReadChatMessagesResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/messages/{room_id}',
+            path: {
+                room_id: data.roomId
+            },
+            query: {
+                skip: data.skip,
+                limit: data.limit,
+                before: data.before
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Create Room Message
+     * Create a new message in a room via REST API.
+     *
+     * Note: For real-time chat, use the WebSocket endpoint instead.
+     * This is useful for bots or integrations.
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.requestBody
+     * @returns app__schemas__chat__MessageResponse Successful Response
+     * @throws ApiError
+     */
+    public static createRoomMessage(data: ChatMessagesCreateRoomMessageData): CancelablePromise<ChatMessagesCreateRoomMessageResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/messages/{room_id}',
+            path: {
+                room_id: data.roomId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Search Room Messages
+     * Search messages in a room by content (case-insensitive).
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.q
+     * @param data.limit
+     * @returns MessageListResponse Successful Response
+     * @throws ApiError
+     */
+    public static searchRoomMessages(data: ChatMessagesSearchRoomMessagesData): CancelablePromise<ChatMessagesSearchRoomMessagesResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/messages/{room_id}/search',
+            path: {
+                room_id: data.roomId
+            },
+            query: {
+                q: data.q,
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Chat Message
+     * Get a specific message.
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.messageId
+     * @returns app__schemas__chat__MessageResponse Successful Response
+     * @throws ApiError
+     */
+    public static readChatMessage(data: ChatMessagesReadChatMessageData): CancelablePromise<ChatMessagesReadChatMessageResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/messages/{room_id}/message/{message_id}',
+            path: {
+                room_id: data.roomId,
+                message_id: data.messageId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Update Chat Message
+     * Update a message. Only the sender can edit their own messages.
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.messageId
+     * @param data.requestBody
+     * @returns app__schemas__chat__MessageResponse Successful Response
+     * @throws ApiError
+     */
+    public static updateChatMessage(data: ChatMessagesUpdateChatMessageData): CancelablePromise<ChatMessagesUpdateChatMessageResponse> {
+        return __request(OpenAPI, {
+            method: 'PATCH',
+            url: '/api/v1/chat/messages/{room_id}/message/{message_id}',
+            path: {
+                room_id: data.roomId,
+                message_id: data.messageId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Delete Chat Message
+     * Delete a message. Only the sender can delete their own messages.
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.messageId
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static deleteChatMessage(data: ChatMessagesDeleteChatMessageData): CancelablePromise<ChatMessagesDeleteChatMessageResponse> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/api/v1/chat/messages/{room_id}/message/{message_id}',
+            path: {
+                room_id: data.roomId,
+                message_id: data.messageId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+}
+
+export class ChatModelService {
+    /**
+     * List Models
+     * Return all available models with descriptions and latency stats.
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static listModels(): CancelablePromise<ChatModelListModelsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/models'
+        });
+    }
+    
+    /**
+     * Get Current Model
+     * Return the active model for the current user.
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static getCurrentModel(): CancelablePromise<ChatModelGetCurrentModelResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/model'
+        });
+    }
+    
+    /**
+     * Set Current Model
+     * Set the active model for the current user and persist it as the primary route.
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static setCurrentModel(data: ChatModelSetCurrentModelData): CancelablePromise<ChatModelSetCurrentModelResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/model',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * List Agents
+     * Return all available named agents, including spawned custom agents.
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static listAgents(): CancelablePromise<ChatModelListAgentsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/agents'
+        });
+    }
+    
+    /**
+     * Create Agent
+     * Spawn a custom agent — persists to DB and registers immediately (no restart needed).
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static createAgent(data: ChatModelCreateAgentData): CancelablePromise<ChatModelCreateAgentResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/agents',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Delete Agent
+     * Delete a custom agent from DB and unregister from the runtime registry.
+     * @param data The data for the request.
+     * @param data.name
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static deleteAgent(data: ChatModelDeleteAgentData): CancelablePromise<ChatModelDeleteAgentResponse> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/api/v1/chat/agents/{name}',
+            path: {
+                name: data.name
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Set Agent Invite Route
+     * Register a custom model and API key for an invite-seat agent (runtime only, cleared on restart).
+     * @param data The data for the request.
+     * @param data.name
+     * @param data.requestBody
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static setAgentInviteRoute(data: ChatModelSetAgentInviteRouteData): CancelablePromise<ChatModelSetAgentInviteRouteResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/agents/{name}/invite-route',
+            path: {
+                name: data.name
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Get Models Config
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static getModelsConfig(): CancelablePromise<ChatModelGetModelsConfigResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/models/config'
+        });
+    }
+    
+    /**
+     * Update Models Config
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static updateModelsConfig(data: ChatModelUpdateModelsConfigData): CancelablePromise<ChatModelUpdateModelsConfigResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/models/config',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Ollama Status
+     * Check Ollama server connectivity and list available local models.
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static ollamaStatus(): CancelablePromise<ChatModelOllamaStatusResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/ollama/status'
+        });
+    }
+    
+    /**
+     * Models Latency
+     * Return latency stats (avg, min, max, last, sample count) for all models seen this session.
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static modelsLatency(): CancelablePromise<ChatModelModelsLatencyResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/models/latency'
+        });
+    }
+    
+    /**
+     * Performance Snapshot
+     * Return aggregated chat performance metrics — model + tool latency, error rates, last error.
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static performanceSnapshot(): CancelablePromise<ChatModelPerformanceSnapshotResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/performance'
+        });
+    }
+    
+    /**
+     * Performance Reset
+     * Clear in-memory performance counters. Operator-only.
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static performanceReset(): CancelablePromise<ChatModelPerformanceResetResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/performance/reset'
+        });
+    }
+    
+    /**
+     * System Watcher Status
+     * Return process watcher state: enabled, thresholds, currently throttled processes.
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static systemWatcherStatus(): CancelablePromise<ChatModelSystemWatcherStatusResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/system/watcher'
+        });
+    }
+    
+    /**
+     * Openrouter Models
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static openrouterModels(): CancelablePromise<ChatModelOpenrouterModelsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/openrouter/models'
+        });
+    }
+}
+
+export class ChatProjectsService {
+    /**
+     * Create Room Project
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.requestBody
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static createRoomProject(data: ChatProjectsCreateRoomProjectData): CancelablePromise<ChatProjectsCreateRoomProjectResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/rooms/{room_id}/projects',
+            path: {
+                room_id: data.roomId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Update Room Project
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.projectId
+     * @param data.requestBody
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static updateRoomProject(data: ChatProjectsUpdateRoomProjectData): CancelablePromise<ChatProjectsUpdateRoomProjectResponse> {
+        return __request(OpenAPI, {
+            method: 'PATCH',
+            url: '/api/v1/chat/rooms/{room_id}/projects/{project_id}',
+            path: {
+                room_id: data.roomId,
+                project_id: data.projectId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Archive Room Project
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.projectId
+     * @param data.force
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static archiveRoomProject(data: ChatProjectsArchiveRoomProjectData): CancelablePromise<ChatProjectsArchiveRoomProjectResponse> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/api/v1/chat/rooms/{room_id}/projects/{project_id}',
+            path: {
+                room_id: data.roomId,
+                project_id: data.projectId
+            },
+            query: {
+                force: data.force
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Attach Task To Project
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.projectId
+     * @param data.taskId
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static attachTaskToProject(data: ChatProjectsAttachTaskToProjectData): CancelablePromise<ChatProjectsAttachTaskToProjectResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/rooms/{room_id}/projects/{project_id}/tasks/{task_id}',
+            path: {
+                room_id: data.roomId,
+                project_id: data.projectId,
+                task_id: data.taskId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Detach Task From Project
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.projectId
+     * @param data.taskId
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static detachTaskFromProject(data: ChatProjectsDetachTaskFromProjectData): CancelablePromise<ChatProjectsDetachTaskFromProjectResponse> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/api/v1/chat/rooms/{room_id}/projects/{project_id}/tasks/{task_id}',
+            path: {
+                room_id: data.roomId,
+                project_id: data.projectId,
+                task_id: data.taskId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+}
+
+export class ChatRemindersService {
+    /**
+     * List Room Reminders
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.status
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static listRoomReminders(data: ChatRemindersListRoomRemindersData): CancelablePromise<ChatRemindersListRoomRemindersResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/rooms/{room_id}/reminders',
+            path: {
+                room_id: data.roomId
+            },
+            query: {
+                status: data.status
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Create Room Reminder
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.requestBody
+     * @returns ReminderResponse Successful Response
+     * @throws ApiError
+     */
+    public static createRoomReminder(data: ChatRemindersCreateRoomReminderData): CancelablePromise<ChatRemindersCreateRoomReminderResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/rooms/{room_id}/reminders',
+            path: {
+                room_id: data.roomId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Cancel Room Reminder
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.reminderId
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static cancelRoomReminder(data: ChatRemindersCancelRoomReminderData): CancelablePromise<ChatRemindersCancelRoomReminderResponse> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/api/v1/chat/rooms/{room_id}/reminders/{reminder_id}',
+            path: {
+                room_id: data.roomId,
+                reminder_id: data.reminderId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+}
+
+export class ChatRoboticsService {
+    /**
+     * Robotics Status
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static roboticsStatus(): CancelablePromise<ChatRoboticsRoboticsStatusResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/robotics/status'
+        });
+    }
+    
+    /**
+     * Robotics Tools
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static roboticsTools(): CancelablePromise<ChatRoboticsRoboticsToolsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/robotics/tools'
+        });
+    }
+    
+    /**
+     * Robotics Command
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static roboticsCommand(data: ChatRoboticsRoboticsCommandData): CancelablePromise<ChatRoboticsRoboticsCommandResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/robotics/command',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Robotics Emergency Stop
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static roboticsEmergencyStop(data: ChatRoboticsRoboticsEmergencyStopData): CancelablePromise<ChatRoboticsRoboticsEmergencyStopResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/robotics/emergency-stop',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+}
+
+export class ChatRoomsService {
+    /**
+     * Read Chat Rooms
+     * Retrieve rooms for the authenticated user.
+     * @param data The data for the request.
+     * @param data.skip
+     * @param data.limit
+     * @returns RoomResponse Successful Response
+     * @throws ApiError
+     */
+    public static readChatRooms(data: ChatRoomsReadChatRoomsData = {}): CancelablePromise<ChatRoomsReadChatRoomsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/rooms/',
+            query: {
+                skip: data.skip,
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Create Chat Room Endpoint
+     * Create a new chat room.
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns RoomResponse Successful Response
+     * @throws ApiError
+     */
+    public static createChatRoomEndpoint(data: ChatRoomsCreateChatRoomEndpointData): CancelablePromise<ChatRoomsCreateChatRoomEndpointResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/rooms/',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Chat Room By Id
+     * Get a specific room with details.
+     * @param data The data for the request.
+     * @param data.roomId
+     * @returns RoomDetailResponse Successful Response
+     * @throws ApiError
+     */
+    public static readChatRoomById(data: ChatRoomsReadChatRoomByIdData): CancelablePromise<ChatRoomsReadChatRoomByIdResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/rooms/{room_id}',
+            path: {
+                room_id: data.roomId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Update Chat Room
+     * Update a room. Only OWNERs can update.
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.requestBody
+     * @returns RoomResponse Successful Response
+     * @throws ApiError
+     */
+    public static updateChatRoom(data: ChatRoomsUpdateChatRoomData): CancelablePromise<ChatRoomsUpdateChatRoomResponse> {
+        return __request(OpenAPI, {
+            method: 'PATCH',
+            url: '/api/v1/chat/rooms/{room_id}',
+            path: {
+                room_id: data.roomId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Delete Chat Room
+     * Delete a room. Only OWNERs can delete.
+     * @param data The data for the request.
+     * @param data.roomId
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static deleteChatRoom(data: ChatRoomsDeleteChatRoomData): CancelablePromise<ChatRoomsDeleteChatRoomResponse> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/api/v1/chat/rooms/{room_id}',
+            path: {
+                room_id: data.roomId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Chat Room Members
+     * Get all members of a room.
+     * @param data The data for the request.
+     * @param data.roomId
+     * @returns RoomMemberResponse Successful Response
+     * @throws ApiError
+     */
+    public static readChatRoomMembers(data: ChatRoomsReadChatRoomMembersData): CancelablePromise<ChatRoomsReadChatRoomMembersResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/rooms/{room_id}/members',
+            path: {
+                room_id: data.roomId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Add Chat Room Member
+     * Add a member to a room. Only OWNERs/MODs can add members.
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.requestBody
+     * @returns RoomMemberResponse Successful Response
+     * @throws ApiError
+     */
+    public static addChatRoomMember(data: ChatRoomsAddChatRoomMemberData): CancelablePromise<ChatRoomsAddChatRoomMemberResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/rooms/{room_id}/members',
+            path: {
+                room_id: data.roomId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Remove Chat Room Member
+     * Remove a member from a room.
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.userId
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static removeChatRoomMember(data: ChatRoomsRemoveChatRoomMemberData): CancelablePromise<ChatRoomsRemoveChatRoomMemberResponse> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/api/v1/chat/rooms/{room_id}/members/{user_id}',
+            path: {
+                room_id: data.roomId,
+                user_id: data.userId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Get My Chat Membership
+     * Get current user's membership in a room.
+     * @param data The data for the request.
+     * @param data.roomId
+     * @returns RoomMemberResponse Successful Response
+     * @throws ApiError
+     */
+    public static getMyChatMembership(data: ChatRoomsGetMyChatMembershipData): CancelablePromise<ChatRoomsGetMyChatMembershipResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/rooms/{room_id}/members/me',
+            path: {
+                room_id: data.roomId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Get Chat Room Invites
+     * Get all invites for a room. Only OWNERs/MODs can view invites.
+     * @param data The data for the request.
+     * @param data.roomId
+     * @returns RoomInviteResponse Successful Response
+     * @throws ApiError
+     */
+    public static getChatRoomInvites(data: ChatRoomsGetChatRoomInvitesData): CancelablePromise<ChatRoomsGetChatRoomInvitesResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/rooms/{room_id}/invites',
+            path: {
+                room_id: data.roomId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Create Chat Room Invite
+     * Create an invite for a room. Only OWNERs/MODs can create invites.
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.requestBody
+     * @returns RoomInviteResponse Successful Response
+     * @throws ApiError
+     */
+    public static createChatRoomInvite(data: ChatRoomsCreateChatRoomInviteData): CancelablePromise<ChatRoomsCreateChatRoomInviteResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/rooms/{room_id}/invites',
+            path: {
+                room_id: data.roomId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Join Chat Room
+     * Join a room using an invite token.
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.requestBody
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static joinChatRoom(data: ChatRoomsJoinChatRoomData): CancelablePromise<ChatRoomsJoinChatRoomResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/rooms/{room_id}/join',
+            path: {
+                room_id: data.roomId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Delete Chat Room Invite
+     * Delete an invite. Only OWNERs/MODs can delete invites.
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.inviteId
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static deleteChatRoomInvite(data: ChatRoomsDeleteChatRoomInviteData): CancelablePromise<ChatRoomsDeleteChatRoomInviteResponse> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/api/v1/chat/rooms/{room_id}/invites/{invite_id}',
+            path: {
+                room_id: data.roomId,
+                invite_id: data.inviteId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Cleanup Expired Chat Invites
+     * Clean up expired invites. Admin only.
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static cleanupExpiredChatInvites(): CancelablePromise<ChatRoomsCleanupExpiredChatInvitesResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/rooms/invites/cleanup'
+        });
+    }
+    
+    /**
+     * Get Room Messages
+     * Get message history for a room.
+     *
+     * Frontend-compatible endpoint: /api/v1/chat/rooms/{room_id}/messages
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.skip
+     * @param data.limit
+     * @returns MessageListResponse Successful Response
+     * @throws ApiError
+     */
+    public static getRoomMessages(data: ChatRoomsGetRoomMessagesData): CancelablePromise<ChatRoomsGetRoomMessagesResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/rooms/{room_id}/messages',
+            path: {
+                room_id: data.roomId
+            },
+            query: {
+                skip: data.skip,
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Send Room Message
+     * Send a message to a room.
+     *
+     * Frontend-compatible endpoint: /api/v1/chat/rooms/{room_id}/messages
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.requestBody
+     * @returns SendMessageResponse Successful Response
+     * @throws ApiError
+     */
+    public static sendRoomMessage(data: ChatRoomsSendRoomMessageData): CancelablePromise<ChatRoomsSendRoomMessageResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/rooms/{room_id}/messages',
+            path: {
+                room_id: data.roomId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Stream Room Message
+     * Stream bot response as Server-Sent Events (text/event-stream).
+     *
+     * Events emitted:
+     * data: {"type": "human_message", "message_id": "..."}
+     * data: {"type": "token", "token": "..."}
+     * data: {"type": "done", "message_id": "..."}
+     * data: {"type": "error", "error": "..."}
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.requestBody
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static streamRoomMessage(data: ChatRoomsStreamRoomMessageData): CancelablePromise<ChatRoomsStreamRoomMessageResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/rooms/{room_id}/messages/stream',
+            path: {
+                room_id: data.roomId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * List Meeting Artifacts
+     * List meeting artifacts for a room. Requires membership.
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.type
+     * @param data.limit
+     * @returns MeetingArtifactResponse Successful Response
+     * @throws ApiError
+     */
+    public static listMeetingArtifacts(data: ChatRoomsListMeetingArtifactsData): CancelablePromise<ChatRoomsListMeetingArtifactsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/rooms/{room_id}/artifacts',
+            path: {
+                room_id: data.roomId
+            },
+            query: {
+                type: data.type,
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Create Meeting Artifact Endpoint
+     * Manually create a meeting artifact. OWNER/MOD only.
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.requestBody
+     * @returns MeetingArtifactResponse Successful Response
+     * @throws ApiError
+     */
+    public static createMeetingArtifactEndpoint(data: ChatRoomsCreateMeetingArtifactEndpointData): CancelablePromise<ChatRoomsCreateMeetingArtifactEndpointResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/rooms/{room_id}/artifacts',
+            path: {
+                room_id: data.roomId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Generate Meeting Notes Endpoint
+     * LLM-generate meeting notes from room transcript. OWNER/MOD only.
+     * @param data The data for the request.
+     * @param data.roomId
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static generateMeetingNotesEndpoint(data: ChatRoomsGenerateMeetingNotesEndpointData): CancelablePromise<ChatRoomsGenerateMeetingNotesEndpointResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/rooms/{room_id}/artifacts/generate',
+            path: {
+                room_id: data.roomId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+}
+
+export class ChatSecurityService {
+    /**
+     * Security Status
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static securityStatus(): CancelablePromise<ChatSecuritySecurityStatusResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/security/status'
+        });
+    }
+    
+    /**
+     * Rotate Passphrase
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static rotatePassphrase(data: ChatSecurityRotatePassphraseData): CancelablePromise<ChatSecurityRotatePassphraseResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/security/passphrase',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Set Operator Users
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static setOperatorUsers(data: ChatSecuritySetOperatorUsersData): CancelablePromise<ChatSecuritySetOperatorUsersResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/security/operator-users',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Set Operator Pin
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static setOperatorPin(data: ChatSecuritySetOperatorPinData): CancelablePromise<ChatSecuritySetOperatorPinResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/security/operator-pin',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Set Security Features
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static setSecurityFeatures(data: ChatSecuritySetSecurityFeaturesData): CancelablePromise<ChatSecuritySetSecurityFeaturesResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/security/features',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Fix Env Permissions
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static fixEnvPermissions(): CancelablePromise<ChatSecurityFixEnvPermissionsResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/security/fix-permissions'
+        });
+    }
+}
+
+export class ChatSkillsService {
+    /**
+     * List Skills
+     * Return all loaded skill plugins with name, description, and policy.
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static listSkills(): CancelablePromise<ChatSkillsListSkillsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/skills'
+        });
+    }
+}
+
+export class ChatSpineService {
+    /**
+     * Read Room Spine Tasks
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.status
+     * @param data.limit
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static readRoomSpineTasks(data: ChatSpineReadRoomSpineTasksData): CancelablePromise<ChatSpineReadRoomSpineTasksResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/rooms/{room_id}/spine/tasks',
+            path: {
+                room_id: data.roomId
+            },
+            query: {
+                status: data.status,
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Room Spine Events
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.taskId
+     * @param data.subsystem
+     * @param data.limit
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static readRoomSpineEvents(data: ChatSpineReadRoomSpineEventsData): CancelablePromise<ChatSpineReadRoomSpineEventsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/rooms/{room_id}/spine/events',
+            path: {
+                room_id: data.roomId
+            },
+            query: {
+                task_id: data.taskId,
+                subsystem: data.subsystem,
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Room Spine Handoffs
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.taskId
+     * @param data.limit
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static readRoomSpineHandoffs(data: ChatSpineReadRoomSpineHandoffsData): CancelablePromise<ChatSpineReadRoomSpineHandoffsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/rooms/{room_id}/spine/handoffs',
+            path: {
+                room_id: data.roomId
+            },
+            query: {
+                task_id: data.taskId,
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Room Spine Overview
+     * @param data The data for the request.
+     * @param data.roomId
+     * @returns SpineOverviewResponse Successful Response
+     * @throws ApiError
+     */
+    public static readRoomSpineOverview(data: ChatSpineReadRoomSpineOverviewData): CancelablePromise<ChatSpineReadRoomSpineOverviewResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/rooms/{room_id}/spine/overview',
+            path: {
+                room_id: data.roomId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Room Spine Projects
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.limit
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static readRoomSpineProjects(data: ChatSpineReadRoomSpineProjectsData): CancelablePromise<ChatSpineReadRoomSpineProjectsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/rooms/{room_id}/spine/projects',
+            path: {
+                room_id: data.roomId
+            },
+            query: {
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Room Spine Project Tasks
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.projectId
+     * @param data.status
+     * @param data.limit
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static readRoomSpineProjectTasks(data: ChatSpineReadRoomSpineProjectTasksData): CancelablePromise<ChatSpineReadRoomSpineProjectTasksResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/rooms/{room_id}/spine/projects/{project_id}/tasks',
+            path: {
+                room_id: data.roomId,
+                project_id: data.projectId
+            },
+            query: {
+                status: data.status,
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Room Spine Orphan Tasks
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.limit
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static readRoomSpineOrphanTasks(data: ChatSpineReadRoomSpineOrphanTasksData): CancelablePromise<ChatSpineReadRoomSpineOrphanTasksResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/rooms/{room_id}/spine/tasks/orphaned',
+            path: {
+                room_id: data.roomId
+            },
+            query: {
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Room Spine Task Lineage
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.taskId
+     * @returns SpineTaskLineageResponse Successful Response
+     * @throws ApiError
+     */
+    public static readRoomSpineTaskLineage(data: ChatSpineReadRoomSpineTaskLineageData): CancelablePromise<ChatSpineReadRoomSpineTaskLineageResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/rooms/{room_id}/spine/tasks/{task_id}/lineage',
+            path: {
+                room_id: data.roomId,
+                task_id: data.taskId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Room Spine Task Approvals
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.taskId
+     * @param data.limit
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static readRoomSpineTaskApprovals(data: ChatSpineReadRoomSpineTaskApprovalsData): CancelablePromise<ChatSpineReadRoomSpineTaskApprovalsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/rooms/{room_id}/spine/tasks/{task_id}/approvals',
+            path: {
+                room_id: data.roomId,
+                task_id: data.taskId
+            },
+            query: {
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Room Spine Project Handoffs
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.projectId
+     * @param data.limit
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static readRoomSpineProjectHandoffs(data: ChatSpineReadRoomSpineProjectHandoffsData): CancelablePromise<ChatSpineReadRoomSpineProjectHandoffsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/rooms/{room_id}/spine/projects/{project_id}/handoffs',
+            path: {
+                room_id: data.roomId,
+                project_id: data.projectId
+            },
+            query: {
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Room Spine Project Events
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.projectId
+     * @param data.limit
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static readRoomSpineProjectEvents(data: ChatSpineReadRoomSpineProjectEventsData): CancelablePromise<ChatSpineReadRoomSpineProjectEventsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/rooms/{room_id}/spine/projects/{project_id}/events',
+            path: {
+                room_id: data.roomId,
+                project_id: data.projectId
+            },
+            query: {
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Room Spine Task Master Overview
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.limitPerQueue
+     * @returns SpineTaskMasterOverviewResponse Successful Response
+     * @throws ApiError
+     */
+    public static readRoomSpineTaskMasterOverview(data: ChatSpineReadRoomSpineTaskMasterOverviewData): CancelablePromise<ChatSpineReadRoomSpineTaskMasterOverviewResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/rooms/{room_id}/spine/task-master/overview',
+            path: {
+                room_id: data.roomId
+            },
+            query: {
+                limit_per_queue: data.limitPerQueue
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Operator Spine Producers
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static readOperatorSpineProducers(): CancelablePromise<ChatSpineReadOperatorSpineProducersResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/spine/operator/producers'
+        });
+    }
+    
+    /**
+     * Read Operator Spine Recent Events
+     * @param data The data for the request.
+     * @param data.limit
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static readOperatorSpineRecentEvents(data: ChatSpineReadOperatorSpineRecentEventsData = {}): CancelablePromise<ChatSpineReadOperatorSpineRecentEventsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/spine/operator/events/recent',
+            query: {
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Operator Spine Open Queue
+     * @param data The data for the request.
+     * @param data.limit
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static readOperatorSpineOpenQueue(data: ChatSpineReadOperatorSpineOpenQueueData = {}): CancelablePromise<ChatSpineReadOperatorSpineOpenQueueResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/spine/operator/queues/open',
+            query: {
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Operator Spine Blocked Queue
+     * @param data The data for the request.
+     * @param data.limit
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static readOperatorSpineBlockedQueue(data: ChatSpineReadOperatorSpineBlockedQueueData = {}): CancelablePromise<ChatSpineReadOperatorSpineBlockedQueueResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/spine/operator/queues/blocked',
+            query: {
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Operator Spine Approval Waiting Queue
+     * @param data The data for the request.
+     * @param data.limit
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static readOperatorSpineApprovalWaitingQueue(data: ChatSpineReadOperatorSpineApprovalWaitingQueueData = {}): CancelablePromise<ChatSpineReadOperatorSpineApprovalWaitingQueueResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/spine/operator/queues/approval-waiting',
+            query: {
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Operator Spine Stale Queue
+     * @param data The data for the request.
+     * @param data.limit
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static readOperatorSpineStaleQueue(data: ChatSpineReadOperatorSpineStaleQueueData = {}): CancelablePromise<ChatSpineReadOperatorSpineStaleQueueResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/spine/operator/queues/stale',
+            query: {
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Operator Spine Orphan Queue
+     * @param data The data for the request.
+     * @param data.limit
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static readOperatorSpineOrphanQueue(data: ChatSpineReadOperatorSpineOrphanQueueData = {}): CancelablePromise<ChatSpineReadOperatorSpineOrphanQueueResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/spine/operator/queues/orphaned',
+            query: {
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Operator Spine Missing Source Queue
+     * @param data The data for the request.
+     * @param data.limit
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static readOperatorSpineMissingSourceQueue(data: ChatSpineReadOperatorSpineMissingSourceQueueData = {}): CancelablePromise<ChatSpineReadOperatorSpineMissingSourceQueueResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/spine/operator/queues/missing-source',
+            query: {
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Operator Spine Missing Project Queue
+     * @param data The data for the request.
+     * @param data.limit
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static readOperatorSpineMissingProjectQueue(data: ChatSpineReadOperatorSpineMissingProjectQueueData = {}): CancelablePromise<ChatSpineReadOperatorSpineMissingProjectQueueResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/spine/operator/queues/missing-project',
+            query: {
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Operator Spine Resurfaced Queue
+     * @param data The data for the request.
+     * @param data.limit
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static readOperatorSpineResurfacedQueue(data: ChatSpineReadOperatorSpineResurfacedQueueData = {}): CancelablePromise<ChatSpineReadOperatorSpineResurfacedQueueResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/spine/operator/queues/resurfaced',
+            query: {
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Operator Spine Executive Directives
+     * @param data The data for the request.
+     * @param data.limit
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static readOperatorSpineExecutiveDirectives(data: ChatSpineReadOperatorSpineExecutiveDirectivesData = {}): CancelablePromise<ChatSpineReadOperatorSpineExecutiveDirectivesResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/spine/operator/queues/executive-directives',
+            query: {
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Operator Spine Projects
+     * @param data The data for the request.
+     * @param data.limit
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static readOperatorSpineProjects(data: ChatSpineReadOperatorSpineProjectsData = {}): CancelablePromise<ChatSpineReadOperatorSpineProjectsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/spine/operator/projects',
+            query: {
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Create Spine Project
+     * Create a new canonical project via the project execution boundary.
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns SpineProjectResponse Successful Response
+     * @throws ApiError
+     */
+    public static createSpineProject(data: ChatSpineCreateSpineProjectData): CancelablePromise<ChatSpineCreateSpineProjectResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/spine/operator/projects',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Operator Spine Project Workload
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static readOperatorSpineProjectWorkload(): CancelablePromise<ChatSpineReadOperatorSpineProjectWorkloadResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/spine/operator/projects/workload'
+        });
+    }
+    
+    /**
+     * Read Operator Spine Task Master Overview
+     * @param data The data for the request.
+     * @param data.limitPerQueue
+     * @returns SpineTaskMasterOverviewResponse Successful Response
+     * @throws ApiError
+     */
+    public static readOperatorSpineTaskMasterOverview(data: ChatSpineReadOperatorSpineTaskMasterOverviewData = {}): CancelablePromise<ChatSpineReadOperatorSpineTaskMasterOverviewResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/spine/operator/task-master/overview',
+            query: {
+                limit_per_queue: data.limitPerQueue
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Operator Spine Task Detail
+     * @param data The data for the request.
+     * @param data.taskId
+     * @returns SpineTaskLineageResponse Successful Response
+     * @throws ApiError
+     */
+    public static readOperatorSpineTaskDetail(data: ChatSpineReadOperatorSpineTaskDetailData): CancelablePromise<ChatSpineReadOperatorSpineTaskDetailResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/spine/operator/tasks/{task_id}/detail',
+            path: {
+                task_id: data.taskId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Operator Spine High Priority Blocked
+     * @param data The data for the request.
+     * @param data.limit
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static readOperatorSpineHighPriorityBlocked(data: ChatSpineReadOperatorSpineHighPriorityBlockedData = {}): CancelablePromise<ChatSpineReadOperatorSpineHighPriorityBlockedResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/spine/operator/signals/high-priority-blocked',
+            query: {
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Operator Spine High Priority Approval
+     * @param data The data for the request.
+     * @param data.limit
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static readOperatorSpineHighPriorityApproval(data: ChatSpineReadOperatorSpineHighPriorityApprovalData = {}): CancelablePromise<ChatSpineReadOperatorSpineHighPriorityApprovalResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/spine/operator/signals/high-priority-approval',
+            query: {
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Operator Spine Stale Unowned
+     * @param data The data for the request.
+     * @param data.limit
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static readOperatorSpineStaleUnowned(data: ChatSpineReadOperatorSpineStaleUnownedData = {}): CancelablePromise<ChatSpineReadOperatorSpineStaleUnownedResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/spine/operator/signals/stale-unowned',
+            query: {
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Operator Spine Unassigned Executive
+     * @param data The data for the request.
+     * @param data.limit
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static readOperatorSpineUnassignedExecutive(data: ChatSpineReadOperatorSpineUnassignedExecutiveData = {}): CancelablePromise<ChatSpineReadOperatorSpineUnassignedExecutiveResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/spine/operator/signals/unassigned-executive',
+            query: {
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Operator Spine Resurfaced No Followup
+     * @param data The data for the request.
+     * @param data.limit
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static readOperatorSpineResurfacedNoFollowup(data: ChatSpineReadOperatorSpineResurfacedNoFollowupData = {}): CancelablePromise<ChatSpineReadOperatorSpineResurfacedNoFollowupResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/spine/operator/signals/resurfaced-no-followup',
+            query: {
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Operator Spine Missing Durable Linkage
+     * @param data The data for the request.
+     * @param data.limit
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static readOperatorSpineMissingDurableLinkage(data: ChatSpineReadOperatorSpineMissingDurableLinkageData = {}): CancelablePromise<ChatSpineReadOperatorSpineMissingDurableLinkageResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/spine/operator/signals/missing-durable-linkage',
+            query: {
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Operator Spine Fragmentation
+     * @param data The data for the request.
+     * @param data.limit
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static readOperatorSpineFragmentation(data: ChatSpineReadOperatorSpineFragmentationData = {}): CancelablePromise<ChatSpineReadOperatorSpineFragmentationResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/spine/operator/signals/fragmentation',
+            query: {
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Update Spine Project Metadata
+     * Update mutable descriptive fields (display_name, summary, tags) of a project.
+     * @param data The data for the request.
+     * @param data.projectId
+     * @param data.requestBody
+     * @returns SpineProjectResponse Successful Response
+     * @throws ApiError
+     */
+    public static updateSpineProjectMetadata(data: ChatSpineUpdateSpineProjectMetadataData): CancelablePromise<ChatSpineUpdateSpineProjectMetadataResponse> {
+        return __request(OpenAPI, {
+            method: 'PATCH',
+            url: '/api/v1/chat/spine/operator/projects/{project_id}',
+            path: {
+                project_id: data.projectId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Transition Spine Project Status
+     * Directly transition a project's status.  Does not enforce open-task guard.
+     * Use /archive or /cancel for guarded transitions.
+     * @param data The data for the request.
+     * @param data.projectId
+     * @param data.requestBody
+     * @returns SpineProjectResponse Successful Response
+     * @throws ApiError
+     */
+    public static transitionSpineProjectStatus(data: ChatSpineTransitionSpineProjectStatusData): CancelablePromise<ChatSpineTransitionSpineProjectStatusResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/spine/operator/projects/{project_id}/status',
+            path: {
+                project_id: data.projectId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Assign Spine Project Owner
+     * Assign or reassign the owner of a project.
+     * @param data The data for the request.
+     * @param data.projectId
+     * @param data.requestBody
+     * @returns SpineProjectResponse Successful Response
+     * @throws ApiError
+     */
+    public static assignSpineProjectOwner(data: ChatSpineAssignSpineProjectOwnerData): CancelablePromise<ChatSpineAssignSpineProjectOwnerResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/spine/operator/projects/{project_id}/owner',
+            path: {
+                project_id: data.projectId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Archive Spine Project
+     * Transition project to 'archived'. Returns 409 if open tasks exist and force=False.
+     * @param data The data for the request.
+     * @param data.projectId
+     * @param data.requestBody
+     * @returns SpineProjectResponse Successful Response
+     * @throws ApiError
+     */
+    public static archiveSpineProject(data: ChatSpineArchiveSpineProjectData): CancelablePromise<ChatSpineArchiveSpineProjectResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/spine/operator/projects/{project_id}/archive',
+            path: {
+                project_id: data.projectId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Cancel Spine Project
+     * Cancel a project (archived with reason=canceled). Returns 409 if open tasks exist and force=False.
+     * @param data The data for the request.
+     * @param data.projectId
+     * @param data.requestBody
+     * @returns SpineProjectResponse Successful Response
+     * @throws ApiError
+     */
+    public static cancelSpineProject(data: ChatSpineCancelSpineProjectData): CancelablePromise<ChatSpineCancelSpineProjectResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/spine/operator/projects/{project_id}/cancel',
+            path: {
+                project_id: data.projectId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Reopen Spine Project
+     * Reopen an archived/done project.  Child tasks are NOT auto-reopened.
+     * @param data The data for the request.
+     * @param data.projectId
+     * @param data.requestBody
+     * @returns SpineProjectResponse Successful Response
+     * @throws ApiError
+     */
+    public static reopenSpineProject(data: ChatSpineReopenSpineProjectData): CancelablePromise<ChatSpineReopenSpineProjectResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/spine/operator/projects/{project_id}/reopen',
+            path: {
+                project_id: data.projectId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Attach Task To Spine Project
+     * Attach an orphan or re-routed task to a project.  Lineage is preserved.
+     * @param data The data for the request.
+     * @param data.projectId
+     * @param data.requestBody
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static attachTaskToSpineProject(data: ChatSpineAttachTaskToSpineProjectData): CancelablePromise<ChatSpineAttachTaskToSpineProjectResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/spine/operator/projects/{project_id}/tasks/attach',
+            path: {
+                project_id: data.projectId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Detach Task From Spine Project
+     * Remove a task from a project; task becomes an orphan in Spine.
+     * @param data The data for the request.
+     * @param data.projectId
+     * @param data.taskId
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static detachTaskFromSpineProject(data: ChatSpineDetachTaskFromSpineProjectData): CancelablePromise<ChatSpineDetachTaskFromSpineProjectResponse> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/api/v1/chat/spine/operator/projects/{project_id}/tasks/{task_id}',
+            path: {
+                project_id: data.projectId,
+                task_id: data.taskId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Operator Spine Projects Without Owner
+     * Projects with no assigned owner.
+     * @param data The data for the request.
+     * @param data.limit
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static readOperatorSpineProjectsWithoutOwner(data: ChatSpineReadOperatorSpineProjectsWithoutOwnerData = {}): CancelablePromise<ChatSpineReadOperatorSpineProjectsWithoutOwnerResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/spine/operator/signals/projects-without-owner',
+            query: {
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Operator Spine Projects Stale Tasks
+     * Projects with open tasks not updated within stale_days days.
+     * @param data The data for the request.
+     * @param data.staleDays
+     * @param data.limit
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static readOperatorSpineProjectsStaleTasks(data: ChatSpineReadOperatorSpineProjectsStaleTasksData = {}): CancelablePromise<ChatSpineReadOperatorSpineProjectsStaleTasksResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/spine/operator/signals/projects-stale-tasks',
+            query: {
+                stale_days: data.staleDays,
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Operator Spine Projects Candidate Tasks
+     * Projects with many unactioned candidate tasks (triage backlog signal).
+     * @param data The data for the request.
+     * @param data.minCount
+     * @param data.limit
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static readOperatorSpineProjectsCandidateTasks(data: ChatSpineReadOperatorSpineProjectsCandidateTasksData = {}): CancelablePromise<ChatSpineReadOperatorSpineProjectsCandidateTasksResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/spine/operator/signals/projects-candidate-tasks',
+            query: {
+                min_count: data.minCount,
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Operator Spine Projects Blocked Approval
+     * Projects blocked by at least one approval-waiting task.
+     * @param data The data for the request.
+     * @param data.limit
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static readOperatorSpineProjectsBlockedApproval(data: ChatSpineReadOperatorSpineProjectsBlockedApprovalData = {}): CancelablePromise<ChatSpineReadOperatorSpineProjectsBlockedApprovalResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/spine/operator/signals/projects-blocked-approval',
+            query: {
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Operator Spine Projects Unassigned Directives
+     * Projects where executive-tagged open tasks have no owner assigned.
+     * @param data The data for the request.
+     * @param data.limit
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static readOperatorSpineProjectsUnassignedDirectives(data: ChatSpineReadOperatorSpineProjectsUnassignedDirectivesData = {}): CancelablePromise<ChatSpineReadOperatorSpineProjectsUnassignedDirectivesResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/spine/operator/signals/projects-unassigned-directives',
+            query: {
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Operator Spine Projects Unclear Status
+     * Projects where declared status conflicts with actual task state.
+     * @param data The data for the request.
+     * @param data.limit
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static readOperatorSpineProjectsUnclearStatus(data: ChatSpineReadOperatorSpineProjectsUnclearStatusData = {}): CancelablePromise<ChatSpineReadOperatorSpineProjectsUnclearStatusResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/spine/operator/signals/projects-unclear-status',
+            query: {
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Operator Improvement Proposals
+     * Self-improvement proposals recorded by the assistant via guardian_propose_improvement.
+     *
+     * Returns a queue the operator can review. Status filter accepts
+     * ``proposed``, ``approved``, ``rejected``, or empty string for all.
+     * @param data The data for the request.
+     * @param data.status
+     * @param data.limit
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static readOperatorImprovementProposals(data: ChatSpineReadOperatorImprovementProposalsData = {}): CancelablePromise<ChatSpineReadOperatorImprovementProposalsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/spine/operator/improvement/proposals',
+            query: {
+                status: data.status,
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Approve Operator Improvement Proposal
+     * Mark an improvement proposal as approved.
+     *
+     * This records operator intent only — code, config, or workflow changes
+     * still require an explicit follow-up action with the appropriate tools.
+     * @param data The data for the request.
+     * @param data.proposalId
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static approveOperatorImprovementProposal(data: ChatSpineApproveOperatorImprovementProposalData): CancelablePromise<ChatSpineApproveOperatorImprovementProposalResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/spine/operator/improvement/proposals/{proposal_id}/approve',
+            path: {
+                proposal_id: data.proposalId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Reject Operator Improvement Proposal
+     * Mark an improvement proposal as rejected so it stops surfacing in the queue.
+     * @param data The data for the request.
+     * @param data.proposalId
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static rejectOperatorImprovementProposal(data: ChatSpineRejectOperatorImprovementProposalData): CancelablePromise<ChatSpineRejectOperatorImprovementProposalResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/spine/operator/improvement/proposals/{proposal_id}/reject',
+            path: {
+                proposal_id: data.proposalId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Operator Autonomous Pauses
+     * List (room, agent) pairs whose autonomous turns are paused or backing off.
+     *
+     * Pauses fire after a sustained run of 4xx provider failures (the
+     * autonomous-turn pacer in v1.6.72). Each entry includes the consecutive-
+     * failure count, the last 4xx status code seen, and when the next attempt
+     * is scheduled — so the operator can see exactly why the loop is paused
+     * and resume manually after fixing the underlying provider config.
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static readOperatorAutonomousPauses(): CancelablePromise<ChatSpineReadOperatorAutonomousPausesResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/spine/operator/autonomous-pauses'
+        });
+    }
+    
+    /**
+     * Resume Operator Autonomous Pause
+     * Resume autonomous turns for a previously-paused (room, agent) pair.
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.agentHandle
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static resumeOperatorAutonomousPause(data: ChatSpineResumeOperatorAutonomousPauseData): CancelablePromise<ChatSpineResumeOperatorAutonomousPauseResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/spine/operator/autonomous-pauses/{room_id}/{agent_handle}/resume',
+            path: {
+                room_id: data.roomId,
+                agent_handle: data.agentHandle
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+}
+
+export class ChatTasksService {
+    /**
+     * List Room Tasks
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.filter
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static listRoomTasks(data: ChatTasksListRoomTasksData): CancelablePromise<ChatTasksListRoomTasksResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/rooms/{room_id}/tasks',
+            path: {
+                room_id: data.roomId
+            },
+            query: {
+                filter: data.filter
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Create Room Task
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.requestBody
+     * @returns TaskResponse Successful Response
+     * @throws ApiError
+     */
+    public static createRoomTask(data: ChatTasksCreateRoomTaskData): CancelablePromise<ChatTasksCreateRoomTaskResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/rooms/{room_id}/tasks',
+            path: {
+                room_id: data.roomId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Update Room Task
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.taskId
+     * @param data.requestBody
+     * @returns TaskResponse Successful Response
+     * @throws ApiError
+     */
+    public static updateRoomTask(data: ChatTasksUpdateRoomTaskData): CancelablePromise<ChatTasksUpdateRoomTaskResponse> {
+        return __request(OpenAPI, {
+            method: 'PATCH',
+            url: '/api/v1/chat/rooms/{room_id}/tasks/{task_id}',
+            path: {
+                room_id: data.roomId,
+                task_id: data.taskId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Delete Room Task
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.taskId
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static deleteRoomTask(data: ChatTasksDeleteRoomTaskData): CancelablePromise<ChatTasksDeleteRoomTaskResponse> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/api/v1/chat/rooms/{room_id}/tasks/{task_id}',
+            path: {
+                room_id: data.roomId,
+                task_id: data.taskId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+}
+
+export class ChatUploadsService {
+    /**
+     * Serve Upload
+     * Serve a previously uploaded file.
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.fileId
+     * @param data.filename
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static serveUpload(data: ChatUploadsServeUploadData): CancelablePromise<ChatUploadsServeUploadResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/rooms/{room_id}/uploads/{file_id}/{filename}',
+            path: {
+                room_id: data.roomId,
+                file_id: data.fileId,
+                filename: data.filename
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Upload File
+     * Upload a file to a room.
+     *
+     * - Images → streamed AI vision analysis (SSE)
+     * - Other files → saved locally, acknowledgement SSE
+     *
+     * Same SSE protocol as /messages/stream:
+     * data: {"type": "human_message", "message_id": "..."}
+     * data: {"type": "token", "token": "..."}
+     * data: {"type": "done", "message_id": "..."}
+     * data: {"type": "error", "error": "..."}
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.formData
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static uploadFile(data: ChatUploadsUploadFileData): CancelablePromise<ChatUploadsUploadFileResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/rooms/{room_id}/upload',
+            path: {
+                room_id: data.roomId
+            },
+            formData: data.formData,
+            mediaType: 'multipart/form-data',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+}
+
+export class ChatUsersService {
+    /**
+     * Chat Login
+     * Simple passphrase login for Sparkbot chat access.
+     *
+     * In V1 local mode (desktop install) passphrase is skipped entirely for
+     * requests from localhost — the machine is the trust boundary.
+     * Passphrase is only enforced for hosted/remote deployments.
+     *
+     * Sets an HttpOnly cookie with the JWT (XSS-safe).
+     * Also returns the token in the body for backward compatibility.
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static chatLogin(data: ChatUsersChatLoginData): CancelablePromise<ChatUsersChatLoginResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/users/login',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Chat Logout
+     * Clear the HttpOnly chat session cookie.
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static chatLogout(): CancelablePromise<ChatUsersChatLogoutResponse> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/api/v1/chat/users/session'
+        });
+    }
+    
+    /**
+     * Read Chat Users
+     * Retrieve all chat users.
+     * @param data The data for the request.
+     * @param data.skip
+     * @param data.limit
+     * @returns ChatUserResponse Successful Response
+     * @throws ApiError
+     */
+    public static readChatUsers(data: ChatUsersReadChatUsersData = {}): CancelablePromise<ChatUsersReadChatUsersResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/users/',
+            query: {
+                skip: data.skip,
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Create Chat User
+     * Create a new chat user (admin only).
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns ChatUserResponse Successful Response
+     * @throws ApiError
+     */
+    public static createChatUser(data: ChatUsersCreateChatUserData): CancelablePromise<ChatUsersCreateChatUserResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/users/',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Chat User By Id
+     * Get a specific user by ID.
+     * @param data The data for the request.
+     * @param data.userId
+     * @returns ChatUserResponse Successful Response
+     * @throws ApiError
+     */
+    public static readChatUserById(data: ChatUsersReadChatUserByIdData): CancelablePromise<ChatUsersReadChatUserByIdResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/users/{user_id}',
+            path: {
+                user_id: data.userId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Update Chat User
+     * Update a user.
+     * @param data The data for the request.
+     * @param data.userId
+     * @param data.requestBody
+     * @returns ChatUserResponse Successful Response
+     * @throws ApiError
+     */
+    public static updateChatUser(data: ChatUsersUpdateChatUserData): CancelablePromise<ChatUsersUpdateChatUserResponse> {
+        return __request(OpenAPI, {
+            method: 'PATCH',
+            url: '/api/v1/chat/users/{user_id}',
+            path: {
+                user_id: data.userId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Delete Chat User
+     * Delete a user.
+     * @param data The data for the request.
+     * @param data.userId
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static deleteChatUser(data: ChatUsersDeleteChatUserData): CancelablePromise<ChatUsersDeleteChatUserResponse> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/api/v1/chat/users/{user_id}',
+            path: {
+                user_id: data.userId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Chat User By Username
+     * Get a specific user by username.
+     * @param data The data for the request.
+     * @param data.username
+     * @returns ChatUserResponse Successful Response
+     * @throws ApiError
+     */
+    public static readChatUserByUsername(data: ChatUsersReadChatUserByUsernameData): CancelablePromise<ChatUsersReadChatUserByUsernameResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/users/username/{username}',
+            path: {
+                username: data.username
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read Chat User By Slug
+     * Get a bot user by slug.
+     * @param data The data for the request.
+     * @param data.slug
+     * @returns ChatUserResponse Successful Response
+     * @throws ApiError
+     */
+    public static readChatUserBySlug(data: ChatUsersReadChatUserBySlugData): CancelablePromise<ChatUsersReadChatUserBySlugResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/users/slug/{slug}',
+            path: {
+                slug: data.slug
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Chat Bootstrap
+     * Bootstrap chat: ensure Sparkbot DM room exists and return it.
+     *
+     * Creates a DM room with the bot user if it doesn't exist,
+     * ensures both the user and bot are members.
+     * @returns BootstrapResponse Successful Response
+     * @throws ApiError
+     */
+    public static chatBootstrap(): CancelablePromise<ChatUsersChatBootstrapResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/users/bootstrap'
+        });
+    }
+}
+
+export class ChatVoiceService {
+    /**
+     * Voice Message
+     * Accept an audio recording, transcribe it, and stream the bot reply as SSE.
+     *
+     * SSE protocol (superset of /messages/stream):
+     * data: {"type": "transcription",  "text": "..."}          — voice-only, heard text
+     * data: {"type": "human_message",  "message_id": "..."}
+     * data: {"type": "token",          "token": "..."}
+     * data: {"type": "tool_start",     "tool": "...", "input": {...}}
+     * data: {"type": "tool_done",      "tool": "...", "result": "..."}
+     * data: {"type": "confirm_required", ...}
+     * data: {"type": "done",           "message_id": "..."}
+     * data: {"type": "error",          "error": "..."}
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.formData
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static voiceMessage(data: ChatVoiceVoiceMessageData): CancelablePromise<ChatVoiceVoiceMessageResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/rooms/{room_id}/voice',
+            path: {
+                room_id: data.roomId
+            },
+            formData: data.formData,
+            mediaType: 'multipart/form-data',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Transcribe Only
+     * Transcribe audio without triggering an LLM reply.
+     *
+     * Returns: {"text": "transcribed content"}
+     * The client can paste the text directly into the input field for editing
+     * before sending — useful for voice-to-text quick-capture.
+     * @param data The data for the request.
+     * @param data.roomId
+     * @param data.formData
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static transcribeOnly(data: ChatVoiceTranscribeOnlyData): CancelablePromise<ChatVoiceTranscribeOnlyResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/rooms/{room_id}/voice/transcribe',
+            path: {
+                room_id: data.roomId
+            },
+            formData: data.formData,
+            mediaType: 'multipart/form-data',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Tts
+     * Convert text to speech using OpenAI TTS.
+     *
+     * Returns audio/mpeg stream. Configure voice/model via env vars:
+     * SPARKBOT_TTS_VOICE — alloy (default) | echo | fable | onyx | nova | shimmer
+     * SPARKBOT_TTS_MODEL — tts-1 (default, fast) | tts-1-hd (higher quality)
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static tts(data: ChatVoiceTtsData): CancelablePromise<ChatVoiceTtsResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/voice/tts',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+}
+
+export class GithubService {
+    /**
+     * Github Events
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static githubEvents(): CancelablePromise<GithubGithubEventsResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/github/events'
+        });
+    }
+}
 
 export class ItemsService {
     /**
@@ -228,6 +3947,79 @@ export class PrivateService {
             url: '/api/v1/private/users/',
             body: data.requestBody,
             mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+}
+
+export class SlackService {
+    /**
+     * Slack Events
+     * Slack Events API webhook.
+     *
+     * Responds immediately (required within 3s), processes LLM call in background.
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static slackEvents(): CancelablePromise<SlackSlackEventsResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/chat/slack/events'
+        });
+    }
+}
+
+export class TerminalService {
+    /**
+     * List Terminal Sessions
+     * List the caller's active sessions.
+     * @returns SessionResponse Successful Response
+     * @throws ApiError
+     */
+    public static listTerminalSessions(): CancelablePromise<TerminalListTerminalSessionsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/terminal/sessions'
+        });
+    }
+    
+    /**
+     * Create Terminal Session
+     * Spawn a new PTY-backed shell session.
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns SessionResponse Successful Response
+     * @throws ApiError
+     */
+    public static createTerminalSession(data: TerminalCreateTerminalSessionData): CancelablePromise<TerminalCreateTerminalSessionResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/terminal/sessions',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Close Terminal Session
+     * Close a terminal session.
+     * @param data The data for the request.
+     * @param data.sessionId
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static closeTerminalSession(data: TerminalCloseTerminalSessionData): CancelablePromise<TerminalCloseTerminalSessionResponse> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/api/v1/terminal/sessions/{session_id}',
+            path: {
+                session_id: data.sessionId
+            },
             errors: {
                 422: 'Validation Error'
             }
@@ -463,6 +4255,21 @@ export class UtilsService {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/api/v1/utils/health-check/'
+        });
+    }
+}
+
+export class WorkstationService {
+    /**
+     * Get Workstation Overview
+     * Return stack, guardian tasks, and recent meetings for the Workstation dashboard.
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static getWorkstationOverview(): CancelablePromise<WorkstationGetWorkstationOverviewResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/chat/workstation/overview'
         });
     }
 }
