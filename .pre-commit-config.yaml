@@ -25,6 +25,7 @@ repos:
         language: system
         types: [text]
         files: ^frontend/
+        exclude: ^frontend/src/client/
 
       - id: local-ruff-check
         name: ruff check
