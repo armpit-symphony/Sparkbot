@@ -51,8 +51,8 @@ class FTSIndex:
                 event.type.value,
                 event.role,
                 event.content,
-                event.session_id
-            )
+                event.session_id,
+            ),
         )
         conn.commit()
         conn.close()
@@ -68,14 +68,14 @@ class FTSIndex:
                 e.type.value,
                 e.role,
                 e.content,
-                e.session_id
+                e.session_id,
             )
             for e in events
         ]
         cursor.executemany(
             """INSERT INTO events_fts (id, timestamp, event_type, role, content, session_id)
                VALUES (?, ?, ?, ?, ?, ?)""",
-            data
+            data,
         )
         conn.commit()
         conn.close()
@@ -90,7 +90,9 @@ class FTSIndex:
         conn.close()
         return count
 
-    def search(self, query: str, limit: int = 10, session_id: str | None = None) -> list[dict]:
+    def search(
+        self, query: str, limit: int = 10, session_id: str | None = None
+    ) -> list[dict]:
         """Search the FTS index."""
         normalized = self._normalize_query(query)
         if not normalized:
@@ -116,12 +118,56 @@ class FTSIndex:
 
         cursor.execute(sql, params)
         results = [dict(row) for row in cursor.fetchall()]
+        results = self._fill_lexical_matches(
+            cursor,
+            results,
+            query=query,
+            limit=limit,
+            session_id=session_id,
+        )
         conn.close()
         return results
 
+    def _fill_lexical_matches(
+        self,
+        cursor: sqlite3.Cursor,
+        results: list[dict],
+        *,
+        query: str,
+        limit: int,
+        session_id: str | None,
+    ) -> list[dict]:
+        terms = set(self._query_terms(query))
+        if not terms:
+            return results
+        seen = {str(row.get("id")) for row in results}
+        sql = "SELECT id, timestamp, event_type, role, content, session_id FROM events_fts"
+        params: list[object] = []
+        if session_id:
+            sql += " WHERE session_id = ?"
+            params.append(session_id)
+        candidates: list[dict] = []
+        for row in cursor.execute(sql, params).fetchall():
+            item = dict(row)
+            if str(item.get("id")) in seen:
+                continue
+            content_terms = set(self._query_terms(str(item.get("content") or "")))
+            overlap = len(terms & content_terms)
+            if overlap <= 0:
+                continue
+            item["score"] = -float(overlap)
+            candidates.append(item)
+        merged = [*results, *candidates]
+        merged.sort(key=lambda item: float(item.get("score") or 0.0))
+        return merged[:limit]
+
+    @staticmethod
+    def _query_terms(query: str) -> list[str]:
+        return re.findall(r"[A-Za-z0-9_]+", query.lower())
+
     @staticmethod
     def _normalize_query(query: str) -> str:
-        terms = re.findall(r"[A-Za-z0-9_]+", query.lower())
+        terms = FTSIndex._query_terms(query)
         if not terms:
             return ""
         return " OR ".join(f'"{term}"' for term in terms[:12])

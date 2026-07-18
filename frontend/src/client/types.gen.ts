@@ -436,6 +436,16 @@ export type ItemUpdate = {
     description?: (string | null);
 };
 
+export type LimaDecisionPreviewRequest = {
+    request_id: string;
+    normalized_request: unknown;
+    requested_action: string;
+    action_category: string;
+    tool_name?: (string | null);
+    evidence_refs?: Array<(string)>;
+    [key: string]: unknown | string;
+};
+
 export type LocalRuntimeInput = {
     default_local_model?: (string | null);
 };
@@ -2263,6 +2273,18 @@ export type ItemsDeleteItemData = {
 };
 
 export type ItemsDeleteItemResponse = (Message);
+
+export type LimaDecisionPreviewLimaStatusResponse = ({
+    [key: string]: unknown;
+});
+
+export type LimaDecisionPreviewLimaDecisionPreviewData = {
+    requestBody: LimaDecisionPreviewRequest;
+};
+
+export type LimaDecisionPreviewLimaDecisionPreviewResponse = ({
+    [key: string]: unknown;
+});
 
 export type LoginLoginAccessTokenData = {
     formData: Body_login_login_access_token;

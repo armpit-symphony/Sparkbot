@@ -3,11 +3,14 @@
 from datetime import datetime
 from enum import Enum
 from typing import Any
+from uuid import uuid4
+
 from pydantic import BaseModel, Field
 
 
 class EventType(str, Enum):
     """Types of events that can be logged."""
+
     MESSAGE = "message"
     TOOL_CALL = "tool_call"
     TOOL_RESULT = "tool_result"
@@ -20,7 +23,10 @@ class EventType(str, Enum):
 
 class Event(BaseModel):
     """An event in the append-only ledger."""
-    id: str = Field(default_factory=lambda: f"{datetime.utcnow().isoformat()}-{EventType.SYSTEM.value}")
+
+    id: str = Field(
+        default_factory=lambda: f"{datetime.utcnow().isoformat()}-{uuid4().hex}"
+    )
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     type: EventType
     role: str | None = None  # user, assistant, system
@@ -30,6 +36,4 @@ class Event(BaseModel):
     turn: int | None = None
 
     class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
+        json_encoders = {datetime: lambda v: v.isoformat()}

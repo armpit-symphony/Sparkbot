@@ -30,6 +30,15 @@ def _restore_security_env() -> Iterator[None]:
             os.environ[key] = value
 
 
+def _assert_env_file_hardened(path) -> None:
+    if os.name == "nt":
+        # Windows does not expose POSIX owner/group/other mode bits reliably via stat().
+        # The route still attempts chmod and reports the managed file as hardened.
+        assert path.exists()
+        return
+    assert oct(path.stat().st_mode & 0o777) == "0o600"
+
+
 def _ensure_chat_user(username: str) -> UUID:
     with Session(engine) as db:
         user = db.exec(select(ChatUser).where(ChatUser.username == username)).first()
@@ -43,17 +52,23 @@ def _ensure_chat_user(username: str) -> UUID:
 
 
 def _headers(user_id: UUID) -> dict[str, str]:
-    token = create_access_token(subject=str(user_id), expires_delta=timedelta(minutes=30))
+    token = create_access_token(
+        subject=str(user_id), expires_delta=timedelta(minutes=30)
+    )
     return {"Authorization": f"Bearer {token}"}
 
 
-def test_security_status_reports_operator_posture(client: TestClient, monkeypatch, tmp_path) -> None:
+def test_security_status_reports_operator_posture(
+    client: TestClient, monkeypatch, tmp_path
+) -> None:
     user_id = _ensure_chat_user("security-owner")
     monkeypatch.setenv("SPARKBOT_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("SPARKBOT_PASSPHRASE", "weak")
     monkeypatch.delenv("SPARKBOT_OPERATOR_USERNAMES", raising=False)
 
-    response = client.get(f"{settings.API_V1_STR}/chat/security/status", headers=_headers(user_id))
+    response = client.get(
+        f"{settings.API_V1_STR}/chat/security/status", headers=_headers(user_id)
+    )
 
     assert response.status_code == 200
     payload = response.json()
@@ -63,7 +78,9 @@ def test_security_status_reports_operator_posture(client: TestClient, monkeypatc
     assert payload["security_modes"][0]["id"] == "prototype"
 
 
-def test_security_writes_require_breakglass(client: TestClient, monkeypatch, tmp_path) -> None:
+def test_security_writes_require_breakglass(
+    client: TestClient, monkeypatch, tmp_path
+) -> None:
     user_id = _ensure_chat_user("security-locked")
     monkeypatch.setenv("SPARKBOT_DATA_DIR", str(tmp_path))
 
@@ -106,8 +123,10 @@ def test_security_can_create_pin_then_update_passphrase_and_operator_users(
     )
     assert passphrase_response.status_code == 200
     env_file = tmp_path / ".env"
-    assert "SPARKBOT_PASSPHRASE=correct horse battery staple 123" in env_file.read_text()
-    assert oct(env_file.stat().st_mode & 0o777) == "0o600"
+    assert (
+        "SPARKBOT_PASSPHRASE=correct horse battery staple 123" in env_file.read_text()
+    )
+    _assert_env_file_hardened(env_file)
 
     operators_response = client.post(
         f"{settings.API_V1_STR}/chat/security/operator-users",
@@ -141,5 +160,5 @@ def test_fix_permissions_only_changes_accessible_env_files(
     )
 
     assert response.status_code == 200
-    assert oct(env_file.stat().st_mode & 0o777) == "0o600"
+    _assert_env_file_hardened(env_file)
     assert any(item["path"] == str(env_file) for item in response.json()["changed"])

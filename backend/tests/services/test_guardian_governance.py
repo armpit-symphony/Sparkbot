@@ -5,7 +5,11 @@ from app.api.routes.chat.agents import (
     resolve_agent_from_message,
 )
 from app.api.routes.chat.model import list_agents
-from app.services.guardian.governance import connector_health, evaluation_summary, workflow_templates
+from app.services.guardian.governance import (
+    connector_health,
+    evaluation_summary,
+    workflow_templates,
+)
 from app.services.guardian.tool_guardrails import validate_tool_input
 
 
@@ -17,7 +21,10 @@ def test_agent_identity_metadata_and_kill_switch(monkeypatch) -> None:
     assert identity["owner"] == "sparkbot-core"
     assert identity["kill_switch"] is True
     assert agent_is_enabled("researcher") is False
-    assert resolve_agent_from_message("@researcher check this") == (None, "@researcher check this")
+    assert resolve_agent_from_message("@researcher check this") == (
+        None,
+        "@researcher check this",
+    )
 
 
 def test_packaged_specialist_agents_are_registered() -> None:
@@ -31,7 +38,9 @@ def test_packaged_specialist_agents_are_registered() -> None:
     for name, description in expected.items():
         assert name in BUILT_IN_AGENTS
         assert BUILT_IN_AGENTS[name]["description"] == description
-        assert BUILT_IN_AGENTS[name]["system_prompt"].startswith(f"You are {name.replace('_', ' ').title()}")
+        assert BUILT_IN_AGENTS[name]["system_prompt"].startswith(
+            f"You are {name.replace('_', ' ').title()}"
+        )
         assert get_all_agents()[name]["identity"]["owner"] == "sparkbot-core"
 
     assert len(BUILT_IN_AGENTS) == len(set(BUILT_IN_AGENTS))
@@ -50,7 +59,9 @@ def test_packaged_specialist_agents_are_returned_by_api_registry() -> None:
 
 
 def test_tool_guardrail_rejects_secret_like_payload() -> None:
-    result = validate_tool_input("gmail_send", {"to": "a@example.com", "api_key": "secret", "body": "hi"})
+    result = validate_tool_input(
+        "gmail_send", {"to": "a@example.com", "api_key": "secret", "body": "hi"}
+    )
 
     assert result.allowed is False
     assert result.behavior == "rejectContent"
@@ -70,5 +81,5 @@ def test_evaluation_summary_runs_baseline_cases(monkeypatch) -> None:
     monkeypatch.setenv("SPARKBOT_GUARDIAN_POLICY_ENABLED", "true")
     summary = evaluation_summary()
 
-    assert summary["failed"] == 0
+    assert summary["failed"] == 0, summary
     assert summary["passed"] >= 4
