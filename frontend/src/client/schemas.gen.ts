@@ -2009,6 +2009,56 @@ export const ItemsPublicSchema = {
     title: 'ItemsPublic'
 } as const;
 
+export const LimaDecisionPreviewRequestSchema = {
+    properties: {
+        request_id: {
+            type: 'string',
+            maxLength: 120,
+            minLength: 1,
+            title: 'Request Id'
+        },
+        normalized_request: {
+            title: 'Normalized Request'
+        },
+        requested_action: {
+            type: 'string',
+            maxLength: 200,
+            minLength: 1,
+            title: 'Requested Action'
+        },
+        action_category: {
+            type: 'string',
+            maxLength: 80,
+            minLength: 1,
+            title: 'Action Category'
+        },
+        tool_name: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 120
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Tool Name'
+        },
+        evidence_refs: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            maxItems: 20,
+            title: 'Evidence Refs'
+        }
+    },
+    additionalProperties: true,
+    type: 'object',
+    required: ['request_id', 'normalized_request', 'requested_action', 'action_category'],
+    title: 'LimaDecisionPreviewRequest'
+} as const;
+
 export const LocalRuntimeInputSchema = {
     properties: {
         default_local_model: {
