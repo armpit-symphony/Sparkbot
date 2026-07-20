@@ -4,6 +4,7 @@ version = "1.6.81"
 description = ""
 requires-python = ">=3.10,<4.0"
 dependencies = [
+    "lima-runtime @ git+https://github.com/armpit-symphony/LIMA-AI-OS.git@4e7c648349f0a5a19694ac5f0c57b5cb14dc2b17 ; python_version >= '3.11'",
     "fastapi[standard]<1.0.0,>=0.114.2",
     "python-multipart<1.0.0,>=0.0.7",
     "email-validator<3.0.0.0,>=2.1.0.post1",
@@ -44,6 +45,9 @@ dev = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.mypy]
 strict = true

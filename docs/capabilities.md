@@ -1500,6 +1500,12 @@ PUBLIC_URL=
 
 LIMA decision preview is non-executing and does not represent active Guardian enforcement.
 
+The optional preview consumer is tested with `lima-runtime==0.1.0rc1`, pinned
+to LIMA commit `4e7c648349f0a5a19694ac5f0c57b5cb14dc2b17`. Its only supported runtime
+entrypoint is `lima.runtime.run_governed_request`; this pin does not grant
+execution authority or provider, tool, connector, network, credential, or
+robotics readiness.
+
 Capability status:
 
 | Capability | Status |
