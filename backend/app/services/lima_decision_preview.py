@@ -140,7 +140,9 @@ def lima_decision_preview_status() -> dict[str, Any]:
 
 
 def _load_lima_runner() -> Callable[[dict[str, Any]], Any]:
-    from lima.runtime import run_governed_request  # type: ignore[import-not-found, import-untyped]
+    from lima.runtime import (  # type: ignore[import-not-found, import-untyped]
+        run_governed_request,
+    )
 
     return run_governed_request
 
