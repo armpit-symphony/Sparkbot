@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any
@@ -56,13 +57,19 @@ def _patch_runner(
     monkeypatch.setattr(preview, "_load_lima_runner", lambda: fake_runner)
 
 
-def test_lima_unavailable_path_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_lima_unavailable_path_fails_closed_without_leaking_exception_details(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    private_detail = "No module named 'lima' at C:/private/runtime/site-packages"
+
     def unavailable() -> object:
-        raise ModuleNotFoundError("No module named 'lima'")
+        raise ModuleNotFoundError(private_detail)
 
     monkeypatch.setattr(preview, "_load_lima_runner", unavailable)
 
-    payload = preview.preview_lima_decision(_request())
+    with caplog.at_level(logging.ERROR, logger=preview.__name__):
+        payload = preview.preview_lima_decision(_request())
 
     assert payload["status"] == "unavailable"
     assert payload["lima_available"] is False
@@ -71,6 +78,10 @@ def test_lima_unavailable_path_fails_closed(monkeypatch: pytest.MonkeyPatch) -> 
     assert payload["execution_allowed"] is False
     assert payload["side_effects_allowed"] is False
     assert preview.PUBLIC_PREVIEW_NOTE in payload["notes"]
+    assert private_detail not in repr(payload)
+    assert "Import error:" not in repr(payload)
+    assert "LIMA decision preview runtime import failed" in caplog.text
+    assert private_detail in caplog.text
 
 
 def test_lima_available_path_returns_decision_preview(
@@ -191,6 +202,35 @@ def test_client_authority_claims_are_ignored(monkeypatch: pytest.MonkeyPatch) ->
     )
 
 
+def test_client_classification_is_non_authoritative_and_cannot_enable_execution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict[str, Any]] = []
+    _patch_runner(
+        monkeypatch,
+        FakeDecision(status="allowed_dry_run", allowed=True, requires_approval=False),
+        calls,
+    )
+
+    payload = preview.preview_lima_decision(
+        _request(
+            normalized_request={"message": "send an external email"},
+            requested_action="show status",
+            action_category="informational",
+            tool_name="sparkbot_decision_preview",
+        )
+    )
+
+    assert payload["classification_authority"] == ("client_supplied_non_authoritative")
+    assert payload["runtime_authority_blocked"] is True
+    assert payload["executable"] is False
+    assert payload["execution_allowed"] is False
+    assert payload["side_effects_allowed"] is False
+    assert calls[0]["requested_action"] == "show status"
+    assert calls[0]["action_category"] == "informational"
+    assert calls[0]["tool_name"] == "sparkbot_decision_preview"
+
+
 def test_status_capabilities_do_not_claim_guardian_enforcement(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -224,21 +264,27 @@ def test_missing_normalized_request_is_rejected() -> None:
     assert "normalized_request is required" in payload["notes"]
 
 
-def test_lima_runtime_error_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
-    def failing_runner(request: dict[str, Any]) -> None:
-        raise RuntimeError(f"failed request {request['request_id']}")
+def test_lima_runtime_error_fails_closed_without_leaking_exception_details(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    private_detail = "failed request sparkbot-preview-1 in C:/private/runtime.py"
+
+    def failing_runner(_request: dict[str, Any]) -> None:
+        raise RuntimeError(private_detail)
 
     monkeypatch.setattr(preview, "_load_lima_runner", lambda: failing_runner)
 
-    payload = preview.preview_lima_decision(_request())
+    with caplog.at_level(logging.ERROR, logger=preview.__name__):
+        payload = preview.preview_lima_decision(_request())
 
     assert payload["status"] == "unavailable"
     assert payload["lima_available"] is False
     assert payload["execution_allowed"] is False
-    assert any(
-        "Runtime error: failed request sparkbot-preview-1" in note
-        for note in payload["notes"]
-    )
+    assert private_detail not in repr(payload)
+    assert "Runtime error:" not in repr(payload)
+    assert "LIMA decision preview runtime call failed" in caplog.text
+    assert private_detail in caplog.text
 
 
 def test_unavailable_status_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:

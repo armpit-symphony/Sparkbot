@@ -1506,6 +1506,12 @@ entrypoint is `lima.runtime.run_governed_request`; this pin does not grant
 execution authority or provider, tool, connector, network, credential, or
 robotics readiness.
 
+The request's `requested_action`, `action_category`, and `tool_name` values are
+caller-supplied preview inputs. Responses identify their
+`classification_authority` as `client_supplied_non_authoritative`; they are not
+trusted policy classifications and can never grant runtime or side-effect
+authority.
+
 Capability status:
 
 | Capability | Status |
