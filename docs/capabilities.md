@@ -1506,6 +1506,16 @@ entrypoint is `lima.runtime.run_governed_request`; this pin does not grant
 execution authority or provider, tool, connector, network, credential, or
 robotics readiness.
 
+The exact Git source pin is an internal release-candidate testing mechanism.
+Installing it requires Git, network access to GitHub, and repository access;
+it is not the final public-desktop or offline distribution mechanism. A broader
+release requires a separately approved registry package or a bundled,
+hash-verified wheel.
+
+On Python 3.11 and newer, the pinned LIMA preview package is installed. On
+Python 3.10, the package is omitted and the preview remains unavailable and
+fails closed.
+
 The request's `requested_action`, `action_category`, and `tool_name` values are
 caller-supplied preview inputs. Responses identify their
 `classification_authority` as `client_supplied_non_authoritative`; they are not
