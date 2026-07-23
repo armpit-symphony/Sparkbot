@@ -1500,6 +1500,28 @@ PUBLIC_URL=
 
 LIMA decision preview is non-executing and does not represent active Guardian enforcement.
 
+The optional preview consumer is tested with `lima-runtime==0.1.0rc1`, pinned
+to LIMA commit `4e7c648349f0a5a19694ac5f0c57b5cb14dc2b17`. Its only supported runtime
+entrypoint is `lima.runtime.run_governed_request`; this pin does not grant
+execution authority or provider, tool, connector, network, credential, or
+robotics readiness.
+
+The exact Git source pin is an internal release-candidate testing mechanism.
+Installing it requires Git, network access to GitHub, and repository access;
+it is not the final public-desktop or offline distribution mechanism. A broader
+release requires a separately approved registry package or a bundled,
+hash-verified wheel.
+
+On Python 3.11 and newer, the pinned LIMA preview package is installed. On
+Python 3.10, the package is omitted and the preview remains unavailable and
+fails closed.
+
+The request's `requested_action`, `action_category`, and `tool_name` values are
+caller-supplied preview inputs. Responses identify their
+`classification_authority` as `client_supplied_non_authoritative`; they are not
+trusted policy classifications and can never grant runtime or side-effect
+authority.
+
 Capability status:
 
 | Capability | Status |

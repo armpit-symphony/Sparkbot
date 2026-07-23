@@ -9,12 +9,16 @@ jobs, read credentials, or touch robotics/IoT/physical-world paths.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 PUBLIC_PREVIEW_NOTE = "LIMA decision preview is non-executing and does not represent active Guardian enforcement."
 SERVICE_NAME = "lima_decision_preview"
 MODE = "preview"
+CLASSIFICATION_AUTHORITY = "client_supplied_non_authoritative"
+
+logger = logging.getLogger(__name__)
 
 _ALLOWED_REQUEST_FIELDS = {
     "request_id",
@@ -77,28 +81,28 @@ def preview_lima_decision(request: dict[str, Any]) -> dict[str, Any]:
 
     try:
         run_governed_request = _load_lima_runner()
-    except Exception as exc:
+    except Exception:
+        logger.exception("LIMA decision preview runtime import failed")
         return _base_response(
             status="unavailable",
             lima_available=False,
             decision_status="unavailable",
             notes=[
-                "Local LIMA runtime import is unavailable; preview failed closed.",
-                f"Import error: {exc}",
+                "Local LIMA runtime is unavailable; preview failed closed.",
                 _authority_note(forbidden_claims),
             ],
         )
 
     try:
         decision = run_governed_request(lima_request)
-    except Exception as exc:
+    except Exception:
+        logger.exception("LIMA decision preview runtime call failed")
         return _base_response(
             status="unavailable",
             lima_available=False,
             decision_status="unavailable",
             notes=[
                 "Local LIMA runtime returned an error; preview failed closed.",
-                f"Runtime error: {exc}",
                 _authority_note(forbidden_claims),
             ],
         )
@@ -140,7 +144,9 @@ def lima_decision_preview_status() -> dict[str, Any]:
 
 
 def _load_lima_runner() -> Callable[[dict[str, Any]], Any]:
-    from lima.runtime import run_governed_request  # type: ignore[import-not-found]
+    from lima.runtime import (  # type: ignore[import-not-found, import-untyped]
+        run_governed_request,
+    )
 
     return run_governed_request
 
@@ -193,6 +199,7 @@ def _base_response(
     return {
         "service": SERVICE_NAME,
         "mode": MODE,
+        "classification_authority": CLASSIFICATION_AUTHORITY,
         "status": status,
         "lima_available": lima_available,
         "decision_status": decision_status,
