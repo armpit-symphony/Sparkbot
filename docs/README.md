@@ -27,6 +27,7 @@ This index groups the public Sparkbot documentation for first-time visitors, loc
 - [Public Artifact Manifest](PUBLIC_ARTIFACT_MANIFEST.md): files included in the public baseline and excluded artifact types.
 - [Release Standards](RELEASE_STANDARDS.md): public publishing identity and release standards.
 - [Public v1 Clean Baseline Release Notes](RELEASE_NOTES_PUBLIC_V1_CLEAN_BASELINE.md): first published shell baseline notes.
+- [Public Release Alignment Protocol](REPOSITORY_ALIGNMENT_PROTOCOL.md): source-of-truth sync and boundary controls while phase 6 is paused.
 
 ## Public contracts
 

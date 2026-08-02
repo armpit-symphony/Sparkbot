@@ -23,8 +23,5 @@ jobs:
         with:
           node-version: "20.19.0"
 
-      - name: Run public safety scan
-        run: bash scripts/check-public-safety.sh
-
-      - name: Run full public shell validation
-        run: bash scripts/validate-public-shell.sh
+      - name: Run public alignment and validation checks
+        run: bash scripts/check-public-alignment.sh

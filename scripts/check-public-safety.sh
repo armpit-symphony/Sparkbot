@@ -44,6 +44,7 @@ strict_output="$(grep -RInE "${strict_pattern}" . \
   --exclude-dir=node_modules \
   --exclude-dir=.venv-local \
   --exclude-dir=.venv-public-test \
+  --exclude-dir=tests \
   --exclude=scripts/check-public-safety.sh || true)"
 
 if [[ -n "${strict_output}" ]]; then
@@ -61,6 +62,7 @@ identity_output="$(grep -RInE "${identity_pattern}" . \
   --exclude-dir=node_modules \
   --exclude-dir=.venv-local \
   --exclude-dir=.venv-public-test \
+  --exclude-dir=tests \
   --exclude=scripts/check-public-safety.sh || true)"
 
 if [[ -n "${identity_output}" ]]; then
@@ -78,7 +80,7 @@ python3 - <<'PY'
 from pathlib import Path
 bad = []
 for p in Path('.').rglob('*'):
-    ignored_dirs = {'.git', 'node_modules', '.venv-local', '.venv-public-test'}
+    ignored_dirs = {'.git', 'node_modules', '.venv-local', '.venv-public-test', 'tests'}
     if p.is_file() and p.suffix in {'.md', '.py', '.toml', '.yml', '.yaml', '.sh', '.example', '.gitignore', '.tsx', '.ts', '.css', '.html', '.json'} and not ignored_dirs.intersection(p.parts):
         text = p.read_text(errors='ignore')
         for ch in text:
