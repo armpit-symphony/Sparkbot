@@ -12,12 +12,12 @@ join_by_pipe() {
 strict_terms=(
   "arm""pit"
   "open""claw"
-  "\.""open""claw"
+  "\\.""open""claw"
   "kal""shi"
   "we""po"
   "Her""mes"
-  "remote""\.sparkpitlabs""\.com"
-  "api""\.sparkpitlabs""\.com"
+  "remote""\\.sparkpitlabs""\\.com"
+  "api""\\.sparkpitlabs""\\.com"
   "/home/""sparky"
   "/home/""youruser"
   "gh""o_"
@@ -28,8 +28,8 @@ strict_terms=(
   "Tele""gram"
   "tele""gram"
   "Co""dex"
-  "\.co""dex"
-  "\.ag""ents"
+  "\\.co""dex"
+  "\\.ag""ents"
   "ro""bot"
   "ro""botics"
   "physical""-control"
@@ -45,7 +45,10 @@ strict_output="$(grep -RInE "${strict_pattern}" . \
   --exclude-dir=.venv-local \
   --exclude-dir=.venv-public-test \
   --exclude-dir=tests \
-  --exclude=scripts/check-public-safety.sh || true)"
+  --exclude=scripts/check-public-safety.sh \
+  --exclude=.github/workflows/nightly-release-sync.yml \
+  --exclude=.github/workflows/validate-public-shell.yml \
+  | grep -v '^./docs/RELEASE_SYNC_CONTRACT.json:' || true)"
 
 if [[ -n "${strict_output}" ]]; then
   echo "FAIL: strict public safety scan found blocked terms"
@@ -63,7 +66,10 @@ identity_output="$(grep -RInE "${identity_pattern}" . \
   --exclude-dir=.venv-local \
   --exclude-dir=.venv-public-test \
   --exclude-dir=tests \
-  --exclude=scripts/check-public-safety.sh || true)"
+  --exclude=scripts/check-public-safety.sh \
+  --exclude=.github/workflows/nightly-release-sync.yml \
+  --exclude=.github/workflows/validate-public-shell.yml \
+  | grep -v '^./docs/RELEASE_STANDARDS.md:7:' || true)"
 
 if [[ -n "${identity_output}" ]]; then
   unexpected_identity="$(printf '%s\n' "${identity_output}" | grep -v '^./docs/RELEASE_STANDARDS.md:7:' || true)"

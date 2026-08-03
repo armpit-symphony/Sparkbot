@@ -1,0 +1,90 @@
+name: nightly-release-sync
+
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+jobs:
+  release-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout public repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.19.0"
+
+      - name: Clone source-of-truth repository
+        env:
+          SOURCE_REPO: ${{ vars.SOURCE_OF_TRUTH_REPO || 'sparkpit-labs/Sparkbot' }}
+        run: |
+          git clone --depth 1 --branch public-release-final-cleanup-assessment https://github.com/${SOURCE_REPO}.git /tmp/source-of-truth
+
+      - name: Validate release-sync contract and drift
+        run: |
+          bash scripts/check-release-sync.sh --source-repo /tmp/source-of-truth --source-ref public-release-final-cleanup-assessment
+
+      - name: Run public safety and validation checks
+        run: |
+          bash scripts/check-public-alignment.sh
+
+      - name: Build frontend and run backend safety policy tests
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e "backend[dev]"
+          pytest backend/tests -q
+          cd frontend
+          npm ci
+          npm run build
+
+      - name: Smoke-check protected runtime endpoints
+        run: |
+          python -m uvicorn app.main:app --host 127.0.0.1 --port 18000 --app-dir backend &
+          SERVER_PID=$!
+          for _ in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:18000/health >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+
+          curl -fsS http://127.0.0.1:18000/health
+          curl -fsS http://127.0.0.1:18000/capabilities
+
+          # Safety-policy smoke: destructive action without confirmation must not auto-run.
+          python - <<'PY'
+import urllib.request
+import json
+req = urllib.request.Request(
+    "http://127.0.0.1:18000/operator/command-center/actions",
+    method="POST",
+    data=json.dumps(
+        {
+            "action_id": "nightly-smoke",
+            "action_name": "smoke",
+            "action_class": "terminal",
+            "feature": "terminal",
+            "operator_confirmation": False,
+            "tenant_id": "tenant-nightly",
+            "user_id": "nightly-sys",
+        }
+    ).encode("utf-8"),
+    headers={"content-type": "application/json"},
+)
+with urllib.request.urlopen(req) as resp:
+    body = json.loads(resp.read().decode("utf-8"))
+print(body)
+if body.get("allowed"):
+    raise SystemExit("expected confirmation-required action to be blocked")
+          PY
+
+          kill "$SERVER_PID"
+

@@ -177,3 +177,14 @@ This repository is licensed under the MIT License. The license applies to the co
 ## Maintainers
 
 Maintained by Spark Pit Labs Team.
+
+## Command Center audit persistence for release
+
+To enable immutable command-center audit persistence and integrity signing in release environments:
+
+```bash
+COMMAND_CENTER_AUDIT_FILE=./logs/command-center-audit.jsonl
+COMMAND_CENTER_AUDIT_SIGNING_KEY=__REPLACE_ME__
+```
+
+If `COMMAND_CENTER_AUDIT_SIGNING_KEY` is set, each persisted JSONL row is signed with `HMAC-SHA256` and includes the immutable `chain_hash` for tamper-evident ordering. Keep the signing key in secret configuration.
