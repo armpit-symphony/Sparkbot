@@ -27,7 +27,7 @@ SEAT_USERNAME_PREFIX = "seat-"
 
 
 def is_seat_token_payload(payload: dict | None) -> bool:
-    return bool(payload) and payload.get("scope") == SEAT_TOKEN_SCOPE
+    return payload is not None and payload.get("scope") == SEAT_TOKEN_SCOPE
 
 
 def create_access_token(subject: str | Any, expires_delta: timedelta) -> str:

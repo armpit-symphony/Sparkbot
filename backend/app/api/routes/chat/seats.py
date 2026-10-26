@@ -45,6 +45,7 @@ from fastapi.security import OAuth2PasswordBearer
 from jwt.exceptions import InvalidTokenError
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlmodel import col
 
 from app.api.deps import CurrentChatUser, SessionDep
 from app.core.config import settings
@@ -95,7 +96,7 @@ def _post_limit_per_minute(seat: ChatUser, room) -> int:
 
 
 def is_seat_user(user: ChatUser | None) -> bool:
-    return bool(user) and (user.username or "").startswith(SEAT_USERNAME_PREFIX)
+    return user is not None and (user.username or "").startswith(SEAT_USERNAME_PREFIX)
 
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
@@ -313,7 +314,7 @@ def create_seat(
     taken = (
         session.execute(
             select(ChatUser).where(
-                (ChatUser.username == username) | (ChatUser.bot_slug == slug)
+                (col(ChatUser.username) == username) | (col(ChatUser.bot_slug) == slug)
             )
         )
         .scalars()
@@ -353,12 +354,12 @@ def list_seats(room_id: uuid.UUID, session: SessionDep, current_user: CurrentCha
         raise HTTPException(status_code=403, detail="Not a member of this room")
     rows = session.execute(
         select(ChatRoomMember, ChatUser)
-        .join(ChatUser, ChatUser.id == ChatRoomMember.user_id)
+        .join(ChatUser, col(ChatUser.id) == col(ChatRoomMember.user_id))
         .where(
-            ChatRoomMember.room_id == room_id,
-            ChatUser.username.startswith(SEAT_USERNAME_PREFIX),
+            col(ChatRoomMember.room_id) == room_id,
+            col(ChatUser.username).startswith(SEAT_USERNAME_PREFIX),
         )
-        .order_by(ChatRoomMember.joined_at)
+        .order_by(col(ChatRoomMember.joined_at))
     ).all()
     return [_seat_response(user, member.role) for member, user in rows]
 
@@ -415,7 +416,9 @@ def revoke_seat(
     session.delete(membership)
     session.commit()
     remaining = (
-        session.execute(select(ChatRoomMember).where(ChatRoomMember.user_id == seat.id))
+        session.execute(
+            select(ChatRoomMember).where(col(ChatRoomMember.user_id) == seat.id)
+        )
         .scalars()
         .first()
     )
@@ -495,9 +498,9 @@ def seat_me(session: SessionDep, seat: CurrentSeat):
 
     rows = session.execute(
         select(ChatRoomMember, ChatRoom)
-        .join(ChatRoom, ChatRoom.id == ChatRoomMember.room_id)
-        .where(ChatRoomMember.user_id == seat.id)
-        .order_by(ChatRoomMember.joined_at)
+        .join(ChatRoom, col(ChatRoom.id) == col(ChatRoomMember.room_id))
+        .where(col(ChatRoomMember.user_id) == seat.id)
+        .order_by(col(ChatRoomMember.joined_at))
     ).all()
     return SeatMeResponse(
         seat=_seat_response(seat),
@@ -524,7 +527,7 @@ def seat_read_messages(
     """Oldest-first. Pass the last id you saw as ``after_id`` to poll for new messages."""
     room, _ = _require_seat_member(session, room_id, seat)
     limit = max(1, min(limit, 200))
-    query = select(ChatMessage).where(ChatMessage.room_id == room.id)
+    query = select(ChatMessage).where(col(ChatMessage.room_id) == room.id)
     if after_id:
         try:
             anchor = session.get(ChatMessage, uuid.UUID(after_id))
@@ -536,18 +539,18 @@ def seat_read_messages(
             )
         query = (
             query.where(
-                (ChatMessage.created_at > anchor.created_at)
+                (col(ChatMessage.created_at) > anchor.created_at)
                 | (
-                    (ChatMessage.created_at == anchor.created_at)
-                    & (ChatMessage.id != anchor.id)
+                    (col(ChatMessage.created_at) == anchor.created_at)
+                    & (col(ChatMessage.id) != anchor.id)
                 )
             )
-            .order_by(ChatMessage.created_at.asc())
+            .order_by(col(ChatMessage.created_at).asc())
             .limit(limit)
         )
         messages = list(session.execute(query).scalars().all())
     else:
-        latest = query.order_by(ChatMessage.created_at.desc()).limit(limit)
+        latest = query.order_by(col(ChatMessage.created_at).desc()).limit(limit)
         messages = list(reversed(session.execute(latest).scalars().all()))
     cache: dict = {}
     return [_message_out(session, m, cache) for m in messages]
