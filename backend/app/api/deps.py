@@ -87,6 +87,12 @@ def get_current_chat_user(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Could not validate credentials",
         )
+    if security.is_seat_token_payload(payload):
+        # Seat tokens are room-scoped; they must never reach the full app.
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Seat tokens can only use /chat/seats endpoints",
+        )
     
     # Handle special case for passphrase login (subject = "sparkbot-user")
     # This creates a pseudo-user on-the-fly for passphrase authentication

@@ -19,6 +19,17 @@ password_hash = PasswordHash(
 ALGORITHM = "HS256"
 
 
+# Roundtable seats: outside agents and guest humans get room-scoped tokens.
+# Tokens carrying this scope are rejected by every regular chat dependency and
+# accepted only by the /chat/seats endpoints (see app/api/routes/chat/seats.py).
+SEAT_TOKEN_SCOPE = "roundtable_seat"
+SEAT_USERNAME_PREFIX = "seat-"
+
+
+def is_seat_token_payload(payload: dict | None) -> bool:
+    return bool(payload) and payload.get("scope") == SEAT_TOKEN_SCOPE
+
+
 def create_access_token(subject: str | Any, expires_delta: timedelta) -> str:
     expire = datetime.now(timezone.utc) + expires_delta
     to_encode = {"exp": expire, "sub": str(subject)}
