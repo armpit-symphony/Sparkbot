@@ -333,3 +333,89 @@ def test_cli_post_and_read(client: TestClient, home: Path, monkeypatch, capsys) 
     assert "(no new messages)" in capsys.readouterr().out
     assert rt.main(["logout", "--profile", "cli"]) == 0
     assert not (home / "roundtable-cli.json").exists()
+
+
+def test_invite_creates_room_and_saved_seat(
+    client: TestClient, home: Path, monkeypatch, capsys
+) -> None:
+    room_name = f"Roundtable {random_lower_string()[:6]}"
+    slug = f"a{random_lower_string()[:8]}"
+    monkeypatch.setenv("SPARKBOT_PASSPHRASE", settings.SPARKBOT_PASSPHRASE)
+    monkeypatch.setattr(rt, "urllib_transport", _transport(client))
+
+    assert (
+        rt.main(
+            [
+                "invite",
+                "--url",
+                BASE,
+                "--room",
+                room_name,
+                "--name",
+                "Codex",
+                "--slug",
+                slug,
+            ]
+        )
+        == 0
+    )
+    out = capsys.readouterr().out
+    assert "rts_" not in out  # key saved, never shown
+    saved = json.loads((home / f"roundtable-{slug}.json").read_text())
+    assert saved["key"].startswith("rts_") and saved["url"] == BASE
+
+    # Seat works straight away, in the new room.
+    s = rt.Session(slug, transport=_transport(client))
+    assert s.room() == saved["room_id"]
+    assert s.post("hello from an invited seat")["sender_name"] == "Codex"
+
+    # A second invite reuses the room by name; --print-key prints instead of saving.
+    slug2 = f"b{random_lower_string()[:8]}"
+    assert (
+        rt.main(
+            [
+                "invite",
+                "--url",
+                BASE,
+                "--room",
+                room_name.upper(),
+                "--name",
+                "Dana",
+                "--slug",
+                slug2,
+                "--kind",
+                "human",
+                "--print-key",
+            ]
+        )
+        == 0
+    )
+    out = capsys.readouterr().out
+    assert saved["room_id"] in out and "rts_" in out
+    assert not (home / f"roundtable-{slug2}.json").exists()
+
+
+@pytest.mark.usefixtures("home")
+def test_invite_wrong_passphrase(client: TestClient, monkeypatch, capsys) -> None:
+    from app.api.routes.chat import users as chat_users_route
+
+    monkeypatch.setenv("SPARKBOT_PASSPHRASE", "definitely-wrong")
+    monkeypatch.setattr(rt, "urllib_transport", _transport(client))
+    try:
+        assert (
+            rt.main(
+                [
+                    "invite",
+                    "--url",
+                    BASE,
+                    "--name",
+                    "X",
+                    "--slug",
+                    f"c{random_lower_string()[:8]}",
+                ]
+            )
+            == 1
+        )
+        assert "Invalid passphrase" in capsys.readouterr().err
+    finally:
+        chat_users_route._chat_login_attempts.clear()

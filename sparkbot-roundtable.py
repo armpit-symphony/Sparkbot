@@ -10,7 +10,10 @@ creates a seat in Sparkbot and gets a one-time key that starts with ``rts_``.
 Save it once with ``login``; the key is never needed on the command line again.
 
 Usage:
-    python sparkbot-roundtable.py login --profile codex     # paste URL + seat key once
+    # Room owner, once per agent: creates the seat and saves it as a profile
+    python sparkbot-roundtable.py invite --url https://example.com --room "Roundtable" --name Codex --slug codex
+
+    python sparkbot-roundtable.py login --profile codex     # or: paste URL + a seat key you were given
     python sparkbot-roundtable.py whoami --profile codex
     python sparkbot-roundtable.py read   --profile codex    # only messages you haven't seen
     python sparkbot-roundtable.py read   --profile codex --all
@@ -570,6 +573,83 @@ def cmd_login(args) -> int:
     return 0
 
 
+def _owner_request(
+    transport: Transport,
+    url: str,
+    method: str,
+    path: str,
+    body: dict | None,
+    token: str | None,
+) -> Any:
+    headers = {"Accept": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    status, data = transport(method, f"{url}{API_PREFIX}{path}", body, headers)
+    if status >= 400:
+        detail = data.get("detail") if isinstance(data, dict) else data
+        raise RoundtableError(f"{detail or 'Request failed'} (HTTP {status})", status)
+    return data
+
+
+def invite(
+    url: str,
+    passphrase: str,
+    room: str,
+    name: str,
+    slug: str,
+    kind: str = "agent",
+    transport: Transport | None = None,
+) -> tuple[dict, dict]:
+    """As the room owner: find or create ``room`` (name or id), add a seat. Returns (room, seat)."""
+    t = transport or urllib_transport
+    url = url.rstrip("/")
+    login = _owner_request(
+        t, url, "POST", "/users/login", {"passphrase": passphrase}, None
+    )
+    token = login["access_token"]
+    rooms = _owner_request(t, url, "GET", "/rooms/", None, token) or []
+    wanted = room.strip()
+    found = next(
+        (
+            r
+            for r in rooms
+            if r["id"] == wanted or r["name"].strip().lower() == wanted.lower()
+        ),
+        None,
+    )
+    if found is None:
+        found = _owner_request(t, url, "POST", "/rooms/", {"name": wanted}, token)
+    seat = _owner_request(
+        t,
+        url,
+        "POST",
+        f"/rooms/{found['id']}/seats",
+        {"display_name": name, "slug": slug, "kind": kind},
+        token,
+    )
+    return found, seat
+
+
+def cmd_invite(args) -> int:
+    url = (args.url or load_settings(args.profile)["url"]).rstrip("/")
+    passphrase = os.getenv("SPARKBOT_PASSPHRASE") or getpass.getpass(
+        "Sparkbot owner passphrase (input hidden): "
+    )
+    slug = (args.slug or args.name).strip().lower().replace(" ", "-")
+    room, seat = invite(url, passphrase, args.room, args.name, slug, args.kind)
+    _out(f"Room: {room['name']}  id={room['id']}")
+    if args.print_key:
+        _out(f"Seat @{seat['slug']} created. Key (shown once — send it privately):")
+        _out(seat["key"])
+        return 0
+    profile = args.profile or seat["slug"]
+    path = config_path(profile)
+    _write_private_json(path, {"url": url, "key": seat["key"], "room_id": room["id"]})
+    _out(f"Seat {seat['display_name']} (@{seat['slug']}) created and saved to {path}")
+    _out(f"Use it with:  --profile {profile}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="sparkbot-roundtable", description="Sit at a Sparkbot Roundtable room."
@@ -585,6 +665,22 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--url")
     p.add_argument(
         "--room", help="Default room id (only needed if the seat is in several rooms)"
+    )
+    p = add(
+        "invite",
+        "Room owner: create a seat for an agent or person (asks for passphrase)",
+    )
+    p.add_argument("--url", help=f"Sparkbot URL (default: profile or {DEFAULT_URL})")
+    p.add_argument(
+        "--room", default="Roundtable", help="Room name or id; created if missing"
+    )
+    p.add_argument("--name", required=True, help="Display name, e.g. Codex")
+    p.add_argument("--slug", help="@handle (default: from --name)")
+    p.add_argument("--kind", choices=["agent", "human"], default="agent")
+    p.add_argument(
+        "--print-key",
+        action="store_true",
+        help="Print the key instead of saving it (for a seat on another computer)",
     )
     add("whoami", "Show this seat and its rooms")
     p = add("read", "Show messages you haven't seen")
@@ -608,6 +704,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.cmd == "login":
             return cmd_login(args)
+        if args.cmd == "invite":
+            return cmd_invite(args)
         if args.cmd == "logout":
             for path in (config_path(args.profile), state_path(args.profile)):
                 path.unlink(missing_ok=True)

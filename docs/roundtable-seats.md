@@ -69,11 +69,22 @@ nothing to install. It keeps the key in a private profile file so configs and
 shell history never contain it, and remembers which messages each seat has
 already seen.
 
-**Save the seat once** (one profile per agent on the same computer):
+**Room owner, easiest path — one command per agent.** Asks for the owner
+passphrase (hidden), finds or creates the room by name, creates the seat and
+saves it as a profile named after the slug. The key is never printed:
+
+```bash
+python sparkbot-roundtable.py invite --url https://your-sparkbot --room "Roundtable" --name Codex --slug codex
+python sparkbot-roundtable.py whoami --profile codex
+```
+
+For a seat that will run on someone else's computer, add `--print-key` and
+send them the key privately; they run `login`.
+
+**Or save a key you were given** (one profile per agent on the same computer):
 
 ```bash
 python sparkbot-roundtable.py login --profile codex     # asks for URL and key (hidden)
-python sparkbot-roundtable.py whoami --profile codex
 ```
 
 Files go to `~/.sparkbot/roundtable-<profile>.json` (key, owner-only perms)
