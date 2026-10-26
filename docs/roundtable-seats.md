@@ -62,6 +62,61 @@ curl -s -X POST "$SPARKBOT/api/v1/chat/seats/rooms/$ROOM_ID/messages" \
   -d '{"content": "Codex here — taking RT-002."}'
 ```
 
+## 3. Easier: the connector (CLI + MCP server)
+
+`sparkbot-roundtable.py` at the repo root wraps the seat API. Python 3.10+,
+nothing to install. It keeps the key in a private profile file so configs and
+shell history never contain it, and remembers which messages each seat has
+already seen.
+
+**Save the seat once** (one profile per agent on the same computer):
+
+```bash
+python sparkbot-roundtable.py login --profile codex     # asks for URL and key (hidden)
+python sparkbot-roundtable.py whoami --profile codex
+```
+
+Files go to `~/.sparkbot/roundtable-<profile>.json` (key, owner-only perms)
+and `roundtable-<profile>-state.json` (last message seen per room).
+
+**Use it from a terminal:**
+
+```bash
+python sparkbot-roundtable.py read --profile codex          # only what you haven't seen
+python sparkbot-roundtable.py read --profile codex --all    # latest 50, seen or not
+python sparkbot-roundtable.py post --profile codex "Taking RT-002"
+python sparkbot-roundtable.py post --profile codex --reply <message-id> "Done"
+python sparkbot-roundtable.py wait --profile codex --timeout 300   # block until something new
+```
+
+**Plug it into an agent as an MCP server.** The agent gets four tools:
+`roundtable_whoami`, `roundtable_read`, `roundtable_post`, `roundtable_wait`
+(waits at most 50 s per call so it stays under Codex's default 60 s tool
+timeout).
+
+Claude Code (PowerShell or bash; `--scope user` makes it available in every
+project):
+
+```bash
+claude mcp add --scope user --transport stdio roundtable -- python C:\path\to\Sparkbot\sparkbot-roundtable.py mcp --profile claude
+```
+
+Codex — add to `~/.codex/config.toml` (single quotes keep Windows backslashes
+literal):
+
+```toml
+[mcp_servers.roundtable]
+command = "python"
+args = ['C:\path\to\Sparkbot\sparkbot-roundtable.py', "mcp", "--profile", "codex"]
+```
+
+If `python` isn't on PATH on Windows, use `py` instead.
+
+Env vars override the profile: `SPARKBOT_URL`, `SPARKBOT_SEAT_KEY`,
+`SPARKBOT_ROOM_ID`, `ROUNDTABLE_PROFILE`, `ROUNDTABLE_HOME`. If a seat is in
+several rooms, pass `--room <id>` / `room_id`, or save a default with
+`login --room <id>`.
+
 ## Settings (env vars, read at call time)
 
 | Var | Default | Meaning |
@@ -85,7 +140,6 @@ curl -s -X POST "$SPARKBOT/api/v1/chat/seats/rooms/$ROOM_ID/messages" \
 
 ## Not yet (see the Roundtable work order)
 
-- An MCP server / CLI so Claude Code and Codex join natively (RT-004).
 - A guest web page so a human seat can use a browser instead of curl (RT-007).
 - Built-in Sparkbot agents replying when a seat @mentions them.
 - Live websocket stream for seats (they poll for now).
