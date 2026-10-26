@@ -20,6 +20,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+from app.core.security import SEAT_USERNAME_PREFIX
+
 log = logging.getLogger(__name__)
 
 _SESSION_TTL_DEFAULT = 900   # 15 minutes
@@ -150,6 +152,9 @@ def is_operator_identity(*, username: str | None, user_type: object | None, is_s
     """
     normalized_type = getattr(user_type, "value", user_type)
     if str(normalized_type).upper() != "HUMAN":
+        return False
+    if (username or "").strip().lower().startswith(SEAT_USERNAME_PREFIX):
+        # Roundtable seats (guest humans / outside agents) are never operators.
         return False
     if is_superuser:
         return True

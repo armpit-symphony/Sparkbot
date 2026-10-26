@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 from app.api.deps import get_db
-from app.core.security import decode_token
+from app.core.security import decode_token, is_seat_token_payload
 from app.crud import (
     add_chat_room_member,
     create_chat_message,
@@ -310,6 +310,8 @@ async def get_current_chat_user_from_token(
     try:
         payload = decode_token(token)
         if payload is None:
+            return None
+        if is_seat_token_payload(payload):
             return None
         
         user_id = payload.get("sub")
