@@ -37,7 +37,7 @@ import time
 import uuid
 from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -238,6 +238,60 @@ def _message_out(session, message: ChatMessage, cache: dict) -> SeatMessage:
     )
 
 
+def _parse_reply_to(
+    session, room_id: uuid.UUID, reply_to_id: str | None
+) -> uuid.UUID | None:
+    if not reply_to_id:
+        return None
+    try:
+        parent = session.get(ChatMessage, uuid.UUID(reply_to_id))
+    except ValueError:
+        parent = None
+    if not parent or parent.room_id != room_id:
+        raise HTTPException(
+            status_code=400, detail="reply_to_id is not a message in this room"
+        )
+    return parent.id
+
+
+async def _store_and_broadcast(
+    session,
+    room_id: uuid.UUID,
+    sender: ChatUser,
+    content: str,
+    reply_to: uuid.UUID | None,
+    meta: dict[str, Any],
+) -> SeatMessage:
+    """Save a message and push it to the room's websocket listeners. Never calls a model."""
+    message = create_chat_message(
+        session=session,
+        room_id=room_id,
+        sender_id=sender.id,
+        content=content,
+        sender_type=sender.type.value,
+        reply_to_id=reply_to,
+        meta_json=meta,
+    )
+    out = _message_out(session, message, {sender.id: sender})
+    try:
+        from app.api.routes.chat.websocket import ws_manager
+
+        await ws_manager.broadcast(
+            str(room_id),
+            {
+                "type": "message",
+                "message": {
+                    **out.model_dump(mode="json"),
+                    "sender_username": sender.username,
+                    "sender_display_name": sender.bot_display_name,
+                },
+            },
+        )
+    except Exception:
+        pass
+    return out
+
+
 # ── Seat authentication ───────────────────────────────────────────────────────
 
 _seat_bearer = OAuth2PasswordBearer(
@@ -303,7 +357,7 @@ def create_seat(
     session: SessionDep,
     current_user: CurrentChatUser,
 ):
-    _require_manager(session, room_id, current_user)
+    room = _require_manager(session, room_id, current_user)
     slug = body.slug.strip().lower()
     if not _SLUG_RE.match(slug):
         raise HTTPException(
@@ -338,6 +392,13 @@ def create_seat(
     session.refresh(user)
     role = RoomRole.BOT if body.kind == "agent" else RoomRole.MEMBER
     add_chat_room_member(session, room_id, user.id, role=role.value)
+    if not room.meeting_mode_enabled:
+        # A room with outside participants is a Roundtable meeting: this makes it
+        # show in the meetings list and applies the room's bot rate cap to agents.
+        room.meeting_mode_enabled = True
+        room.updated_at = datetime.now(timezone.utc)
+        session.add(room)
+        session.commit()
     _audit(
         session,
         "create",
@@ -579,44 +640,77 @@ async def seat_post_message(
             status_code=429, detail=f"Seat rate limit: {limit} messages per minute"
         )
 
-    reply_to: uuid.UUID | None = None
-    if body.reply_to_id:
-        try:
-            parent = session.get(ChatMessage, uuid.UUID(body.reply_to_id))
-        except ValueError:
-            parent = None
-        if not parent or parent.room_id != room.id:
-            raise HTTPException(
-                status_code=400, detail="reply_to_id is not a message in this room"
-            )
-        reply_to = parent.id
-
-    message = create_chat_message(
-        session=session,
-        room_id=room.id,
-        sender_id=seat.id,
-        content=content,
-        sender_type=seat.type.value,
-        reply_to_id=reply_to,
-        meta_json={"via": "roundtable_seat", "seat_slug": seat.bot_slug},
+    reply_to = _parse_reply_to(session, room.id, body.reply_to_id)
+    out = await _store_and_broadcast(
+        session,
+        room.id,
+        seat,
+        content,
+        reply_to,
+        {"via": "roundtable_seat", "seat_slug": seat.bot_slug},
     )
     window.append(now)
-    out = _message_out(session, message, {seat.id: seat})
-
-    try:
-        from app.api.routes.chat.websocket import ws_manager
-
-        await ws_manager.broadcast(
-            str(room.id),
-            {
-                "type": "message",
-                "message": {
-                    **out.model_dump(mode="json"),
-                    "sender_username": seat.username,
-                    "sender_display_name": seat.bot_display_name,
-                },
-            },
-        )
-    except Exception:
-        pass
     return out
+
+
+# ── Room members: talk in a Roundtable without starting a model turn ─────────
+
+
+@router.post(
+    "/rooms/{room_id}/roundtable/messages", response_model=SeatMessage, status_code=201
+)
+async def post_roundtable_message(
+    room_id: uuid.UUID,
+    body: SeatPostRequest,
+    session: SessionDep,
+    current_user: CurrentChatUser,
+) -> SeatMessage:
+    """Post as a signed-in room member. Unlike /messages and /messages/stream this
+    never calls a Sparkbot model, so it works with no provider keys configured;
+    the room's seated agents and guests answer instead."""
+    room = get_chat_room_by_id(session, room_id)
+    membership = (
+        get_chat_room_member(session, room_id, current_user.id) if room else None
+    )
+    if not room or not membership:
+        raise HTTPException(status_code=404, detail="Room not found")
+    if membership.role == RoomRole.VIEWER:
+        raise HTTPException(status_code=403, detail="VIEWERs cannot send messages")
+    content = body.content.strip()
+    if not content:
+        raise HTTPException(status_code=422, detail="Message is empty")
+    reply_to = _parse_reply_to(session, room.id, body.reply_to_id)
+    return await _store_and_broadcast(
+        session, room.id, current_user, content, reply_to, {"via": "roundtable_room"}
+    )
+
+
+# ── Connector download (so an invited agent can fetch the client) ────────────
+
+
+def _connector_path():
+    from pathlib import Path
+
+    candidates = [os.getenv("SPARKBOT_ROUNDTABLE_CONNECTOR", "")]
+    here = Path(__file__).resolve()
+    if len(here.parents) > 5:
+        candidates.append(str(here.parents[5] / "sparkbot-roundtable.py"))
+    for candidate in candidates:
+        if candidate and Path(candidate).is_file():
+            return Path(candidate)
+    return None
+
+
+@router.get("/seats/connector.py", include_in_schema=False)
+def download_connector():
+    """The open-source Roundtable connector (stdlib-only Python). Public: it holds no secrets."""
+    from fastapi.responses import FileResponse
+
+    path = _connector_path()
+    if path is None:
+        raise HTTPException(
+            status_code=404, detail="Connector not bundled with this install"
+        )
+    return FileResponse(
+        path, media_type="text/x-python", filename="sparkbot-roundtable.py"
+    )

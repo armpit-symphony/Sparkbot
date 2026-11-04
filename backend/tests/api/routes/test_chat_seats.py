@@ -369,3 +369,83 @@ def test_rotate_and_revoke(client: TestClient) -> None:
         == 401
     )
     _reset_limits()
+
+
+def test_adding_a_seat_turns_on_meeting_mode(client: TestClient) -> None:
+    _reset_limits()
+    owner = _human("owner")
+    room = _room(owner)
+    with Session(engine) as db:
+        assert db.get(ChatRoom, room).meeting_mode_enabled is False
+    _create_seat(client, room, owner)
+    with Session(engine) as db:
+        assert db.get(ChatRoom, room).meeting_mode_enabled is True
+
+
+def test_member_post_never_calls_a_model(client: TestClient, monkeypatch) -> None:
+    import litellm
+
+    def _boom(*_args, **_kwargs):
+        raise AssertionError("roundtable post must not call a model")
+
+    monkeypatch.setattr(litellm, "completion", _boom)
+    monkeypatch.setattr(litellm, "acompletion", _boom)
+    _reset_limits()
+    owner, outsider, viewer = _human("owner"), _human("outsider"), _human("viewer")
+    room = _room(owner)
+    with Session(engine) as db:
+        db.add(ChatRoomMember(room_id=room, user_id=viewer, role=RoomRole.VIEWER))
+        db.commit()
+    seat = _create_seat(client, room, owner, name="Atlas")
+    tok = _seat_token(client, seat["key"])
+    agent_msg = client.post(
+        f"{API}/chat/seats/rooms/{room}/messages",
+        json={"content": "Atlas: hello"},
+        headers=_headers(tok),
+    ).json()
+
+    url = f"{API}/chat/rooms/{room}/roundtable/messages"
+    r = client.post(
+        url,
+        json={"content": "Phil: hi Atlas", "reply_to_id": agent_msg["id"]},
+        headers=_user_headers(owner),
+    )
+    assert r.status_code == 201, r.text
+    assert (
+        r.json()["sender_type"] == "HUMAN"
+        and r.json()["reply_to_id"] == agent_msg["id"]
+    )
+
+    seen = client.get(
+        f"{API}/chat/seats/rooms/{room}/messages", headers=_headers(tok)
+    ).json()
+    assert [m["content"] for m in seen] == ["Atlas: hello", "Phil: hi Atlas"]
+
+    assert (
+        client.post(
+            url, json={"content": "x"}, headers=_user_headers(outsider)
+        ).status_code
+        == 404
+    )
+    assert (
+        client.post(
+            url, json={"content": "x"}, headers=_user_headers(viewer)
+        ).status_code
+        == 403
+    )
+    assert (
+        client.post(url, json={"content": "x"}, headers=_headers(tok)).status_code
+        == 403
+    )
+    assert (
+        client.post(
+            url, json={"content": "   "}, headers=_user_headers(owner)
+        ).status_code
+        == 422
+    )
+
+
+def test_connector_is_downloadable_without_login(client: TestClient) -> None:
+    r = client.get(f"{API}/chat/seats/connector.py")
+    assert r.status_code == 200
+    assert "Sparkbot Roundtable connector" in r.text and "def main(" in r.text
