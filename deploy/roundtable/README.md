@@ -17,7 +17,23 @@ the API stays at `/api/v1/` on that origin. The homepage stays unchanged.
 `/etc/nginx/snippets/roundtable-atlas.conf`, included by the existing HTTPS site.
 The pre-change site backup is outside nginx's include directories at
 `/etc/nginx/rt005-backups/sparkpitlabs.com.before-roundtable.conf`.
-Browser interaction remains a separate acceptance check.
+Browser acceptance passed on 2026-11-04: owner login, existing Atlas message,
+People & agents panel, Person invite, guest posting, live refresh, model-free
+owner reply, and guest revocation. `browser-smoke.cjs` repeats this with the
+host's installed Playwright and an in-memory `RT_OWNER_PASSPHRASE`; it creates
+and removes a disposable room and never saves keys, cookies, or traces.
+
+RT-008 rollback evidence: `/home/sparky/rt008-backup-20261104` holds a private
+database dump (restored successfully into a scratch database), app data/uploads,
+and original deployment configuration. Prior backend/frontend images are tagged
+`pre-rt008-20261104`. To roll back code without touching volumes, use:
+
+```sh
+RT_IMAGE_TAG=pre-rt008-20261104 docker compose --env-file deploy/roundtable/.env -f deploy/roundtable/compose.yml up -d --no-deps backend frontend
+```
+
+The RT-008 upgrade adds no schema migration. Restore data only after separately
+reviewing any writes made since backup; code rollback alone preserves messages.
 
 ## Configuration
 
