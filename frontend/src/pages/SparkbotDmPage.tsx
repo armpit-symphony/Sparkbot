@@ -1009,7 +1009,7 @@ function SparkbotSettingsDialog({
   const showAdvancedControls = true
   const showOperationalControlsInControls = false
   const openCommandCenter = () => {
-    window.location.href = "/spine"
+    window.location.href = `${import.meta.env.BASE_URL}spine`
   }
   const [currentPinDraft, setCurrentPinDraft] = useState("")
   const [pinDraft, setPinDraft] = useState("")
@@ -3213,7 +3213,7 @@ function SparkbotDmPage({ controlsSurface = false }: SparkbotDmPageProps = {}) {
     async function init() {
       if (!sessionStorage.getItem("chat_auth") && !localStorage.getItem("access_token")) {
         sessionStorage.removeItem("chat_token")
-        window.location.href = "/login"; return
+        window.location.href = `${import.meta.env.BASE_URL}login`; return
       }
       try {
         const res = await apiFetch("/api/v1/chat/users/bootstrap", { method: "POST", credentials: "include" })
@@ -3221,7 +3221,7 @@ function SparkbotDmPage({ controlsSurface = false }: SparkbotDmPageProps = {}) {
           // Clear the stale session so /login doesn't immediately bounce back here
           sessionStorage.removeItem("chat_auth")
           sessionStorage.removeItem("chat_token")
-          window.location.href = "/login"; return
+          window.location.href = `${import.meta.env.BASE_URL}login`; return
         }
         const boot = await res.json()
         setRoomId(boot.room_id)
@@ -5129,7 +5129,7 @@ function SparkbotDmPage({ controlsSurface = false }: SparkbotDmPageProps = {}) {
             <button onClick={() => {
               localStorage.removeItem("access_token")
               sessionStorage.removeItem("chat_auth")
-              apiFetch("/api/v1/chat/users/session", { method: "DELETE", credentials: "include" }).finally(() => { window.location.href = "/login" })
+              apiFetch("/api/v1/chat/users/session", { method: "DELETE", credentials: "include" }).finally(() => { window.location.href = `${import.meta.env.BASE_URL}login` })
             }} className="rounded-full border border-[rgba(99,102,241,0.14)] bg-[rgba(7,13,28,0.76)] px-3 py-2 text-xs font-medium tracking-[0.08em] text-slate-300 transition-all hover:border-[rgba(129,140,248,0.24)] hover:bg-[rgba(79,70,229,0.08)] hover:text-slate-50">
               Logout
             </button>

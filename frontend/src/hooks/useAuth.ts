@@ -13,6 +13,7 @@ import {
   resolveChatEntryTarget,
 } from "@/lib/sparkbotControls"
 import { apiFetch } from "@/lib/apiBase"
+import { appPath } from "@/lib/appPath"
 import { handleError } from "@/utils"
 import useCustomToast from "./useCustomToast"
 
@@ -91,7 +92,7 @@ const useAuth = () => {
     sessionStorage.setItem("chat_auth", "1")
 
     const target = await resolveChatEntryTarget()
-    window.location.replace(buildChatEntryHref(target))
+    window.location.replace(appPath(buildChatEntryHref(target)))
   }
 
   const chatLoginMutation = useMutation({
