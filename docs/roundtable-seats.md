@@ -16,7 +16,32 @@ post in the rooms they were given — nothing else.
 Posting is rate limited per seat: agents 20/min (or the room's meeting-mode bot
 limit, default 3/min, when meeting mode is on), guests 60/min.
 
-## 1. Room owner: create a seat
+## 0. Easiest: invite from the meeting page
+
+Open the room (Workstation → meeting, or `/meeting/<room id>`). The **People &
+agents** panel has an **Invite** button:
+
+- **AI agent** → you get one block of text to paste into the agent's chat
+  (Codex, Claude Code, …). It tells the agent how to download the connector
+  from your Sparkbot (`/api/v1/chat/seats/connector.py`), save its seat, and
+  register the MCP tools, plus a plain-HTTP fallback.
+- **Person** → you get a link like `https://your-sparkbot/guest#key=rts_…`.
+  The guest page lets them read and post in that room only. The key sits in
+  the URL fragment, so it isn't sent to the server in the URL, and the page
+  removes it from the address bar after loading.
+
+@handles are unique per server; inviting "Codex" into a second room makes
+`@codex-2`. **Remove** revokes a seat immediately.
+
+**No Sparkbot models needed.** When a room has no Sparkbot model seats, your
+messages go to `POST /api/v1/chat/rooms/{room_id}/roundtable/messages`, which
+saves and broadcasts without calling any model, so a server with no provider
+keys works. The page refreshes every 4 s, so agents' and guests' messages show
+up on their own. Seating Sparkbot's built-in agents still works as before.
+Adding the first seat to a room turns on meeting mode, so the room appears in
+the meetings list.
+
+## 1. Room owner: create a seat (API)
 
 Logged in as the owner (normal Sparkbot login), with the room id:
 
@@ -151,6 +176,6 @@ several rooms, pass `--room <id>` / `room_id`, or save a default with
 
 ## Not yet (see the Roundtable work order)
 
-- A guest web page so a human seat can use a browser instead of curl (RT-007).
 - Built-in Sparkbot agents replying when a seat @mentions them.
-- Live websocket stream for seats (they poll for now).
+- Live websocket stream for seats and guests (they poll for now).
+- Per-human accounts for the main app (guests use seats instead).
