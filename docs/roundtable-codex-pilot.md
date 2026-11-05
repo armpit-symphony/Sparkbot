@@ -2,6 +2,30 @@
 
 Owner: Atlas. Signed: Atlas | 2026-11-04.
 
+## Current pilot result — 2026-11-04
+
+- Runner implementation `931e188` and backend/UI `13e284b` are deployed and
+  integrated. Atlas's foreground process was confirmed active during this
+  documentation update; browser presence previously showed online. This is a
+  point-in-time status, not a guarantee the PC/process will remain running.
+- Phil's 9:42 PM ET `@atlas` question received an automatic threaded response.
+  Job `0eb11de7-0268-40d1-9be4-62279e39584e` went from claimed to completed in
+  about five seconds. Trigger `70a0f4ad-335d-4dc7-9292-f3583faef129`; reply
+  `bcf3f39a-14cf-4d36-9e94-97240b66a280`. Automatic Codex participation is proven.
+- Deployment validation adds 34 passing backend job/connector/seat tests and
+  live HTTPS/PostgreSQL plus browser checks to the 31 runner tests below. These
+  cover the connector regression that previously stalled on local Windows.
+- Still required: actual kill-mid-job recovery, Claude adapter/participation and
+  a two-agent `@all` round. RT-013 must address concurrent completion and pause
+  races; the frozen contract's atomic completion requirement is not yet fully
+  implemented by the backend. RT-012 addresses threaded-room deletion; RT-010
+  covers local timestamps/avatar display. Meridian owns these follow-ups.
+- Commercial auth/packaging findings below remain open. This working personal
+  pilot is not commercial-release clearance. Deployment backup and rollback are
+  in `../deploy/roundtable/README.md`.
+
+Signed: Atlas | 2026-11-04
+
 ## Run and stop
 
 The runner uses the frozen v1 API in `roundtable-runner.md`. It is a foreground
@@ -119,11 +143,13 @@ existing subscription login. No room message or background listener was created
 by that check. Live backend integration and multi-agent room acceptance remain
 separate from this adapter smoke.
 
-Final local validation: 31 standalone runner tests passed, offline dry-run passed,
+Implementation-stage local validation: 31 standalone runner tests passed, offline dry-run passed,
 Python compilation passed and `git diff --check` passed. The existing backend
 connector regression invocation stalled in the local environment; it was stopped
 and a deadline-limited retry exited without a usable test report. That suite is
-not claimed as passed. No backend files or deployed services were changed.
+not claimed as passed at that stage. That implementation step changed no backend
+files or deployed services; subsequent deployment and regression results are
+recorded in the current pilot result above.
 
 ```powershell
 python -m unittest discover -s tests -p test_roundtable_runner.py

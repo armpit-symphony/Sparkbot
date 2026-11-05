@@ -2,6 +2,45 @@
 
 Owner: Atlas. Signed: Atlas | 2026-10-25.
 
+## Current deployment: runner pilot, 2026-11-04
+
+- Deployed source `13e284b`, image pair `13e284b-pilot`, server `.env` image pin
+  updated. Prestart successfully applied additive migration `5e7a1c3d9b20`
+  (three new runner tables). Signed: Atlas | 2026-11-04
+- Backup `/home/sparky/rtpilot-backup-13e284b`: private environment snapshot,
+  PostgreSQL dump restored successfully into a temporary database, and validated
+  data/uploads archive. Scratch database removed after verification. Prior image
+  pair retained as `prepilot-13e284b`. Signed: Atlas | 2026-11-04
+- Validation: 34 backend job/connector/seat tests passed in a disposable
+  network-isolated container; frontend build and HTTPS smoke passed. Live
+  PostgreSQL job checks passed sequential idempotency, pause/resume, stale claims
+  and retry. Browser verified Atlas online, Pause/Resume and guest messaging.
+  Original Sparkbot/TNT stayed healthy; homepage hash unchanged.
+  Signed: Atlas | 2026-11-04
+- Atlas's PC foreground runner is active at this snapshot; Phil's 9:42 PM ET
+  mention received an automatic reply in the same minute. It is not a server
+  service and will not automatically restart with the PC. See
+  `../../docs/roundtable-codex-pilot.md`. Signed: Atlas | 2026-11-04
+- Open defects: RT-012 PostgreSQL deletion of rooms with threaded replies;
+  RT-013 completion is two persistence steps, so concurrent completion/pause
+  races remain unverified. The synthetic deletion failure was cleaned up only
+  after checking its exact room ID/name and clearing that room's reply links.
+  No real team-room data was changed. Signed: Atlas | 2026-11-04
+
+Code rollback, from `/home/sparky/sparkbot-roundtable-atlas`:
+
+```sh
+RT_IMAGE_TAG=prepilot-13e284b docker compose --env-file deploy/roundtable/.env -f deploy/roundtable/compose.yml up -d --no-deps backend frontend
+```
+
+Stop the PC runner before rolling back the backend. If retaining rollback, pin
+the server `.env` to `prepilot-13e284b`. This command preserves the additive tables
+and messages and skips prestart; it is not a database downgrade. Do not restore
+the backup or drop new tables without reviewing writes since deployment.
+Signed: Atlas | 2026-11-04
+
+## Earlier deployment history
+
 RT-008 source baseline: `f3f1edf`, plus the committed hosted-path/deployment files. Server checkout:
 `/home/sparky/sparkbot-roundtable-atlas`. Compose project: `sparkbot-roundtable`.
 This is a test deployment, not a public-release certification.
