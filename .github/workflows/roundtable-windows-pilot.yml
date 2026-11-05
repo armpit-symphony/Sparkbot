@@ -1,0 +1,48 @@
+name: Roundtable Windows Pilot
+on:
+  push:
+    branches: [roundtable/windows-pilot]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: astral-sh/setup-uv@v5
+      - uses: oven-sh/setup-bun@v2
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - name: Install locked dependencies
+        run: |
+          uv sync --frozen --package app
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          bun install --frozen-lockfile
+      - name: Runner unit tests
+        run: python -m unittest discover -s tests -p test_roundtable_runner.py
+      - name: Build backend
+        run: |
+          uv run --frozen --package app python -m PyInstaller --distpath src-tauri/binaries --noconfirm sparkbot-backend.spec
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Move-Item src-tauri/binaries/sparkbot-backend.exe src-tauri/binaries/sparkbot-backend-x86_64-pc-windows-msvc.exe
+      - name: Build unsigned NSIS installer
+        run: bunx --yes @tauri-apps/cli@2.10.0 build --config src-tauri/tauri.conf.json --bundles nsis
+      - name: Checksum and provenance
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem src-tauri/target/release/bundle/nsis/*.exe
+          if (!$files) { throw 'No installer produced' }
+          $files | ForEach-Object { $h = Get-FileHash $_.FullName -Algorithm SHA256; "$($h.Hash)  $($_.Name)" } | Set-Content src-tauri/target/release/bundle/nsis/SHA256SUMS.txt
+          "Source: $env:GITHUB_SHA`nUnsigned pilot; installation acceptance pending." | Set-Content src-tauri/target/release/bundle/nsis/BUILD-NOTES.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: roundtable-windows-pilot-unsigned
+          path: src-tauri/target/release/bundle/nsis/
+          if-no-files-found: error
+          retention-days: 14

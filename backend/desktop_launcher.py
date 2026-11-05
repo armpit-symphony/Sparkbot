@@ -158,6 +158,7 @@ os.environ.setdefault("FRONTEND_HOST", "http://127.0.0.1:5173")
 # When running as a PyInstaller frozen bundle, ensure the bundle dir is on sys.path
 if getattr(sys, "frozen", False):
     bundle_dir = sys._MEIPASS  # noqa: SLF001
+    os.environ.setdefault("SPARKBOT_ROUNDTABLE_CONNECTOR", str(Path(bundle_dir) / "sparkbot-roundtable.py"))
     sys.path.insert(0, bundle_dir)
     # Fix SSL certificate verification inside the frozen bundle.
     # httpx (used by litellm) cannot find the system CA bundle when running from

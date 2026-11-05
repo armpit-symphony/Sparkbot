@@ -49,6 +49,7 @@ a = Analysis(
     pathex=[str(BACKEND_DIR)],
     binaries=[] + _litellm_binaries + _certifi_binaries + _tiktoken_binaries + _playwright_binaries + _winpty_binaries + _psutil_binaries,
     datas=[
+        (str(REPO_ROOT / "sparkbot-roundtable.py"), "."),
         # Email templates shipped with the bundle
         (str(BACKEND_DIR / "app" / "email-templates"), "app/email-templates"),
         # Skill plugins — loaded dynamically at runtime, must be bundled explicitly
