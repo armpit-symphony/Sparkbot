@@ -65,6 +65,7 @@ from app.crud import (
     get_chat_user_by_id,
 )
 from app.models import ChatMessage, ChatRoomMember, ChatUser, RoomRole, UserType
+from app.services import roundtable_jobs
 
 router = APIRouter(tags=["roundtable-seats"])
 
@@ -116,6 +117,11 @@ class SeatResponse(BaseModel):
     active: bool
     role: str | None = None
     created_at: datetime
+    # Runner pilot: online / working / offline for agent seats.
+    presence: str | None = None
+    working_note: str | None = None
+    pending_jobs: int = 0
+    last_seen_at: datetime | None = None
 
 
 class SeatCreatedResponse(SeatResponse):
@@ -273,6 +279,11 @@ async def _store_and_broadcast(
         meta_json=meta,
     )
     out = _message_out(session, message, {sender.id: sender})
+    if sender.type == UserType.HUMAN:
+        try:
+            roundtable_jobs.handle_human_message(session, message, sender)
+        except Exception:  # never lose the message because job bookkeeping failed
+            session.rollback()
     try:
         from app.api.routes.chat.websocket import ws_manager
 
@@ -422,7 +433,18 @@ def list_seats(room_id: uuid.UUID, session: SessionDep, current_user: CurrentCha
         )
         .order_by(col(ChatRoomMember.joined_at))
     ).all()
-    return [_seat_response(user, member.role) for member, user in rows]
+    seats = [_seat_response(user, member.role) for member, user in rows]
+    status = roundtable_jobs.seat_presence(
+        session, room_id, [user.id for _, user in rows]
+    )
+    for seat in seats:
+        info = status.get(uuid.UUID(seat.id), {})
+        if seat.kind == "agent":
+            seat.presence = info.get("presence")
+            seat.working_note = info.get("working_note")
+            seat.pending_jobs = info.get("pending_jobs", 0)
+            seat.last_seen_at = info.get("last_seen_at")
+    return seats
 
 
 def _get_room_seat(
@@ -714,3 +736,205 @@ def download_connector():
     return FileResponse(
         path, media_type="text/x-python", filename="sparkbot-roundtable.py"
     )
+
+
+# ── Runner pilot: jobs for agent seats (docs/roundtable-runner.md v1) ─────────
+
+
+class JobClaimBody(BaseModel):
+    claim_token: str = Field(min_length=8, max_length=200)
+
+
+class JobHeartbeatBody(JobClaimBody):
+    note: str | None = Field(default=None, max_length=200)
+
+
+class JobCompleteBody(JobClaimBody):
+    content: str = Field(min_length=1, max_length=roundtable_jobs.MAX_REPLY_CHARS)
+
+
+class JobFailBody(JobClaimBody):
+    error: str = Field(default="", max_length=500)
+    retry: bool = False
+
+
+def _job_out(job) -> dict[str, Any]:
+    return {
+        "id": str(job.id),
+        "room_id": str(job.room_id),
+        "status": job.status,
+        "attempt": job.attempts,
+        "reply_message_id": str(job.reply_message_id) if job.reply_message_id else None,
+        "lease_expires_at": roundtable_jobs.aware(job.lease_expires_at),
+    }
+
+
+def _conflict(err: roundtable_jobs.JobConflict):
+    from fastapi.responses import JSONResponse
+
+    return JSONResponse(
+        status_code=409, content={"detail": err.detail, "status": err.status}
+    )
+
+
+def _parse_job_id(job_id: str) -> uuid.UUID:
+    try:
+        return uuid.UUID(job_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="No such job")
+
+
+@router.get("/seats/jobs/next")
+async def runner_next_job(session: SessionDep, seat: CurrentSeat, wait: int = 25):
+    """Long-poll for this seat's next job. 204 = nothing yet; 200 = claimed job."""
+    import asyncio
+
+    from fastapi import Response
+
+    if seat.type != UserType.BOT:
+        raise HTTPException(status_code=403, detail="Only agent seats run jobs")
+    wait = max(0, min(wait, 30))
+    deadline = time.monotonic() + wait
+    roundtable_jobs.touch_presence(session, seat.id)
+    while True:
+        claimed = roundtable_jobs.claim_next(session, seat)
+        if claimed:
+            break
+        if time.monotonic() >= deadline:
+            roundtable_jobs.touch_presence(session, seat.id)
+            return Response(status_code=204)
+        await asyncio.sleep(1.0)
+    job, token = claimed
+    room = get_chat_room_by_id(session, job.room_id)
+    trigger = session.get(ChatMessage, job.trigger_message_id)
+    if room is None or trigger is None:  # deleted under us; the job can't be answered
+        roundtable_jobs.fail(
+            session, seat, job.id, token, "room or message deleted", retry=False
+        )
+        return Response(status_code=204)
+    cache: dict = {}
+    context = []
+    for message in roundtable_jobs.context_messages(session, job.room_id, trigger):
+        item = _message_out(session, message, cache).model_dump(mode="json")
+        item["content"] = item["content"][: roundtable_jobs.CONTEXT_MESSAGE_CHARS]
+        keep = (
+            "id",
+            "sender_name",
+            "sender_slug",
+            "sender_type",
+            "content",
+            "created_at",
+            "reply_to_id",
+        )
+        context.append({k: item[k] for k in keep})
+    trigger_out = next((m for m in context if m["id"] == str(trigger.id)), None)
+    return {
+        "job": {
+            **_job_out(job),
+            "claim_token": token,
+            "room": {"id": str(room.id), "name": room.name},
+            "trigger": trigger_out,
+            "context": context,
+            "limits": {
+                "max_reply_chars": roundtable_jobs.MAX_REPLY_CHARS,
+                "lease_seconds": roundtable_jobs.LEASE_SECONDS,
+                "context_messages": roundtable_jobs.CONTEXT_MESSAGES,
+                "context_message_chars": roundtable_jobs.CONTEXT_MESSAGE_CHARS,
+            },
+        }
+    }
+
+
+@router.post("/seats/jobs/{job_id}/heartbeat")
+def runner_heartbeat(
+    job_id: str, body: JobHeartbeatBody, session: SessionDep, seat: CurrentSeat
+):
+    roundtable_jobs.touch_presence(session, seat.id)
+    try:
+        job = roundtable_jobs.heartbeat(
+            session, seat, _parse_job_id(job_id), body.claim_token, body.note
+        )
+    except roundtable_jobs.JobConflict as err:
+        return _conflict(err)
+    return {"job": _job_out(job)}
+
+
+@router.post("/seats/jobs/{job_id}/complete")
+async def runner_complete(
+    job_id: str, body: JobCompleteBody, session: SessionDep, seat: CurrentSeat
+):
+    """Atomic + idempotent: one reply per job; repeating the call returns the same reply."""
+    roundtable_jobs.touch_presence(session, seat.id)
+    try:
+        job, existing = roundtable_jobs.begin_complete(
+            session, seat, _parse_job_id(job_id), body.claim_token
+        )
+    except roundtable_jobs.JobConflict as err:
+        return _conflict(err)
+    if existing is not None:
+        return {
+            "job": _job_out(job),
+            "message": _message_out(session, existing, {seat.id: seat}),
+        }
+    content = body.content.strip()
+    if not content:
+        raise HTTPException(status_code=422, detail="Reply is empty")
+    out = await _store_and_broadcast(
+        session,
+        job.room_id,
+        seat,
+        content,
+        job.trigger_message_id,
+        {"via": "roundtable_runner", "job_id": str(job.id), "seat_slug": seat.bot_slug},
+    )
+    job = roundtable_jobs.mark_done(session, job, uuid.UUID(out.id))
+    return {"job": _job_out(job), "message": out}
+
+
+@router.post("/seats/jobs/{job_id}/fail")
+def runner_fail(job_id: str, body: JobFailBody, session: SessionDep, seat: CurrentSeat):
+    roundtable_jobs.touch_presence(session, seat.id)
+    try:
+        job = roundtable_jobs.fail(
+            session,
+            seat,
+            _parse_job_id(job_id),
+            body.claim_token,
+            body.error,
+            body.retry,
+        )
+    except roundtable_jobs.JobConflict as err:
+        return _conflict(err)
+    return {"job": _job_out(job)}
+
+
+class RoomPauseBody(BaseModel):
+    paused: bool
+
+
+@router.get("/rooms/{room_id}/roundtable/state")
+def roundtable_state(
+    room_id: uuid.UUID, session: SessionDep, current_user: CurrentChatUser
+):
+    if not get_chat_room_member(session, room_id, current_user.id):
+        raise HTTPException(status_code=404, detail="Room not found")
+    return {"paused": roundtable_jobs.is_paused(session, room_id)}
+
+
+@router.post("/rooms/{room_id}/roundtable/pause")
+def roundtable_pause(
+    room_id: uuid.UUID,
+    body: RoomPauseBody,
+    session: SessionDep,
+    current_user: CurrentChatUser,
+):
+    """Same effect as posting /pause or /resume in the room."""
+    membership = get_chat_room_member(session, room_id, current_user.id)
+    if not membership:
+        raise HTTPException(status_code=404, detail="Room not found")
+    if membership.role == RoomRole.VIEWER:
+        raise HTTPException(status_code=403, detail="VIEWERs cannot pause the room")
+    cancelled = roundtable_jobs.set_paused(
+        session, room_id, body.paused, current_user.id
+    )
+    return {"paused": body.paused, "cancelled_jobs": cancelled}

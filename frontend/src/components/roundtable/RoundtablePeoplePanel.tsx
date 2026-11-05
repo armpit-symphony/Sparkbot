@@ -1,4 +1,13 @@
-import { Bot, Check, Copy, Loader2, UserPlus, X } from "lucide-react"
+import {
+  Bot,
+  Check,
+  Copy,
+  Loader2,
+  Pause,
+  Play,
+  UserPlus,
+  X,
+} from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { apiFetch, getApiBase } from "@/lib/apiBase"
 import {
@@ -16,6 +25,17 @@ interface SeatRow {
   kind: "agent" | "human"
   active: boolean
   role?: string | null
+  // Runner pilot: agent seats only.
+  presence?: "online" | "working" | "offline" | null
+  working_note?: string | null
+  pending_jobs?: number
+}
+
+const PRESENCE_POLL_MS = 5000
+const PRESENCE_STYLE: Record<string, { color: string; text: string }> = {
+  online: { color: "#4ade80", text: "online" },
+  working: { color: "#facc15", text: "working…" },
+  offline: { color: "#64748b", text: "offline" },
 }
 
 interface RoundtablePeoplePanelProps {
@@ -92,6 +112,8 @@ export default function RoundtablePeoplePanel({
   const [invited, setInvited] = useState<InvitedSeat | null>(null)
   const [copied, setCopied] = useState(false)
   const [confirmRevoke, setConfirmRevoke] = useState<string | null>(null)
+  const [paused, setPaused] = useState(false)
+  const [pauseBusy, setPauseBusy] = useState(false)
 
   const reload = useCallback(async () => {
     try {
@@ -103,6 +125,13 @@ export default function RoundtablePeoplePanel({
       setSeats(rows)
       onSeatsLoadedRef.current?.(rows.length)
       setLoadError("")
+      const stateRes = await apiFetch(
+        `/api/v1/chat/rooms/${roomId}/roundtable/state`,
+        {
+          credentials: "include",
+        },
+      )
+      if (stateRes.ok) setPaused(Boolean((await stateRes.json()).paused))
     } catch {
       setLoadError("Couldn't load seats.")
     }
@@ -110,7 +139,32 @@ export default function RoundtablePeoplePanel({
 
   useEffect(() => {
     void reload()
+    // Keep online / working / offline dots and the pause state fresh.
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void reload()
+    }, PRESENCE_POLL_MS)
+    return () => window.clearInterval(timer)
   }, [reload])
+
+  async function togglePause() {
+    if (pauseBusy) return
+    setPauseBusy(true)
+    try {
+      const res = await apiFetch(
+        `/api/v1/chat/rooms/${roomId}/roundtable/pause`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ paused: !paused }),
+        },
+      )
+      if (res.ok) setPaused(Boolean((await res.json()).paused))
+      await reload()
+    } finally {
+      setPauseBusy(false)
+    }
+  }
 
   async function handleInvite(event: React.FormEvent) {
     event.preventDefault()
@@ -198,16 +252,48 @@ export default function RoundtablePeoplePanel({
         }}
       >
         <div style={label}>People &amp; agents</div>
-        {canManage && !formOpen && (
+        <div style={{ display: "flex", gap: 6 }}>
           <button
             type="button"
-            style={smallButton}
-            onClick={() => setFormOpen(true)}
+            style={{ ...smallButton, padding: "7px 8px" }}
+            onClick={() => void togglePause()}
+            disabled={pauseBusy}
+            title={
+              paused
+                ? "Let agents answer @mentions again"
+                : "Stop agents from being woken in this room"
+            }
           >
-            <UserPlus size={13} /> Invite
+            {paused ? <Play size={13} /> : <Pause size={13} />}{" "}
+            {paused ? "Resume" : "Pause"}
           </button>
-        )}
+          {canManage && !formOpen && (
+            <button
+              type="button"
+              style={smallButton}
+              onClick={() => setFormOpen(true)}
+            >
+              <UserPlus size={13} /> Invite
+            </button>
+          )}
+        </div>
       </div>
+
+      {paused && (
+        <div
+          aria-live="polite"
+          style={{
+            fontSize: 11,
+            color: "#fde68a",
+            border: "1px solid rgba(250,204,21,0.3)",
+            backgroundColor: "rgba(161,98,7,0.15)",
+            borderRadius: 8,
+            padding: "7px 9px",
+          }}
+        >
+          Paused: @mentions won't wake agents. Post /resume or press Resume.
+        </div>
+      )}
 
       <p style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.6, margin: 0 }}>
         Bring your own agents (Codex, Claude Code, …) or invite a person. They
@@ -382,6 +468,32 @@ export default function RoundtablePeoplePanel({
               <div style={{ fontSize: 10, color: "#64748b" }}>
                 @{seat.slug} · {seat.kind === "agent" ? "AI agent" : "person"}
               </div>
+              {seat.kind === "agent" && seat.presence && (
+                <div
+                  data-testid={`presence-${seat.slug}`}
+                  title={seat.working_note ?? undefined}
+                  style={{
+                    fontSize: 10,
+                    color: "#94a3b8",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 5,
+                    marginTop: 2,
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 7,
+                      height: 7,
+                      borderRadius: "50%",
+                      backgroundColor:
+                        PRESENCE_STYLE[seat.presence]?.color ?? "#64748b",
+                    }}
+                  />
+                  {PRESENCE_STYLE[seat.presence]?.text ?? seat.presence}
+                  {seat.pending_jobs ? ` · ${seat.pending_jobs} waiting` : ""}
+                </div>
+              )}
             </div>
             {canManage && (
               <button

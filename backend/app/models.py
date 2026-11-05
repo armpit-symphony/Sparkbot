@@ -9,7 +9,7 @@ from enum import Enum as PyEnum
 from typing import Optional
 
 from pydantic import EmailStr
-from sqlalchemy import Column, String, Text, Boolean, Integer, DateTime, ForeignKey, Enum, JSON
+from sqlalchemy import Column, String, Text, Boolean, Integer, DateTime, ForeignKey, Enum, JSON, UniqueConstraint
 from sqlmodel import Field, Relationship, SQLModel
 
 
@@ -427,6 +427,64 @@ class CustomAgent(SQLModel, table=True):
 
 # Re-export chat models for convenience
 ChatUser.update_forward_refs()
+# ── Roundtable runner pilot (docs/roundtable-runner.md) ─────────────────────
+# A human @mention of an agent seat creates a job; a runner where that agent is
+# logged in claims it, runs the agent, and completes it with one reply.
+
+
+class RoundtableJob(SQLModel, table=True):
+    __tablename__ = "roundtable_jobs"
+    __table_args__ = (
+        UniqueConstraint("seat_id", "trigger_message_id", name="uq_roundtable_jobs_seat_trigger"),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    room_id: uuid.UUID = Field(foreign_key="chat_rooms.id", ondelete="CASCADE", index=True)
+    seat_id: uuid.UUID = Field(foreign_key="chat_users.id", ondelete="CASCADE", index=True)
+    trigger_message_id: uuid.UUID = Field(foreign_key="chat_messages.id", ondelete="CASCADE")
+    # pending | claimed | done | failed | cancelled | expired | skipped
+    status: str = Field(default="pending", max_length=20, index=True)
+    reason: str | None = Field(default=None, max_length=200)
+    attempts: int = Field(default=0)
+    claim_token_hash: str | None = Field(default=None, max_length=128)
+    lease_expires_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True), nullable=True))
+    note: str | None = Field(default=None, max_length=200)
+    error: str | None = Field(default=None, max_length=500)
+    reply_message_id: uuid.UUID | None = Field(default=None)
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), nullable=False, index=True),
+    )
+    updated_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+    claimed_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True), nullable=True))
+    finished_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True), nullable=True))
+
+
+class RoundtableRoomState(SQLModel, table=True):
+    __tablename__ = "roundtable_room_state"
+
+    room_id: uuid.UUID = Field(foreign_key="chat_rooms.id", ondelete="CASCADE", primary_key=True)
+    paused: bool = Field(default=False)
+    changed_by: uuid.UUID | None = Field(default=None)
+    updated_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+
+
+class RoundtableSeatPresence(SQLModel, table=True):
+    __tablename__ = "roundtable_seat_presence"
+
+    seat_id: uuid.UUID = Field(foreign_key="chat_users.id", ondelete="CASCADE", primary_key=True)
+    last_seen_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+
+
 ChatRoom.update_forward_refs()
 ChatRoomMember.update_forward_refs()
 ChatMessage.update_forward_refs()
