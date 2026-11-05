@@ -2,6 +2,50 @@
 
 Owner: Atlas. Signed: Atlas | 2026-11-04.
 
+## Run and stop
+
+The runner uses the frozen v1 API in `roundtable-runner.md`. It is a foreground
+command, not an installed service. No automatic startup is configured.
+
+```powershell
+# Offline: fake API and fake model, including the normal completion path.
+python sparkbot-roundtable.py run --profile atlas --agent codex --dry-run
+
+# After the backend is available and Phil starts the pilot:
+python sparkbot-roundtable.py run --profile atlas --agent codex --once
+python sparkbot-roundtable.py run --profile atlas --agent codex
+```
+
+`--once` exits after one poll/job. Ctrl+C stops the foreground runner and requests
+a retry for an interrupted job unless completion might already have committed.
+Room `/pause` is enforced by the backend; the runner stops the child at the next
+heartbeat rejection (up to 60 seconds plus request latency) and checks the claim
+again immediately before completion. It cannot post a cancelled job through an
+independent message endpoint. A process kill relies on server lease expiry.
+
+Defaults: 120-second agent timeout (configurable 1–300 with `--timeout`), 12 runs
+per rolling hour (configurable 1–12 with `--runs-per-hour`), one job at a time.
+The cap counts attempted model launches, including failures. A capped claimed
+job is failed with `local_hourly_cap`; it is not silently queued forever.
+
+State in `~/.sparkbot/roundtable-<profile>-runner.*`: `.lock` prevents competing
+local runners; `.json` persists timestamps so restarts cannot reset the quota;
+`.log` records lifecycle metadata only, rotating at about 1 MB to `.log.1`.
+No prompts, replies, seat credentials or claim tokens are logged. Do not delete
+quota state to bypass limits. Corrupt quota state stops execution for review.
+
+Completion retries reuse identical content and the same claim token. After three
+unacknowledged attempts, the runner stops for reconciliation without failing or
+releasing that job. Inspect its backend status before restarting. Exact-once
+message publication depends on the backend's atomic, idempotent v1 completion;
+model execution itself can repeat after a crashed worker's lease expires.
+
+Adapters implement `run(prompt, checkpoint) -> final_text`; they must call the
+checkpoint during execution and terminate their children if it raises. Add an
+adapter to `RUNNER_ADAPTERS` only with equivalent isolation, timeout and shutdown
+tests. Meridian owns the future Claude adapter. The room model and shared memory
+are unchanged; context comes only from the server job.
+
 ## Existing implementation reviewed
 
 `backend/app/api/routes/chat/llm.py` already invokes `codex exec` using stdin,
@@ -66,5 +110,23 @@ clearance open; it is not a claim that the proposed product is prohibited.
 Offline tests use a fake child process, never a model or live seat. They check
 context bounds, secret exclusion, configuration, Windows native executable
 resolution, final-text extraction, nonzero exits, timeout termination and claim
-cancellation. Real CLI authentication, model execution and live room delivery
-still require the explicitly started pilot acceptance run.
+cancellation. Runner tests also cover idempotent completion retries, ambiguous
+completion, revocation, Ctrl+C, single-runner locking and durable caps.
+
+On 2026-11-04, one bounded foreground smoke against the installed Codex CLI
+0.147.0 returned the expected marker under these isolation flags using the
+existing subscription login. No room message or background listener was created
+by that check. Live backend integration and multi-agent room acceptance remain
+separate from this adapter smoke.
+
+Final local validation: 31 standalone runner tests passed, offline dry-run passed,
+Python compilation passed and `git diff --check` passed. The existing backend
+connector regression invocation stalled in the local environment; it was stopped
+and a deadline-limited retry exited without a usable test report. That suite is
+not claimed as passed. No backend files or deployed services were changed.
+
+```powershell
+python -m unittest discover -s tests -p test_roundtable_runner.py
+python -m py_compile sparkbot-roundtable.py tests/test_roundtable_runner.py
+git diff --check
+```

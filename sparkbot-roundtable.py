@@ -63,6 +63,7 @@ import urllib.request
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 VERSION = "0.1.0"
 DEFAULT_URL = "http://localhost:8000"
@@ -103,11 +104,16 @@ def runner_prompt(job: dict, name: str) -> str:
         return {k: str(m.get(k, ""))[:8000] for k in
                 ("sender_name", "sender_type", "content", "created_at")}
 
+    if len(str(job["trigger"].get("content", ""))) > 8000:
+        raise RoundtableError("Trigger exceeds the pilot input limit")
     data = {"room": str(job["room"]["name"])[:200],
             "trigger": message(job["trigger"]),
             "context": [message(m) for m in job.get("context", [])[-30:]]}
     encoded = json.dumps(data, ensure_ascii=False)
-    # Reject rather than silently omit the trigger or change its meaning.
+    # Drop oldest context when necessary; never truncate the human trigger.
+    while len(encoded.encode("utf-8")) > 64000 and data["context"]:
+        data["context"].pop(0)
+        encoded = json.dumps(data, ensure_ascii=False)
     if len(encoded.encode("utf-8")) > 64000:
         raise RoundtableError("Room context exceeds the pilot input limit")
     return PILOT_RULES + "\nYour display name: " + name[:100] + "\nROOM DATA:\n" + encoded
@@ -147,7 +153,9 @@ def codex_command(executable: str, workdir: str, output: str) -> list[str]:
     for feature in ("shell_tool", "unified_exec", "apps", "plugins", "hooks",
                     "multi_agent", "multi_agent_v2", "browser_use", "computer_use",
                     "image_generation", "view_image", "code_mode", "code_mode_host",
-                    "workspace_dependencies", "memories", "in_app_browser"):
+                    "workspace_dependencies", "memories", "in_app_browser",
+                    "browser_use_external", "browser_use_full_cdp_access",
+                    "remote_plugin", "shell_snapshot", "goals"):
         command += ["--disable", feature]
     return command + ["-"]
 
@@ -281,6 +289,7 @@ class RunnerStore:
 
 def runner_sample_job() -> dict:
     return {"id": "00000000-0000-0000-0000-000000000001",
+            "claim_token": "offline-sample-claim",
             "room": {"id": "00000000-0000-0000-0000-000000000002", "name": "Offline pilot"},
             "trigger": {"id": "00000000-0000-0000-0000-000000000003",
                         "sender_name": "Owner", "sender_type": "HUMAN",
@@ -294,10 +303,173 @@ def runner_dry_run(profile: str | None) -> int:
     name = _profile_name(profile)
     job = runner_sample_job()
     prompt = runner_prompt(job, name)
+    actions = []
+    completion = {}
+
+    def transport(method, url, body, headers):
+        nonlocal completion
+        if url.endswith("/token"):
+            return 200, {"access_token": "offline-sample-token"}
+        if url.endswith("/next?wait=25"):
+            return 200, {"job": job}
+        action = url.rsplit("/", 1)[-1]
+        actions.append(action)
+        if action == "complete":
+            completion = {"content": body["content"]}
+            return 200, {"job": {"status": "done"}, "message": {"id": "offline-reply"}}
+        return 200, {"job": {"status": "claimed"}}
+
+    class SampleAdapter:
+        def run(self, prompt, checkpoint):
+            checkpoint()
+            return "Offline sample reply."
+
+    with tempfile.TemporaryDirectory(prefix="roundtable-dry-") as directory:
+        store = RunnerStore(name)
+        store.base = Path(directory) / "sample-runner"
+        with store:
+            Runner(Client("https://offline.invalid", "offline-key", transport),
+                   SampleAdapter(), store, name).run(once=True)
     _out(json.dumps({"dry_run": True, "agent": "codex", "job_id": job["id"],
-                     "prompt": prompt, "would_complete": {
-                         "content": "Offline sample reply. Signed: " + name},
+                     "prompt": prompt, "simulated_actions": actions,
+                     "would_complete": completion,
                      "network_calls": 0, "model_calls": 0}, ensure_ascii=False, indent=2))
+    return 0
+
+
+class CompletionUncertain(RoundtableError):
+    """Stop rather than release a job whose completion might have committed."""
+
+
+def transient_runner_error(error: Exception) -> bool:
+    return isinstance(error, OSError) or (
+        isinstance(error, RoundtableError) and
+        (error.status is None or error.status == 429 or error.status >= 500))
+
+
+class Runner:
+    def __init__(self, client, adapter, store, name: str,
+                 clock=time.monotonic, sleep=time.sleep):
+        self.client, self.adapter, self.store = client, adapter, store
+        self.name, self.clock, self.sleep = name, clock, sleep
+
+    def fail(self, job: dict, reason: str, retry: bool = False) -> None:
+        try:
+            self.client.job_action(job, "fail", error=reason, retry=retry)
+        except (RoundtableError, OSError):
+            # Never claim delivery of a failed request. Lease expiry is fallback.
+            self.store.audit("fail_unacknowledged", job["id"])
+
+    def process(self, job: dict) -> None:
+        try:
+            UUID(job["id"])
+            if not isinstance(job["claim_token"], str) or not job["claim_token"]:
+                raise ValueError("No claim token")
+            max_chars = min(8000, int(job["limits"]["max_reply_chars"]))
+            if max_chars < 128:
+                raise ValueError("Reply limit too small")
+        except (KeyError, TypeError, ValueError) as e:
+            raise RoundtableError("Malformed job; stopping without agent execution") from e
+        self.store.audit("claimed", job["id"])
+        completing = False
+        try:
+            # A fresh heartbeat confirms this claim before spending a model run.
+            self.client.job_action(job, "heartbeat", note="preflight")
+            prompt = runner_prompt(job, self.name)
+            if not self.store.reserve():
+                self.fail(job, "local_hourly_cap")
+                self.store.audit("local_cap", job["id"])
+                return
+            next_heartbeat = self.clock() + 60
+
+            def checkpoint():
+                nonlocal next_heartbeat
+                if self.clock() >= next_heartbeat:
+                    # Any lost heartbeat stops execution conservatively. No
+                    # disconnected worker may continue into a stale completion.
+                    self.client.job_action(job, "heartbeat", note="working")
+                    next_heartbeat = self.clock() + 60
+
+            self.store.audit("agent_started", job["id"])
+            reply = self.adapter.run(prompt, checkpoint).strip()
+            if not reply:
+                raise RoundtableError("Empty agent reply")
+            signature = "\n\nSigned: " + self.name[:100] + " | " + datetime.now(timezone.utc).date().isoformat()
+            content = reply[:max_chars - len(signature)] + signature
+            self.client.job_action(job, "heartbeat", note="completing")
+            completing = True
+            for attempt in range(3):
+                try:
+                    result = self.client.job_action(job, "complete", content=content)
+                    if not isinstance(result, dict) or not result.get("message"):
+                        raise CompletionUncertain("Completion response invalid; stopped for reconciliation")
+                    self.store.audit("completed", job["id"])
+                    return
+                except (RoundtableError, OSError) as error:
+                    if isinstance(error, CompletionUncertain):
+                        raise
+                    if not transient_runner_error(error):
+                        raise
+                    if attempt == 2:
+                        raise CompletionUncertain("Completion unacknowledged; stopped for reconciliation") from error
+                    self.sleep(2 ** attempt)
+        except KeyboardInterrupt:
+            if not completing:
+                self.fail(job, "runner_interrupted", retry=True)
+            self.store.audit("interrupted", job["id"])
+            raise
+        except CompletionUncertain:
+            self.store.audit("completion_uncertain", job["id"])
+            raise
+        except (RoundtableError, OSError, KeyError, TypeError, ValueError) as error:
+            if isinstance(error, RoundtableError) and error.status in (401, 403, 404):
+                self.store.audit("access_refused", job["id"])
+                raise RoundtableError("Runner access refused; stopped", error.status) from error
+            if isinstance(error, RoundtableError) and error.status == 409:
+                self.store.audit("claim_lost_or_cancelled", job["id"])
+                return
+            self.fail(job, "agent_or_transport_failed")
+            self.store.audit("failed", job["id"])
+
+    def run(self, once: bool = False) -> None:
+        failures = 0
+        self.store.audit("runner_started")
+        try:
+            while True:
+                try:
+                    job = self.client.next_job()
+                    failures = 0
+                except (RoundtableError, OSError) as error:
+                    failures += 1
+                    if not transient_runner_error(error) or failures >= 5:
+                        raise RoundtableError("Job polling failed; runner stopped") from error
+                    self.store.audit("poll_retry")
+                    self.sleep(min(30, 2 ** failures))
+                    continue
+                if job:
+                    self.process(job)
+                if once:
+                    return
+                if not job:
+                    self.sleep(1)  # Also bounds APIs that return 204 immediately.
+        finally:
+            self.store.audit("runner_stopped")
+
+
+def cmd_run(args) -> int:
+    if args.dry_run:
+        return runner_dry_run(args.profile)
+    if not 1 <= args.runs_per_hour <= 12 or not 1 <= args.timeout <= 300:
+        raise RoundtableError("Pilot limits: 1-12 runs/hour and 1-300 seconds/run")
+    profile = _profile_name(args.profile)
+    with RunnerStore(profile, args.runs_per_hour) as store:
+        session = Session(profile)
+        seat = session.client.me()["seat"]
+        if seat.get("kind") != "agent":
+            raise RoundtableError("Only an agent seat may run the pilot")
+        name = str(seat.get("display_name") or profile)[:100]
+        _out(f"Runner active for {name}; Ctrl+C stops participation. Context-only pilot.")
+        Runner(session.client, RUNNER_ADAPTERS[args.agent](args.timeout), store, name).run(args.once)
     return 0
 
 
@@ -330,7 +502,7 @@ def _read_json(path: Path) -> dict:
         return {}
 
 
-def _write_private_json(path: Path, data: dict) -> None:
+def _write_private_json(path: Path, data: dict | list) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
@@ -442,6 +614,17 @@ class Client:
         if reply_to_id:
             body["reply_to_id"] = reply_to_id
         return self._call("POST", f"/seats/rooms/{room_id}/messages", body)
+
+    def next_job(self) -> dict | None:
+        result = self._call("GET", "/seats/jobs/next?wait=25")
+        return result["job"] if result else None
+
+    def job_action(self, job: dict, action: str, **fields) -> dict:
+        if action not in ("heartbeat", "complete", "fail"):
+            raise RoundtableError("Unknown job action")
+        job_id = str(UUID(job["id"]))
+        return self._call("POST", f"/seats/jobs/{job_id}/{action}",
+                          {"claim_token": job["claim_token"], **fields})
 
 
 # ── Session: client + room choice + "what have I seen" ────────────────────────
@@ -920,15 +1103,16 @@ def main(argv: list[str] | None = None) -> int:
     p = add("run", "Run an explicitly started, bounded Roundtable participant")
     p.add_argument("--agent", choices=sorted(RUNNER_ADAPTERS), default="codex")
     p.add_argument("--dry-run", action="store_true", help="Offline sample only: no credentials, network or model")
+    p.add_argument("--once", action="store_true", help="Poll/process at most one job, then exit")
+    p.add_argument("--timeout", type=float, default=120, help="Agent deadline in seconds (max 300)")
+    p.add_argument("--runs-per-hour", type=int, default=12, help="Persistent local hourly cap (max 12)")
     add("logout", "Forget this profile's saved key and state")
     parser.add_argument("--version", action="version", version=VERSION)
     args = parser.parse_args(argv)
 
     try:
         if args.cmd == "run":
-            if args.dry_run:
-                return runner_dry_run(args.profile)
-            raise RoundtableError("Live runner API contract is not frozen yet; use --dry-run")
+            return cmd_run(args)
         if args.cmd == "login":
             return cmd_login(args)
         if args.cmd == "invite":
