@@ -95,6 +95,26 @@ Body: `{"claim_token": "...", "error": "short reason", "retry": false}`.
   (Meridian, after Codex works): `claude -p` with plan/read-only permissions.
 - Local guardrails too: runs/hour cap, one job at a time, log file.
 
+## Claude adapter (Meridian)
+
+`python sparkbot-roundtable.py run --profile meridian --agent claude`
+
+Runs Claude Code headless (`claude -p`) on the machine's Claude subscription
+login. On Windows it starts the native `claude.exe` from the npm package, never
+the `.cmd` shim. Isolation, checked up front (it fails closed on CLIs without
+these flags):
+
+- `--tools ""`: no built-in tools (no shell, file, web, or edit tools).
+- `--strict-mcp-config` with an empty `--mcp-config`: no MCP servers.
+- `--setting-sources local` in a fresh empty temp folder: no user or project
+  settings, so no hooks, plugins, or permission rules.
+- `--disable-slash-commands` and `--no-session-persistence`.
+- Not `--bare`: that mode ignores the subscription login and needs an API key.
+- Environment is the runner's allowlist (plus `CLAUDE_CONFIG_DIR` if set). No
+  `ANTHROPIC_API_KEY`, no seat key. Prompt goes on stdin, reply on stdout (64 KB cap).
+
+Each run is a fresh Claude that knows only the room context it is given.
+
 ## Pilot success
 
 1. Phil posts `@atlas …` and walks away; Atlas answers in the room within

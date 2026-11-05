@@ -226,7 +226,95 @@ class CodexAdapter:
                     stop_agent(proc)
 
 
-RUNNER_ADAPTERS = {"codex": CodexAdapter}
+CLAUDE_REQUIRED_FLAGS = (b"--tools", b"--strict-mcp-config", b"--mcp-config", b"--setting-sources",
+                         b"--disable-slash-commands", b"--no-session-persistence")
+
+
+def claude_executable() -> str:
+    found = shutil.which("claude")
+    if found and Path(found).suffix.lower() not in (".cmd", ".bat", ".ps1"):
+        return found
+    # npm's Windows shim is a batch file; run the packaged native binary
+    # directly so room content never passes through cmd.exe or PowerShell.
+    if found:
+        native = Path(found).parent / "node_modules" / "@anthropic-ai" / "claude-code" / "bin" / "claude.exe"
+        if native.is_file():
+            return str(native)
+    raise RoundtableError("Claude Code native executable not found; install a supported Claude Code CLI")
+
+
+def claude_command(executable: str, mcp_config: str) -> list[str]:
+    # No --bare: it would require an API key and ignore the subscription login.
+    # Isolation instead: no built-in tools, no MCP servers, no user/project
+    # settings (so no hooks, plugins or permission rules), no slash commands or
+    # skills, nothing saved. Prompt arrives on stdin; reply is stdout text.
+    return [executable, "-p", "--output-format", "text",
+            "--tools", "",
+            "--strict-mcp-config", "--mcp-config", mcp_config,
+            "--setting-sources", "local",
+            "--disable-slash-commands",
+            "--no-session-persistence",
+            "--permission-mode", "default"]
+
+
+def claude_environment() -> dict[str, str]:
+    env = runner_environment()
+    # Subscription login lives under the user's profile / CLAUDE_CONFIG_DIR.
+    # API keys are deliberately not passed (the pilot runs on the subscription).
+    if os.environ.get("CLAUDE_CONFIG_DIR"):
+        env["CLAUDE_CONFIG_DIR"] = os.environ["CLAUDE_CONFIG_DIR"]
+    return env
+
+
+class ClaudeAdapter:
+    """A context-only Claude Code invocation; adapters return text, never post it."""
+    def __init__(self, timeout: float = 120):
+        self.timeout = timeout
+
+    def run(self, prompt: str, checkpoint: Callable[[], None]) -> str:
+        executable = claude_executable()
+        # Fail closed on CLIs that lack the isolation flags we rely on.
+        help_result = subprocess.run([executable, "--help"], capture_output=True, timeout=20,
+                                     env=claude_environment(), check=False)
+        if help_result.returncode or any(flag not in help_result.stdout for flag in CLAUDE_REQUIRED_FLAGS):
+            raise RoundtableError("Claude Code CLI lacks required isolation flags; update it first")
+        with tempfile.TemporaryDirectory(prefix="roundtable-run-") as directory:
+            mcp_config = Path(directory) / "no-mcp.json"
+            mcp_config.write_text('{"mcpServers": {}}', encoding="utf-8")
+            with tempfile.TemporaryFile() as incoming, tempfile.TemporaryFile() as reply:
+                incoming.write(prompt.encode("utf-8"))
+                incoming.seek(0)
+                proc = subprocess.Popen(claude_command(executable, str(mcp_config)),
+                                        stdin=incoming, stdout=reply,
+                                        stderr=subprocess.DEVNULL,
+                                        env=claude_environment(), cwd=directory,
+                                        start_new_session=os.name != "nt",
+                                        creationflags=(subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0))
+                deadline = time.monotonic() + self.timeout
+                try:
+                    while proc.poll() is None:
+                        checkpoint()
+                        if time.monotonic() >= deadline:
+                            raise RoundtableError("Agent timeout")
+                        if os.fstat(reply.fileno()).st_size > 64000:
+                            raise RoundtableError("Agent reply limit exceeded")
+                        time.sleep(0.2)
+                    checkpoint()
+                    if proc.returncode:
+                        raise RoundtableError("Claude failed; check CLI login/version (details withheld)")
+                    reply.seek(0)
+                    raw = reply.read(64001)
+                    if len(raw) > 64000:
+                        raise RoundtableError("Agent reply limit exceeded")
+                    text = raw.decode("utf-8", errors="replace").strip()
+                    if not text:
+                        raise RoundtableError("Agent returned an empty reply")
+                    return text
+                finally:
+                    stop_agent(proc)
+
+
+RUNNER_ADAPTERS = {"codex": CodexAdapter, "claude": ClaudeAdapter}
 
 
 class RunnerStore:
