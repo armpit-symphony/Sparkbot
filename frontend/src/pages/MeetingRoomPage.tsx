@@ -6,6 +6,8 @@ import SparkbotSurfaceTabs from "@/components/Common/SparkbotSurfaceTabs"
 import SparkbotSurfaceInfoDialog from "@/components/Common/SparkbotSurfaceInfoDialog"
 import ChatInput from "@/components/chat/ChatInput"
 import ChatWindow from "@/components/chat/ChatWindow"
+import RoundtablePeoplePanel from "@/components/roundtable/RoundtablePeoplePanel"
+import { createRoundtableRoom, enableMeetingMode } from "@/lib/roundtableRooms"
 import {
   deleteMeetingRoomMeta,
   getMeetingParticipantHandles,
@@ -33,6 +35,15 @@ interface RoomDetail {
 
 interface RoomMemberMeResponse {
   user: User
+  role?: string
+}
+
+const ROUNDTABLE_POLL_MS = 4000
+
+/** True when the message is aimed at one of Sparkbot's own model agents. */
+function mentionsModelAgent(content: string, agentNames: string[]): boolean {
+  const match = /^@([\w-]+)/.exec(content.trim())
+  return Boolean(match && agentNames.includes(match[1].toLowerCase()))
 }
 
 interface MeetingListItem {
@@ -82,6 +93,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
   const [room, setRoom] = useState<RoomDetail | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [currentUser, setCurrentUser] = useState<User | null>(null)
+  const [myRole, setMyRole] = useState<string | null>(null)
   const [inputValue, setInputValue] = useState("")
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
@@ -171,6 +183,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
         if (!cancelled && meRes.ok) {
           const membership = (await meRes.json()) as RoomMemberMeResponse
           setCurrentUser(membership.user ?? null)
+          setMyRole(membership.role ?? null)
         }
         if (!cancelled) {
           await Promise.all([reloadMeetingRooms(), reloadRoomTasks()])
@@ -195,6 +208,70 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
     () => agentOptions.filter((agent) => agent.name !== "sparkbot"),
     [agentOptions],
   )
+  const hasModelSeats = seatedParticipants.length > 0
+
+  // Rooms that got seats before seating turned on meeting mode: fix on open,
+  // once we know the seat count, the room, and that we're its owner.
+  const [seatCount, setSeatCount] = useState<number | null>(null)
+  const needsMeetingMode =
+    Boolean(seatCount) && room !== null && !room.meeting_mode_enabled && myRole === "OWNER"
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reloadMeetingRooms is recreated every render; run only when the heal condition flips.
+  useEffect(() => {
+    if (!needsMeetingMode) return
+    let cancelled = false
+    void enableMeetingMode(roomId).then(async (ok) => {
+      if (!ok || cancelled) return
+      setRoom((prev) => (prev ? { ...prev, meeting_mode_enabled: true } : prev))
+      await reloadMeetingRooms()
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [needsMeetingMode, roomId])
+
+  // Live room: pick up messages from invited agents and guests without a reload.
+  useEffect(() => {
+    if (!roomId || sending) return
+    const timer = window.setInterval(async () => {
+      if (document.visibilityState !== "visible") return
+      try {
+        const res = await apiFetch(`/api/v1/chat/rooms/${roomId}/messages`, { credentials: "include" })
+        if (!res.ok) return
+        const data = await res.json()
+        const next: Message[] = data.messages ?? []
+        setMessages((prev) =>
+          prev.length === next.length && prev[prev.length - 1]?.id === next[next.length - 1]?.id ? prev : next,
+        )
+      } catch {
+        // offline for a moment; try again next tick
+      }
+    }, ROUNDTABLE_POLL_MS)
+    return () => window.clearInterval(timer)
+  }, [roomId, sending])
+
+  async function postWithoutModel(content: string) {
+    setSending(true)
+    setStreamError("")
+    setInputValue("")
+    try {
+      const res = await apiFetch(`/api/v1/chat/rooms/${roomId}/roundtable/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ content: content.trim() }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(typeof data.detail === "string" ? data.detail : "Could not send message.")
+      }
+    } catch (err) {
+      setInputValue(content)
+      setStreamError((err as Error).message)
+    } finally {
+      setSending(false)
+      await reloadMessages()
+    }
+  }
 
   function handleSeatAgentChange(seatIndex: number, agentName: string) {
     if (!meetingMeta || !agentName) return
@@ -270,10 +347,17 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
   }
 
   async function handleStartFreshMeeting() {
-    if (meetingActionId || seatedParticipants.length < 2) return
+    if (meetingActionId) return
     setMeetingActionId("new")
     setStreamError("")
     try {
+      // Without two Sparkbot model seats, start a bring-your-own-agent room.
+      if (seatedParticipants.length < 2) {
+        const nextRoomId = await createRoundtableRoom()
+        await reloadMeetingRooms()
+        navigate({ to: "/meeting/$roomId", params: { roomId: nextRoomId } })
+        return
+      }
       const nextMeeting = await launchMeetingRoom({
         roomName: room?.name ?? meetingMeta?.roomName ?? "Roundtable",
         seats: seatedParticipants,
@@ -359,6 +443,14 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
     if (isManualMeetingNotesRequest(content)) {
       setInputValue("")
       await handleGenerateNotes()
+      return
+    }
+
+    // No Sparkbot model seats: this is a bring-your-own-agent Roundtable. Post
+    // straight to the room; invited agents and guests reply on their own.
+    const modelAgentNames = agentOptions.map((agent) => agent.name.toLowerCase())
+    if (!hasModelSeats && !mentionsModelAgent(content, modelAgentNames)) {
+      await postWithoutModel(content)
       return
     }
 
@@ -601,7 +693,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                 textTransform: "uppercase",
               }}
             >
-              Autonomous meeting
+              {hasModelSeats ? "Autonomous meeting" : "Roundtable"}
             </div>
           </div>
         </header>
@@ -647,9 +739,9 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                 Roundtable
               </div>
               <p style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.7, margin: "8px 0 0" }}>
-                Launched from Workstation. After your kickoff, the room should continue on its own,
-                keep one active speaker at a time, and only stop when it reaches a recommendation,
-                blocker, or approval point.
+                {hasModelSeats
+                  ? "Launched from Workstation. After your kickoff, the room should continue on its own, keep one active speaker at a time, and only stop when it reaches a recommendation, blocker, or approval point."
+                  : "A shared room for you, the people you invite, and your own AI agents. New messages appear on their own. Sparkbot's built-in models are optional."}
               </p>
             </div>
 
@@ -702,7 +794,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                   <button
                     type="button"
                     onClick={handleStartFreshMeeting}
-                    disabled={Boolean(meetingActionId) || seatedParticipants.length < 2}
+                    disabled={Boolean(meetingActionId)}
                     style={{
                       borderRadius: 10,
                       border: "1px solid rgba(125,211,252,0.2)",
@@ -714,7 +806,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                       textTransform: "uppercase",
                       fontWeight: 700,
                       cursor: meetingActionId ? "not-allowed" : "pointer",
-                      opacity: meetingActionId || seatedParticipants.length < 2 ? 0.5 : 1,
+                      opacity: meetingActionId ? 0.5 : 1,
                     }}
                   >
                     {meetingActionId === "new" ? "Starting…" : "New"}
@@ -761,6 +853,13 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                   </button>
                 </div>
 
+                <RoundtablePeoplePanel
+                  roomId={roomId}
+                  roomName={room?.name ?? "Roundtable"}
+                  canManage={myRole === "OWNER" || myRole === "MOD"}
+                  onSeatsLoaded={setSeatCount}
+                />
+
                 <div
                   style={{
                     border: "1px solid rgba(125,211,252,0.14)",
@@ -779,7 +878,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                       marginBottom: 10,
                     }}
                   >
-                    Seated participants
+                    {hasModelSeats ? "Seated participants" : "Sparkbot model seats (optional)"}
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {seatedParticipants.map((seat) => (
@@ -964,7 +1063,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                   <button
                     type="button"
                     onClick={handleStartFreshMeeting}
-                    disabled={Boolean(meetingActionId) || seatedParticipants.length < 2}
+                    disabled={Boolean(meetingActionId)}
                     style={{
                       borderRadius: 8,
                       border: "1px solid rgba(125,211,252,0.2)",
@@ -976,7 +1075,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                       textTransform: "uppercase",
                       fontWeight: 700,
                       cursor: meetingActionId ? "not-allowed" : "pointer",
-                      opacity: meetingActionId || seatedParticipants.length < 2 ? 0.5 : 1,
+                      opacity: meetingActionId ? 0.5 : 1,
                     }}
                   >
                     New
@@ -1200,7 +1299,9 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                   {room?.name ?? "Roundtable"}
                 </div>
                 <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
-                  Autonomous meeting mode is active. The room keeps working until it reaches a stopping point.
+                  {hasModelSeats
+                    ? "Autonomous meeting mode is active. The room keeps working until it reaches a stopping point."
+                    : "Everyone you invite reads and posts here. Mention someone with @name."}
                 </div>
               </div>
               <button
@@ -1285,14 +1386,14 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                     ? "Meeting is running. Send a new message to interrupt, redirect, or add owner input."
                     : seatedParticipants.length > 0
                     ? `Kick off the topic once, or call on someone directly with ${getMeetingParticipantHandles(seatedParticipants).map((handle) => `@${handle}`).join("  ")}`
-                    : "Type your kickoff and the roundtable will continue autonomously."}
+                    : "Messages go straight to the room. Invite people or agents from the panel on the left."}
                 </div>
                 <ChatInput
                   value={inputValue}
                   onChange={setInputValue}
                   onSubmit={handleSendMessage}
                   isLoading={false}
-                  placeholder={sending ? "Interrupt or redirect the meeting…" : "Kick off the meeting objective…"}
+                  placeholder={sending ? (hasModelSeats ? "Interrupt or redirect the meeting…" : "Sending…") : hasModelSeats ? "Kick off the meeting objective…" : "Message the room…"}
                 />
               </>
             )}

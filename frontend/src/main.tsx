@@ -12,6 +12,7 @@ import { ThemeProvider } from "./components/theme-provider"
 import { Toaster } from "./components/ui/sonner"
 import "./index.css"
 import { getApiBase } from "./lib/apiBase"
+import { appPath } from "./lib/appPath"
 import { routeTree } from "./routeTree.gen"
 
 OpenAPI.BASE = getApiBase()
@@ -30,7 +31,7 @@ if (typeof window !== 'undefined') {
 const handleApiError = (error: Error) => {
   if (error instanceof ApiError && [401, 403].includes(error.status)) {
     localStorage.removeItem("access_token")
-    window.location.href = "/login"
+    window.location.href = appPath("/login")
   }
 }
 const queryClient = new QueryClient({
@@ -42,7 +43,7 @@ const queryClient = new QueryClient({
   }),
 })
 
-const router = createRouter({ routeTree })
+const router = createRouter({ routeTree, basepath: import.meta.env.BASE_URL })
 declare module "@tanstack/react-router" {
   interface Register {
     router: typeof router

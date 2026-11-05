@@ -40,6 +40,9 @@ COPY ./backend/pyproject.toml ./backend/alembic.ini /app/backend/
 
 COPY ./backend/app /app/backend/app
 
+# Roundtable connector, served at /api/v1/chat/seats/connector.py for invited agents
+COPY ./sparkbot-roundtable.py /app/sparkbot-roundtable.py
+
 # Sync the project
 # Ref: https://docs.astral.sh/uv/guides/integration/docker/#intermediate-layers
 RUN --mount=type=cache,target=/root/.cache/uv \

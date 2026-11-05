@@ -18,6 +18,7 @@ import { Route as SignupRouteImport } from './routes/signup'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as RecoverPasswordRouteImport } from './routes/recover-password'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as GuestRouteImport } from './routes/guest'
 import { Route as DmRouteImport } from './routes/dm'
 import { Route as ControlsRouteImport } from './routes/controls'
 import { Route as CommandCenterRouteImport } from './routes/command-center'
@@ -73,6 +74,11 @@ const RecoverPasswordRoute = RecoverPasswordRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GuestRoute = GuestRouteImport.update({
+  id: '/guest',
+  path: '/guest',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DmRoute = DmRouteImport.update({
@@ -135,6 +141,7 @@ export interface FileRoutesByFullPath {
   '/command-center': typeof CommandCenterRoute
   '/controls': typeof ControlsRoute
   '/dm': typeof DmRoute
+  '/guest': typeof GuestRoute
   '/login': typeof LoginRoute
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
@@ -155,6 +162,7 @@ export interface FileRoutesByTo {
   '/command-center': typeof CommandCenterRoute
   '/controls': typeof ControlsRoute
   '/dm': typeof DmRoute
+  '/guest': typeof GuestRoute
   '/login': typeof LoginRoute
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
@@ -178,6 +186,7 @@ export interface FileRoutesById {
   '/command-center': typeof CommandCenterRoute
   '/controls': typeof ControlsRoute
   '/dm': typeof DmRoute
+  '/guest': typeof GuestRoute
   '/login': typeof LoginRoute
   '/recover-password': typeof RecoverPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
@@ -202,6 +211,7 @@ export interface FileRouteTypes {
     | '/command-center'
     | '/controls'
     | '/dm'
+    | '/guest'
     | '/login'
     | '/recover-password'
     | '/reset-password'
@@ -222,6 +232,7 @@ export interface FileRouteTypes {
     | '/command-center'
     | '/controls'
     | '/dm'
+    | '/guest'
     | '/login'
     | '/recover-password'
     | '/reset-password'
@@ -244,6 +255,7 @@ export interface FileRouteTypes {
     | '/command-center'
     | '/controls'
     | '/dm'
+    | '/guest'
     | '/login'
     | '/recover-password'
     | '/reset-password'
@@ -267,6 +279,7 @@ export interface RootRouteChildren {
   CommandCenterRoute: typeof CommandCenterRoute
   ControlsRoute: typeof ControlsRoute
   DmRoute: typeof DmRoute
+  GuestRoute: typeof GuestRoute
   LoginRoute: typeof LoginRoute
   RecoverPasswordRoute: typeof RecoverPasswordRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
@@ -342,6 +355,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/guest': {
+      id: '/guest'
+      path: '/guest'
+      fullPath: '/guest'
+      preLoaderRoute: typeof GuestRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dm': {
@@ -450,6 +470,7 @@ const rootRouteChildren: RootRouteChildren = {
   CommandCenterRoute: CommandCenterRoute,
   ControlsRoute: ControlsRoute,
   DmRoute: DmRoute,
+  GuestRoute: GuestRoute,
   LoginRoute: LoginRoute,
   RecoverPasswordRoute: RecoverPasswordRoute,
   ResetPasswordRoute: ResetPasswordRoute,

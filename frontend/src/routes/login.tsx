@@ -21,6 +21,7 @@ import { PasswordInput } from "@/components/ui/password-input"
 import useAuth, { hasChatSession, isLoggedIn } from "@/hooks/useAuth"
 import { ensureLocalChatSession, isLocalDesktopMode } from "@/lib/localSession"
 import { resolveChatEntryTarget } from "@/lib/sparkbotControls"
+import { appPath } from "@/lib/appPath"
 
 const formSchema = z.object({
   passphrase: z
@@ -85,7 +86,7 @@ function Login() {
         const ok = await ensureLocalChatSession({ retries: 30, retryDelayMs: 500 })
         if (cancelled) return
         if (ok && hasChatSession()) {
-          window.location.replace("/dm")
+          window.location.replace(appPath("/dm"))
           return
         }
         // Backend not ready yet — wait and retry the whole sequence

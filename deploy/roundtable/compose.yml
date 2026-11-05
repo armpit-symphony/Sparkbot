@@ -1,0 +1,62 @@
+name: sparkbot-roundtable
+services:
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: roundtable
+      POSTGRES_DB: roundtable
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Required}
+    volumes:
+      - database:/var/lib/postgresql
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U roundtable -d roundtable']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  prestart:
+    image: sparkbot-roundtable-backend:${RT_IMAGE_TAG:-f3f1edf-rt008}
+    build:
+      context: ../..
+      dockerfile: backend/Dockerfile
+    env_file: .env
+    command: [bash, scripts/prestart.sh]
+    depends_on:
+      db:
+        condition: service_healthy
+  backend:
+    image: sparkbot-roundtable-backend:${RT_IMAGE_TAG:-f3f1edf-rt008}
+    restart: unless-stopped
+    env_file: .env
+    ports: ['127.0.0.1:8002:8000']
+    volumes:
+      - data:/app/backend/data
+      - uploads:/app/backend/uploads
+    depends_on:
+      prestart:
+        condition: service_completed_successfully
+    security_opt: ['no-new-privileges:true']
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/utils/health-check/', timeout=5)"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+  frontend:
+    image: sparkbot-roundtable-frontend:${RT_IMAGE_TAG:-f3f1edf-rt008}
+    build:
+      context: ../..
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_API_URL: ''
+        VITE_APP_BASE_PATH: '/roundtable/'
+        VITE_V1_LOCAL_MODE: 'false'
+    restart: unless-stopped
+    ports: ['127.0.0.1:3002:80']
+    depends_on:
+      backend:
+        condition: service_healthy
+    security_opt: ['no-new-privileges:true']
+volumes:
+  database:
+  data:
+  uploads:

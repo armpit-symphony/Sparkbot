@@ -15,6 +15,7 @@ from app.api.routes.chat import (
     reminders_router,
     robotics_router,
     rooms_router,
+    seats_router,
     security_router,
     skills_router,
     slack_router,
@@ -36,6 +37,7 @@ api_router.include_router(users_router, prefix="/chat")
 api_router.include_router(rooms_router, prefix="/chat")
 api_router.include_router(messages_router, prefix="/chat")
 api_router.include_router(bot_integration_router, prefix="/chat")  # Bot integration
+api_router.include_router(seats_router, prefix="/chat")  # Roundtable seats (outside agents / guests)
 api_router.include_router(uploads_router, prefix="/chat")  # File uploads
 api_router.include_router(model_router, prefix="/chat")  # Model switching
 api_router.include_router(memory_router, prefix="/chat")  # User memory
