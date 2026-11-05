@@ -42,6 +42,9 @@ FAKE_CLAUDE = textwrap.dedent(
         sys.exit(0)
     if mode == "fail":
         sys.exit(3)
+    if mode == "authfail":
+        print("Failed to authenticate: OAuth session expired and could not be refreshed")
+        sys.exit(1)
     print("Claude here: I read " + str(len(prompt)) + " chars of room data.")
     """
 )
@@ -127,6 +130,24 @@ class ClaudeAdapterTests(unittest.TestCase):
             self.run_adapter(mode="empty")
         with self.assertRaisesRegex(rt.RoundtableError, "Claude failed"):
             self.run_adapter(mode="fail")
+
+
+    def test_locked_temp_folder_does_not_lose_the_reply(self):
+        # Windows: a lingering helper process can keep the temp folder busy.
+        real_rmdir = os.rmdir
+
+        def busy_rmdir(path, *args, **kwargs):
+            if "roundtable-run-" in str(path):
+                raise PermissionError(32, "The process cannot access the file")
+            return real_rmdir(path, *args, **kwargs)
+
+        with patch.object(os, "rmdir", busy_rmdir):
+            reply, _ = self.run_adapter()
+        self.assertTrue(reply.startswith("Claude here"))
+
+    def test_logged_out_claude_gives_a_clear_message(self):
+        with self.assertRaisesRegex(rt.RoundtableError, "logged out"):
+            self.run_adapter(mode="authfail")
 
 
 class ClaudeExecutableTests(unittest.TestCase):

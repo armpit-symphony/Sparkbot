@@ -278,7 +278,10 @@ class ClaudeAdapter:
                                      env=claude_environment(), check=False)
         if help_result.returncode or any(flag not in help_result.stdout for flag in CLAUDE_REQUIRED_FLAGS):
             raise RoundtableError("Claude Code CLI lacks required isolation flags; update it first")
-        with tempfile.TemporaryDirectory(prefix="roundtable-run-") as directory:
+        # Windows: Claude can leave a helper process holding the folder for a moment;
+        # a failed cleanup must never turn a good reply into a failure.
+        directory = tempfile.mkdtemp(prefix="roundtable-run-")
+        try:
             mcp_config = Path(directory) / "no-mcp.json"
             mcp_config.write_text('{"mcpServers": {}}', encoding="utf-8")
             with tempfile.TemporaryFile() as incoming, tempfile.TemporaryFile() as reply:
@@ -301,6 +304,9 @@ class ClaudeAdapter:
                         time.sleep(0.2)
                     checkpoint()
                     if proc.returncode:
+                        reply.seek(0)
+                        if b"Failed to authenticate" in reply.read(2000):
+                            raise RoundtableError("Claude Code is logged out on this computer: run `claude`, then /login")
                         raise RoundtableError("Claude failed; check CLI login/version (details withheld)")
                     reply.seek(0)
                     raw = reply.read(64001)
@@ -313,6 +319,8 @@ class ClaudeAdapter:
                 finally:
                     stop_agent(proc)
 
+        finally:
+            shutil.rmtree(directory, ignore_errors=True)
 
 RUNNER_ADAPTERS = {"codex": CodexAdapter, "claude": ClaudeAdapter}
 
