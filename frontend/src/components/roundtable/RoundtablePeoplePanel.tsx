@@ -1,5 +1,5 @@
 import { Bot, Check, Copy, Loader2, UserPlus, X } from "lucide-react"
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { apiFetch, getApiBase } from "@/lib/apiBase"
 import {
   appBasePath,
@@ -22,6 +22,8 @@ interface RoundtablePeoplePanelProps {
   roomId: string
   roomName: string
   canManage: boolean
+  /** Called with the number of seats each time the list loads. */
+  onSeatsLoaded?: (count: number) => void
 }
 
 const label: React.CSSProperties = {
@@ -75,8 +77,12 @@ export default function RoundtablePeoplePanel({
   roomId,
   roomName,
   canManage,
+  onSeatsLoaded,
 }: RoundtablePeoplePanelProps) {
   const [seats, setSeats] = useState<SeatRow[]>([])
+  // Keep the latest callback without making `reload` change every render.
+  const onSeatsLoadedRef = useRef(onSeatsLoaded)
+  onSeatsLoadedRef.current = onSeatsLoaded
   const [loadError, setLoadError] = useState("")
   const [formOpen, setFormOpen] = useState(false)
   const [name, setName] = useState("")
@@ -93,7 +99,9 @@ export default function RoundtablePeoplePanel({
         credentials: "include",
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      setSeats(await res.json())
+      const rows: SeatRow[] = await res.json()
+      setSeats(rows)
+      onSeatsLoadedRef.current?.(rows.length)
       setLoadError("")
     } catch {
       setLoadError("Couldn't load seats.")

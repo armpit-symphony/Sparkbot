@@ -1,13 +1,13 @@
-import { useNavigate } from "@tanstack/react-router"
-import { ArrowLeft, Info, Loader2, Users } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
-import SparkbotSurfaceInfoDialog from "@/components/Common/SparkbotSurfaceInfoDialog"
+import { useNavigate } from "@tanstack/react-router"
+import { apiFetch } from "@/lib/apiBase"
+import { ArrowLeft, Info, Loader2, Users } from "lucide-react"
 import SparkbotSurfaceTabs from "@/components/Common/SparkbotSurfaceTabs"
+import SparkbotSurfaceInfoDialog from "@/components/Common/SparkbotSurfaceInfoDialog"
 import ChatInput from "@/components/chat/ChatInput"
 import ChatWindow from "@/components/chat/ChatWindow"
 import RoundtablePeoplePanel from "@/components/roundtable/RoundtablePeoplePanel"
-import { apiFetch } from "@/lib/apiBase"
-import type { Message, User } from "@/lib/chat/types"
+import { createRoundtableRoom, enableMeetingMode } from "@/lib/roundtableRooms"
 import {
   deleteMeetingRoomMeta,
   getMeetingParticipantHandles,
@@ -18,6 +18,7 @@ import {
   saveMeetingRoomMeta,
   type WorkstationMeetingRoomMeta,
 } from "@/lib/workstationMeeting"
+import type { Message, User } from "@/lib/chat/types"
 
 interface MeetingRoomPageProps {
   roomId: string
@@ -64,9 +65,7 @@ interface MeetingAgentOption {
 
 function isTransientMeetingError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error ?? "")
-  return /network|fetch|failed|timeout|temporar|connection|body stream/i.test(
-    message,
-  )
+  return /network|fetch|failed|timeout|temporar|connection|body stream/i.test(message)
 }
 
 function isManualMeetingNotesRequest(content: string): boolean {
@@ -75,11 +74,7 @@ function isManualMeetingNotesRequest(content: string): boolean {
   )
 }
 
-async function apiFetchWithTransientRetry(
-  input: string,
-  init: RequestInit,
-  attempts = 2,
-): Promise<Response> {
+async function apiFetchWithTransientRetry(input: string, init: RequestInit, attempts = 2): Promise<Response> {
   let lastError: unknown = null
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
@@ -87,14 +82,10 @@ async function apiFetchWithTransientRetry(
     } catch (error) {
       lastError = error
       if (!isTransientMeetingError(error) || attempt === attempts - 1) break
-      await new Promise((resolve) =>
-        window.setTimeout(resolve, 450 * (attempt + 1)),
-      )
+      await new Promise((resolve) => window.setTimeout(resolve, 450 * (attempt + 1)))
     }
   }
-  throw lastError instanceof Error
-    ? lastError
-    : new Error("Network error starting meeting stream.")
+  throw lastError instanceof Error ? lastError : new Error("Network error starting meeting stream.")
 }
 
 export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
@@ -107,8 +98,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const [infoOpen, setInfoOpen] = useState(false)
-  const [meetingMeta, setMeetingMeta] =
-    useState<WorkstationMeetingRoomMeta | null>(null)
+  const [meetingMeta, setMeetingMeta] = useState<WorkstationMeetingRoomMeta | null>(null)
   const [generatingNotes, setGeneratingNotes] = useState(false)
   const [latestArtifact, setLatestArtifact] = useState<{
     id: string
@@ -118,24 +108,15 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
   const [streamingToken, setStreamingToken] = useState("")
   const [streamingAgent, setStreamingAgent] = useState<string | null>(null)
   const [streamError, setStreamError] = useState("")
-  const [sidebarTab, setSidebarTab] = useState<
-    "current" | "meetings" | "tasks"
-  >("current")
+  const [sidebarTab, setSidebarTab] = useState<"current" | "meetings" | "tasks">("current")
   const [meetingRooms, setMeetingRooms] = useState<MeetingListItem[]>([])
   const [meetingActionId, setMeetingActionId] = useState<string | null>(null)
   const [agentOptions, setAgentOptions] = useState<MeetingAgentOption[]>([])
-  const [roomTasks, setRoomTasks] = useState<
-    Array<{
-      id: string
-      name: string
-      tool_name: string
-      schedule: string
-      enabled: boolean
-      last_status: string | null
-      last_run_at: string | null
-      consecutive_failures: number
-    }>
-  >([])
+  const [roomTasks, setRoomTasks] = useState<Array<{
+    id: string; name: string; tool_name: string; schedule: string;
+    enabled: boolean; last_status: string | null; last_run_at: string | null;
+    consecutive_failures: number;
+  }>>([])
   const [runningTaskId, setRunningTaskId] = useState<string | null>(null)
   const [isCompactLayout, setIsCompactLayout] = useState(false)
   const streamAbortRef = useRef<AbortController | null>(null)
@@ -160,15 +141,8 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
       .then((data) => {
         const fetched = Array.isArray(data.agents) ? data.agents : []
         setAgentOptions([
-          {
-            name: "sparkbot",
-            emoji: "S",
-            description: "Main Sparkbot chair",
-            is_builtin: true,
-          },
-          ...fetched.filter(
-            (agent: MeetingAgentOption) => agent.name !== "sparkbot",
-          ),
+          { name: "sparkbot", emoji: "S", description: "Main Sparkbot chair", is_builtin: true },
+          ...fetched.filter((agent: MeetingAgentOption) => agent.name !== "sparkbot"),
         ])
       })
       .catch(() => setAgentOptions([]))
@@ -180,17 +154,9 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
       credentials: "include",
     })
       .then((r) => (r.ok ? r.json() : []))
-      .then(
-        (
-          artifacts: Array<{
-            id: string
-            content_markdown: string
-            created_at: string
-          }>,
-        ) => {
-          if (artifacts.length > 0) setLatestArtifact(artifacts[0])
-        },
-      )
+      .then((artifacts: Array<{ id: string; content_markdown: string; created_at: string }>) => {
+        if (artifacts.length > 0) setLatestArtifact(artifacts[0])
+      })
       .catch(() => {})
   }, [roomId])
 
@@ -201,12 +167,8 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
       try {
         const [roomRes, messagesRes, meRes] = await Promise.all([
           apiFetch(`/api/v1/chat/rooms/${roomId}`, { credentials: "include" }),
-          apiFetch(`/api/v1/chat/rooms/${roomId}/messages`, {
-            credentials: "include",
-          }),
-          apiFetch(`/api/v1/chat/rooms/${roomId}/members/me`, {
-            credentials: "include",
-          }),
+          apiFetch(`/api/v1/chat/rooms/${roomId}/messages`, { credentials: "include" }),
+          apiFetch(`/api/v1/chat/rooms/${roomId}/members/me`, { credentials: "include" }),
         ])
 
         if (!cancelled && roomRes.ok) {
@@ -248,23 +210,37 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
   )
   const hasModelSeats = seatedParticipants.length > 0
 
+  // Rooms that got seats before seating turned on meeting mode: fix on open,
+  // once we know the seat count, the room, and that we're its owner.
+  const [seatCount, setSeatCount] = useState<number | null>(null)
+  const needsMeetingMode =
+    Boolean(seatCount) && room !== null && !room.meeting_mode_enabled && myRole === "OWNER"
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reloadMeetingRooms is recreated every render; run only when the heal condition flips.
+  useEffect(() => {
+    if (!needsMeetingMode) return
+    let cancelled = false
+    void enableMeetingMode(roomId).then(async (ok) => {
+      if (!ok || cancelled) return
+      setRoom((prev) => (prev ? { ...prev, meeting_mode_enabled: true } : prev))
+      await reloadMeetingRooms()
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [needsMeetingMode, roomId])
+
   // Live room: pick up messages from invited agents and guests without a reload.
   useEffect(() => {
     if (!roomId || sending) return
     const timer = window.setInterval(async () => {
       if (document.visibilityState !== "visible") return
       try {
-        const res = await apiFetch(`/api/v1/chat/rooms/${roomId}/messages`, {
-          credentials: "include",
-        })
+        const res = await apiFetch(`/api/v1/chat/rooms/${roomId}/messages`, { credentials: "include" })
         if (!res.ok) return
         const data = await res.json()
         const next: Message[] = data.messages ?? []
         setMessages((prev) =>
-          prev.length === next.length &&
-          prev[prev.length - 1]?.id === next[next.length - 1]?.id
-            ? prev
-            : next,
+          prev.length === next.length && prev[prev.length - 1]?.id === next[next.length - 1]?.id ? prev : next,
         )
       } catch {
         // offline for a moment; try again next tick
@@ -278,22 +254,15 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
     setStreamError("")
     setInputValue("")
     try {
-      const res = await apiFetch(
-        `/api/v1/chat/rooms/${roomId}/roundtable/messages`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ content: content.trim() }),
-        },
-      )
+      const res = await apiFetch(`/api/v1/chat/rooms/${roomId}/roundtable/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ content: content.trim() }),
+      })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
-        throw new Error(
-          typeof data.detail === "string"
-            ? data.detail
-            : "Could not send message.",
-        )
+        throw new Error(typeof data.detail === "string" ? data.detail : "Could not send message.")
       }
     } catch (err) {
       setInputValue(content)
@@ -312,15 +281,10 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
       if (seat.seatIndex !== seatIndex) return seat
       return {
         ...seat,
-        stationId:
-          agent.name === "sparkbot" ? "sparkbot" : `agent-${agent.name}`,
-        label:
-          `${agent.emoji ? `${agent.emoji} ` : ""}${agent.name.replace(/_/g, " ")}`.trim(),
+        stationId: agent.name === "sparkbot" ? "sparkbot" : `agent-${agent.name}`,
+        label: `${agent.emoji ? `${agent.emoji} ` : ""}${agent.name.replace(/_/g, " ")}`.trim(),
         agentHandle: agent.name,
-        agentProvisioning:
-          agent.is_builtin === false
-            ? ("custom" as const)
-            : ("builtin" as const),
+        agentProvisioning: agent.is_builtin === false ? "custom" as const : "builtin" as const,
         agentDescription: agent.description || seat.agentDescription,
       }
     })
@@ -331,12 +295,9 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
 
   const reloadRoomTasks = async () => {
     try {
-      const res = await apiFetch(
-        `/api/v1/chat/rooms/${roomId}/guardian/tasks?limit=20`,
-        {
-          credentials: "include",
-        },
-      )
+      const res = await apiFetch(`/api/v1/chat/rooms/${roomId}/guardian/tasks?limit=20`, {
+        credentials: "include",
+      })
       if (!res.ok) return
       const data = await res.json()
       setRoomTasks(data.items ?? [])
@@ -346,14 +307,10 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
   }
 
   const reloadMeetingRooms = async () => {
-    const res = await apiFetch("/api/v1/chat/rooms/", {
-      credentials: "include",
-    })
+    const res = await apiFetch("/api/v1/chat/rooms/", { credentials: "include" })
     if (!res.ok) return
     const rooms = await res.json()
-    const metaIndex = new Map(
-      listMeetingRoomMetas().map((meta) => [meta.roomId, meta]),
-    )
+    const metaIndex = new Map(listMeetingRoomMetas().map((meta) => [meta.roomId, meta]))
     const nextRooms = (Array.isArray(rooms) ? rooms : [])
       .filter((candidate) => candidate.meeting_mode_enabled)
       .map((candidate) => ({
@@ -375,12 +332,8 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
 
   const reloadMessages = async () => {
     const [messagesRes, artifactRes] = await Promise.all([
-      apiFetch(`/api/v1/chat/rooms/${roomId}/messages`, {
-        credentials: "include",
-      }),
-      apiFetch(`/api/v1/chat/rooms/${roomId}/artifacts?type=notes&limit=1`, {
-        credentials: "include",
-      }),
+      apiFetch(`/api/v1/chat/rooms/${roomId}/messages`, { credentials: "include" }),
+      apiFetch(`/api/v1/chat/rooms/${roomId}/artifacts?type=notes&limit=1`, { credentials: "include" }),
     ])
     if (messagesRes.ok) {
       const data = await messagesRes.json()
@@ -394,23 +347,25 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
   }
 
   async function handleStartFreshMeeting() {
-    if (meetingActionId || seatedParticipants.length < 2) return
+    if (meetingActionId) return
     setMeetingActionId("new")
     setStreamError("")
     try {
+      // Without two Sparkbot model seats, start a bring-your-own-agent room.
+      if (seatedParticipants.length < 2) {
+        const nextRoomId = await createRoundtableRoom()
+        await reloadMeetingRooms()
+        navigate({ to: "/meeting/$roomId", params: { roomId: nextRoomId } })
+        return
+      }
       const nextMeeting = await launchMeetingRoom({
         roomName: room?.name ?? meetingMeta?.roomName ?? "Roundtable",
         seats: seatedParticipants,
       })
       await reloadMeetingRooms()
-      navigate({
-        to: "/meeting/$roomId",
-        params: { roomId: nextMeeting.roomId },
-      })
+      navigate({ to: "/meeting/$roomId", params: { roomId: nextMeeting.roomId } })
     } catch (err) {
-      setStreamError(
-        (err as Error).message || "Could not start a fresh meeting.",
-      )
+      setStreamError((err as Error).message || "Could not start a fresh meeting.")
     } finally {
       setMeetingActionId(null)
     }
@@ -418,24 +373,16 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
 
   async function handleEndMeeting(targetRoomId: string) {
     if (meetingActionId) return
-    if (
-      typeof window !== "undefined" &&
-      !window.confirm("End this meeting? It will leave the active list.")
-    ) {
+    if (typeof window !== "undefined" && !window.confirm("End this meeting? It will leave the active list.")) {
       return
     }
     setMeetingActionId(`end:${targetRoomId}`)
     setStreamError("")
     try {
-      const target = meetingRooms.find(
-        (candidate) => candidate.id === targetRoomId,
-      )
+      const target = meetingRooms.find((candidate) => candidate.id === targetRoomId)
       const targetName = target?.name ?? room?.name ?? "Roundtable"
       const targetDescription = target?.description ?? room?.description ?? ""
-      const nextDescription = [
-        targetDescription,
-        `Ended ${new Date().toISOString()}`,
-      ]
+      const nextDescription = [targetDescription, `Ended ${new Date().toISOString()}`]
         .filter(Boolean)
         .join("\n\n")
       const res = await apiFetch(`/api/v1/chat/rooms/${targetRoomId}`, {
@@ -443,9 +390,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          name: targetName.includes("[Ended]")
-            ? targetName
-            : `${targetName} [Ended]`,
+          name: targetName.includes("[Ended]") ? targetName : `${targetName} [Ended]`,
           description: nextDescription,
           meeting_mode_enabled: false,
         }),
@@ -466,10 +411,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
 
   async function handleDeleteMeeting(targetRoomId: string) {
     if (meetingActionId) return
-    if (
-      typeof window !== "undefined" &&
-      !window.confirm("Delete this meeting permanently?")
-    ) {
+    if (typeof window !== "undefined" && !window.confirm("Delete this meeting permanently?")) {
       return
     }
     setMeetingActionId(`delete:${targetRoomId}`)
@@ -480,9 +422,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
         credentials: "include",
       })
       if (!res.ok) {
-        const detail = await res
-          .json()
-          .catch(() => ({ detail: "Could not delete meeting." }))
+        const detail = await res.json().catch(() => ({ detail: "Could not delete meeting." }))
         throw new Error(String(detail.detail ?? "Could not delete meeting."))
       }
       deleteMeetingRoomMeta(targetRoomId)
@@ -508,9 +448,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
 
     // No Sparkbot model seats: this is a bring-your-own-agent Roundtable. Post
     // straight to the room; invited agents and guests reply on their own.
-    const modelAgentNames = agentOptions.map((agent) =>
-      agent.name.toLowerCase(),
-    )
+    const modelAgentNames = agentOptions.map((agent) => agent.name.toLowerCase())
     if (!hasModelSeats && !mentionsModelAgent(content, modelAgentNames)) {
       await postWithoutModel(content)
       return
@@ -538,33 +476,20 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
         setMeetingMeta(nextMeta)
         saveMeetingRoomMeta(nextMeta)
       }
-      const participants =
-        !hasMention && preparedSeats.length > 0
-          ? getMeetingParticipantHandles(preparedSeats)
-          : undefined
-      if (
-        !hasMention &&
-        room?.meeting_mode_enabled &&
-        (!participants || participants.length === 0)
-      ) {
-        throw new Error(
-          "This meeting has no valid participant handles wired to chat. Relaunch it from Workstation.",
-        )
+      const participants = (!hasMention && preparedSeats.length > 0)
+        ? getMeetingParticipantHandles(preparedSeats)
+        : undefined
+      if (!hasMention && room?.meeting_mode_enabled && (!participants || participants.length === 0)) {
+        throw new Error("This meeting has no valid participant handles wired to chat. Relaunch it from Workstation.")
       }
 
-      const response = await apiFetchWithTransientRetry(
-        `/api/v1/chat/rooms/${roomId}/messages/stream`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          signal: abort.signal,
-          body: JSON.stringify({
-            content: content.trim(),
-            ...(participants ? { participants } : {}),
-          }),
-        },
-      )
+      const response = await apiFetchWithTransientRetry(`/api/v1/chat/rooms/${roomId}/messages/stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        signal: abort.signal,
+        body: JSON.stringify({ content: content.trim(), ...(participants ? { participants } : {}) }),
+      })
 
       if (!response.ok || !response.body) {
         const errText = await response.text().catch(() => "")
@@ -619,14 +544,12 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
               streamDone = true
               break
             } else if (evt.type === "error") {
-              const msg =
-                typeof evt.error === "string" ? evt.error : "An error occurred."
-              const friendly =
-                msg.includes("guardrail") || msg.includes("data policy")
-                  ? "OpenRouter model unavailable (privacy policy). Check OpenRouter settings or switch model in Controls."
-                  : msg.includes("NotFoundError") || msg.includes("404")
-                    ? "Model not found. Please check your model settings in Controls."
-                    : msg.substring(0, 120)
+              const msg = typeof evt.error === "string" ? evt.error : "An error occurred."
+              const friendly = msg.includes("guardrail") || msg.includes("data policy")
+                ? "OpenRouter model unavailable (privacy policy). Check OpenRouter settings or switch model in Controls."
+                : msg.includes("NotFoundError") || msg.includes("404")
+                ? "Model not found. Please check your model settings in Controls."
+                : msg.substring(0, 120)
               const nonFatal = evt.fatal === false || Boolean(evt.agent)
               if (nonFatal) {
                 accumulatedToken = ""
@@ -669,17 +592,12 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
     setGeneratingNotes(true)
     setStreamError("")
     try {
-      const res = await apiFetch(
-        `/api/v1/chat/rooms/${roomId}/artifacts/generate`,
-        {
-          method: "POST",
-          credentials: "include",
-        },
-      )
+      const res = await apiFetch(`/api/v1/chat/rooms/${roomId}/artifacts/generate`, {
+        method: "POST",
+        credentials: "include",
+      })
       if (!res.ok) {
-        const detail = await res
-          .json()
-          .catch(() => ({ detail: "Could not generate notes" }))
+        const detail = await res.json().catch(() => ({ detail: "Could not generate notes" }))
         throw new Error(String(detail.detail ?? "Could not generate notes"))
       }
       const artifact = await res.json()
@@ -687,9 +605,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
       await reloadMessages()
     } catch (err) {
       console.error("Generate notes error:", err)
-      setStreamError(
-        (err as Error).message || "Could not generate meeting notes.",
-      )
+      setStreamError((err as Error).message || "Could not generate meeting notes.")
     } finally {
       setGeneratingNotes(false)
     }
@@ -752,14 +668,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
               >
                 Meeting Room
               </div>
-              <div
-                style={{
-                  fontSize: 16,
-                  fontWeight: 700,
-                  color: "#e2e8f0",
-                  marginTop: 4,
-                }}
-              >
+              <div style={{ fontSize: 16, fontWeight: 700, color: "#e2e8f0", marginTop: 4 }}>
                 {room?.name ?? "Roundtable"}
               </div>
             </div>
@@ -770,9 +679,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
               active={infoOpen ? "info" : undefined}
               onChat={() => navigate({ to: "/dm" })}
               onWorkstation={() => navigate({ to: "/workstation" })}
-              onControls={() =>
-                navigate({ to: "/dm", search: { controls: "open" } })
-              }
+              onControls={() => navigate({ to: "/dm", search: { controls: "open" } })}
               onInfo={() => setInfoOpen((prev) => !prev)}
             />
             <div
@@ -797,9 +704,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
             padding: isCompactLayout ? 10 : 16,
             display: isCompactLayout ? "flex" : "grid",
             flexDirection: isCompactLayout ? "column" : undefined,
-            gridTemplateColumns: isCompactLayout
-              ? undefined
-              : "320px minmax(0, 1fr)",
+            gridTemplateColumns: isCompactLayout ? undefined : "320px minmax(0, 1fr)",
             gap: isCompactLayout ? 10 : 16,
             minHeight: 0,
           }}
@@ -833,14 +738,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
               >
                 Roundtable
               </div>
-              <p
-                style={{
-                  fontSize: 12,
-                  color: "#94a3b8",
-                  lineHeight: 1.7,
-                  margin: "8px 0 0",
-                }}
-              >
+              <p style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.7, margin: "8px 0 0" }}>
                 {hasModelSeats
                   ? "Launched from Workstation. After your kickoff, the room should continue on its own, keep one active speaker at a time, and only stop when it reaches a recommendation, blocker, or approval point."
                   : "A shared room for you, the people you invite, and your own AI agents. New messages appear on their own. Sparkbot's built-in models are optional."}
@@ -868,14 +766,8 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                   }}
                   style={{
                     borderRadius: 9,
-                    border:
-                      sidebarTab === tab
-                        ? "1px solid rgba(125,211,252,0.3)"
-                        : "1px solid transparent",
-                    backgroundColor:
-                      sidebarTab === tab
-                        ? "rgba(59,130,246,0.16)"
-                        : "transparent",
+                    border: sidebarTab === tab ? "1px solid rgba(125,211,252,0.3)" : "1px solid transparent",
+                    backgroundColor: sidebarTab === tab ? "rgba(59,130,246,0.16)" : "transparent",
                     color: sidebarTab === tab ? "#e2e8f0" : "#94a3b8",
                     padding: "9px 6px",
                     fontSize: 10,
@@ -902,9 +794,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                   <button
                     type="button"
                     onClick={handleStartFreshMeeting}
-                    disabled={
-                      Boolean(meetingActionId) || seatedParticipants.length < 2
-                    }
+                    disabled={Boolean(meetingActionId)}
                     style={{
                       borderRadius: 10,
                       border: "1px solid rgba(125,211,252,0.2)",
@@ -916,10 +806,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                       textTransform: "uppercase",
                       fontWeight: 700,
                       cursor: meetingActionId ? "not-allowed" : "pointer",
-                      opacity:
-                        meetingActionId || seatedParticipants.length < 2
-                          ? 0.5
-                          : 1,
+                      opacity: meetingActionId ? 0.5 : 1,
                     }}
                   >
                     {meetingActionId === "new" ? "Starting…" : "New"}
@@ -962,9 +849,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                       opacity: meetingActionId ? 0.5 : 1,
                     }}
                   >
-                    {meetingActionId === `delete:${roomId}`
-                      ? "Deleting…"
-                      : "Delete"}
+                    {meetingActionId === `delete:${roomId}` ? "Deleting…" : "Delete"}
                   </button>
                 </div>
 
@@ -972,6 +857,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                   roomId={roomId}
                   roomName={room?.name ?? "Roundtable"}
                   canManage={myRole === "OWNER" || myRole === "MOD"}
+                  onSeatsLoaded={setSeatCount}
                 />
 
                 <div
@@ -992,13 +878,9 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                       marginBottom: 10,
                     }}
                   >
-                    {hasModelSeats
-                      ? "Seated participants"
-                      : "Sparkbot model seats (optional)"}
+                    {hasModelSeats ? "Seated participants" : "Sparkbot model seats (optional)"}
                   </div>
-                  <div
-                    style={{ display: "flex", flexDirection: "column", gap: 8 }}
-                  >
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {seatedParticipants.map((seat) => (
                       <div
                         key={`${seat.seatIndex}-${seat.stationId}`}
@@ -1036,12 +918,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                           </div>
                           <select
                             value={seat.agentHandle ?? ""}
-                            onChange={(event) =>
-                              handleSeatAgentChange(
-                                seat.seatIndex,
-                                event.target.value,
-                              )
-                            }
+                            onChange={(event) => handleSeatAgentChange(seat.seatIndex, event.target.value)}
                             style={{
                               marginTop: 6,
                               width: "100%",
@@ -1079,42 +956,21 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                   gap: 10,
                 }}
               >
-                <div
-                  style={{
-                    fontSize: 10,
-                    color: "#cbd5f5",
-                    letterSpacing: "0.1em",
-                    textTransform: "uppercase",
-                    fontWeight: 700,
-                  }}
-                >
+                <div style={{ fontSize: 10, color: "#cbd5f5", letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700 }}>
                   Guardian Tasks
                 </div>
                 {roomTasks.length === 0 ? (
-                  <p
-                    style={{
-                      fontSize: 11,
-                      color: "#4b5563",
-                      margin: 0,
-                      lineHeight: 1.6,
-                    }}
-                  >
-                    No Task Guardian jobs in this room yet. Create or operate
-                    them from Command Center.
+                  <p style={{ fontSize: 11, color: "#4b5563", margin: 0, lineHeight: 1.6 }}>
+                    No Task Guardian jobs in this room yet. Create or operate them from Command Center.
                   </p>
                 ) : (
-                  <div
-                    style={{ display: "flex", flexDirection: "column", gap: 6 }}
-                  >
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     {roomTasks.map((task) => {
                       const statusColor =
-                        task.last_status === "success"
-                          ? "#4ade80"
-                          : task.last_status === "failed"
-                            ? "#f87171"
-                            : task.last_status === "running"
-                              ? "#fbbf24"
-                              : "#4b5563"
+                        task.last_status === "success" ? "#4ade80"
+                        : task.last_status === "failed" ? "#f87171"
+                        : task.last_status === "running" ? "#fbbf24"
+                        : "#4b5563"
                       return (
                         <div
                           key={task.id}
@@ -1128,39 +984,13 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                             borderRadius: 8,
                           }}
                         >
-                          <span
-                            style={{
-                              width: 7,
-                              height: 7,
-                              borderRadius: "50%",
-                              backgroundColor: statusColor,
-                              flexShrink: 0,
-                            }}
-                          />
+                          <span style={{ width: 7, height: 7, borderRadius: "50%", backgroundColor: statusColor, flexShrink: 0 }} />
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div
-                              style={{
-                                fontSize: 11,
-                                fontWeight: 700,
-                                color: "#cbd5e1",
-                                whiteSpace: "nowrap",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                              }}
-                            >
+                            <div style={{ fontSize: 11, fontWeight: 700, color: "#cbd5e1", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                               {task.name}
                             </div>
-                            <div
-                              style={{
-                                fontSize: 9,
-                                color: "#4b5563",
-                                marginTop: 1,
-                              }}
-                            >
-                              {task.tool_name}
-                              {task.last_run_at
-                                ? ` · ${new Date(task.last_run_at).toLocaleDateString()}`
-                                : ""}
+                            <div style={{ fontSize: 9, color: "#4b5563", marginTop: 1 }}>
+                              {task.tool_name}{task.last_run_at ? ` · ${new Date(task.last_run_at).toLocaleDateString()}` : ""}
                             </div>
                           </div>
                           <button
@@ -1169,13 +999,10 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                             onClick={async () => {
                               setRunningTaskId(task.id)
                               try {
-                                await apiFetch(
-                                  `/api/v1/chat/rooms/${roomId}/guardian/tasks/${task.id}/run`,
-                                  {
-                                    method: "POST",
-                                    credentials: "include",
-                                  },
-                                )
+                                await apiFetch(`/api/v1/chat/rooms/${roomId}/guardian/tasks/${task.id}/run`, {
+                                  method: "POST",
+                                  credentials: "include",
+                                })
                                 await reloadRoomTasks()
                               } finally {
                                 setRunningTaskId(null)
@@ -1185,10 +1012,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                               background: "none",
                               border: "1px solid rgba(125,211,252,0.2)",
                               borderRadius: 4,
-                              cursor:
-                                runningTaskId === task.id
-                                  ? "not-allowed"
-                                  : "pointer",
+                              cursor: runningTaskId === task.id ? "not-allowed" : "pointer",
                               color: "#bae6fd",
                               fontSize: 9,
                               padding: "3px 7px",
@@ -1239,9 +1063,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                   <button
                     type="button"
                     onClick={handleStartFreshMeeting}
-                    disabled={
-                      Boolean(meetingActionId) || seatedParticipants.length < 2
-                    }
+                    disabled={Boolean(meetingActionId)}
                     style={{
                       borderRadius: 8,
                       border: "1px solid rgba(125,211,252,0.2)",
@@ -1253,94 +1075,47 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                       textTransform: "uppercase",
                       fontWeight: 700,
                       cursor: meetingActionId ? "not-allowed" : "pointer",
-                      opacity:
-                        meetingActionId || seatedParticipants.length < 2
-                          ? 0.5
-                          : 1,
+                      opacity: meetingActionId ? 0.5 : 1,
                     }}
                   >
                     New
                   </button>
                 </div>
                 {meetingRooms.length === 0 ? (
-                  <div
-                    style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.6 }}
-                  >
-                    No active meetings. Start a fresh Roundtable instance from
-                    here or from Workstation.
+                  <div style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.6 }}>
+                    No active meetings. Start a fresh Roundtable instance from here or from Workstation.
                   </div>
                 ) : (
                   meetingRooms.map((meeting) => (
                     <div
                       key={meeting.id}
                       style={{
-                        border:
-                          meeting.id === roomId
-                            ? "1px solid rgba(125,211,252,0.28)"
-                            : "1px solid rgba(99,102,241,0.16)",
+                        border: meeting.id === roomId ? "1px solid rgba(125,211,252,0.28)" : "1px solid rgba(99,102,241,0.16)",
                         borderRadius: 10,
                         padding: "10px 11px",
-                        backgroundColor:
-                          meeting.id === roomId
-                            ? "rgba(14,116,144,0.12)"
-                            : "rgba(7,13,28,0.58)",
+                        backgroundColor: meeting.id === roomId ? "rgba(14,116,144,0.12)" : "rgba(7,13,28,0.58)",
                         display: "flex",
                         flexDirection: "column",
                         gap: 8,
                       }}
                     >
                       <div>
-                        <div
-                          style={{
-                            fontSize: 11,
-                            color: "#e2e8f0",
-                            fontWeight: 700,
-                          }}
-                        >
+                        <div style={{ fontSize: 11, color: "#e2e8f0", fontWeight: 700 }}>
                           {meeting.name}
                         </div>
-                        <div
-                          style={{
-                            fontSize: 10,
-                            color: "#64748b",
-                            marginTop: 4,
-                          }}
-                        >
-                          Updated{" "}
-                          {new Date(
-                            meeting.updated_at || meeting.created_at,
-                          ).toLocaleString()}
+                        <div style={{ fontSize: 10, color: "#64748b", marginTop: 4 }}>
+                          Updated {new Date(meeting.updated_at || meeting.created_at).toLocaleString()}
                         </div>
                         {meeting.meta?.seats?.length ? (
-                          <div
-                            style={{
-                              fontSize: 10,
-                              color: "#94a3b8",
-                              marginTop: 6,
-                              lineHeight: 1.5,
-                            }}
-                          >
-                            {meeting.meta.seats
-                              .map((seat) => seat.label)
-                              .join(" • ")}
+                          <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 6, lineHeight: 1.5 }}>
+                            {meeting.meta.seats.map((seat) => seat.label).join(" • ")}
                           </div>
                         ) : null}
                       </div>
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "1fr 1fr 1fr",
-                          gap: 6,
-                        }}
-                      >
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
                         <button
                           type="button"
-                          onClick={() =>
-                            navigate({
-                              to: "/meeting/$roomId",
-                              params: { roomId: meeting.id },
-                            })
-                          }
+                          onClick={() => navigate({ to: "/meeting/$roomId", params: { roomId: meeting.id } })}
                           style={{
                             borderRadius: 8,
                             border: "1px solid rgba(125,211,252,0.18)",
@@ -1374,9 +1149,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                             opacity: meetingActionId ? 0.5 : 1,
                           }}
                         >
-                          {meetingActionId === `end:${meeting.id}`
-                            ? "Ending…"
-                            : "End"}
+                          {meetingActionId === `end:${meeting.id}` ? "Ending…" : "End"}
                         </button>
                         <button
                           type="button"
@@ -1396,9 +1169,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                             opacity: meetingActionId ? 0.5 : 1,
                           }}
                         >
-                          {meetingActionId === `delete:${meeting.id}`
-                            ? "Deleting…"
-                            : "Delete"}
+                          {meetingActionId === `delete:${meeting.id}` ? "Deleting…" : "Delete"}
                         </button>
                       </div>
                     </div>
@@ -1457,9 +1228,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                     letterSpacing: "0.06em",
                   }}
                 >
-                  {generatingNotes
-                    ? "Generating notes…"
-                    : "Generate Meeting Notes"}
+                  {generatingNotes ? "Generating notes…" : "Generate Meeting Notes"}
                 </button>
                 {latestArtifact && (
                   <div
@@ -1481,8 +1250,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                         color: "#64748b",
                       }}
                     >
-                      Meeting Notes ·{" "}
-                      {new Date(latestArtifact.created_at).toLocaleTimeString()}
+                      Meeting Notes · {new Date(latestArtifact.created_at).toLocaleTimeString()}
                     </p>
                     <pre
                       style={{
@@ -1527,9 +1295,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
               }}
             >
               <div>
-                <div
-                  style={{ fontSize: 16, fontWeight: 700, color: "#e2e8f0" }}
-                >
+                <div style={{ fontSize: 16, fontWeight: 700, color: "#e2e8f0" }}>
                   {room?.name ?? "Roundtable"}
                 </div>
                 <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
@@ -1570,9 +1336,7 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                   currentUser={currentUser}
                   isLoading={false}
                   typingUsers={[]}
-                  className={
-                    isCompactLayout ? "min-h-[45dvh] flex-1" : "flex-1"
-                  }
+                  className={isCompactLayout ? "min-h-[45dvh] flex-1" : "flex-1"}
                 />
                 {streamError && (
                   <div
@@ -1602,27 +1366,12 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                     }}
                   >
                     {streamingAgent && (
-                      <span
-                        style={{
-                          fontWeight: 700,
-                          fontStyle: "normal",
-                          marginRight: 8,
-                          fontSize: 11,
-                          color: "#7dd3fc",
-                        }}
-                      >
+                      <span style={{ fontWeight: 700, fontStyle: "normal", marginRight: 8, fontSize: 11, color: "#7dd3fc" }}>
                         {streamingAgent}
                       </span>
                     )}
                     {streamingToken}
-                    <span
-                      style={{
-                        animation: "blink 1s step-end infinite",
-                        opacity: 0.7,
-                      }}
-                    >
-                      ▌
-                    </span>
+                    <span style={{ animation: "blink 1s step-end infinite", opacity: 0.7 }}>▌</span>
                   </div>
                 )}
                 <div
@@ -1636,27 +1385,15 @@ export default function MeetingRoomPage({ roomId }: MeetingRoomPageProps) {
                   {sending
                     ? "Meeting is running. Send a new message to interrupt, redirect, or add owner input."
                     : seatedParticipants.length > 0
-                      ? `Kick off the topic once, or call on someone directly with ${getMeetingParticipantHandles(
-                          seatedParticipants,
-                        )
-                          .map((handle) => `@${handle}`)
-                          .join("  ")}`
-                      : "Messages go straight to the room. Invite people or agents from the panel on the left."}
+                    ? `Kick off the topic once, or call on someone directly with ${getMeetingParticipantHandles(seatedParticipants).map((handle) => `@${handle}`).join("  ")}`
+                    : "Messages go straight to the room. Invite people or agents from the panel on the left."}
                 </div>
                 <ChatInput
                   value={inputValue}
                   onChange={setInputValue}
                   onSubmit={handleSendMessage}
                   isLoading={false}
-                  placeholder={
-                    sending
-                      ? hasModelSeats
-                        ? "Interrupt or redirect the meeting…"
-                        : "Sending…"
-                      : hasModelSeats
-                        ? "Kick off the meeting objective…"
-                        : "Message the room…"
-                  }
+                  placeholder={sending ? (hasModelSeats ? "Interrupt or redirect the meeting…" : "Sending…") : hasModelSeats ? "Kick off the meeting objective…" : "Message the room…"}
                 />
               </>
             )}

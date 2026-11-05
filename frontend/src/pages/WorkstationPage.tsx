@@ -48,6 +48,7 @@ const XtermTerminal = lazy(() =>
   import("@/components/Terminal/XtermTerminal").then((m) => ({ default: m.XtermTerminal }))
 )
 import { apiFetch } from "@/lib/apiBase"
+import { createRoundtableRoom } from "@/lib/roundtableRooms"
 import {
   agentDisplayName,
   buildControlsModelGroups,
@@ -3891,6 +3892,11 @@ interface RoundTableStageProps {
   onLaunchMeeting: () => void
   launchingMeeting: boolean
   meetingLaunchError?: string | null
+  /** Bring-your-own-agent rooms the user can jump into. */
+  rooms?: Array<{ id: string; name: string }>
+  onOpenRoom?: (roomId: string) => void
+  onNewRoom?: () => void
+  creatingRoom?: boolean
 }
 
 function RoundTableStage({
@@ -3902,6 +3908,10 @@ function RoundTableStage({
   onLaunchMeeting,
   launchingMeeting,
   meetingLaunchError,
+  rooms = [],
+  onOpenRoom,
+  onNewRoom,
+  creatingRoom = false,
 }: RoundTableStageProps) {
   const participants = projectRoom.seats
     .map((seatId) => eligibleStations.find((station) => station.id === seatId) ?? null)
@@ -3970,6 +3980,48 @@ function RoundTableStage({
           <p style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.7, margin: "8px 0 0" }}>
             Assign desks to any of the eight chairs, then launch the room into a live group chat.
           </p>
+          <div
+            data-testid="roundtable-room-links"
+            style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginTop: 10 }}
+          >
+            <span style={{ fontSize: 11, color: "#94a3b8" }}>Your rooms:</span>
+            {rooms.slice(0, 4).map((meeting) => (
+              <button
+                key={meeting.id}
+                type="button"
+                onClick={() => onOpenRoom?.(meeting.id)}
+                style={{
+                  borderRadius: 999,
+                  border: "1px solid rgba(125,211,252,0.25)",
+                  backgroundColor: "rgba(15,23,42,0.7)",
+                  color: "#e2e8f0",
+                  padding: "4px 10px",
+                  fontSize: 11,
+                  cursor: "pointer",
+                }}
+              >
+                {meeting.name}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => onNewRoom?.()}
+              disabled={creatingRoom}
+              title="A room for you, the people you invite, and your own AI agents. No Sparkbot models needed."
+              style={{
+                borderRadius: 999,
+                border: "1px solid rgba(125,211,252,0.35)",
+                backgroundColor: "rgba(14,116,144,0.25)",
+                color: "#bae6fd",
+                padding: "4px 10px",
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: creatingRoom ? "wait" : "pointer",
+              }}
+            >
+              {creatingRoom ? "Creating…" : "+ New room"}
+            </button>
+          </div>
         </div>
 
         <button
@@ -4268,6 +4320,20 @@ export default function WorkstationPage() {
   })
   const [controlsConfig, setControlsConfig] = useState<SparkbotControlsConfig | null>(null)
   const [overview, setOverview] = useState<WorkstationOverview | null>(null)
+  const [creatingRoundtable, setCreatingRoundtable] = useState(false)
+
+  async function handleNewRoundtableRoom() {
+    if (creatingRoundtable) return
+    setCreatingRoundtable(true)
+    try {
+      const roomId = await createRoundtableRoom()
+      navigate({ to: "/meeting/$roomId", params: { roomId } })
+    } catch (err) {
+      console.error("Could not create Roundtable room", err)
+    } finally {
+      setCreatingRoundtable(false)
+    }
+  }
   const [infoOpen, setInfoOpen] = useState(false)
   const [seatPicker, setSeatPicker] = useState<SeatPickerState | null>(null)
   const [launchingSparkBudId, setLaunchingSparkBudId] = useState<string | null>(null)
@@ -5038,6 +5104,10 @@ export default function WorkstationPage() {
                   onLaunchMeeting={handleLaunchMeeting}
                   launchingMeeting={launchingMeeting}
                   meetingLaunchError={meetingLaunchError}
+                  rooms={overview?.meetings ?? []}
+                  onOpenRoom={(roomId) => navigate({ to: "/meeting/$roomId", params: { roomId } })}
+                  onNewRoom={() => void handleNewRoundtableRoom()}
+                  creatingRoom={creatingRoundtable}
                 />
               </div>
 
@@ -5370,17 +5440,40 @@ export default function WorkstationPage() {
 
               {/* Recent Meetings */}
               <div>
-                <div
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 700,
-                    color: "#c7d2fe",
-                    letterSpacing: "0.1em",
-                    textTransform: "uppercase",
-                    marginBottom: 10,
-                  }}
-                >
-                  Active Meetings
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                  <div
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      color: "#c7d2fe",
+                      letterSpacing: "0.1em",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    Active Meetings
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleNewRoundtableRoom()}
+                    disabled={creatingRoundtable}
+                    title="A room for you, the people you invite, and your own AI agents. No Sparkbot models needed."
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 5,
+                      borderRadius: 6,
+                      border: "1px solid rgba(125,211,252,0.25)",
+                      backgroundColor: "rgba(14,116,144,0.18)",
+                      color: "#bae6fd",
+                      padding: "4px 9px",
+                      fontSize: 10,
+                      fontWeight: 700,
+                      cursor: creatingRoundtable ? "wait" : "pointer",
+                    }}
+                  >
+                    <Plus size={10} />
+                    {creatingRoundtable ? "Creating…" : "New room"}
+                  </button>
                 </div>
                 {!overview?.meetings.length ? (
                   <div
@@ -5392,7 +5485,7 @@ export default function WorkstationPage() {
                       color: "#4b5563",
                     }}
                   >
-                    No meetings yet. Launch one from the Roundtable or start a project above.
+                    No meetings yet. Click New room to start one with your own agents and people, or launch a Sparkbot meeting above.
                   </div>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
