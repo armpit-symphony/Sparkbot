@@ -293,7 +293,7 @@ def test_memory_guardian_redacts_sensitive_content_from_context(monkeypatch, tmp
     _reset_memory_guardian(monkeypatch, tmp_path)
 
     sensitive_message = (
-        "My phone number is 631-383-0368 and my email is phil@example.com. "
+        "My phone number is 202-555-0147 and my email is person@example.com. "
         "My api key is sk-1234567890abcdefghijklmnop."
     )
     assert memory.remember_chat_message(
@@ -314,8 +314,8 @@ def test_memory_guardian_redacts_sensitive_content_from_context(monkeypatch, tmp
     assert "[REDACTED_PHONE]" in events[-1].content
     assert "[REDACTED_EMAIL]" in events[-1].content
     assert "[REDACTED_TOKEN]" in events[-1].content
-    assert "631-383-0368" not in context
-    assert "phil@example.com" not in context
+    assert "202-555-0147" not in context
+    assert "person@example.com" not in context
     assert "sk-1234567890abcdefghijklmnop" not in context
     assert context == ""
 
